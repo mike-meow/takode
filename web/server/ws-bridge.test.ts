@@ -26,6 +26,7 @@ import {
   upsertBoardRow as upsertBoardRowController,
 } from "./bridge/board-watchdog-controller.js";
 import { cleanupBranchState as cleanupBranchStateIndex, updateBranchIndex as updateBranchIndexState } from "./bridge/branch-session-index.js";
+import { routeBrowserMessage as routeBrowserMessageController } from "./bridge/adapter-browser-routing-controller.js";
 import {
   getVsCodeSelectionState as getVsCodeSelectionStateController,
   getVsCodeWindowStates as getVsCodeWindowStatesController,
@@ -343,18 +344,20 @@ function attachBoardFacade(bridge: WsBridge): TestBridge {
   anyBridge.advanceBoardRow = (sessionId: string, questId: string) => bridge.getSession(sessionId) ? advanceBoardRowController(bridge.getSession(sessionId)!, questId, ["QUEUED", "PLANNING", "IMPLEMENTING", "SKEPTIC_REVIEWING", "GROOM_REVIEWING", "PORTING"], workBoardStateDeps) : null;
   anyBridge.getCompletedBoard = (sessionId: string) => bridge.getSession(sessionId) ? getCompletedBoardController(bridge.getSession(sessionId)!) : [];
   anyBridge.getCompletedBoardCount = (sessionId: string) => bridge.getSession(sessionId)?.completedBoard.size ?? 0;
-  anyBridge.getVsCodeSelectionState = () => getVsCodeSelectionStateController(anyBridge.getBrowserTransportState());
+  anyBridge.getVsCodeSelectionState = () => getVsCodeSelectionStateController(anyBridge.browserTransportState);
   anyBridge.updateVsCodeSelectionState = (nextState: any) =>
-    updateVsCodeSelectionStateController(anyBridge.getBrowserTransportState(), nextState, anyBridge.getBrowserTransportDeps());
+    updateVsCodeSelectionStateController(anyBridge.browserTransportState, nextState, anyBridge.getBrowserTransportDeps());
   anyBridge.getVsCodeWindowStates = () =>
-    getVsCodeWindowStatesController(anyBridge.getBrowserTransportState(), anyBridge.getBrowserTransportDeps());
-  anyBridge.upsertVsCodeWindowState = (nextState: any) => upsertVsCodeWindowStateController(anyBridge.getBrowserTransportState(), nextState);
+    getVsCodeWindowStatesController(anyBridge.browserTransportState, anyBridge.getBrowserTransportDeps());
+  anyBridge.upsertVsCodeWindowState = (nextState: any) => upsertVsCodeWindowStateController(anyBridge.browserTransportState, nextState);
   anyBridge.pollVsCodeOpenFileCommands = (sourceId: string, limit = 1) =>
-    pollVsCodeOpenFileCommandsController(anyBridge.getBrowserTransportState(), sourceId, limit);
+    pollVsCodeOpenFileCommandsController(anyBridge.browserTransportState, sourceId, limit);
   anyBridge.resolveVsCodeOpenFileResult = (sourceId: string, commandId: string, result: { ok: boolean; error?: string }) =>
-    resolveVsCodeOpenFileResultController(anyBridge.getBrowserTransportState(), sourceId, commandId, result);
+    resolveVsCodeOpenFileResultController(anyBridge.browserTransportState, sourceId, commandId, result);
   anyBridge.requestVsCodeOpenFile = (target: any, options?: { timeoutMs?: number }) =>
-    requestVsCodeOpenFileController(anyBridge.getBrowserTransportState(), target, anyBridge.getBrowserTransportDeps(), options);
+    requestVsCodeOpenFileController(anyBridge.browserTransportState, target, anyBridge.getBrowserTransportDeps(), options);
+  anyBridge.routeBrowserMessage = (session: any, msg: any, ws?: any) =>
+    routeBrowserMessageController(session, msg, ws, anyBridge.getBrowserRoutingDeps());
   return bridge as TestBridge;
 }
 
@@ -1080,6 +1083,26 @@ describe("CLI handlers", () => {
     const initMsg2 = findInitializeMsg(cli2);
     expect(initMsg2).toBeDefined();
     expect(initMsg2!.request.appendSystemPrompt).toBe(instructions);
+  });
+
+  it("handleCLIClose ignores a stale socket after a newer CLI socket is attached", () => {
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    const cli1 = makeCliSocket("s1");
+    bridge.handleCLIOpen(cli1, "s1");
+
+    const cli2 = makeCliSocket("s1");
+    bridge.handleCLIOpen(cli2, "s1");
+
+    const session = bridge.getSession("s1")!;
+    expect(session.backendSocket).toBe(cli2);
+
+    browser.send.mockClear();
+    bridge.handleCLIClose(cli1, 1006, "stale close");
+
+    expect(session.backendSocket).toBe(cli2);
+    expect(browser.send).not.toHaveBeenCalled();
   });
 
   it("handleCLIOpen: initialize is sent BEFORE queued user messages", () => {
@@ -18152,6 +18175,28 @@ describe("SDK disconnect auto-relaunch", () => {
     adapter.emitDisconnect();
 
     expect(relaunchCb).toHaveBeenCalledWith(sid);
+    const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    expect(calls).toContainEqual(expect.objectContaining({ type: "backend_disconnected" }));
+  });
+
+  it("requests relaunch when SDK adapter init fails with active browser", () => {
+    const sid = "s-sdk-init-error";
+    const relaunchCb = vi.fn();
+    bridge.onCLIRelaunchNeededCallback(relaunchCb);
+
+    const adapter = makeClaudeSdkAdapterMock();
+    bridge.attachClaudeSdkAdapter(sid, adapter as any);
+
+    const browser = makeBrowserSocket(sid);
+    bridge.handleBrowserOpen(browser, sid);
+    browser.send.mockClear();
+
+    adapter.emitInitError("Transport closed");
+
+    expect(relaunchCb).toHaveBeenCalledWith(sid);
+    const session = bridge.getSession(sid)!;
+    expect(session.claudeSdkAdapter).toBeNull();
+    expect(session.consecutiveAdapterFailures).toBe(1);
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
     expect(calls).toContainEqual(expect.objectContaining({ type: "backend_disconnected" }));
   });

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   handlePermissionResponse,
+  routeAdapterBrowserMessage,
   type AdapterBrowserRoutingDeps,
   type AdapterBrowserRoutingSessionLike,
 } from "./adapter-browser-routing-controller.js";
@@ -46,9 +47,13 @@ function makeDeps(): AdapterBrowserRoutingDeps {
     broadcastToBrowsers: vi.fn(),
     emitTakodeEvent: vi.fn(),
     persistSession: vi.fn(),
-    setAttentionAction: vi.fn(),
-    schedulePermissionNotification: vi.fn(),
-    broadcastAutoApproval: vi.fn(),
+    sessionNotificationDeps: {
+      isHerdedWorkerSession: vi.fn(() => false),
+      broadcastToBrowsers: vi.fn(),
+      persistSession: vi.fn(),
+      scheduleNotification: vi.fn(),
+      cancelPermissionNotification: vi.fn(),
+    },
     onAgentPaused: vi.fn(),
     getCurrentTurnTriggerSource: vi.fn(() => "user" as const),
     abortAutoApproval: vi.fn(),
@@ -65,8 +70,6 @@ function makeDeps(): AdapterBrowserRoutingDeps {
     notifyImageSendFailure: vi.fn(),
     isHerdEventSource: vi.fn(() => false),
     onSessionActivityStateChanged: vi.fn(),
-    clearActionAttentionIfNoPermissions: vi.fn(),
-    cancelPermissionNotification: vi.fn(),
     markTurnInterrupted: vi.fn(),
     armCodexFreshTurnRequirement: vi.fn(),
     clearCodexFreshTurnRequirement: vi.fn(),
@@ -91,41 +94,6 @@ function makeDeps(): AdapterBrowserRoutingDeps {
     handleCodexSetReasoningEffort: vi.fn(),
     handleSetAskPermission: vi.fn(),
     handleInterruptFallback: vi.fn(),
-    browserTransportDeps: {
-      refreshGitInfoThenRecomputeDiff: vi.fn(),
-      prefillSlashCommands: vi.fn(),
-      getTreeGroupState: vi.fn(async () => ({ groups: [], assignments: {}, nodeOrder: {} })),
-      getVsCodeSelectionState: vi.fn(() => null),
-      getLauncherSessionInfo: vi.fn(() => null),
-      backendAttached: vi.fn(() => false),
-      backendConnected: vi.fn(() => false),
-      requestCodexAutoRecovery: vi.fn(() => false),
-      requestCliRelaunch: vi.fn(),
-      getRouteChain: vi.fn(() => undefined),
-      setRouteChain: vi.fn(),
-      clearRouteChain: vi.fn(),
-      routeBrowserMessage: vi.fn(),
-      notifyImageSendFailure: vi.fn(),
-      broadcastError: vi.fn(),
-      queueCodexPendingStartBatch: vi.fn(),
-      deriveBackendState: vi.fn(() => "connected" as const),
-      getBoard: vi.fn(() => []),
-      getCompletedBoard: vi.fn(() => []),
-      recoverToolStartTimesFromHistory: vi.fn(),
-      finalizeRecoveredDisconnectedTerminalTools: vi.fn(),
-      scheduleCodexToolResultWatchdogs: vi.fn(),
-      recomputeAndBroadcastHistoryBytes: vi.fn(),
-      listTimers: vi.fn(() => []),
-      persistSession: vi.fn(),
-      recordOutgoingRaw: vi.fn(),
-      eventBufferLimit: 100,
-      getSessions: vi.fn(() => []),
-      windowStaleMs: 1_000,
-      openFileTimeoutMs: 1_000,
-    },
-    handleVsCodeSelectionUpdate: vi.fn(),
-    idempotentMessageTypes: new Set<string>(),
-    processedClientMsgIdLimit: 100,
   };
 }
 
@@ -191,6 +159,140 @@ describe("permission response handling in browser routing", () => {
       "permission_resolved",
       { tool_name: "ExitPlanMode", outcome: "denied" },
       "actor-1",
+    );
+  });
+
+  it("clears Codex permission notifications and action attention before denial side effects", () => {
+    const session = makeSession();
+    session.backendType = "codex";
+    (session as any).attentionReason = "action";
+    const codexAdapter = {
+      sendBrowserMessage: vi.fn(),
+      getCurrentTurnId: vi.fn(() => "turn-codex"),
+      isConnected: vi.fn(() => true),
+    };
+    session.codexAdapter = codexAdapter as any;
+    session.pendingPermissions.set("req-codex", {
+      request_id: "req-codex",
+      tool_name: "ExitPlanMode",
+      input: {},
+      tool_use_id: "tool-codex",
+      timestamp: 1,
+    });
+    const deps = makeDeps();
+
+    routeAdapterBrowserMessage(
+      session,
+      {
+        type: "permission_response",
+        request_id: "req-codex",
+        behavior: "deny",
+      },
+      null,
+      deps,
+    );
+
+    expect(session.pendingPermissions.size).toBe(0);
+    expect((session as any).attentionReason).toBeNull();
+    expect(deps.sessionNotificationDeps.cancelPermissionNotification).toHaveBeenCalledWith("s1", "req-codex");
+    expect(deps.sessionNotificationDeps.broadcastToBrowsers).toHaveBeenCalledWith(
+      session,
+      expect.objectContaining({
+        type: "session_update",
+        session: { attentionReason: null },
+      }),
+    );
+    expect(deps.markTurnInterrupted).toHaveBeenCalledWith(session, "user");
+    expect(deps.armCodexFreshTurnRequirement).toHaveBeenCalledWith(
+      session,
+      "turn-codex",
+      "exit_plan_mode_denied",
+    );
+    expect(codexAdapter.sendBrowserMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "interrupt",
+        interruptSource: "user",
+      }),
+    );
+    expect(session.messageHistory.at(-1)).toEqual(expect.objectContaining({ type: "permission_denied" }));
+
+    const cancelOrder = (deps.sessionNotificationDeps.cancelPermissionNotification as any).mock.invocationCallOrder[0];
+    const attentionBroadcastOrder = (deps.sessionNotificationDeps.broadcastToBrowsers as any).mock.invocationCallOrder[0];
+    const interruptOrder = (codexAdapter.sendBrowserMessage as any).mock.invocationCallOrder[0];
+    const takodeOrder = (deps.emitTakodeEvent as any).mock.invocationCallOrder[0];
+    expect(cancelOrder).toBeLessThan(interruptOrder);
+    expect(attentionBroadcastOrder).toBeLessThan(interruptOrder);
+    expect(cancelOrder).toBeLessThan(takodeOrder);
+    expect(attentionBroadcastOrder).toBeLessThan(takodeOrder);
+  });
+
+  it("preserves request_id on Codex permission history artifacts so pending UI can clear", () => {
+    const session = makeSession();
+    session.backendType = "codex";
+    session.pendingPermissions.set("req-codex-allow", {
+      request_id: "req-codex-allow",
+      tool_name: "ExitPlanMode",
+      input: {},
+      tool_use_id: "tool-codex-allow",
+      timestamp: 1,
+    });
+    const deps = makeDeps();
+
+    routeAdapterBrowserMessage(
+      session,
+      {
+        type: "permission_response",
+        request_id: "req-codex-allow",
+        behavior: "allow",
+      },
+      null,
+      deps,
+    );
+
+    expect(session.messageHistory.at(-1)).toEqual(
+      expect.objectContaining({
+        type: "permission_approved",
+        request_id: "req-codex-allow",
+      }),
+    );
+    expect(deps.broadcastToBrowsers).toHaveBeenCalledWith(
+      session,
+      expect.objectContaining({
+        type: "permission_approved",
+        request_id: "req-codex-allow",
+      }),
+    );
+  });
+
+  it("preserves actorSessionId on Codex permission_resolved events", () => {
+    const session = makeSession();
+    session.backendType = "codex";
+    session.pendingPermissions.set("req-codex-actor", {
+      request_id: "req-codex-actor",
+      tool_name: "Bash",
+      input: { command: "pwd" },
+      tool_use_id: "tool-codex-actor",
+      timestamp: 1,
+    });
+    const deps = makeDeps();
+
+    routeAdapterBrowserMessage(
+      session,
+      {
+        type: "permission_response",
+        request_id: "req-codex-actor",
+        behavior: "deny",
+        actorSessionId: "leader-9",
+      },
+      null,
+      deps,
+    );
+
+    expect(deps.emitTakodeEvent).toHaveBeenCalledWith(
+      "s1",
+      "permission_resolved",
+      { tool_name: "Bash", outcome: "denied" },
+      "leader-9",
     );
   });
 });

@@ -4,7 +4,7 @@ import { computeHistoryMessagesSyncHash, computeHistoryPrefixSyncHash } from "..
 import { getHistoryWindowTurnCount } from "../../shared/history-window.js";
 import { sessionTag } from "../session-tag.js";
 import { findTurnBoundaries } from "../takode-messages.js";
-import { trafficStats } from "../traffic-stats.js";
+import { getTrafficMessageType, trafficStats } from "../traffic-stats.js";
 import type {
   BrowserIncomingMessage,
   BrowserOutgoingMessage,
@@ -46,6 +46,8 @@ export interface BrowserTransportSessionLike {
   attentionReason: "action" | "error" | "review" | null;
   generationStartedAt: number | null;
   notifications: unknown[];
+  processedClientMessageIds: string[];
+  processedClientMessageIdSet: Set<string>;
 }
 
 export interface BrowserTransportStateLike {
@@ -96,6 +98,10 @@ export interface BrowserTransportDeps {
     msg: BrowserOutgoingMessage,
     ws?: BrowserTransportSocketLike,
   ) => Promise<void> | void;
+  abortAutoApproval: (session: BrowserTransportSessionLike, requestId: string) => void;
+  broadcastToBrowsers: (session: BrowserTransportSessionLike, msg: BrowserIncomingMessage) => void;
+  setAttentionAction: (session: BrowserTransportSessionLike) => void;
+  touchActivity?: (sessionId: string) => void;
   notifyImageSendFailure: (session: BrowserTransportSessionLike, err?: unknown) => void;
   broadcastError: (session: BrowserTransportSessionLike, message: string) => void;
   queueCodexPendingStartBatch: (session: BrowserTransportSessionLike, reason: string) => void;
@@ -108,12 +114,25 @@ export interface BrowserTransportDeps {
   recomputeAndBroadcastHistoryBytes: (session: BrowserTransportSessionLike) => void;
   listTimers: (sessionId: string) => unknown[];
   persistSession: (session: BrowserTransportSessionLike) => void;
+  recordIncomingRaw?: (sessionId: string, json: string, backendType: string, cwd: string) => void;
   recordOutgoingRaw: (sessionId: string, json: string, backendType: string, cwd: string) => void;
   eventBufferLimit: number;
+  browserTransportState: BrowserTransportStateLike;
+  idempotentMessageTypes: ReadonlySet<string>;
+  processedClientMsgIdLimit: number;
   getSessions: () => Iterable<{ browserSockets: Set<unknown> }>;
   windowStaleMs: number;
   openFileTimeoutMs: number;
 }
+
+const BROWSER_ACTIVITY_TYPES: ReadonlySet<string> = new Set([
+  "user_message",
+  "permission_response",
+  "interrupt",
+  "set_model",
+  "set_permission_mode",
+  "set_codex_reasoning_effort",
+]);
 
 export function handleBrowserOpen(
   session: BrowserTransportSessionLike,
@@ -233,7 +252,13 @@ export async function handleBrowserIngressMessage(
   ws: BrowserTransportSocketLike | undefined,
   deps: BrowserTransportDeps,
 ): Promise<void> {
-  const routeTask = () => deps.routeBrowserMessage(session, msg, ws);
+  const routeTask = async () => {
+    const maybeProtocolHandled = handleBrowserProtocolMessage(session, msg, ws, deps);
+    const protocolHandled =
+      maybeProtocolHandled instanceof Promise ? await maybeProtocolHandled : maybeProtocolHandled;
+    if (protocolHandled) return;
+    return deps.routeBrowserMessage(session, msg, ws);
+  };
   const routePromise =
     shouldSerializeBrowserMessage(msg) || hasSessionRouteInFlight(session.id, deps)
       ? enqueueSessionRoute(session.id, routeTask, deps)
@@ -249,6 +274,41 @@ export async function handleBrowserIngressMessage(
     console.error(`[ws-bridge] Failed to route browser message for session ${sessionTag(session.id)}:`, err);
     deps.broadcastError(session, "Failed to process message. Please retry.");
   }
+}
+
+export function handleBrowserMessage(
+  session: BrowserTransportSessionLike,
+  data: string,
+  ws: BrowserTransportSocketLike | undefined,
+  deps: BrowserTransportDeps,
+): string {
+  deps.recordIncomingRaw?.(session.id, data, session.backendType, session.state.cwd);
+
+  let msg: BrowserOutgoingMessage;
+  try {
+    msg = JSON.parse(data);
+  } catch {
+    trafficStats.record({
+      sessionId: session.id,
+      channel: "browser",
+      direction: "in",
+      messageType: "invalid_json",
+      payloadBytes: Buffer.byteLength(data, "utf-8"),
+    });
+    console.warn(`[ws-bridge] Failed to parse browser message: ${data.substring(0, 200)}`);
+    return "invalid_json";
+  }
+
+  trafficStats.record({
+    sessionId: session.id,
+    channel: "browser",
+    direction: "in",
+    messageType: getTrafficMessageType(msg),
+    payloadBytes: Buffer.byteLength(data, "utf-8"),
+  });
+
+  void handleBrowserIngressMessage(session, msg, ws, deps);
+  return msg.type;
 }
 
 export function handleBrowserProtocolMessage(
@@ -293,6 +353,49 @@ export function handleBrowserProtocolMessage(
         `frozen expected=${msg.expected_frozen_hash} actual=${msg.actual_frozen_hash}; ` +
         `full expected=${msg.expected_full_hash} actual=${msg.actual_full_hash}`,
     );
+    return true;
+  }
+
+  if (msg.type === "permission_user_viewing") {
+    const requestId = msg.request_id;
+    const perm = session.pendingPermissions.get(requestId);
+    if (perm?.evaluating) {
+      deps.abortAutoApproval(session, requestId);
+      perm.evaluating = undefined;
+      deps.broadcastToBrowsers(session, {
+        type: "permission_needs_attention",
+        request_id: requestId,
+        timestamp: Date.now(),
+      });
+      deps.setAttentionAction(session);
+      console.log(
+        `[ws-bridge] Auto-approval cancelled for ${perm.tool_name} in session ${sessionTag(session.id)} — user opened dialog`,
+      );
+      deps.persistSession(session);
+    }
+    return true;
+  }
+
+  if (deps.idempotentMessageTypes.has(msg.type) && "client_msg_id" in msg && msg.client_msg_id) {
+    if (session.processedClientMessageIdSet.has(msg.client_msg_id)) return true;
+    session.processedClientMessageIds.push(msg.client_msg_id);
+    session.processedClientMessageIdSet.add(msg.client_msg_id);
+    if (session.processedClientMessageIds.length > deps.processedClientMsgIdLimit) {
+      const overflow = session.processedClientMessageIds.length - deps.processedClientMsgIdLimit;
+      const removed = session.processedClientMessageIds.splice(0, overflow);
+      for (const id of removed) {
+        session.processedClientMessageIdSet.delete(id);
+      }
+    }
+    deps.persistSession(session);
+  }
+
+  if (BROWSER_ACTIVITY_TYPES.has(msg.type)) {
+    deps.touchActivity?.(session.id);
+  }
+
+  if (msg.type === "vscode_selection_update") {
+    handleVsCodeSelectionUpdate(deps.browserTransportState, msg, deps);
     return true;
   }
 

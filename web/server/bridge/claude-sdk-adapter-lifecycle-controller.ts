@@ -8,17 +8,10 @@ export interface ClaudeSdkAdapterLifecycleDeps {
   clearOptimisticRunningTimer: (session: any, reason: string) => void;
   hasPendingForceCompact: (session: any) => boolean;
   broadcastToBrowsers: (session: any, msg: Record<string, unknown>) => void;
-  handleToolResultMessage: (session: any, msg: any) => void;
+  handleSdkBrowserMessage: (session: any, msg: any) => boolean;
   refreshGitInfoThenRecomputeDiff: (session: any, options: { notifyPoller: boolean }) => void;
   persistSession: (session: any) => void;
   handleSdkPermissionRequest: (session: any, request: any) => Promise<void> | void;
-  handleAssistantMessage: (session: any, msg: any) => void;
-  handleResultMessage: (session: any, msg: any) => void;
-  hasTaskNotificationReplay: (session: any, taskId: string, toolUseId: string) => boolean;
-  emitTakodeEvent: (sessionId: string, type: string, data: Record<string, unknown>) => void;
-  freezeHistoryThroughCurrentTail: (session: any) => void;
-  injectCompactionRecovery: (session: any) => void;
-  hasCompactBoundaryReplay: (session: any, cliUuid: string | undefined, meta: unknown) => boolean;
   setCliSessionId: (sessionId: string, cliSessionId: string) => void;
   markTurnInterrupted: (session: any, source: "user" | "leader" | "system") => void;
   setGenerating: (session: any, generating: boolean, reason: string) => void;
@@ -55,6 +48,7 @@ export function attachClaudeSdkAdapterLifecycle(sessionId: string, adapter: any,
   }
   session.claudeSdkAdapter = adapter;
   session.cliInitReceived = true;
+  const isActiveAdapter = () => session.claudeSdkAdapter === adapter && deps.isCurrentSession(sessionId, session);
 
   if (!!launcherInfo?.cliSessionId && session.messageHistory.length > 0) {
     if (session.cliResumingClearTimer) {
@@ -65,19 +59,7 @@ export function attachClaudeSdkAdapterLifecycle(sessionId: string, adapter: any,
   }
 
   if (!session.cliResuming && session.pendingMessages.length > 0) {
-    console.log(
-      `[ws-bridge] Flushing ${session.pendingMessages.length} queued message(s) on SDK adapter attach for session ${sessionTag(sessionId)}`,
-    );
-    const queued = session.pendingMessages.splice(0);
-    for (const raw of queued) {
-      try {
-        adapter.sendBrowserMessage(JSON.parse(raw));
-      } catch {
-        console.warn(
-          `[ws-bridge] Skipping corrupt queued message for session ${sessionTag(sessionId)}: ${raw.substring(0, 80)}`,
-        );
-      }
-    }
+    flushQueuedSdkMessages(session, adapter, `on SDK adapter attach for session ${sessionTag(sessionId)}`);
   }
 
   if (!session.cliResuming) {
@@ -88,6 +70,8 @@ export function attachClaudeSdkAdapterLifecycle(sessionId: string, adapter: any,
   }
 
   adapter.onBrowserMessage((msg: any) => {
+    if (!isActiveAdapter()) return;
+
     deps.touchActivity(session.id);
     session.lastCliMessageAt = Date.now();
     deps.clearOptimisticRunningTimer(session, `sdk_output:${msg.type}`);
@@ -95,6 +79,7 @@ export function attachClaudeSdkAdapterLifecycle(sessionId: string, adapter: any,
     if (session.cliResuming) {
       if (session.cliResumingClearTimer) clearTimeout(session.cliResumingClearTimer);
       session.cliResumingClearTimer = setTimeout(() => {
+        if (!isActiveAdapter()) return;
         session.cliResumingClearTimer = null;
         session.cliResuming = false;
         console.log(`[ws-bridge] cliResuming cleared for SDK session ${sessionTag(session.id)} — replay done`);
@@ -107,19 +92,7 @@ export function attachClaudeSdkAdapterLifecycle(sessionId: string, adapter: any,
           deps.broadcastToBrowsers(session, { type: "status_change", status: "compacting" });
         }
         if (session.pendingMessages.length > 0) {
-          console.log(
-            `[ws-bridge] Flushing ${session.pendingMessages.length} deferred message(s) after SDK replay done for session ${sessionTag(session.id)}`,
-          );
-          const queued = session.pendingMessages.splice(0);
-          for (const raw of queued) {
-            try {
-              adapter.sendBrowserMessage(JSON.parse(raw));
-            } catch {
-              console.warn(
-                `[ws-bridge] Skipping corrupt deferred message for session ${sessionTag(session.id)}: ${raw.substring(0, 80)}`,
-              );
-            }
-          }
+          flushQueuedSdkMessages(session, adapter, `after SDK replay done for session ${sessionTag(session.id)}`);
         }
         const launcherInfoAfterReplay = deps.getLauncherSessionInfo(session.id);
         if (launcherInfoAfterReplay?.isOrchestrator) {
@@ -131,19 +104,6 @@ export function attachClaudeSdkAdapterLifecycle(sessionId: string, adapter: any,
     if (msg.type === "result") {
       session.consecutiveAdapterFailures = 0;
       session.lastAdapterFailureAt = null;
-      if (session.queuedTurnStarts > 0) {
-        console.log(
-          `[ws-bridge] Draining ${session.queuedTurnStarts} queued turn(s) for SDK session ${sessionTag(session.id)} — CLI already processed them inline`,
-        );
-        session.queuedTurnStarts = 0;
-        session.queuedTurnReasons = [];
-        session.queuedTurnUserMessageIds = [];
-        session.queuedTurnInterruptSources = [];
-      }
-    }
-
-    if ((msg as any).type === "user") {
-      deps.handleToolResultMessage(session, msg as any);
     }
 
     if (msg.type === "session_init") {
@@ -193,159 +153,48 @@ export function attachClaudeSdkAdapterLifecycle(sessionId: string, adapter: any,
       return;
     }
 
-    if (msg.type === "assistant") {
-      deps.handleAssistantMessage(session, msg);
+    if (deps.handleSdkBrowserMessage(session, msg)) {
       return;
-    }
-
-    if (msg.type === "result") {
-      deps.handleResultMessage(session, (msg as any).data ?? (msg as any));
-      return;
-    }
-
-    if (msg.type === "task_notification") {
-      const taskMsg = msg as any;
-      if (
-        taskMsg.task_id &&
-        taskMsg.tool_use_id &&
-        deps.hasTaskNotificationReplay(session, taskMsg.task_id, taskMsg.tool_use_id)
-      ) {
-        return;
-      }
-      session.messageHistory.push(msg);
-      deps.broadcastToBrowsers(session, msg);
-      deps.persistSession(session);
-      return;
-    }
-
-    if (msg.type === "status_change") {
-      const newStatus = (msg as any).status;
-      const wasCompacting = session.state.is_compacting;
-      const forceCompactPending = session.forceCompactPending;
-      session.state.is_compacting = newStatus === "compacting";
-      const enteringCompacting = newStatus === "compacting" && (!wasCompacting || forceCompactPending);
-      if (newStatus === "compacting") {
-        session.forceCompactPending = false;
-      }
-
-      if (enteringCompacting && !session.cliResuming) {
-        session.compactedDuringTurn = true;
-        deps.emitTakodeEvent(session.id, "compaction_started", {
-          ...(typeof session.state.context_used_percent === "number"
-            ? { context_used_percent: session.state.context_used_percent }
-            : {}),
-        });
-        const ts = Date.now();
-        const markerId = `compact-boundary-${ts}`;
-        session.messageHistory.push({
-          type: "compact_marker",
-          timestamp: ts,
-          id: markerId,
-        });
-        deps.freezeHistoryThroughCurrentTail(session);
-        session.awaitingCompactSummary = true;
-        deps.broadcastToBrowsers(session, {
-          type: "compact_boundary",
-          id: markerId,
-          timestamp: ts,
-        });
-      }
-      if (wasCompacting && newStatus !== "compacting" && !session.cliResuming) {
-        deps.emitTakodeEvent(session.id, "compaction_finished", {
-          ...(typeof session.state.context_used_percent === "number"
-            ? { context_used_percent: session.state.context_used_percent }
-            : {}),
-        });
-        deps.injectCompactionRecovery(session);
-      }
-      deps.persistSession(session);
-      if (session.cliResuming) return;
-    }
-
-    if ((msg as any).type === "system" && (msg as any).subtype === "compact_boundary") {
-      if (session.cliResuming) return;
-      const cliUuid = (msg as any).uuid;
-      const meta = (msg as any).compact_metadata;
-      if (deps.hasCompactBoundaryReplay(session, cliUuid, meta)) return;
-      const existingMarker = session.messageHistory.findLast((message: any) => message.type === "compact_marker");
-      if (existingMarker && existingMarker.type === "compact_marker" && !existingMarker.cliUuid) {
-        existingMarker.cliUuid = cliUuid;
-        existingMarker.trigger = meta?.trigger;
-        existingMarker.preTokens = meta?.pre_tokens;
-        deps.persistSession(session);
-        return;
-      }
-      const ts = Date.now();
-      const markerId = `compact-boundary-${ts}`;
-      session.messageHistory.push({
-        type: "compact_marker",
-        timestamp: ts,
-        id: markerId,
-        cliUuid,
-        trigger: meta?.trigger,
-        preTokens: meta?.pre_tokens,
-      });
-      deps.freezeHistoryThroughCurrentTail(session);
-      session.awaitingCompactSummary = true;
-      session.compactedDuringTurn = true;
-      deps.broadcastToBrowsers(session, {
-        type: "compact_boundary",
-        id: markerId,
-        timestamp: ts,
-        trigger: meta?.trigger,
-        preTokens: meta?.pre_tokens,
-      });
-      deps.persistSession(session);
-      return;
-    }
-
-    if ((msg as any).type === "user" && session.awaitingCompactSummary && !session.cliResuming) {
-      const content = (msg as any).message?.content;
-      let summaryText: string | undefined;
-      if (typeof content === "string" && content.length > 0) {
-        summaryText = content;
-      } else if (Array.isArray(content)) {
-        const textBlock = content.find((block: any) => block.type === "text") as { text: string } | undefined;
-        summaryText = textBlock?.text;
-      }
-      if (summaryText) {
-        session.awaitingCompactSummary = false;
-        const marker = session.messageHistory.findLast((message: any) => message.type === "compact_marker");
-        if (marker && marker.type === "compact_marker") {
-          marker.summary = summaryText;
-        }
-        deps.broadcastToBrowsers(session, { type: "compact_summary", summary: summaryText });
-        deps.persistSession(session);
-      } else {
-        session.awaitingCompactSummary = false;
-      }
     }
 
     deps.broadcastToBrowsers(session, msg);
   });
 
   adapter.onSessionMeta((meta: any) => {
+    if (!isActiveAdapter()) return;
     if (meta.cliSessionId) {
       deps.setCliSessionId(sessionId, meta.cliSessionId);
     }
     if (meta.model) session.state.model = meta.model;
   });
 
-  adapter.onDisconnect(() => {
-    const idleKilled = deps.getLauncherSessionInfo(sessionId)?.killedByIdleManager;
+  const handleAdapterFailure = (
+    reason: "sdk_disconnect" | "sdk_init_error",
+    options?: { idleKilled?: boolean; error?: string },
+  ): void => {
     const now = Date.now();
     if (session.lastAdapterFailureAt !== null && now - session.lastAdapterFailureAt > deps.adapterFailureResetWindowMs) {
       session.consecutiveAdapterFailures = 0;
     }
     session.lastAdapterFailureAt = now;
     session.consecutiveAdapterFailures++;
-    console.log(
-      `[ws-bridge] Claude SDK adapter disconnected for session ${sessionTag(sessionId)}${idleKilled ? " (idle limit)" : ""} (consecutive failures: ${session.consecutiveAdapterFailures})`,
-    );
+    const idleKilled = options?.idleKilled === true;
+    const errorSuffix = options?.error ? `: ${options.error}` : "";
+    if (reason === "sdk_init_error") {
+      console.error(
+        `[ws-bridge] Claude SDK adapter init failed for session ${sessionTag(sessionId)}${errorSuffix} ` +
+          `(consecutive failures: ${session.consecutiveAdapterFailures})`,
+      );
+    } else {
+      console.log(
+        `[ws-bridge] Claude SDK adapter disconnected for session ${sessionTag(sessionId)}${idleKilled ? " (idle limit)" : ""} ` +
+          `(consecutive failures: ${session.consecutiveAdapterFailures})`,
+      );
+    }
     session.claudeSdkAdapter = null;
     session.cliInitReceived = false;
     deps.markTurnInterrupted(session, "system");
-    deps.setGenerating(session, false, "sdk_disconnect");
+    deps.setGenerating(session, false, reason);
     deps.broadcastToBrowsers(session, {
       type: "backend_disconnected",
       ...(idleKilled ? { reason: "idle_limit" } : {}),
@@ -372,16 +221,33 @@ export function attachClaudeSdkAdapterLifecycle(sessionId: string, adapter: any,
         message: `Session stopped after ${deps.maxAdapterRelaunchFailures} consecutive launch failures. Use the relaunch button to try again.`,
       });
     }
+  };
+
+  adapter.onDisconnect(() => {
+    if (!isActiveAdapter()) return;
+    const idleKilled = deps.getLauncherSessionInfo(sessionId)?.killedByIdleManager;
+    handleAdapterFailure("sdk_disconnect", { idleKilled });
   });
 
   adapter.onInitError((error: string) => {
-    console.error(`[ws-bridge] Claude SDK adapter init failed for session ${sessionTag(sessionId)}: ${error}`);
-    session.claudeSdkAdapter = null;
-    deps.setGenerating(session, false, "sdk_init_error");
-    deps.broadcastToBrowsers(session, { type: "backend_disconnected" });
-    deps.broadcastToBrowsers(session, { type: "status_change", status: "idle" });
+    if (!isActiveAdapter()) return;
+    handleAdapterFailure("sdk_init_error", { error });
   });
 
   deps.broadcastToBrowsers(session, { type: "backend_connected" });
   console.log(`[ws-bridge] Claude SDK adapter attached for session ${sessionTag(sessionId)}`);
+}
+
+function flushQueuedSdkMessages(session: any, adapter: any, reason: string): void {
+  console.log(`[ws-bridge] Flushing ${session.pendingMessages.length} queued message(s) ${reason}`);
+  const queued = session.pendingMessages.splice(0);
+  for (const raw of queued) {
+    try {
+      adapter.sendBrowserMessage(JSON.parse(raw));
+    } catch {
+      console.warn(
+        `[ws-bridge] Skipping corrupt queued message for session ${sessionTag(session.id)}: ${String(raw).substring(0, 80)}`,
+      );
+    }
+  }
 }

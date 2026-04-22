@@ -64,6 +64,11 @@ export interface CodexRecoveryOrchestratorDeps {
   getCodexHeadTurn: (session: CodexRecoveryOrchestratorSessionLike) => CodexOutboundTurn | null;
   getCodexTurnInRecovery: (session: CodexRecoveryOrchestratorSessionLike) => CodexOutboundTurn | null;
   completeCodexTurn: (session: CodexRecoveryOrchestratorSessionLike, turn: CodexOutboundTurn | null) => boolean;
+  completeCodexTurnsForResult: (
+    session: CodexRecoveryOrchestratorSessionLike,
+    msg: CLIResultMessage,
+    updatedAt?: number,
+  ) => boolean;
   clearCodexFreshTurnRequirement: (
     session: CodexRecoveryOrchestratorSessionLike,
     reason: string,
