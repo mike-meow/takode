@@ -81,6 +81,12 @@ cd web && bun run format:check
 - **Never remove or delete existing tests.** If a test is failing, fix the code or the test. If you believe a test should be removed, you must first explain to the user why and get explicit approval before removing it.
 - When creating test, make sure to document what the test is validating, and any important context or edge cases in comments within the test code.
 
+## File Size Guardrail
+
+- Files must stay at or under 2000 lines.
+- If a change would push a file over 2000 lines, split the file before committing instead of extending it further.
+- The pre-commit limit is enforced against staged file contents only, so exactly 2000 lines is allowed and anything over 2000 lines fails the commit.
+
 ## Verification
 
 - After implementing changes, verify them end-to-end when possible. For CLI tools, run the command in your worktree. For scripts, execute them. For logic changes, write a test that exercises the actual code path.
