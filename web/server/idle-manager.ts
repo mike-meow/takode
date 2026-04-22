@@ -55,8 +55,18 @@ export class IdleManager {
     // Sort non-busy sessions by lastActivityAt ascending (oldest first)
     const killable = alive
       .filter((s) => {
-        const bridgeSession = this.wsBridge.getSession(s.sessionId);
-        return !(bridgeSession?.isGenerating || bridgeSession?.pendingPermissions.size);
+        const bridge = this.wsBridge as unknown as {
+          getSession?: (sessionId: string) => { isGenerating?: boolean; pendingPermissions?: { size: number } } | null | undefined;
+          isSessionBusy?: (sessionId: string) => boolean;
+        };
+        if (typeof bridge.getSession === "function") {
+          const bridgeSession = bridge.getSession(s.sessionId);
+          return !(bridgeSession?.isGenerating || bridgeSession?.pendingPermissions?.size);
+        }
+        if (typeof bridge.isSessionBusy === "function") {
+          return !bridge.isSessionBusy(s.sessionId);
+        }
+        return true;
       })
       .sort((a, b) => (a.lastActivityAt ?? a.createdAt) - (b.lastActivityAt ?? b.createdAt));
 

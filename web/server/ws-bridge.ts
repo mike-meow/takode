@@ -687,6 +687,11 @@ export class WsBridge {
     "total_lines_removed",
   ];
 
+  private static localDateKey(ts: number): string {
+    const d = new Date(ts);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+
   /** Fill slash_commands/skills/apps from the per-project cache if not yet populated. */
   private prefillSlashCommands(session: Session): void {
     const projectKey = session.state.repo_root || session.state.cwd;
@@ -782,8 +787,7 @@ export class WsBridge {
         stuckThresholdMs: STUCK_GENERATION_THRESHOLD_MS,
         autoRecoverMs: 300_000,
         autoRecoverOrchestratorMs: STUCK_GENERATION_THRESHOLD_MS,
-        requestCodexAutoRecovery: (session, reason) =>
-          requestCodexAutoRecoveryOrchestratorController(session as Session, reason, this.getSessionRegistryDeps()),
+        requestCodexAutoRecovery: (session, reason) => this.requestCodexAutoRecovery(session as Session, reason),
         broadcastMessage: (session, msg) =>
           this.broadcastToBrowsers(session as Session, msg as BrowserIncomingMessage),
         recordServerEvent: (session, reason, payload) =>
@@ -829,7 +833,12 @@ export class WsBridge {
     data: TakodeEventDataByType[E],
     actorSessionId?: string,
   ): void {
-    this.herdEventDispatcher?.emitTakodeEvent(sessionId, event, data, actorSessionId);
+    if (!this.herdEventDispatcher) return;
+    if (actorSessionId === undefined) {
+      this.herdEventDispatcher.emitTakodeEvent(sessionId, event, data);
+      return;
+    }
+    this.herdEventDispatcher.emitTakodeEvent(sessionId, event, data, actorSessionId);
   }
 
   /** Subscribe to takode events for a set of sessions. Returns an unsubscribe function.
@@ -1968,6 +1977,10 @@ export class WsBridge {
     }
   }
 
+  private requestCodexAutoRecovery(session: Session, reason: string): boolean {
+    return requestCodexAutoRecoveryOrchestratorController(session, reason, this.getSessionRegistryDeps());
+  }
+
   private async routeBrowserMessage(session: Session, msg: BrowserOutgoingMessage, ws?: ServerWebSocket<SocketData>) {
     return routeBrowserMessageController(session, msg, ws, this.getBrowserRoutingDeps());
   }
@@ -1991,7 +2004,7 @@ export class WsBridge {
       backendAttached: (targetSession: unknown) => backendAttachedController(targetSession as Session),
       backendConnected: (targetSession: unknown) => backendConnectedController(targetSession as Session),
       requestCodexAutoRecovery: (targetSession: unknown, reason: string) =>
-        requestCodexAutoRecoveryOrchestratorController(targetSession as Session, reason, this.getSessionRegistryDeps()),
+        this.requestCodexAutoRecovery(targetSession as Session, reason),
       requestCliRelaunch: this.onCLIRelaunchNeeded
         ? (sessionId: string) => this.onCLIRelaunchNeeded?.(sessionId)
         : undefined,
@@ -2307,7 +2320,15 @@ export class WsBridge {
         type: string,
         data: Record<string, unknown>,
         actorSessionId?: string,
-      ) => this.emitTakodeEvent(sessionId, type as TakodeEventType, data as Record<string, unknown>, actorSessionId),
+      ) =>
+        actorSessionId === undefined
+          ? this.emitTakodeEvent(sessionId, type as TakodeEventType, data as Record<string, unknown>)
+          : this.emitTakodeEvent(
+              sessionId,
+              type as TakodeEventType,
+              data as Record<string, unknown>,
+              actorSessionId,
+            ),
       persistSession: (targetSession: unknown) => this.persistSession(targetSession as Session),
       setAttentionAction: (targetSession: unknown) =>
         setAttentionController(targetSession as Session, "action", notificationDeps),
@@ -2418,7 +2439,7 @@ export class WsBridge {
         onResponse?: { subtype: string; resolve: (response: unknown) => void },
       ) => this.sendControlRequest(targetSession as Session, request, onResponse),
       requestCodexAutoRecovery: (targetSession: unknown, reason: string) =>
-        requestCodexAutoRecoveryOrchestratorController(targetSession as Session, reason, this.getSessionRegistryDeps()),
+        this.requestCodexAutoRecovery(targetSession as Session, reason),
       requestCliRelaunch: this.onCLIRelaunchNeeded ? (sessionId: string) => this.onCLIRelaunchNeeded?.(sessionId) : undefined,
       handleSetModel: (targetSession: unknown, model: string) => this.handleSetModel(targetSession as Session, model),
       handleCodexSetModel: (targetSession: unknown, model: string) =>
@@ -2559,7 +2580,7 @@ export class WsBridge {
       scheduleCodexToolResultWatchdogs: (targetSession: unknown, reason: string) =>
         this.scheduleCodexToolResultWatchdogs(targetSession as Session, reason),
       requestCodexAutoRecovery: (targetSession: unknown, reason: string) =>
-        requestCodexAutoRecoveryOrchestratorController(targetSession as Session, reason, sessionRegistryDeps),
+        this.requestCodexAutoRecovery(targetSession as Session, reason),
       emitTakodeEvent: (sessionId: string, type: string, data: Record<string, unknown>) =>
         this.emitTakodeEvent(sessionId, type as TakodeEventType, data as any),
       isCurrentSession: (sessionId: string, session: unknown) => this.sessions.get(sessionId) === session,

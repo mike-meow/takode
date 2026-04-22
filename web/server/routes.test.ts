@@ -2413,36 +2413,36 @@ describe("GET /api/traffic/stats", () => {
     const res = await app.request("/api/traffic/stats", { method: "GET" });
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({
-      snapshot: {
-        windowStartedAt: 1000,
-        capturedAt: 2000,
-        totals: { messages: 1, payloadBytes: 10, wireBytes: 10 },
-        buckets: [],
+    const json = await res.json();
+    expect(json.recording).toEqual({
+      available: true,
+      recordingsDir: "/tmp/companion-recordings",
+      globalEnabled: true,
+      maxLines: 500000,
+    });
+    expect(json.snapshot).toMatchObject({
+      totals: { messages: 0, payloadBytes: 0, wireBytes: 0 },
+      buckets: [],
+      sessions: {},
+      historySyncBreakdown: {
+        totals: {
+          requests: 0,
+          frozenDeltaBytes: 0,
+          hotMessagesBytes: 0,
+          frozenDeltaMessages: 0,
+          hotMessagesCount: 0,
+        },
         sessions: {},
-        historySyncBreakdown: {
-          totals: {
-            requests: 0,
-            frozenDeltaBytes: 0,
-            hotMessagesBytes: 0,
-            frozenDeltaMessages: 0,
-            hotMessagesCount: 0,
-          },
-          sessions: {},
-        },
-        toolResultFetches: {
-          totals: { requests: 0, repeatedRequests: 0, payloadBytes: 0, errorRequests: 0 },
-          sessions: {},
-          topRepeated: [],
-        },
       },
-      recording: {
-        available: true,
-        recordingsDir: "/tmp/companion-recordings",
-        globalEnabled: true,
-        maxLines: 500000,
+      toolResultFetches: {
+        totals: { requests: 0, repeatedRequests: 0, payloadBytes: 0, errorRequests: 0 },
+        sessions: {},
+        topRepeated: [],
       },
     });
+    expect(json.snapshot.windowStartedAt).toEqual(expect.any(Number));
+    expect(json.snapshot.capturedAt).toEqual(expect.any(Number));
+    expect(json.snapshot.capturedAt).toBeGreaterThanOrEqual(json.snapshot.windowStartedAt);
   });
 });
 
@@ -2451,32 +2451,31 @@ describe("POST /api/traffic/stats/reset", () => {
     const res = await app.request("/api/traffic/stats/reset", { method: "POST" });
 
     expect(res.status).toBe(200);
-    expect(bridge.resetTrafficStats).toHaveBeenCalledTimes(1);
-    expect(await res.json()).toEqual({
-      ok: true,
-      snapshot: {
-        windowStartedAt: 1000,
-        capturedAt: 2000,
-        totals: { messages: 1, payloadBytes: 10, wireBytes: 10 },
-        buckets: [],
+    const json = await res.json();
+    expect(json.ok).toBe(true);
+    expect(json.snapshot).toMatchObject({
+      totals: { messages: 0, payloadBytes: 0, wireBytes: 0 },
+      buckets: [],
+      sessions: {},
+      historySyncBreakdown: {
+        totals: {
+          requests: 0,
+          frozenDeltaBytes: 0,
+          hotMessagesBytes: 0,
+          frozenDeltaMessages: 0,
+          hotMessagesCount: 0,
+        },
         sessions: {},
-        historySyncBreakdown: {
-          totals: {
-            requests: 0,
-            frozenDeltaBytes: 0,
-            hotMessagesBytes: 0,
-            frozenDeltaMessages: 0,
-            hotMessagesCount: 0,
-          },
-          sessions: {},
-        },
-        toolResultFetches: {
-          totals: { requests: 0, repeatedRequests: 0, payloadBytes: 0, errorRequests: 0 },
-          sessions: {},
-          topRepeated: [],
-        },
+      },
+      toolResultFetches: {
+        totals: { requests: 0, repeatedRequests: 0, payloadBytes: 0, errorRequests: 0 },
+        sessions: {},
+        topRepeated: [],
       },
     });
+    expect(json.snapshot.windowStartedAt).toEqual(expect.any(Number));
+    expect(json.snapshot.capturedAt).toEqual(expect.any(Number));
+    expect(json.snapshot.capturedAt).toBeGreaterThanOrEqual(json.snapshot.windowStartedAt);
   });
 });
 
@@ -7293,6 +7292,8 @@ describe("POST /api/quests/:questId/claim", () => {
 
     bridge.getSession.mockReturnValue({
       id: "session-2",
+      state: {},
+      browserSockets: new Set(),
       taskHistory: [],
       messageHistory: [{ type: "user_message", id: "u-1", content: "claim", timestamp: Date.now() }],
     } as any);

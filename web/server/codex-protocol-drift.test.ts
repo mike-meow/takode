@@ -69,7 +69,21 @@ describe("Codex adapter method drift vs upstream protocol snapshot", () => {
       "mcpServer/startupStatus/updated",
     ]);
 
-    const legacyServerRequests = new Set(["item/mcpToolCall/requestApproval"]);
+    const legacyServerRequests = new Set([
+      "item/mcpToolCall/requestApproval",
+      // Observed in live Codex sessions for the explicit server-side approval
+      // downgrade path; the pinned upstream snapshot in this repo predates it.
+      "bypassPermissions",
+      // Observed in live Codex sessions for the standard interactive approval
+      // path; the pinned upstream snapshot in this repo predates it too.
+      "suggest",
+      // The pinned snapshot predates the adapter's current approval-mode
+      // compatibility mapping switch, which still needs to recognize these
+      // legacy bridge-side mode strings.
+      "plan",
+      "acceptEdits",
+      "default",
+    ]);
 
     for (const method of handledNotifications) {
       expect(

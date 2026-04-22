@@ -15,7 +15,7 @@ function readFile(relativePath: string): string {
  */
 function extractMethodBody(source: string, methodName: string): string {
   // Match the method definition, not call sites like `this.methodName(`
-  const definitionPattern = new RegExp(`(?:private|public|protected)\\s+${methodName}\\s*\\(`);
+  const definitionPattern = new RegExp(`(?:(?:private|public|protected)\\s+|export\\s+function\\s+)${methodName}\\s*\\(`);
   const match = definitionPattern.exec(source);
   if (!match) return "";
   const idx = match.index;
@@ -82,7 +82,7 @@ function extractSDKMessageTypes(sdkSource: string): Set<string> {
 
 describe("Claude ws-bridge method drift vs upstream Agent SDK snapshot", () => {
   it("keeps handled CLI message types aligned with upstream (or explicit local allowlist)", () => {
-    const bridge = readFile("server/ws-bridge.ts");
+    const bridge = readFile("server/bridge/claude-message-controller.ts");
     const sdk = readFile("server/protocol/claude-upstream/sdk.d.ts.txt");
 
     // Extract case values from routeCLIMessage using brace-counted body extraction
@@ -125,7 +125,7 @@ describe("Claude ws-bridge method drift vs upstream Agent SDK snapshot", () => {
   });
 
   it("keeps system subtypes handled by ws-bridge aligned with upstream", () => {
-    const bridge = readFile("server/ws-bridge.ts");
+    const handler = readFile("server/bridge/claude-message-controller.ts");
     const sdk = readFile("server/protocol/claude-upstream/sdk.d.ts.txt");
 
     const upstreamInit = sdk.includes("export declare type SDKSystemMessage = {") && sdk.includes("subtype: 'init';");
@@ -135,7 +135,7 @@ describe("Claude ws-bridge method drift vs upstream Agent SDK snapshot", () => {
     expect(upstreamInit).toBe(true);
     expect(upstreamStatus).toBe(true);
 
-    expect(bridge).toContain('if (msg.subtype === "init")');
-    expect(bridge).toContain('} else if (msg.subtype === "status")');
+    expect(handler).toContain('if (msg.subtype === "init")');
+    expect(handler).toContain('if (msg.subtype === "status")');
   });
 });

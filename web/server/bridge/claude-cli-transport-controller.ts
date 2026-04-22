@@ -151,6 +151,7 @@ export function processCLIMessageBatch(
 ): string {
   deps.recordIncomingRaw(sessionId, data, session.backendType, session.state.cwd);
   const lines = data.split("\n").filter((line) => line.trim());
+  let firstType: string | undefined;
   for (const line of lines) {
     let msg: CLIMessage;
     try {
@@ -173,9 +174,10 @@ export function processCLIMessageBatch(
       messageType: getTrafficMessageType(msg),
       payloadBytes: Buffer.byteLength(line, "utf-8"),
     });
+    firstType ??= msg.type;
     deps.routeCLIMessage(session, msg);
   }
-  return lines.length > 0 ? ((JSON.parse(lines[0])?.type as string | undefined) ?? "unknown") : "unknown";
+  return firstType ?? "unknown";
 }
 
 export function handleCLIClose(
