@@ -14,7 +14,6 @@ import {
 import { join, resolve, relative, dirname } from "node:path";
 import { homedir } from "node:os";
 import { getLegacyCodexHome, resolveCompanionCodexHome, resolveCompanionCodexSessionHome } from "./codex-home.js";
-import { getServerWrapperDir } from "./cli-wrapper-paths.js";
 import { resolveBinary, getEnrichedPath, captureUserShellEnv, captureUserShellPath } from "./path-resolver.js";
 import { sessionTag } from "./session-tag.js";
 
@@ -526,21 +525,12 @@ export async function prepareCodexSpawn(
 
   const binaryDir = resolve(binary, "..");
   const siblingNode = join(binaryDir, "node");
-  const serverBinDir = getServerWrapperDir(serverId) || undefined;
   const companionBinDir = join(homedir(), ".companion", "bin");
   const localBinDir = join(homedir(), ".local", "bin");
   const bunBinDir = join(homedir(), ".bun", "bin");
   const enrichedPath = getEnrichedPath({ serverId });
   const userShellPath = captureUserShellPath();
-  const spawnPath = mergePathStrings([
-    binaryDir,
-    serverBinDir,
-    companionBinDir,
-    localBinDir,
-    bunBinDir,
-    userShellPath,
-    enrichedPath,
-  ]);
+  const spawnPath = mergePathStrings([binaryDir, companionBinDir, localBinDir, bunBinDir, userShellPath, enrichedPath]);
 
   let spawnCmd: string[];
   if ((await fileExists(siblingNode)) && (await shouldInvokeCodexWithSiblingNode(binary))) {

@@ -832,9 +832,9 @@ await cronScheduler.startAll();
 await timerManager.startAll();
 
 // ── Questmaster CLI integration ─────────────────────────────────────────────
-await ensureQuestmasterIntegration(port, packageRoot, serverId);
-ensureTakodeIntegration(packageRoot, serverId);
-ensureSkillSymlinks([
+await ensureQuestmasterIntegration(port, packageRoot);
+await ensureTakodeIntegration(packageRoot);
+await ensureSkillSymlinks([
   "takode-orchestration",
   "leader-dispatch",
   "self-groom",

@@ -4,11 +4,10 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import {
-  buildServerLocalCliWrapper,
-  buildSharedCliDispatcher,
+  buildInstalledCliWrapper,
   COMPANION_BIN_DIR,
-  getServerWrapperDir,
   LOCAL_BIN_DIR,
+  resolveStableWrapperScriptPath,
 } from "./cli-wrapper-paths.js";
 
 const CLAUDE_SKILL_DIR = join(homedir(), ".claude", "skills", "quest");
@@ -27,17 +26,13 @@ async function getQuestSkillDocsTemplate(): Promise<string> {
 
 /**
  * Set up Questmaster CLI integration on server startup:
- * 1. Write server-safe wrapper scripts at ~/.companion/bin/quest and ~/.companion/bin/servers/<serverId>/quest
+ * 1. Write a copied global wrapper script at ~/.companion/bin/quest
  * 2. Write an agent skill for both Claude and Codex skill homes
  * 3. Clean up old files (slash command, API.md)
  */
-export async function ensureQuestmasterIntegration(
-  port: number,
-  packageRoot: string,
-  serverId?: string,
-): Promise<void> {
+export async function ensureQuestmasterIntegration(port: number, packageRoot: string): Promise<void> {
   void port;
-  writeWrapperScripts(packageRoot, serverId);
+  await writeWrapperScripts(packageRoot);
   writeLocalPathShim();
   writeRipgrepShim();
   const skillContent = await getQuestSkillDocsTemplate();
@@ -47,23 +42,13 @@ export async function ensureQuestmasterIntegration(
   console.log("[quest-integration] CLI wrapper and agent skill installed");
 }
 
-function writeWrapperScripts(packageRoot: string, serverId?: string): void {
+async function writeWrapperScripts(packageRoot: string): Promise<void> {
   mkdirSync(COMPANION_BIN_DIR, { recursive: true }); // sync-ok: quest setup, not called during message handling
   const sharedWrapperPath = join(COMPANION_BIN_DIR, "quest");
-  const sharedWrapper = buildSharedCliDispatcher("quest");
-
+  const stableScript = await resolveStableWrapperScriptPath(packageRoot, "quest");
+  const sharedWrapper = buildInstalledCliWrapper("quest", stableScript);
   writeFileSync(sharedWrapperPath, sharedWrapper, "utf-8"); // sync-ok: quest setup, not called during message handling
   chmodSync(sharedWrapperPath, 0o755); // sync-ok: quest setup, not called during message handling
-
-  const serverWrapperDir = getServerWrapperDir(serverId);
-  if (serverWrapperDir) {
-    mkdirSync(serverWrapperDir, { recursive: true }); // sync-ok: quest setup, not called during message handling
-    const serverWrapperPath = join(serverWrapperDir, "quest");
-    const serverScript = join(packageRoot, "bin", "quest.ts");
-    const serverWrapper = buildServerLocalCliWrapper("quest", serverScript);
-    writeFileSync(serverWrapperPath, serverWrapper, "utf-8"); // sync-ok: quest setup, not called during message handling
-    chmodSync(serverWrapperPath, 0o755); // sync-ok: quest setup, not called during message handling
-  }
 }
 
 function writeLocalPathShim(): void {

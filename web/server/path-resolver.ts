@@ -12,7 +12,6 @@ import { execSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { getServerWrapperDir } from "./cli-wrapper-paths.js";
 
 /**
  * Capture the user's full interactive shell PATH by spawning a login shell.
@@ -204,7 +203,8 @@ const _cachedPaths = new Map<string, string>();
  * Result is cached after the first call.
  */
 export function getEnrichedPath(options?: { serverId?: string }): string {
-  const cacheKey = options?.serverId?.trim() || "";
+  void options;
+  const cacheKey = "";
   const cached = _cachedPaths.get(cacheKey);
   if (cached) return cached;
 
@@ -214,13 +214,12 @@ export function getEnrichedPath(options?: { serverId?: string }): string {
   // Agent-facing shims always come first so built-in commands remain
   // discoverable even when the user's shell PATH omits ~/.companion/bin
   // or ~/.local/bin.
-  const serverBin = getServerWrapperDir(options?.serverId);
   const companionBin = join(homedir(), ".companion", "bin");
   const localBin = join(homedir(), ".local", "bin");
 
-  // Merge: server-specific shims first for launched sessions, then shared
-  // companion/local shims, then user shell PATH, then current process PATH.
-  const allDirs = [serverBin, companionBin, localBin, ...userPath.split(":"), ...currentPath.split(":")];
+  // Merge: shared companion/local shims first, then user shell PATH,
+  // then current process PATH.
+  const allDirs = [companionBin, localBin, ...userPath.split(":"), ...currentPath.split(":")];
   const seen = new Set<string>();
   const deduped: string[] = [];
   for (const dir of allDirs) {

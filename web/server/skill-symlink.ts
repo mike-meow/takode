@@ -11,16 +11,15 @@ import { resolveStableWrapperRepoRoot } from "./cli-wrapper-paths.js";
  * the worktree is removed. `git rev-parse --git-common-dir` gives the main repo's
  * .git directory, from which we derive a stable root.
  */
-function resolveMainRepoRoot(): string {
+let mainRepoRootPromise: Promise<string> | null = null;
+
+function resolveMainRepoRoot(): Promise<string> {
   const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)));
-  return resolveStableWrapperRepoRoot(packageRoot);
+  mainRepoRootPromise ??= resolveStableWrapperRepoRoot(packageRoot);
+  return mainRepoRootPromise;
 }
 
-const MAIN_REPO_ROOT = resolveMainRepoRoot();
 const HOME = homedir();
-const REPO_CLAUDE_SKILLS_HOME = join(MAIN_REPO_ROOT, ".claude", "skills");
-const REPO_CODEX_SKILLS_HOME = join(MAIN_REPO_ROOT, ".codex", "skills");
-const REPO_AGENTS_SKILLS_HOME = join(MAIN_REPO_ROOT, ".agents", "skills");
 const CLAUDE_SKILLS_HOME = join(HOME, ".claude", "skills");
 const CODEX_SKILLS_HOME = join(getLegacyCodexHome(), "skills");
 const AGENTS_SKILLS_HOME = join(HOME, ".agents", "skills");
@@ -33,25 +32,33 @@ const AGENTS_SKILLS_HOME = join(HOME, ".agents", "skills");
  * Call once at startup with the list of skill directory names (slugs) that
  * live under `.claude/skills/` in the repo.
  */
-export function ensureSkillSymlinks(slugs: string[]): void {
+export async function ensureSkillSymlinks(slugs: string[]): Promise<void> {
+  const mainRepoRoot = await resolveMainRepoRoot();
+  const repoClaudeSkillsHome = join(mainRepoRoot, ".claude", "skills");
+  const repoCodexSkillsHome = join(mainRepoRoot, ".codex", "skills");
+  const repoAgentsSkillsHome = join(mainRepoRoot, ".agents", "skills");
+
   for (const slug of slugs) {
-    const repoDir = join(REPO_CLAUDE_SKILLS_HOME, slug);
+    const repoDir = join(repoClaudeSkillsHome, slug);
     if (!existsSync(repoDir)) {
       // sync-ok: startup cold path
       console.warn(`[skill-symlink] Skipping missing repo skill source: ${repoDir}`);
       continue;
     }
     ensureSymlink(repoDir, join(CLAUDE_SKILLS_HOME, slug));
-    ensureSymlink(resolveRepoSkillDir(slug, REPO_CODEX_SKILLS_HOME), join(CODEX_SKILLS_HOME, slug));
-    ensureSymlink(resolveRepoSkillDir(slug, REPO_AGENTS_SKILLS_HOME), join(AGENTS_SKILLS_HOME, slug));
+    ensureSymlink(resolveRepoSkillDir(slug, repoCodexSkillsHome, repoClaudeSkillsHome), join(CODEX_SKILLS_HOME, slug));
+    ensureSymlink(
+      resolveRepoSkillDir(slug, repoAgentsSkillsHome, repoClaudeSkillsHome),
+      join(AGENTS_SKILLS_HOME, slug),
+    );
   }
   console.log(`[skill-symlink] ${slugs.join(", ")} symlinked for Claude, Codex, and agents`);
 }
 
-function resolveRepoSkillDir(slug: string, preferredRepoHome: string): string {
+function resolveRepoSkillDir(slug: string, preferredRepoHome: string, fallbackRepoHome: string): string {
   const preferredDir = join(preferredRepoHome, slug);
   if (existsSync(preferredDir)) return preferredDir; // sync-ok: startup cold path
-  return join(REPO_CLAUDE_SKILLS_HOME, slug);
+  return join(fallbackRepoHome, slug);
 }
 
 /**

@@ -275,7 +275,7 @@ describe("getEnrichedPath", () => {
     expect(dirs).toContain("/opt/homebrew/bin");
   });
 
-  it("prefixes a server-specific wrapper dir ahead of shared companion shims when serverId is provided", () => {
+  it("does not add server-specific wrapper dirs when serverId is provided", () => {
     process.env.PATH = "/usr/bin:/bin";
     mockExecSync.mockImplementation((cmd: string) => {
       if (typeof cmd === "string" && cmd.includes("-lic")) {
@@ -286,12 +286,12 @@ describe("getEnrichedPath", () => {
 
     const result = getEnrichedPath({ serverId: "server-a" });
     const dirs = result.split(":");
-    expect(dirs[0]).toBe("/home/testuser/.companion/bin/servers/server-a");
-    expect(dirs[1]).toBe("/home/testuser/.companion/bin");
-    expect(dirs[2]).toBe("/home/testuser/.local/bin");
+    expect(dirs[0]).toBe("/home/testuser/.companion/bin");
+    expect(dirs[1]).toBe("/home/testuser/.local/bin");
+    expect(dirs).not.toContain("/home/testuser/.companion/bin/servers/server-a");
   });
 
-  it("caches server-specific PATHs independently", () => {
+  it("reuses the same cached PATH regardless of serverId hints", () => {
     process.env.PATH = "/usr/bin";
     let callCount = 0;
     mockExecSync.mockImplementation((cmd: string) => {
@@ -307,9 +307,10 @@ describe("getEnrichedPath", () => {
     const serverB = getEnrichedPath({ serverId: "server-b" });
 
     expect(serverAFirst).toBe(serverASecond);
-    expect(serverAFirst).toContain("/servers/server-a");
-    expect(serverB).toContain("/servers/server-b");
-    expect(callCount).toBe(2);
+    expect(serverAFirst).toBe(serverB);
+    expect(serverAFirst).not.toContain("/servers/server-a");
+    expect(serverB).not.toContain("/servers/server-b");
+    expect(callCount).toBe(1);
   });
 });
 

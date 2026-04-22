@@ -12,14 +12,18 @@ const fsMocks = vi.hoisted(() => ({
   rmSync: vi.fn(),
 }));
 
-const execSyncMock = vi.hoisted(() => vi.fn(() => "../.git\n"));
+const execMock = vi.hoisted(() =>
+  vi.fn((_command: string, _options: object, callback: (error: Error | null, stdout: string) => void) => {
+    callback(null, "../.git\n");
+  }),
+);
 
 vi.mock("node:os", () => ({
   homedir: () => "/home/tester",
 }));
 
 vi.mock("node:child_process", () => ({
-  execSync: execSyncMock,
+  exec: execMock,
 }));
 
 vi.mock("node:url", () => ({
@@ -33,21 +37,20 @@ import { ensureSkillSymlinks } from "./skill-symlink.js";
 describe("ensureSkillSymlinks", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    execSyncMock.mockReturnValue("../.git\n");
     fsMocks.existsSync.mockReturnValue(true);
     fsMocks.lstatSync.mockImplementation((_targetDir: string): { isSymbolicLink: () => boolean } => {
       throw new Error("ENOENT");
     });
   });
 
-  it("symlinks project skills into Claude, Codex, and agents homes", () => {
+  it("symlinks project skills into Claude, Codex, and agents homes", async () => {
     // Validates the shared project-skill fallback used by takode-orchestration,
     // which currently only exists under the repo's .claude/skills directory.
     fsMocks.existsSync.mockImplementation((targetDir: string) => {
       return targetDir === "/repo/.claude/skills/takode-orchestration";
     });
 
-    ensureSkillSymlinks(["takode-orchestration"]);
+    await ensureSkillSymlinks(["takode-orchestration"]);
 
     expect(fsMocks.symlinkSync).toHaveBeenCalledWith(
       "/repo/.claude/skills/takode-orchestration",
@@ -63,7 +66,7 @@ describe("ensureSkillSymlinks", () => {
     );
   });
 
-  it("replaces stale copied agent skill directories with repo symlinks", () => {
+  it("replaces stale copied agent skill directories with repo symlinks", async () => {
     // Validates the observed bug: old copied ~/.agents skills are replaced with
     // repo-backed symlinks, so subdocs like quest-journey.md stay available.
     fsMocks.existsSync.mockImplementation((targetDir: string) => {
@@ -76,7 +79,7 @@ describe("ensureSkillSymlinks", () => {
       throw new Error("ENOENT");
     });
 
-    ensureSkillSymlinks(["takode-orchestration"]);
+    await ensureSkillSymlinks(["takode-orchestration"]);
 
     expect(fsMocks.rmSync).toHaveBeenCalledWith("/home/tester/.agents/skills/takode-orchestration", {
       recursive: true,
@@ -87,7 +90,7 @@ describe("ensureSkillSymlinks", () => {
     );
   });
 
-  it("uses repo-local agent skill directories when present", () => {
+  it("uses repo-local agent skill directories when present", async () => {
     // Validates agent-specific variants are preserved instead of being replaced
     // by the Claude source when the repo has an .agents/skills copy.
     fsMocks.existsSync.mockImplementation((targetDir: string) => {
@@ -97,7 +100,7 @@ describe("ensureSkillSymlinks", () => {
       );
     });
 
-    ensureSkillSymlinks(["playwright-e2e-tester"]);
+    await ensureSkillSymlinks(["playwright-e2e-tester"]);
 
     expect(fsMocks.symlinkSync).toHaveBeenCalledWith(
       "/repo/.agents/skills/playwright-e2e-tester",
@@ -109,7 +112,7 @@ describe("ensureSkillSymlinks", () => {
     );
   });
 
-  it("uses repo-local Codex skill directories when present", () => {
+  it("uses repo-local Codex skill directories when present", async () => {
     // Validates Codex-specific variants are preserved instead of always
     // falling back to the repo's Claude skill directory.
     fsMocks.existsSync.mockImplementation((targetDir: string) => {
@@ -119,7 +122,7 @@ describe("ensureSkillSymlinks", () => {
       );
     });
 
-    ensureSkillSymlinks(["takode-orchestration"]);
+    await ensureSkillSymlinks(["takode-orchestration"]);
 
     expect(fsMocks.symlinkSync).toHaveBeenCalledWith(
       "/repo/.codex/skills/takode-orchestration",
@@ -131,7 +134,7 @@ describe("ensureSkillSymlinks", () => {
     );
   });
 
-  it("leaves an existing correct agent symlink alone", () => {
+  it("leaves an existing correct agent symlink alone", async () => {
     // Validates the startup path stays idempotent once ~/.agents already
     // points at the expected repo-backed skill directory.
     fsMocks.existsSync.mockImplementation((targetDir: string) => {
@@ -150,7 +153,7 @@ describe("ensureSkillSymlinks", () => {
       return "";
     });
 
-    ensureSkillSymlinks(["takode-orchestration"]);
+    await ensureSkillSymlinks(["takode-orchestration"]);
 
     expect(fsMocks.unlinkSync).not.toHaveBeenCalledWith("/home/tester/.agents/skills/takode-orchestration");
     expect(fsMocks.rmSync).not.toHaveBeenCalledWith("/home/tester/.agents/skills/takode-orchestration", {
@@ -162,7 +165,7 @@ describe("ensureSkillSymlinks", () => {
     );
   });
 
-  it("skips missing repo skill sources instead of creating broken symlinks", () => {
+  it("skips missing repo skill sources instead of creating broken symlinks", async () => {
     // Validates q-275: startup should not create global skill symlinks for
     // hardcoded slugs that do not exist in the repo checkout.
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -170,7 +173,7 @@ describe("ensureSkillSymlinks", () => {
       return targetDir !== "/repo/.claude/skills/cron-scheduling";
     });
 
-    ensureSkillSymlinks(["cron-scheduling"]);
+    await ensureSkillSymlinks(["cron-scheduling"]);
 
     expect(fsMocks.symlinkSync).not.toHaveBeenCalled();
     expect(warnSpy).toHaveBeenCalledWith(
