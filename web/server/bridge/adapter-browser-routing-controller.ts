@@ -1664,6 +1664,7 @@ export function routeAdapterBrowserMessage(
     }
     if (session.backendType === "codex" && msg.type === "user_message" && ingested) {
       if (ingested.historyEntry.id) {
+        const draftImages = buildPendingCodexImageDrafts(msg.images);
         deps.addPendingCodexInput(session, {
           id: ingested.historyEntry.id,
           ...(msg.client_msg_id ? { clientMsgId: msg.client_msg_id } : {}),
@@ -1671,6 +1672,7 @@ export function routeAdapterBrowserMessage(
           timestamp: ingested.timestamp,
           cancelable: true,
           ...(userImageRefs?.length ? { imageRefs: userImageRefs } : {}),
+          ...(draftImages?.length ? { draftImages } : {}),
           ...(adapterMsg.type === "user_message" ? { deliveryContent: adapterMsg.content } : {}),
           ...(msg.agentSource ? { agentSource: msg.agentSource } : {}),
           ...(msg.takodeHerdBatch ? { takodeHerdBatch: msg.takodeHerdBatch } : {}),
