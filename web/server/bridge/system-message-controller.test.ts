@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { handleSystemMessage, type SystemMessageSessionLike } from "./system-message-controller.js";
+import { handleSystemMessage, type SystemMessageSessionLike } from "./claude-message-controller.js";
 import type {
   BrowserIncomingMessage,
   CLISystemStatusMessage,

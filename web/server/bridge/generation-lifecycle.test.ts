@@ -161,6 +161,19 @@ describe("setGenerating(false) — queued turn handling", () => {
     expect(session.queuedTurnStarts).toBe(0);
   });
 
+  it("runs the end-of-generation hook after turn teardown completes", () => {
+    // WsBridge now hangs history-byte recompute and Codex image-stage cleanup
+    // off the shared lifecycle hook instead of a local wrapper method.
+    const onGenerationStopped = vi.fn();
+    deps = makeDeps({ onGenerationStopped });
+    deps.sessions.set(session.id, session);
+
+    setGenerating(deps, session, true, "initial");
+    setGenerating(deps, session, false, "result");
+
+    expect(onGenerationStopped).toHaveBeenCalledWith(session, "result");
+  });
+
   it("preserves explicit leader interrupt source when later system cleanup ends the turn", () => {
     setGenerating(deps, session, true, "initial");
 

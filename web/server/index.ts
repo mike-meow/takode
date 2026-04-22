@@ -44,6 +44,11 @@ import { IdleManager } from "./idle-manager.js";
 import { SleepInhibitor } from "./sleep-inhibitor.js";
 import { HerdEventDispatcher } from "./herd-event-dispatcher.js";
 import { createLauncherHerdChangeHandler } from "./herd-change-handler.js";
+import { markCodexIntentionalRelaunch, markSessionRelaunchPending } from "./bridge/codex-recovery-orchestrator.js";
+import {
+  addTaskEntry as addTaskEntryController,
+  mergeKeywords as mergeKeywordsController,
+} from "./bridge/session-registry-controller.js";
 import * as envManager from "./env-manager.js";
 import { ensureQuestmasterIntegration } from "./quest-integration.js";
 import { ensureTakodeIntegration } from "./takode-integration.js";
@@ -90,7 +95,7 @@ import { PerfTracer } from "./perf-tracer.js";
 const perfTracer = new PerfTracer();
 perfTracer.startLagMonitor();
 perfTracer.startSummaryLogging();
-wsBridge.setPerfTracer(perfTracer);
+wsBridge.perfTracer = perfTracer;
 serverLog.info(`UV_THREADPOOL_SIZE=${process.env.UV_THREADPOOL_SIZE || "4 (default)"}`);
 
 const pushoverNotifier = new PushoverNotifier({
@@ -107,23 +112,47 @@ const pushoverNotifier = new PushoverNotifier({
   getBaseUrl: () => getSettings().pushoverBaseUrl || `http://localhost:${port}`,
   getServerName: () => getServerName() || "Companion",
   getSessionName: (id) => sessionNames.getName(id),
-  getSessionActivity: (id) => wsBridge.getSessionActivityPreview(id),
-  getLastReadAt: (id) => wsBridge.getSessionAttentionState(id)?.lastReadAt ?? 0,
+  getSessionActivity: (id) => wsBridge.getSession(id)?.lastActivityPreview,
+  getLastReadAt: (id) => wsBridge.getSession(id)?.lastReadAt ?? 0,
 });
+
+function persistSessionTaskHistory(sessionId: string): void {
+  const session = wsBridge.getSession(sessionId);
+  if (!session) return;
+  wsBridge.broadcastToSession(sessionId, { type: "session_task_history", tasks: session.taskHistory } as any);
+  wsBridge.persistSessionById(sessionId);
+}
+
+function addTaskHistoryEntry(sessionId: string, entry: import("./session-types.js").SessionTaskEntry): void {
+  const session = wsBridge.getSession(sessionId);
+  if (!session) return;
+  addTaskEntryController(session, entry, {
+    broadcastTaskHistory: () => persistSessionTaskHistory(sessionId),
+    persistSession: () => wsBridge.persistSessionById(sessionId),
+  });
+}
+
+function mergeSessionKeywords(sessionId: string, keywords: string[]): void {
+  const session = wsBridge.getSession(sessionId);
+  if (!session) return;
+  mergeKeywordsController(session, keywords, {
+    persistSession: () => wsBridge.persistSessionById(sessionId),
+  });
+}
 
 // ── Wire settings getter so relaunch picks up custom binary settings ────────
 launcher.setSettingsGetter(getSettings);
 
 // ── Restore persisted sessions from disk ────────────────────────────────────
-wsBridge.setStore(sessionStore);
-wsBridge.setRecorder(recorder);
-wsBridge.setImageStore(imageStore);
-wsBridge.setTimerManager(timerManager);
-wsBridge.setPushoverNotifier(pushoverNotifier);
-wsBridge.setLauncher(launcher);
-wsBridge.setSessionNameGetter((sessionId) => sessionNames.getName(sessionId) || sessionId.slice(0, 8));
-wsBridge.setQuestTitleResolver(async (questId) => (await getQuest(questId))?.title ?? null);
-wsBridge.setQuestStatusResolver(async (questId) => (await getQuest(questId))?.status ?? null);
+wsBridge.store = sessionStore;
+wsBridge.recorder = recorder;
+wsBridge.imageStore = imageStore;
+wsBridge.timerManager = timerManager;
+wsBridge.pushoverNotifier = pushoverNotifier;
+wsBridge.launcher = launcher;
+wsBridge.sessionNameGetter = (sessionId) => sessionNames.getName(sessionId) || sessionId.slice(0, 8);
+wsBridge.resolveQuestTitle = async (questId) => (await getQuest(questId))?.title ?? null;
+wsBridge.resolveQuestStatus = async (questId) => (await getQuest(questId))?.status ?? null;
 launcher.setStore(sessionStore);
 launcher.setRecorder(recorder);
 launcher.setEnvResolver(async (slug) => {
@@ -135,8 +164,15 @@ await wsBridge.restoreFromDisk();
 containerManager.restoreState(CONTAINER_STATE_PATH);
 
 // Push-based herd event delivery: wire dispatcher after bridge + launcher are ready
-const herdEventDispatcher = new HerdEventDispatcher(wsBridge, launcher);
-wsBridge.setHerdEventDispatcher(herdEventDispatcher);
+const bridgeAny = wsBridge as any;
+const herdEventDispatcher = new HerdEventDispatcher(wsBridge, launcher, {
+  requestCliRelaunch: (sessionId) => wsBridge.onCLIRelaunchNeeded?.(sessionId),
+  getSessionNum: (sessionId) => launcher.getSessionNum(sessionId),
+  getSessionName: (sessionId) => sessionNames.getName(sessionId),
+  getSessions: () => bridgeAny.sessions,
+  getLeaderIdleDeps: () => bridgeAny.getSessionRegistryDeps(),
+});
+wsBridge.herdEventDispatcher = herdEventDispatcher;
 launcher.onHerdChange = createLauncherHerdChangeHandler({
   dispatcher: herdEventDispatcher,
   wsBridge,
@@ -146,15 +182,14 @@ launcher.onHerdChange = createLauncherHerdChangeHandler({
 // Bootstrap for existing orchestrators (server restart recovery)
 for (const s of launcher.listSessions()) {
   if (s.isOrchestrator && launcher.getHerdedSessions(s.sessionId).length > 0) {
-    herdEventDispatcher.setupForOrchestrator(s.sessionId);
-    wsBridge.onHerdMembershipChanged(s.sessionId);
+    herdEventDispatcher.onHerdChanged(s.sessionId);
   }
 }
 
 // When the CLI reports its internal session_id, store it for --resume on relaunch
-wsBridge.onCLISessionIdReceived((sessionId, cliSessionId) => {
+wsBridge.onCLISessionId = (sessionId, cliSessionId) => {
   launcher.setCLISessionId(sessionId, cliSessionId);
-});
+};
 
 // When a Codex adapter is created, attach it to the WsBridge
 launcher.onCodexAdapterCreated((sessionId, adapter) => {
@@ -169,8 +204,11 @@ launcher.onClaudeSdkAdapterCreated((sessionId, adapter) => {
 // the old process — prevents the disconnect handler from requesting a
 // redundant auto-relaunch that races with the in-progress one.
 launcher.onBeforeRelaunchCallback((sessionId, backendType) => {
+  const bridgeSession = wsBridge.getSession(sessionId);
   if (backendType === "codex") {
-    wsBridge.markCodexRelaunchIntentional(sessionId, "relaunch");
+    if (bridgeSession) {
+      markCodexIntentionalRelaunch(bridgeSession as any, "relaunch", 15_000);
+    }
   }
   // Claude SDK sessions use a different intentional-disconnect mechanism
   // (the adapter.disconnect() call in attachClaudeSdkAdapter sets
@@ -180,13 +218,15 @@ launcher.onBeforeRelaunchCallback((sessionId, backendType) => {
   // connection as a seamless reconnect (token refresh). Without this,
   // the system.init handler skips force-clearing stale isGenerating state,
   // leaving phantom queued turns stuck as "running" across relaunches.
-  wsBridge.markRelaunchPending(sessionId);
+  if (bridgeSession) {
+    markSessionRelaunchPending(bridgeSession as any);
+  }
 });
 
 // Start watching PRs when git info is resolved for a session
-wsBridge.onSessionGitInfoReadyCallback((sessionId, cwd, branch) => {
+wsBridge.onGitInfoReady = (sessionId, cwd, branch) => {
   prPoller.watch(sessionId, cwd, branch);
-});
+};
 
 const relaunchQueue = new RelaunchQueue(async (sessionId) => {
   const info = launcher.getSession(sessionId);
@@ -239,7 +279,7 @@ const relaunchQueue = new RelaunchQueue(async (sessionId) => {
 });
 
 // Auto-relaunch CLI when a browser connects to a session with no CLI
-wsBridge.onCLIRelaunchNeededCallback((sessionId) => {
+wsBridge.onCLIRelaunchNeeded = (sessionId) => {
   const info = launcher.getSession(sessionId);
   if (!info || info.archived || info.killedByIdleManager) return;
   // Only suppress relaunch for sessions that are mid-startup AND have an
@@ -249,25 +289,25 @@ wsBridge.onCLIRelaunchNeededCallback((sessionId) => {
   if (info.state === "starting" && wsBridge.isBackendAttached(sessionId)) return;
   console.log(`[server] Auto-relaunch requested for session ${sessionId}`);
   relaunchQueue.request(sessionId);
-});
+};
 
 // Restart CLI when ask permission mode changes (updates launcher state + relaunches)
-wsBridge.onPermissionModeChangedCallback((sessionId, newMode) => {
+wsBridge.onPermissionModeChanged = (sessionId, newMode) => {
   const info = launcher.getSession(sessionId);
   if (!info || info.archived) return;
   // Update the launcher's stored permission mode before relaunching
   info.permissionMode = newMode;
   console.log(`[server] Relaunch requested for session ${sessionId} with permission mode: ${newMode}`);
   relaunchQueue.request(sessionId);
-});
+};
 
 // Relaunch backend when runtime setting changes require process restart (Codex).
-wsBridge.onSessionRelaunchRequestedCallback((sessionId) => {
+wsBridge.onSessionRelaunchRequested = (sessionId) => {
   const info = launcher.getSession(sessionId);
   if (!info || info.archived) return;
   console.log(`[server] Relaunch requested for session ${sessionId} after settings update`);
   relaunchQueue.request(sessionId);
-});
+};
 
 // Track which sessions have had at least one auto-naming evaluation
 const autoNamingEvaluated = new Set<string>();
@@ -386,7 +426,7 @@ async function applyNamingResult(
   }
   // Merge keywords regardless of naming action
   if (result.keywords?.length) {
-    wsBridge.mergeKeywords(sessionId, result.keywords);
+    mergeSessionKeywords(sessionId, result.keywords);
   }
 
   switch (result.action) {
@@ -403,8 +443,8 @@ async function applyNamingResult(
       sessionNames.setName(sessionId, result.title);
       nameSetAtHistoryIndex.set(sessionId, findLastUserMessageIndex(history));
 
-      wsBridge.broadcastNameUpdate(sessionId, result.title);
-      wsBridge.addTaskEntry(sessionId, {
+      wsBridge.broadcastToSession(sessionId, { type: "session_name_update", name: result.title } as any);
+      addTaskHistoryEntry(sessionId, {
         title: result.title,
         action: "revise",
         timestamp: Date.now(),
@@ -425,8 +465,8 @@ async function applyNamingResult(
       sessionNames.setName(sessionId, result.title);
       nameSetAtHistoryIndex.set(sessionId, findLastUserMessageIndex(history));
 
-      wsBridge.broadcastNameUpdate(sessionId, result.title);
-      wsBridge.addTaskEntry(sessionId, {
+      wsBridge.broadcastToSession(sessionId, { type: "session_name_update", name: result.title } as any);
+      addTaskHistoryEntry(sessionId, {
         title: result.title,
         action: "new",
         timestamp: Date.now(),
@@ -455,7 +495,7 @@ async function evaluateAndApply(
   const claimedQuest = await getClaimedQuestForNamer(sessionId);
   const startIndex = nameSetAtHistoryIndex.get(sessionId) ?? 0;
   const relevantHistory = isRandomName ? history : history.slice(startIndex);
-  const taskHistory = wsBridge.getSessionTaskHistory(sessionId);
+  const taskHistory = wsBridge.getSession(sessionId)?.taskHistory ?? [];
 
   console.log(
     `[session-namer] ${triggerLabel} — evaluating session ${sessionId} (current: ${isRandomName ? "(unnamed)" : `"${currentName}"`}, history: ${relevantHistory.length}/${history.length} msgs, generating: ${isGenerating})...`,
@@ -483,16 +523,16 @@ async function evaluateAndApply(
 
 // When a quest claims a session, abort all in-flight namer calls so no stale
 // result can overwrite the quest-derived title.
-wsBridge.onSessionNamedByQuestCallback((sessionId, title) => {
+wsBridge.onSessionNamedByQuest = (sessionId, title) => {
   cancelAllNamersForSession(sessionId);
   // Persist the quest title in the name store so it survives server restarts
   // and so subsequent namer checks see a non-random name.
   sessionNames.setName(sessionId, title);
   console.log(`[session-namer] Cancelled all in-flight namer calls for ${sessionId} (quest name takeover: "${title}")`);
-});
+};
 
 // Continuous session auto-naming via Claude Haiku (triggered on each user message)
-wsBridge.onUserMessageCallback(async (sessionId, history, cwd, wasGenerating) => {
+wsBridge.onUserMessage = async (sessionId, history, cwd, wasGenerating) => {
   // Suppress auto-namer when disabled in settings
   if (!getSettings().autoNamerEnabled) return;
   // Suppress auto-namer for sessions with noAutoName flag (e.g. temporary reviewer sessions)
@@ -540,8 +580,8 @@ wsBridge.onUserMessageCallback(async (sessionId, history, cwd, wasGenerating) =>
       sessionNames.setName(sessionId, result.title);
       nameSetAtHistoryIndex.set(sessionId, findLastUserMessageIndex(history));
 
-      wsBridge.broadcastNameUpdate(sessionId, result.title);
-      wsBridge.addTaskEntry(sessionId, {
+      wsBridge.broadcastToSession(sessionId, { type: "session_name_update", name: result.title } as any);
+      addTaskHistoryEntry(sessionId, {
         title: result.title,
         action: "name",
         timestamp: Date.now(),
@@ -549,7 +589,7 @@ wsBridge.onUserMessageCallback(async (sessionId, history, cwd, wasGenerating) =>
       });
       recordNamerMutation(sessionId, "user_message", "name", result.title);
       if (result.keywords?.length) {
-        wsBridge.mergeKeywords(sessionId, result.keywords);
+        mergeSessionKeywords(sessionId, result.keywords);
       }
       console.log(`[session-namer] Named session ${sessionId}: "${result.title}"`);
     } else if (currentName) {
@@ -561,12 +601,12 @@ wsBridge.onUserMessageCallback(async (sessionId, history, cwd, wasGenerating) =>
   } finally {
     endNamerCall(sessionId, "user_message", controller);
   }
-});
+};
 
 // Re-evaluate session name when agent pauses for plan approval (ExitPlanMode).
 // The agent has done meaningful research/work to produce the plan, providing
 // rich context for naming — and it's a natural breakpoint before execution.
-wsBridge.onAgentPausedCallback(async (sessionId, history, cwd) => {
+wsBridge.onAgentPaused = async (sessionId, history, cwd) => {
   if (!getSettings().autoNamerEnabled) return;
   if (launcher.getSession(sessionId)?.noAutoName) return;
   if (await isQuestOwningSessionName(sessionId)) {
@@ -584,7 +624,7 @@ wsBridge.onAgentPausedCallback(async (sessionId, history, cwd) => {
   } finally {
     endNamerCall(sessionId, "agent_paused", controller);
   }
-});
+};
 
 // Re-evaluate session name after agent completes a turn.
 // This lets Haiku refine the title based on what the agent actually did,
@@ -592,7 +632,7 @@ wsBridge.onAgentPausedCallback(async (sessionId, history, cwd) => {
 //
 // The turn-completed namer runs independently from user-message naming.
 // User-message outcomes are preferred when both produce competing revisions.
-wsBridge.onTurnCompletedCallback(async (sessionId, history, cwd) => {
+wsBridge.onTurnCompleted = async (sessionId, history, cwd) => {
   if (!getSettings().autoNamerEnabled) return;
   if (launcher.getSession(sessionId)?.noAutoName) return;
   if (await isQuestOwningSessionName(sessionId)) {
@@ -612,7 +652,7 @@ wsBridge.onTurnCompletedCallback(async (sessionId, history, cwd) => {
   } finally {
     endNamerCall(sessionId, "turn_completed", controller);
   }
-});
+};
 
 console.log(`[server] Session persistence: ${sessionStore.directory}`);
 if (recorder.isGloballyEnabled()) {

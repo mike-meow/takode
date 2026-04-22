@@ -35,7 +35,11 @@ export function createSettingsRoutes(ctx: RouteContext) {
     // Block restart while sessions are actively running to prevent stuck sessions
     const busySessions = launcher
       .listSessions()
-      .filter((s) => s.state !== "exited" && wsBridge.isSessionBusy(s.sessionId));
+      .filter((s) => {
+        if (s.state === "exited") return false;
+        const bridgeSession = wsBridge.getSession(s.sessionId);
+        return !!(bridgeSession?.isGenerating || bridgeSession?.pendingPermissions.size);
+      });
     if (busySessions.length > 0) {
       const names = busySessions.map((s) => {
         const num = launcher.getSessionNum(s.sessionId);

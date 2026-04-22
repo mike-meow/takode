@@ -14,12 +14,32 @@ import {
   grepMessageHistory,
   exportSessionAsText,
 } from "../takode-messages.js";
+import {
+  getHerdDiagnostics as getHerdDiagnosticsController,
+  markAllNotificationsDone as markAllNotificationsDoneController,
+  markNotificationDone as markNotificationDoneController,
+  notifyUser as notifyUserController,
+  summarizePendingPermissions,
+} from "../bridge/session-registry-controller.js";
+import {
+  advanceBoardRow as advanceBoardRowController,
+  getBoard as getBoardController,
+  getBoardQueueWarnings as getBoardQueueWarningsController,
+  getBoardWorkerSlotUsage as getBoardWorkerSlotUsageController,
+  getCompletedBoard as getCompletedBoardController,
+  removeBoardRows as removeBoardRowsController,
+  upsertBoardRow as upsertBoardRowController,
+} from "../bridge/board-watchdog-controller.js";
+import { refreshGitInfoPublic as refreshGitInfoPublicController, setDiffBaseBranch as setDiffBaseBranchController } from "../bridge/session-git-state.js";
 import { getSettings } from "../settings-manager.js";
+import { QUEST_JOURNEY_STATES } from "../session-types.js";
+import { isSessionIdleRuntime } from "../herd-event-dispatcher.js";
 import type { RouteContext } from "./context.js";
 
 export function createTakodeRoutes(ctx: RouteContext) {
   const api = new Hono();
-  const { launcher, wsBridge, authenticateTakodeCaller, resolveId, timerManager } = ctx;
+  const bridgeAny = ctx.wsBridge as any;
+  const { launcher, wsBridge, authenticateTakodeCaller, resolveId, timerManager, pushoverNotifier } = ctx;
   type BridgeSession = NonNullable<ReturnType<typeof wsBridge.getSession>>;
   type BoardParticipantStatus = {
     sessionId: string;
@@ -69,12 +89,79 @@ export function createTakodeRoutes(ctx: RouteContext) {
     }
     return bridgeMode || null;
   };
+  const isBridgeSessionBusy = (session: BridgeSession | null | undefined): boolean =>
+    !!session && (session.isGenerating || session.pendingPermissions.size > 0);
+  const notificationRouteDeps = {
+    isHerdedWorkerSession: (session: BridgeSession) => !!launcher.getSession(session.id)?.herdedBy,
+    broadcastToBrowsers: (session: BridgeSession, msg: unknown) => wsBridge.broadcastToSession(session.id, msg as any),
+    persistSession: (session: BridgeSession) => wsBridge.persistSessionById(session.id),
+    emitTakodeEvent: (sessionId: string, type: string, data: Record<string, unknown>) => wsBridge.emitTakodeEvent(sessionId, type as any, data as any),
+    scheduleNotification: (sessionId: string, category: "question" | "completed", detail: string, options?: { skipReadCheck?: boolean }) =>
+      pushoverNotifier?.scheduleNotification(sessionId, category, detail, undefined, options),
+  };
+  const notificationPersistDeps = {
+    broadcastToBrowsers: (session: BridgeSession, msg: unknown) => wsBridge.broadcastToSession(session.id, msg as any),
+    persistSession: (session: BridgeSession) => wsBridge.persistSessionById(session.id),
+  };
+  const boardWatchdogDeps = {
+    getLauncherSessionInfo: (sessionId: string) => launcher.getSession(sessionId),
+    listSessions: () => launcher.listSessions(),
+    resolveSessionId: (ref: string) => launcher.resolveSessionId(ref) ?? undefined,
+    timerCount: (sessionId: string) => timerManager?.listTimers(sessionId).length ?? 0,
+    backendConnected: (session: BridgeSession) => wsBridge.isBackendConnected(session.id),
+    getBoard: (sessionId: string) => {
+      const session = wsBridge.getSession(sessionId);
+      return session ? getBoardController(session) : [];
+    },
+    notifyUser: (sessionId: string, category: "needs-input" | "review", summary: string) => {
+      const session = wsBridge.getSession(sessionId);
+      return session ? notifyUserController(session, category, summary, notificationRouteDeps) : { ok: false as const, error: "Session not found" };
+    },
+    emitTakodeEvent: (sessionId: string, type: string, data: Record<string, unknown>) => wsBridge.emitTakodeEvent(sessionId, type as any, data as any),
+    markNotificationDone: (sessionId: string, notifId: string, done: boolean) => {
+      const session = wsBridge.getSession(sessionId);
+      return session ? markNotificationDoneController(session, notifId, done, notificationPersistDeps) : false;
+    },
+    isSessionIdle: (sessionId: string) => isSessionIdleRuntime(wsBridge.getSession(sessionId) as any),
+  };
+  const workBoardStateDeps = {
+    getBoardDispatchableSignature: (session: BridgeSession, questId: string) =>
+      wsBridge.getBoardDispatchableSignature(session.id, questId),
+    markNotificationDone: boardWatchdogDeps.markNotificationDone,
+    broadcastBoard: (session: BridgeSession, board: unknown[], completedBoard: unknown[]) =>
+      wsBridge.broadcastToSession(session.id, { type: "board_updated", board, completedBoard } as any),
+    persistSession: (session: BridgeSession) => wsBridge.persistSessionById(session.id),
+    notifyReview: (sessionId: string, summary: string) => {
+      const session = wsBridge.getSession(sessionId);
+      if (session) notifyUserController(session, "review", summary, notificationRouteDeps);
+    },
+  };
+  const getSessionGitDeps = () => bridgeAny.getSessionGitStateDeps?.();
+  const setDiffBaseBranch = (sessionId: string, branch: string): boolean => {
+    const session = wsBridge.getSession(sessionId);
+    const deps = getSessionGitDeps();
+    if (session && deps) {
+      setDiffBaseBranchController(session as any, branch, deps);
+      return true;
+    }
+    return bridgeAny.setDiffBaseBranch?.(sessionId, branch) ?? false;
+  };
+  const refreshGitInfoPublic = async (
+    sessionId: string,
+    options: { broadcastUpdate?: boolean; notifyPoller?: boolean; force?: boolean } = {},
+  ): Promise<boolean> => {
+    const session = wsBridge.getSession(sessionId);
+    const deps = getSessionGitDeps();
+    if (session && deps) {
+      await refreshGitInfoPublicController(session as any, deps, options);
+      return true;
+    }
+    return (await bridgeAny.refreshGitInfoPublic?.(sessionId, options)) ?? false;
+  };
 
   const buildEnrichedSessions = async (filterFn?: (s: ReturnType<typeof launcher.listSessions>[number]) => boolean) => {
     const sessions = launcher.listSessions();
     const names = sessionNames.getAllNames();
-    const bridgeStates = wsBridge.getAllSessions();
-    const bridgeMap = new Map(bridgeStates.map((state) => [state.session_id, state]));
     const pool = filterFn ? sessions.filter(filterFn) : sessions;
     const heavyRepoModeEnabled = getSettings().heavyRepoModeEnabled;
     return Promise.all(
@@ -89,9 +176,17 @@ export function createTakodeRoutes(ctx: RouteContext) {
               notifyPoller: true,
             });
           }
-          const bridge = wsBridge.getSession(s.sessionId)?.state ?? bridgeMap.get(s.sessionId);
+          const currentBridgeSession = wsBridge.getSession(s.sessionId) ?? bridgeSession;
+          const bridge = currentBridgeSession?.state;
+          const attention = currentBridgeSession
+            ? {
+                lastReadAt: currentBridgeSession.lastReadAt,
+                attentionReason: currentBridgeSession.attentionReason,
+                pendingPermissionSummary: summarizePendingPermissions(currentBridgeSession),
+              }
+            : null;
           const cliConnected = wsBridge.isBackendConnected(s.sessionId);
-          const effectiveState = cliConnected && bridgeSession?.isGenerating ? "running" : safeSession.state;
+          const effectiveState = cliConnected && currentBridgeSession?.isGenerating ? "running" : safeSession.state;
           return {
             ...safeSession,
             state: effectiveState,
@@ -105,13 +200,13 @@ export function createTakodeRoutes(ctx: RouteContext) {
             gitBehind: bridge?.git_behind || 0,
             totalLinesAdded: bridge?.total_lines_added || 0,
             totalLinesRemoved: bridge?.total_lines_removed || 0,
-            lastMessagePreview: wsBridge.getLastUserMessage(s.sessionId) || "",
+            lastMessagePreview: currentBridgeSession?.lastUserMessage || "",
             cliConnected,
-            taskHistory: wsBridge.getSessionTaskHistory(s.sessionId),
-            keywords: wsBridge.getSessionKeywords(s.sessionId),
+            taskHistory: currentBridgeSession?.taskHistory ?? [],
+            keywords: currentBridgeSession?.keywords ?? [],
             claimedQuestId: bridge?.claimedQuestId ?? null,
             claimedQuestStatus: bridge?.claimedQuestStatus ?? null,
-            ...(wsBridge.getSessionAttentionState(s.sessionId) ?? {}),
+            ...(attention ?? {}),
             ...(s.isWorktree && s.archived
               ? await (async () => {
                   let exists = false;
@@ -229,7 +324,6 @@ export function createTakodeRoutes(ctx: RouteContext) {
     const session = launcher.getSession(sessionId);
     if (!session) return c.json({ error: "Session not found" }, 404);
 
-    const bridgeStates = wsBridge.getAllSessions();
     const bridgeSession = wsBridge.getSession(sessionId);
     if (bridgeSession?.state?.is_worktree && !session.archived) {
       await wsBridge.refreshWorktreeGitStateForSnapshot(sessionId, {
@@ -237,23 +331,30 @@ export function createTakodeRoutes(ctx: RouteContext) {
         notifyPoller: true,
       });
     }
-    const bridge =
-      wsBridge.getSession(sessionId)?.state ?? bridgeStates.find((state) => state.session_id === sessionId);
+    const currentBridgeSession = wsBridge.getSession(sessionId) ?? bridgeSession;
+    const bridge = currentBridgeSession?.state;
     const names = sessionNames.getAllNames();
     const { sessionAuthToken: _token, ...safeSession } = session;
 
     // Compute actual turn count from message history (bridge?.num_turns is the CLI's
     // internal counter which resets on compaction and doesn't reflect true turn count)
-    const infoHistory = wsBridge.getMessageHistory(sessionId);
+    const infoHistory = currentBridgeSession?.messageHistory ?? null;
     const actualNumTurns =
       infoHistory && infoHistory.length > 0 ? findTurnBoundaries(infoHistory).length : bridge?.num_turns || 0;
+    const attention = currentBridgeSession
+      ? {
+          lastReadAt: currentBridgeSession.lastReadAt,
+          attentionReason: currentBridgeSession.attentionReason,
+          pendingPermissionSummary: summarizePendingPermissions(currentBridgeSession),
+        }
+      : null;
 
     return c.json({
       ...safeSession,
       sessionNum: launcher.getSessionNum(sessionId) ?? null,
       name: names[sessionId] ?? session.name ?? null,
       cliConnected: wsBridge.isBackendConnected(sessionId),
-      isGenerating: wsBridge.isSessionBusy(sessionId),
+      isGenerating: isBridgeSessionBusy(currentBridgeSession),
       // Bridge-derived state
       gitBranch: bridge?.git_branch || null,
       gitHeadSha: bridge?.git_head_sha || null,
@@ -276,9 +377,9 @@ export function createTakodeRoutes(ctx: RouteContext) {
       claimedQuestStatus: bridge?.claimedQuestStatus ?? null,
       uiMode: bridge?.uiMode ?? null,
       pendingTimerCount: timerManager?.listTimers(sessionId).length ?? 0,
-      ...(wsBridge.getSessionAttentionState(sessionId) ?? {}),
-      taskHistory: wsBridge.getSessionTaskHistory(sessionId),
-      keywords: wsBridge.getSessionKeywords(sessionId),
+      ...(attention ?? {}),
+      taskHistory: currentBridgeSession?.taskHistory ?? [],
+      keywords: currentBridgeSession?.keywords ?? [],
     });
   });
 
@@ -291,7 +392,7 @@ export function createTakodeRoutes(ctx: RouteContext) {
     const sessionId = resolveId(c.req.param("id"));
     if (!sessionId) return c.json({ error: "Session not found" }, 404);
 
-    const history = wsBridge.getMessageHistory(sessionId);
+    const history = wsBridge.getSession(sessionId)?.messageHistory ?? null;
     if (!history) return c.json({ error: "Session not found in bridge" }, 404);
 
     const sessionNum = launcher.getSessionNum(sessionId) ?? -1;
@@ -398,7 +499,7 @@ export function createTakodeRoutes(ctx: RouteContext) {
     const offset = parseInt(c.req.query("offset") ?? "0", 10);
     const limit = parseInt(c.req.query("limit") ?? "200", 10);
 
-    const history = wsBridge.getMessageHistory(sessionId);
+    const history = wsBridge.getSession(sessionId)?.messageHistory ?? null;
     if (!history) return c.json({ error: "Session not found in bridge" }, 404);
 
     const result = buildReadResponse(
@@ -427,7 +528,7 @@ export function createTakodeRoutes(ctx: RouteContext) {
     const sessionId = resolveId(c.req.param("id"));
     if (!sessionId) return c.json({ error: "Session not found" }, 404);
 
-    const history = wsBridge.getMessageHistory(sessionId);
+    const history = wsBridge.getSession(sessionId)?.messageHistory ?? null;
     if (!history) return c.json({ error: "Session not found in bridge" }, 404);
 
     const query = (c.req.query("q") || "").trim();
@@ -449,7 +550,7 @@ export function createTakodeRoutes(ctx: RouteContext) {
     const sessionId = resolveId(c.req.param("id"));
     if (!sessionId) return c.json({ error: "Session not found" }, 404);
 
-    const history = wsBridge.getMessageHistory(sessionId);
+    const history = wsBridge.getSession(sessionId)?.messageHistory ?? null;
     if (!history) return c.json({ error: "Session not found in bridge" }, 404);
 
     const text = exportSessionAsText(history, sessionId);
@@ -761,7 +862,7 @@ export function createTakodeRoutes(ctx: RouteContext) {
         ...(sessionLabel ? { sessionLabel } : {}),
       });
       if (delivery === "no_session") return c.json({ error: "Session not found in bridge" }, 404);
-      wsBridge.markNotificationDone(id, target.notification_id, true);
+      markNotificationDoneController(session, target.notification_id, true, notificationPersistDeps);
       return c.json({
         ok: true,
         kind: "notification",
@@ -784,46 +885,76 @@ export function createTakodeRoutes(ctx: RouteContext) {
         answerValue = response; // free text
       }
 
-      wsBridge.routeExternalPermissionResponse(
-        session,
-        {
+      if (typeof bridgeAny.routeBrowserMessage === "function") {
+        await bridgeAny.routeBrowserMessage(session, {
           type: "permission_response",
           request_id: target.request_id,
           behavior: "allow",
           updated_input: { ...target.input, answers: { "0": answerValue } },
-        },
-        auth.callerId,
-      );
+          actorSessionId: auth.callerId,
+        });
+      } else {
+        bridgeAny.routeExternalPermissionResponse?.(
+          session,
+          {
+            type: "permission_response",
+            request_id: target.request_id,
+            behavior: "allow",
+            updated_input: { ...target.input, answers: { "0": answerValue } },
+          },
+          auth.callerId,
+        );
+      }
       return c.json({ ok: true, kind: "permission", tool_name: target.tool_name, answer: answerValue });
     }
 
     if (target.tool_name === "ExitPlanMode") {
       const isApprove = response.toLowerCase().startsWith("approve");
       if (isApprove) {
-        wsBridge.routeExternalPermissionResponse(
-          session,
-          {
+        if (typeof bridgeAny.routeBrowserMessage === "function") {
+          await bridgeAny.routeBrowserMessage(session, {
             type: "permission_response",
             request_id: target.request_id,
             behavior: "allow",
             updated_input: target.input,
-          },
-          auth.callerId,
-        );
+            actorSessionId: auth.callerId,
+          });
+        } else {
+          bridgeAny.routeExternalPermissionResponse?.(
+            session,
+            {
+              type: "permission_response",
+              request_id: target.request_id,
+              behavior: "allow",
+              updated_input: target.input,
+            },
+            auth.callerId,
+          );
+        }
         return c.json({ ok: true, kind: "permission", tool_name: target.tool_name, action: "approved" });
       } else {
         // "reject" or "reject: feedback text"
         const feedback = response.replace(/^reject:?\s*/i, "").trim() || "Rejected by leader";
-        wsBridge.routeExternalPermissionResponse(
-          session,
-          {
+        if (typeof bridgeAny.routeBrowserMessage === "function") {
+          await bridgeAny.routeBrowserMessage(session, {
             type: "permission_response",
             request_id: target.request_id,
             behavior: "deny",
             message: feedback,
-          },
-          auth.callerId,
-        );
+            actorSessionId: auth.callerId,
+          });
+        } else {
+          bridgeAny.routeExternalPermissionResponse?.(
+            session,
+            {
+              type: "permission_response",
+              request_id: target.request_id,
+              behavior: "deny",
+              message: feedback,
+            },
+            auth.callerId,
+          );
+        }
         return c.json({ ok: true, kind: "permission", tool_name: target.tool_name, action: "rejected", feedback });
       }
     }
@@ -839,7 +970,12 @@ export function createTakodeRoutes(ctx: RouteContext) {
     const info = launcher.getSession(id);
     if (!info) return c.json({ error: "Session not found" }, 404);
 
-    const bridgeDiag = wsBridge.getHerdDiagnostics(id);
+    const session = wsBridge.getSession(id);
+    const bridgeDiag = session
+      ? getHerdDiagnosticsController(new Map([[id, session]]), id, Date.now(), {
+          getHerdDispatcherDiagnostics: (targetSessionId) => (wsBridge as any).herdEventDispatcher?.getDiagnostics?.(targetSessionId) ?? {},
+        })
+      : null;
     const herded = info.isOrchestrator ? launcher.getHerdedSessions(id) : [];
 
     return c.json({
@@ -875,7 +1011,7 @@ export function createTakodeRoutes(ctx: RouteContext) {
     const session = wsBridge.getSession(id);
     if (!session) return c.json({ error: "Session not found in bridge" }, 404);
 
-    await wsBridge.refreshGitInfoPublic(id, { broadcastUpdate: true, notifyPoller: true, force: true });
+    await refreshGitInfoPublic(id, { broadcastUpdate: true, notifyPoller: true, force: true });
 
     const state = wsBridge.getSession(id)?.state;
     return c.json({
@@ -936,7 +1072,7 @@ export function createTakodeRoutes(ctx: RouteContext) {
     if (!branch) return c.json({ error: "Missing 'branch' parameter" }, 400);
     if (branch.length > 255) return c.json({ error: "Branch name too long (max 255)" }, 400);
 
-    const success = wsBridge.setDiffBaseBranch(id, branch);
+    const success = setDiffBaseBranch(id, branch);
     if (!success) return c.json({ error: "Failed to set base branch" }, 500);
 
     const state = wsBridge.getSession(id)?.state;
@@ -973,8 +1109,9 @@ export function createTakodeRoutes(ctx: RouteContext) {
     }
     const summary = rawSummary;
 
-    const result = wsBridge.notifyUser(id, category, summary);
-    if (!result.ok) return c.json({ error: result.error }, 404);
+    const session = wsBridge.getSession(id);
+    if (!session) return c.json({ error: "Session not found" }, 404);
+    const result = notifyUserController(session, category, summary, notificationRouteDeps);
     return c.json({ ok: true, category, anchoredMessageId: result.anchoredMessageId });
   });
 
@@ -986,7 +1123,9 @@ export function createTakodeRoutes(ctx: RouteContext) {
     const notifId = c.req.param("notifId");
     const body = await c.req.json().catch(() => ({}));
     const done = body.done !== false;
-    const ok = wsBridge.markNotificationDone(id, notifId, done);
+    const session = wsBridge.getSession(id);
+    if (!session) return c.json({ error: "Session not found" }, 404);
+    const ok = markNotificationDoneController(session, notifId, done, notificationPersistDeps);
     if (!ok) return c.json({ error: "Notification not found" }, 404);
     return c.json({ ok: true });
   });
@@ -996,15 +1135,16 @@ export function createTakodeRoutes(ctx: RouteContext) {
     if (!id) return c.json({ error: "Session not found" }, 404);
     const body = await c.req.json().catch(() => ({}));
     const done = body.done !== false;
-    const count = wsBridge.markAllNotificationsDone(id, done);
-    if (count < 0) return c.json({ error: "Session not found" }, 404);
+    const session = wsBridge.getSession(id);
+    if (!session) return c.json({ error: "Session not found" }, 404);
+    const count = markAllNotificationsDoneController(session, done, notificationPersistDeps);
     return c.json({ ok: true, count });
   });
 
   api.get("/sessions/:id/notifications", (c) => {
     const id = resolveId(c.req.param("id"));
     if (!id) return c.json({ error: "Session not found" }, 404);
-    return c.json(wsBridge.getNotifications(id));
+    return c.json(wsBridge.getSession(id)?.notifications ?? []);
   });
 
   // ─── Work Board ──────────────────────────────────────────────────────
@@ -1022,7 +1162,7 @@ export function createTakodeRoutes(ctx: RouteContext) {
     for (const ref of sessionRefs) {
       const num = ref.slice(1); // strip '#'
       const sessionId = launcher.resolveSessionId(num);
-      if (sessionId && wsBridge.isSessionIdle(sessionId)) {
+      if (sessionId && isSessionIdleRuntime(wsBridge.getSession(sessionId) as any)) {
         resolved.push(ref);
       }
     }
@@ -1040,18 +1180,19 @@ export function createTakodeRoutes(ctx: RouteContext) {
       return c.json({ error: "Can only read your own board" }, 403);
     }
 
-    const board = wsBridge.getBoard(id);
+    const bridgeSession = wsBridge.getSession(id);
+    const board = bridgeSession ? getBoardController(bridgeSession) : [];
     const resolve = c.req.query("resolve") === "true";
     const includeCompleted = c.req.query("include_completed") === "true";
-    const completedBoard = includeCompleted ? wsBridge.getCompletedBoard(id) : [];
+    const completedBoard = includeCompleted && bridgeSession ? getCompletedBoardController(bridgeSession) : [];
     const rowSessionStatuses = await buildBoardRowSessionStatuses([...board, ...completedBoard]);
 
     return c.json({
       board,
-      completedCount: wsBridge.getCompletedBoardCount(id),
+      completedCount: bridgeSession?.completedBoard.size ?? 0,
       rowSessionStatuses,
-      queueWarnings: wsBridge.getBoardQueueWarnings(id),
-      workerSlotUsage: wsBridge.getBoardWorkerSlotUsage(id),
+      queueWarnings: bridgeSession ? getBoardQueueWarningsController(bridgeSession, boardWatchdogDeps) : [],
+      workerSlotUsage: getBoardWorkerSlotUsageController(id, boardWatchdogDeps),
       ...(includeCompleted ? { completedBoard } : {}),
       ...(resolve ? { resolvedSessionDeps: resolveSessionDeps(board) } : {}),
     });
@@ -1101,7 +1242,8 @@ export function createTakodeRoutes(ctx: RouteContext) {
       waitFor = parsed;
     }
 
-    const existingRow = wsBridge.getBoardRow(id, questId);
+    const bridgeSession = wsBridge.getSession(id);
+    const existingRow = bridgeSession?.board.get(questId) ?? null;
     const implicitQueuedStatus =
       typeof body.status !== "string" &&
       typeof body.worker !== "string" &&
@@ -1123,20 +1265,26 @@ export function createTakodeRoutes(ctx: RouteContext) {
       );
     }
 
-    const board = wsBridge.upsertBoardRow(id, {
-      questId,
-      title,
-      worker: typeof body.worker === "string" ? body.worker : undefined,
-      workerNum: typeof body.workerNum === "number" ? body.workerNum : undefined,
-      status: typeof body.status === "string" ? body.status : implicitQueuedStatus,
-      waitFor,
-    });
+    const board = bridgeSession
+      ? upsertBoardRowController(
+          bridgeSession,
+          {
+            questId,
+            title,
+            worker: typeof body.worker === "string" ? body.worker : undefined,
+            workerNum: typeof body.workerNum === "number" ? body.workerNum : undefined,
+            status: typeof body.status === "string" ? body.status : implicitQueuedStatus,
+            waitFor,
+          },
+          workBoardStateDeps,
+        )
+      : null;
     if (!board) return c.json({ error: "Session not found in bridge" }, 404);
     return c.json({
       board,
       rowSessionStatuses: await buildBoardRowSessionStatuses(board),
-      queueWarnings: wsBridge.getBoardQueueWarnings(id),
-      workerSlotUsage: wsBridge.getBoardWorkerSlotUsage(id),
+      queueWarnings: bridgeSession ? getBoardQueueWarningsController(bridgeSession, boardWatchdogDeps) : [],
+      workerSlotUsage: getBoardWorkerSlotUsageController(id, boardWatchdogDeps),
       resolvedSessionDeps: resolveSessionDeps(board),
     });
   });
@@ -1165,14 +1313,15 @@ export function createTakodeRoutes(ctx: RouteContext) {
       );
     }
 
-    const board = wsBridge.removeBoardRows(id, questIds);
+    const bridgeSession = wsBridge.getSession(id);
+    const board = bridgeSession ? removeBoardRowsController(bridgeSession, questIds, workBoardStateDeps) : null;
     if (!board) return c.json({ error: "Session not found in bridge" }, 404);
     return c.json({
       board,
-      completedCount: wsBridge.getCompletedBoardCount(id),
+      completedCount: bridgeSession?.completedBoard.size ?? 0,
       rowSessionStatuses: await buildBoardRowSessionStatuses(board),
-      queueWarnings: wsBridge.getBoardQueueWarnings(id),
-      workerSlotUsage: wsBridge.getBoardWorkerSlotUsage(id),
+      queueWarnings: bridgeSession ? getBoardQueueWarningsController(bridgeSession, boardWatchdogDeps) : [],
+      workerSlotUsage: getBoardWorkerSlotUsageController(id, boardWatchdogDeps),
       resolvedSessionDeps: resolveSessionDeps(board),
     });
   });
@@ -1193,14 +1342,17 @@ export function createTakodeRoutes(ctx: RouteContext) {
       return c.json({ error: `Invalid quest ID "${questId}": must match q-NNN format (e.g., q-1, q-42)` }, 400);
     }
 
-    const result = wsBridge.advanceBoardRow(id, questId);
+    const bridgeSession = wsBridge.getSession(id);
+    const result = bridgeSession
+      ? advanceBoardRowController(bridgeSession, questId, QUEST_JOURNEY_STATES, workBoardStateDeps)
+      : null;
     if (!result) return c.json({ error: "Quest not found on board" }, 404);
     return c.json({
       ...result,
-      completedCount: wsBridge.getCompletedBoardCount(id),
+      completedCount: bridgeSession?.completedBoard.size ?? 0,
       rowSessionStatuses: await buildBoardRowSessionStatuses(result.board),
-      queueWarnings: wsBridge.getBoardQueueWarnings(id),
-      workerSlotUsage: wsBridge.getBoardWorkerSlotUsage(id),
+      queueWarnings: bridgeSession ? getBoardQueueWarningsController(bridgeSession, boardWatchdogDeps) : [],
+      workerSlotUsage: getBoardWorkerSlotUsageController(id, boardWatchdogDeps),
       resolvedSessionDeps: resolveSessionDeps(result.board),
     });
   });

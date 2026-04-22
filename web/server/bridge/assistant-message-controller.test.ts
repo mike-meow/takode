@@ -3,7 +3,7 @@ import {
   extractActivityPreview,
   getAssistantContentAppendBlocks,
   type AssistantMessageSessionLike,
-} from "./assistant-message-controller.js";
+} from "./claude-message-controller.js";
 
 function makeSession(): AssistantMessageSessionLike {
   return {

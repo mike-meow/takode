@@ -20,8 +20,93 @@
  * state that survives any CLI disconnect/reconnect cycle.
  */
 
-import type { TakodeEvent, TakodeEventType, BrowserIncomingMessage, TakodeHerdBatchSnapshot } from "./session-types.js";
+import type {
+  TakodeEvent,
+  TakodeEventDataByType,
+  TakodeEventFor,
+  TakodeEventSubscriber,
+  TakodeEventType,
+  BrowserIncomingMessage,
+  TakodeHerdBatchSnapshot,
+} from "./session-types.js";
 import { formatActivitySummaryDetailed } from "./herd-activity-formatter.js";
+import { wakeIdleKilledSession as wakeIdleKilledSessionController } from "./idle-manager.js";
+import {
+  onSessionActivityStateChanged as onSessionActivityStateChangedController,
+  updateLeaderGroupIdleState as updateLeaderGroupIdleStateController,
+  type LeaderIdleStateLike,
+} from "./bridge/session-registry-controller.js";
+
+export interface BufferedTakodeEventState {
+  takodeSubscribers: Set<TakodeEventSubscriber>;
+  takodeEventLog: TakodeEvent[];
+  takodeEventNextId: number;
+  takodeEventLogLimit: number;
+}
+
+export function emitBufferedTakodeEvent<E extends TakodeEventType>(
+  state: BufferedTakodeEventState,
+  deps: {
+    getSessionNum?: (sessionId: string) => number | undefined;
+    getSessionName?: (sessionId: string) => string | undefined;
+  },
+  sessionId: string,
+  event: E,
+  data: TakodeEventDataByType[E],
+  actorSessionId?: string,
+): number {
+  const takodeEvent = {
+    id: state.takodeEventNextId++,
+    event,
+    sessionId,
+    sessionNum: deps.getSessionNum?.(sessionId) ?? -1,
+    sessionName: deps.getSessionName?.(sessionId) ?? sessionId.slice(0, 8),
+    ts: Date.now(),
+    data,
+    ...(actorSessionId ? { actorSessionId } : {}),
+  } as TakodeEventFor<E>;
+
+  state.takodeEventLog.push(takodeEvent);
+  if (state.takodeEventLog.length > state.takodeEventLogLimit) {
+    state.takodeEventLog.shift();
+  }
+
+  for (const sub of state.takodeSubscribers) {
+    if (!sub.sessions.has(sessionId)) continue;
+    try {
+      sub.callback(takodeEvent);
+    } catch {
+      state.takodeSubscribers.delete(sub);
+    }
+  }
+  return state.takodeEventNextId;
+}
+
+export function subscribeBufferedTakodeEvents(
+  state: BufferedTakodeEventState,
+  sessions: Set<string>,
+  callback: (event: TakodeEvent) => void,
+  sinceEventId?: number,
+): () => void {
+  const sub: TakodeEventSubscriber = { sessions, callback };
+  state.takodeSubscribers.add(sub);
+
+  if (sinceEventId !== undefined) {
+    for (const evt of state.takodeEventLog) {
+      if (evt.id <= sinceEventId || !sessions.has(evt.sessionId)) continue;
+      try {
+        callback(evt);
+      } catch {
+        state.takodeSubscribers.delete(sub);
+        return () => {};
+      }
+    }
+  }
+
+  return () => {
+    state.takodeSubscribers.delete(sub);
+  };
+}
 
 // ─── Interfaces (for testability — avoids importing full WsBridge/CliLauncher) ──
 
@@ -33,14 +118,21 @@ export interface WsBridgeHandle {
     agentSource?: { sessionId: string; sessionLabel?: string },
     takodeHerdBatch?: TakodeHerdBatchSnapshot,
   ): "sent" | "queued" | "no_session";
-  isSessionIdle(sessionId: string): boolean;
-  /** Wake a session that was stopped by idle-manager. Clears the killedByIdleManager
-   *  flag and triggers a CLI relaunch so the session can process queued events.
-   *  Returns true if a relaunch was requested, false if the session wasn't idle-killed. */
-  wakeIdleKilledSession(sessionId: string): boolean;
-  /** Retrieve a slice of a session's messageHistory for activity summaries.
-   *  Returns null if the session doesn't exist. Indices are inclusive [from, to]. */
-  getSessionMessages(sessionId: string, from: number, to: number): BrowserIncomingMessage[] | null;
+  isSessionIdle?(sessionId: string): boolean;
+  /** Test-only escape hatch while production callers move to the shared idle helper. */
+  wakeIdleKilledSession?(sessionId: string): boolean;
+  getSession(
+    sessionId: string,
+  ):
+    | {
+        messageHistory: BrowserIncomingMessage[];
+        backendSocket?: unknown;
+        codexAdapter?: unknown;
+        claudeSdkAdapter?: unknown;
+        cliInitReceived?: boolean;
+        isGenerating?: boolean;
+      }
+    | undefined;
   /** Current active board row for a leader session + quest ID, if any. */
   getBoardRow?(sessionId: string, questId: string): { status?: string } | null;
   /** Current live stall signature for a leader board row, if it is still stalled. */
@@ -51,6 +143,22 @@ export interface WsBridgeHandle {
 
 export interface LauncherHandle {
   getHerdedSessions(orchId: string): Array<{ sessionId: string }>;
+  getSession?(sessionId: string): { state?: string; killedByIdleManager?: boolean } | undefined;
+}
+
+export function isSessionIdleRuntime(
+  session:
+    | {
+        backendSocket?: unknown;
+        codexAdapter?: unknown;
+        claudeSdkAdapter?: unknown;
+        cliInitReceived?: boolean;
+        isGenerating?: boolean;
+      }
+    | undefined,
+): boolean {
+  if (!session) return false;
+  return !!(session.backendSocket || session.codexAdapter || session.claudeSdkAdapter) && !!session.cliInitReceived && !session.isGenerating;
 }
 
 // ─── Constants ──────────────────────────────────────────────────────────────────
@@ -89,6 +197,20 @@ const HISTORY_CAP = 50;
 
 /** agentSource used to tag herd event messages */
 const HERD_AGENT_SOURCE = { sessionId: "herd-events", sessionLabel: "Herd Events" } as const;
+
+function getSessionMessageSlice(
+  bridge: Pick<WsBridgeHandle, "getSession">,
+  sessionId: string,
+  from: number,
+  to: number,
+): BrowserIncomingMessage[] | null {
+  const history = bridge.getSession(sessionId)?.messageHistory;
+  if (!history) return null;
+  const clampedFrom = Math.max(0, from);
+  const clampedTo = Math.min(history.length - 1, to);
+  if (clampedFrom > clampedTo) return [];
+  return history.slice(clampedFrom, clampedTo + 1);
+}
 
 // ─── Inbox State ────────────────────────────────────────────────────────────────
 
@@ -131,11 +253,72 @@ interface HerdInbox {
 
 export class HerdEventDispatcher {
   private inboxes = new Map<string, HerdInbox>();
+  private takodeSubscribers = new Set<TakodeEventSubscriber>();
+  private takodeEventLog: TakodeEvent[] = [];
+  private takodeEventNextId = 0;
+  private static readonly TAKODE_EVENT_LOG_LIMIT = 1000;
+  private leaderGroupIdleStates: LeaderIdleStateLike["leaderGroupIdleStates"] = new Map();
 
   constructor(
     private wsBridge: WsBridgeHandle,
     private launcher: LauncherHandle,
+    private runtime?: {
+      requestCliRelaunch?: (sessionId: string) => void;
+      getSessionNum?: (sessionId: string) => number | undefined;
+      getSessionName?: (sessionId: string) => string | undefined;
+      getSessions?: () => LeaderIdleStateLike["sessions"];
+      getLeaderIdleDeps?: () => Parameters<typeof updateLeaderGroupIdleStateController>[3];
+    },
   ) {}
+
+  emitTakodeEvent<E extends TakodeEventType>(
+    sessionId: string,
+    event: E,
+    data: TakodeEventDataByType[E],
+    actorSessionId?: string,
+  ): void {
+    this.takodeEventNextId = emitBufferedTakodeEvent(
+      {
+        takodeSubscribers: this.takodeSubscribers,
+        takodeEventLog: this.takodeEventLog,
+        takodeEventNextId: this.takodeEventNextId,
+        takodeEventLogLimit: HerdEventDispatcher.TAKODE_EVENT_LOG_LIMIT,
+      },
+      {
+        getSessionNum: this.runtime?.getSessionNum,
+        getSessionName: this.runtime?.getSessionName,
+      },
+      sessionId,
+      event,
+      data,
+      actorSessionId,
+    );
+  }
+
+  subscribeTakodeEvents(
+    sessions: Set<string>,
+    callback: (event: TakodeEvent) => void,
+    sinceEventId?: number,
+  ): () => void {
+    return subscribeBufferedTakodeEvents(
+      {
+        takodeSubscribers: this.takodeSubscribers,
+        takodeEventLog: this.takodeEventLog,
+        takodeEventNextId: this.takodeEventNextId,
+        takodeEventLogLimit: HerdEventDispatcher.TAKODE_EVENT_LOG_LIMIT,
+      },
+      sessions,
+      callback,
+      sinceEventId,
+    );
+  }
+
+  onSessionActivityStateChanged(sessionId: string, reason: string): void {
+    const state = this.getLeaderIdleState();
+    const deps = this.runtime?.getLeaderIdleDeps?.();
+    if (!state || !deps) return;
+    onSessionActivityStateChangedController(state, sessionId, reason, deps);
+  }
 
   /** Subscribe to events from all herded workers of an orchestrator. Idempotent. */
   setupForOrchestrator(orchId: string): void {
@@ -147,7 +330,7 @@ export class HerdEventDispatcher {
       existing.unsubscribe?.();
       existing.unsubscribe = null;
       existing.workerIds = workerIds;
-      if (this.pendingCount(existing) > 0 && this.wsBridge.isSessionIdle(orchId)) {
+      if (this.pendingCount(existing) > 0 && this.isSessionIdle(orchId)) {
         this.scheduleDelivery(orchId);
       } else {
         this.maybeRetireInbox(orchId, existing);
@@ -260,9 +443,9 @@ export class HerdEventDispatcher {
     }
 
     // If orchestrator is idle, schedule delivery
-    if (this.wsBridge.isSessionIdle(orchId)) {
+    if (this.isSessionIdle(orchId)) {
       this.scheduleDelivery(orchId);
-    } else if (this.wsBridge.wakeIdleKilledSession(orchId)) {
+    } else if (this.wakeIdleKilledSession(orchId)) {
       // Leader was stopped by idle-manager — wake it up.
       // Events stay pending in the inbox; they'll be flushed once the CLI
       // reconnects and goes idle (via onOrchestratorTurnEnd or the normal
@@ -334,6 +517,10 @@ export class HerdEventDispatcher {
   /** Called when herd relationships change (workers added/removed). */
   onHerdChanged(orchId: string): void {
     this.setupForOrchestrator(orchId);
+    const state = this.getLeaderIdleState();
+    const deps = this.runtime?.getLeaderIdleDeps?.();
+    if (!state || !deps) return;
+    updateLeaderGroupIdleStateController(state, orchId, "herd_membership_changed", deps);
   }
 
   /** Force-deliver pending events, bypassing the isSessionIdle() gate.
@@ -350,7 +537,7 @@ export class HerdEventDispatcher {
     const events = pending.map((e) => e.event);
     const surfacedUserMsgIdxs = new Map<string, Set<number>>();
     const renderedBatch = renderHerdEventBatch(events, {
-      getMessages: (sid, from, to) => this.wsBridge.getSessionMessages(sid, from, to),
+      getMessages: (sid, from, to) => getSessionMessageSlice(this.wsBridge, sid, from, to),
       lastEmittedMsgTo: inbox.lastEmittedMsgTo,
       seenUserMsgIdxs: inbox.seenUserMsgIdxs,
       surfacedUserMsgIdxs,
@@ -422,11 +609,11 @@ export class HerdEventDispatcher {
     }
 
     // Re-check idle — orchestrator may have started generating during debounce
-    if (!this.wsBridge.isSessionIdle(orchId)) {
+    if (!this.isSessionIdle(orchId)) {
       // If the leader was idle-killed during the debounce window, wake it.
       // Otherwise schedule a retry — the leader is busy and will get events
       // when its turn ends (onOrchestratorTurnEnd) or on the next retry.
-      if (this.wsBridge.wakeIdleKilledSession(orchId)) {
+      if (this.wakeIdleKilledSession(orchId)) {
         console.log(`[herd-dispatcher] Woke idle-killed leader ${orchId} during flush retry`);
       } else {
         this.scheduleRetry(orchId);
@@ -438,7 +625,7 @@ export class HerdEventDispatcher {
     const events = pending.map((e) => e.event);
     const surfacedUserMsgIdxs = new Map<string, Set<number>>();
     const renderedBatch = renderHerdEventBatch(events, {
-      getMessages: (sid, from, to) => this.wsBridge.getSessionMessages(sid, from, to),
+      getMessages: (sid, from, to) => getSessionMessageSlice(this.wsBridge, sid, from, to),
       lastEmittedMsgTo: inbox.lastEmittedMsgTo,
       seenUserMsgIdxs: inbox.seenUserMsgIdxs,
       surfacedUserMsgIdxs,
@@ -493,6 +680,31 @@ export class HerdEventDispatcher {
     return this.getPendingEntries(inbox).length;
   }
 
+  private isSessionIdle(sessionId: string): boolean {
+    if (typeof this.wsBridge.isSessionIdle === "function") {
+      return this.wsBridge.isSessionIdle(sessionId);
+    }
+    return isSessionIdleRuntime(this.wsBridge.getSession(sessionId));
+  }
+
+  private wakeIdleKilledSession(sessionId: string): boolean {
+    if (typeof this.wsBridge.wakeIdleKilledSession === "function") {
+      return this.wsBridge.wakeIdleKilledSession(sessionId);
+    }
+    return this.launcher.getSession
+      ? wakeIdleKilledSessionController(this.launcher as Pick<LauncherHandle, "getSession"> as any, sessionId, this.runtime?.requestCliRelaunch)
+      : false;
+  }
+
+  private getLeaderIdleState(): LeaderIdleStateLike | null {
+    const sessions = this.runtime?.getSessions?.();
+    if (!sessions) return null;
+    return {
+      leaderGroupIdleStates: this.leaderGroupIdleStates,
+      sessions,
+    };
+  }
+
   /** Drop queued board_stalled/board_dispatchable events that no longer match the leader's active board. */
   private pruneStaleBoardStallEntries(orchId: string, inbox: HerdInbox): void {
     if (!this.wsBridge.getBoardRow) return;
@@ -528,6 +740,10 @@ export class HerdEventDispatcher {
     for (const orchId of this.inboxes.keys()) {
       this.teardownForOrchestrator(orchId);
     }
+    for (const idleState of this.leaderGroupIdleStates.values()) {
+      if (idleState.timer) clearTimeout(idleState.timer);
+    }
+    this.leaderGroupIdleStates.clear();
   }
 
   /** Get diagnostic info about an orchestrator's herd event state. */

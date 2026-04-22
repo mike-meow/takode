@@ -7,6 +7,7 @@ import type {
   ToolResultPreview,
 } from "../session-types.js";
 import type { CodexResumeTurnSnapshot } from "../codex-adapter.js";
+import { sessionTag } from "../session-tag.js";
 export interface ToolResultRecoverySessionLike {
   id: string;
   backendType: BackendType;
@@ -22,20 +23,137 @@ export interface ToolResultRecoveryDeps {
     session: ToolResultRecoverySessionLike,
     toolUseId: string,
   ) => Extract<ContentBlock, { type: "tool_use" }> | null;
+  hasToolResultPreviewReplay: (session: ToolResultRecoverySessionLike, toolUseId: string) => boolean;
   clearCodexToolResultWatchdog: (session: ToolResultRecoverySessionLike, toolUseId: string) => void;
-  emitSyntheticToolResultPreview: (
-    session: ToolResultRecoverySessionLike,
-    toolUseId: string,
-    content: string,
-    isError: boolean,
-    reason: string,
-  ) => void;
+  broadcastToBrowsers: (session: ToolResultRecoverySessionLike, msg: BrowserIncomingMessage) => void;
+  persistSession: (session: ToolResultRecoverySessionLike) => void;
   getCodexTurnInRecovery: (
     session: ToolResultRecoverySessionLike,
   ) => { resumeConfirmedAt: number | null; disconnectedAt: number | null } | null;
   codexToolResultWatchdogMs: number;
   takodeBoardResultPreviewLimit: number;
   defaultToolResultPreviewLimit: number;
+}
+export function clearCodexToolResultWatchdog(
+  session: ToolResultRecoverySessionLike,
+  toolUseId: string,
+): void {
+  const timer = session.codexToolResultWatchdogs.get(toolUseId);
+  if (!timer) return;
+  clearTimeout(timer);
+  session.codexToolResultWatchdogs.delete(toolUseId);
+}
+export function clearAllCodexToolResultWatchdogs(session: ToolResultRecoverySessionLike): void {
+  for (const timer of session.codexToolResultWatchdogs.values()) {
+    clearTimeout(timer);
+  }
+  session.codexToolResultWatchdogs.clear();
+}
+export function findToolUseBlockInHistory(
+  session: ToolResultRecoverySessionLike,
+  toolUseId: string,
+): Extract<ContentBlock, { type: "tool_use" }> | null {
+  for (let i = session.messageHistory.length - 1; i >= 0; i--) {
+    const msg = session.messageHistory[i];
+    if (msg.type !== "assistant") continue;
+    const content = (msg as { message?: { content?: ContentBlock[] } }).message?.content;
+    if (!Array.isArray(content)) continue;
+    for (const block of content) {
+      if (block.type === "tool_use" && block.id === toolUseId) return block;
+    }
+  }
+  return null;
+}
+export function getToolUseNameInHistory(session: ToolResultRecoverySessionLike, toolUseId: string): string | null {
+  return findToolUseBlockInHistory(session, toolUseId)?.name ?? null;
+}
+export function collectCompletedToolStartTimes(
+  session: ToolResultRecoverySessionLike,
+  toolResults: Array<Extract<ContentBlock, { type: "tool_result" }>>,
+): number[] {
+  const completedToolStartTimes: number[] = [];
+  for (const block of toolResults) {
+    const startedAt = session.toolStartTimes.get(block.tool_use_id);
+    if (typeof startedAt === "number" && Number.isFinite(startedAt)) {
+      completedToolStartTimes.push(startedAt);
+    }
+  }
+  return completedToolStartTimes;
+}
+export function emitSyntheticToolResultPreview(
+  session: ToolResultRecoverySessionLike,
+  toolUseId: string,
+  content: string,
+  isError: boolean,
+  reason: string,
+  deps: ToolResultRecoveryDeps,
+): void {
+  if (!session.toolStartTimes.has(toolUseId)) return;
+  if (deps.hasToolResultPreviewReplay(session, toolUseId)) {
+    deps.clearCodexToolResultWatchdog(session, toolUseId);
+    session.toolStartTimes.delete(toolUseId);
+    return;
+  }
+  deps.clearCodexToolResultWatchdog(session, toolUseId);
+
+  const retainedOutput = session.toolProgressOutput.get(toolUseId)?.trim();
+  if (retainedOutput) {
+    content = retainedOutput;
+  }
+
+  const previewLimit = getToolResultPreviewLimit(session, toolUseId, deps);
+  const totalSize = Buffer.byteLength(content, "utf-8");
+  const isTruncated = content.length > previewLimit;
+  const startedAt = session.toolStartTimes.get(toolUseId);
+  const durationSeconds = startedAt != null ? Math.round((Date.now() - startedAt) / 100) / 10 : undefined;
+  session.toolStartTimes.delete(toolUseId);
+  session.toolProgressOutput.delete(toolUseId);
+  session.toolResults.set(toolUseId, {
+    content,
+    is_error: isError,
+    timestamp: Date.now(),
+  });
+
+  const preview: ToolResultPreview = {
+    tool_use_id: toolUseId,
+    content: isTruncated ? content.slice(-previewLimit) : content,
+    is_error: isError,
+    total_size: totalSize,
+    is_truncated: isTruncated,
+    duration_seconds: durationSeconds,
+  };
+  const browserMsg: BrowserIncomingMessage = {
+    type: "tool_result_preview",
+    previews: [preview],
+  };
+  session.messageHistory.push(browserMsg);
+  deps.broadcastToBrowsers(session, browserMsg);
+  deps.persistSession(session);
+  console.warn(
+    `[ws-bridge] Synthesized tool_result_preview for orphaned tool ${toolUseId} in session ${sessionTag(session.id)} (${reason})`,
+  );
+}
+export function finalizeSupersededCodexTerminalTools(
+  session: ToolResultRecoverySessionLike,
+  completedToolStartTimes: number[],
+  deps: ToolResultRecoveryDeps,
+): void {
+  if (session.backendType !== "codex") return;
+  if (completedToolStartTimes.length === 0) return;
+
+  const newestCompletedToolStart = Math.max(...completedToolStartTimes);
+  for (const [toolUseId, startedAt] of [...session.toolStartTimes.entries()]) {
+    if (!(startedAt < newestCompletedToolStart)) continue;
+    if (getToolUseNameInHistory(session, toolUseId) !== "Bash") continue;
+    emitSyntheticToolResultPreview(
+      session,
+      toolUseId,
+      "Terminal command did not deliver a final result after a later tool completed.",
+      false,
+      "superseded_by_later_completed_tool",
+      deps,
+    );
+  }
 }
 export function getToolResultPreviewLimit(
   session: ToolResultRecoverySessionLike,
@@ -113,14 +231,14 @@ export function finalizeRecoveredDisconnectedTerminalTools(
   for (const [toolUseId, startedAt] of session.toolStartTimes) {
     if (shouldDeferCodexToolResultWatchdog(session, toolUseId, deps)) continue;
     if (now - startedAt < deps.codexToolResultWatchdogMs) continue;
-    const toolName = deps.getToolUseBlockInHistory(session, toolUseId)?.name ?? null;
-    if (toolName !== "Bash") continue;
-    deps.emitSyntheticToolResultPreview(
+    if (getToolUseNameInHistory(session, toolUseId) !== "Bash") continue;
+    emitSyntheticToolResultPreview(
       session,
       toolUseId,
       "Terminal command was interrupted while backend was disconnected; final output was not recovered.",
       true,
       reason,
+      deps,
     );
   }
 }
@@ -135,14 +253,13 @@ export function finalizeOrphanedTerminalToolsOnResult(
   const interrupted = stopReason.includes("interrupt") || stopReason.includes("cancel");
   const failed = !!msg.is_error || interrupted;
   for (const toolUseId of [...session.toolStartTimes.keys()]) {
-    const toolName = deps.getToolUseBlockInHistory(session, toolUseId)?.name ?? null;
-    if (toolName !== "Bash") continue;
+    if (getToolUseNameInHistory(session, toolUseId) !== "Bash") continue;
     const content = interrupted
       ? "Terminal command was interrupted before the final tool result was delivered."
       : failed
         ? "Terminal command failed before the final tool result was delivered."
         : "Terminal command completed, but no output was captured.";
-    deps.emitSyntheticToolResultPreview(session, toolUseId, content, failed, "result_orphaned_terminal");
+    emitSyntheticToolResultPreview(session, toolUseId, content, failed, "result_orphaned_terminal", deps);
   }
 }
 export function scheduleCodexToolResultWatchdogs(
@@ -160,12 +277,13 @@ export function scheduleCodexToolResultWatchdogs(
         scheduleCodexToolResultWatchdogs(session, "backend_connected", deps);
         return;
       }
-      deps.emitSyntheticToolResultPreview(
+      emitSyntheticToolResultPreview(
         session,
         toolUseId,
         "Tool call was interrupted by backend disconnect; final result was not recovered.",
         true,
         reason,
+        deps,
       );
     }, deps.codexToolResultWatchdogMs);
     session.codexToolResultWatchdogs.set(toolUseId, timer);
@@ -234,17 +352,18 @@ export function synthesizeCodexToolResultsFromResumedTurn(
     } else {
       content = `Tool call ${isError ? "failed" : "completed"} before reconnect recovery finished.`;
     }
-    deps.emitSyntheticToolResultPreview(session, itemId, content, isError, "resume_snapshot");
+    emitSyntheticToolResultPreview(session, itemId, content, isError, "resume_snapshot", deps);
     unresolvedToolIds.delete(itemId);
     synthesized++;
   }
   for (const toolUseId of unresolvedToolIds) {
-    deps.emitSyntheticToolResultPreview(
+    emitSyntheticToolResultPreview(
       session,
       toolUseId,
       `Tool call ${turnStatus} before reconnect recovery finished; final output was not recovered.`,
       turnStatus === "failed" || turnStatus === "declined",
       "resume_snapshot_fallback",
+      deps,
     );
     synthesized++;
   }

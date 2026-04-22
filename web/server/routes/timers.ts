@@ -11,8 +11,6 @@ export function createTimerRoutes(ctx: RouteContext) {
     if (!ctx.timerManager) return c.json({ error: "Timer manager not available" }, 503);
 
     const names = sessionNames.getAllNames();
-    const bridgeStates = wsBridge.getAllSessions();
-    const bridgeMap = new Map(bridgeStates.map((state) => [state.session_id, state]));
     const sessions = launcher.listSessions();
 
     const activeTimers = sessions
@@ -21,8 +19,8 @@ export function createTimerRoutes(ctx: RouteContext) {
         const timers = [...ctx.timerManager!.listTimers(session.sessionId)].sort((a, b) => a.nextFireAt - b.nextFireAt);
         if (timers.length === 0) return null;
 
-        const bridge = bridgeMap.get(session.sessionId);
         const bridgeSession = wsBridge.getSession(session.sessionId);
+        const bridge = bridgeSession?.state;
         const cliConnected = wsBridge.isBackendConnected(session.sessionId);
         const effectiveState = cliConnected && bridgeSession?.isGenerating ? "running" : session.state;
 

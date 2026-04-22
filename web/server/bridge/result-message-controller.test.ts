@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { handleResultMessage, type ResultMessageSessionLike } from "./result-message-controller.js";
+import { handleResultMessage, type ResultMessageSessionLike } from "./claude-message-controller.js";
 import type { BrowserIncomingMessage, CLIResultMessage, PermissionRequest, SessionState } from "../session-types.js";
 
 function makeState(): ResultMessageSessionLike["state"] {

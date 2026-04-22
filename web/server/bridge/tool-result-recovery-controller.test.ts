@@ -21,8 +21,10 @@ function makeSession(): ToolResultRecoverySessionLike {
 function makeDeps(overrides: Partial<ToolResultRecoveryDeps> = {}): ToolResultRecoveryDeps {
   return {
     getToolUseBlockInHistory: () => ({ type: "tool_use", id: "tool-1", name: "Bash", input: { command: "sleep 1" } }),
+    hasToolResultPreviewReplay: () => false,
     clearCodexToolResultWatchdog: () => {},
-    emitSyntheticToolResultPreview: () => {},
+    broadcastToBrowsers: () => {},
+    persistSession: () => {},
     getCodexTurnInRecovery: () => null,
     codexToolResultWatchdogMs: 50,
     takodeBoardResultPreviewLimit: 12_000,
@@ -39,14 +41,14 @@ describe("tool-result-recovery-controller", () => {
   it("uses the injected codex watchdog delay when scheduling tool-result recovery", () => {
     vi.useFakeTimers();
     const session = makeSession();
-    const emitSyntheticToolResultPreview = vi.fn();
-    const deps = makeDeps({ emitSyntheticToolResultPreview, codexToolResultWatchdogMs: 25 });
+    const broadcastToBrowsers = vi.fn();
+    const deps = makeDeps({ broadcastToBrowsers, codexToolResultWatchdogMs: 25 });
 
     scheduleCodexToolResultWatchdogs(session, "disconnect", deps);
     vi.advanceTimersByTime(24);
-    expect(emitSyntheticToolResultPreview).not.toHaveBeenCalled();
+    expect(broadcastToBrowsers).not.toHaveBeenCalled();
 
     vi.advanceTimersByTime(1);
-    expect(emitSyntheticToolResultPreview).toHaveBeenCalledTimes(1);
+    expect(broadcastToBrowsers).toHaveBeenCalledTimes(1);
   });
 });

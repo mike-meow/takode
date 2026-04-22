@@ -2913,7 +2913,7 @@ describe("cat herding", () => {
         injectUserMessage: vi.fn(() => "sent" as const),
         isSessionIdle: vi.fn(() => true),
         wakeIdleKilledSession: vi.fn(() => false),
-        getSessionMessages: vi.fn(() => null),
+        getSession: vi.fn(() => undefined),
       };
       const emitTakodeEvent = (event: TakodeEvent) => {
         for (const sub of subscriptions) {
@@ -2940,7 +2940,6 @@ describe("cat herding", () => {
         dispatcher,
         wsBridge: {
           emitTakodeEvent: emitBridgeEvent,
-          onHerdMembershipChanged: vi.fn(),
         },
         launcher: herdLauncher,
         getSessionName: () => undefined,

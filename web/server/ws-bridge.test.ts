@@ -17,7 +17,34 @@ vi.mock("./bridge/settings-rule-matcher.js", async (importOriginal) => {
 
 import { WsBridge, type SocketData } from "./ws-bridge.js";
 import { SessionStore } from "./session-store.js";
-import { HerdEventDispatcher } from "./herd-event-dispatcher.js";
+import { HerdEventDispatcher, isSessionIdleRuntime } from "./herd-event-dispatcher.js";
+import {
+  advanceBoardRow as advanceBoardRowController,
+  getBoard as getBoardController,
+  getCompletedBoard as getCompletedBoardController,
+  removeBoardRows as removeBoardRowsController,
+  upsertBoardRow as upsertBoardRowController,
+} from "./bridge/board-watchdog-controller.js";
+import { cleanupBranchState as cleanupBranchStateIndex, updateBranchIndex as updateBranchIndexState } from "./bridge/branch-session-index.js";
+import {
+  getVsCodeSelectionState as getVsCodeSelectionStateController,
+  getVsCodeWindowStates as getVsCodeWindowStatesController,
+  pollVsCodeOpenFileCommands as pollVsCodeOpenFileCommandsController,
+  requestVsCodeOpenFile as requestVsCodeOpenFileController,
+  resolveVsCodeOpenFileResult as resolveVsCodeOpenFileResultController,
+  updateVsCodeSelectionState as updateVsCodeSelectionStateController,
+  upsertVsCodeWindowState as upsertVsCodeWindowStateController,
+} from "./bridge/browser-transport-controller.js";
+import { refreshGitInfoPublic as refreshGitInfoPublicController, setDiffBaseBranch as setDiffBaseBranchController } from "./bridge/session-git-state.js";
+import { trafficStats } from "./traffic-stats.js";
+import {
+  applyInitialSessionState as applyInitialSessionStateController,
+  clearAttentionAndMarkRead as clearAttentionAndMarkReadController,
+  getHerdDiagnostics as getHerdDiagnosticsController,
+  markNotificationDone as markNotificationDoneController,
+  notifyUser as notifyUserController,
+  setSessionClaimedQuest as setSessionClaimedQuestController,
+} from "./bridge/session-registry-controller.js";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { homedir, tmpdir } from "node:os";
@@ -135,6 +162,202 @@ function getCodexStartPendingInputs(msg: any) {
   return msg.inputs as Array<{ content: string }>;
 }
 
+function getNotificationTestDeps(bridge: WsBridge) {
+  return { isHerdedWorkerSession: (session: any) => !!(bridge as any).launcher?.getSession(session.id)?.herdedBy, broadcastToBrowsers: (session: any, msg: any) => bridge.broadcastToSession(session.id, msg), persistSession: (session: any) => bridge.persistSessionById(session.id), emitTakodeEvent: (sessionId: string, type: string, data: Record<string, unknown>) => bridge.emitTakodeEvent(sessionId, type as any, data as any), scheduleNotification: () => undefined };
+}
+
+function applyClaimedQuest(bridge: WsBridge, sessionId: string, quest: { id: string; title: string; status?: string } | null) {
+  const session = bridge.getSession(sessionId);
+  if (!session) return;
+  setSessionClaimedQuestController(session, quest, { broadcastToBrowsers: (_session: any, msg: any) => bridge.broadcastToSession(sessionId, msg), persistSession: () => bridge.persistSessionById(sessionId), getLauncherSessionInfo: (targetSessionId: string) => (bridge as any).launcher?.getSession?.(targetSessionId), onSessionNamedByQuest: (targetSessionId: string, title: string) => (bridge as any).onSessionNamedByQuest?.(targetSessionId, title) });
+}
+
+type TestBridge = WsBridge & {
+  setStore(store: SessionStore): void;
+  setRecorder(recorder: any): void;
+  setTimerManager(timerManager: any): void;
+  setImageStore(imageStore: any): void;
+  setPushoverNotifier(notifier: any): void;
+  setLauncher(launcher: any): void;
+  setHerdEventDispatcher(dispatcher: any): void;
+  onCLIRelaunchNeededCallback(cb: (sessionId: string) => void): void;
+  onPermissionModeChangedCallback(cb: (sessionId: string, newMode: string) => void): void;
+  onSessionRelaunchRequestedCallback(cb: (sessionId: string) => void): void;
+  onUserMessageCallback(cb: any): void;
+  onTurnCompletedCallback(cb: any): void;
+  onAgentPausedCallback(cb: any): void;
+  applyInitialSessionState(sessionId: string, options: any): void;
+  markWorktree(sessionId: string, repoRoot: string, worktreeCwd: string, defaultBranch?: string, diffBaseBranch?: string): void;
+  getTrafficStatsSnapshot(): any;
+  resetTrafficStats(): void;
+  setDiffBaseBranch(sessionId: string, branch: string): boolean;
+  refreshGitInfoPublic(
+    sessionId: string,
+    options?: { broadcastUpdate?: boolean; notifyPoller?: boolean; force?: boolean },
+  ): Promise<boolean>;
+  onSessionArchived(sessionId: string): void;
+  onSessionUnarchived(sessionId: string): void;
+  getBoard(sessionId: string): any[];
+  upsertBoardRow(sessionId: string, row: any): any[] | null;
+  removeBoardRows(sessionId: string, questIds: string[]): any[] | null;
+  advanceBoardRow(sessionId: string, questId: string): any;
+  getCompletedBoard(sessionId: string): any[];
+  getCompletedBoardCount(sessionId: string): number;
+  getVsCodeSelectionState(): any;
+  updateVsCodeSelectionState(nextState: any): boolean;
+  getVsCodeWindowStates(): any[];
+  upsertVsCodeWindowState(nextState: any): any;
+  pollVsCodeOpenFileCommands(sourceId: string, limit?: number): any[];
+  resolveVsCodeOpenFileResult(sourceId: string, commandId: string, result: { ok: boolean; error?: string }): boolean;
+  requestVsCodeOpenFile(target: any, options?: { timeoutMs?: number }): Promise<{ sourceId: string; commandId: string }>;
+};
+
+function attachBoardFacade(bridge: WsBridge): TestBridge {
+  const anyBridge = bridge as any;
+  anyBridge.setStore = (store: SessionStore) => {
+    bridge.store = store;
+  };
+  anyBridge.setRecorder = (recorder: any) => {
+    bridge.recorder = recorder;
+  };
+  anyBridge.setTimerManager = (timerManager: any) => {
+    bridge.timerManager = timerManager;
+  };
+  anyBridge.setImageStore = (imageStore: any) => {
+    bridge.imageStore = imageStore;
+  };
+  anyBridge.setPushoverNotifier = (notifier: any) => {
+    bridge.pushoverNotifier = notifier;
+  };
+  anyBridge.setLauncher = (launcher: any) => {
+    bridge.launcher = launcher;
+  };
+  anyBridge.setHerdEventDispatcher = (dispatcher: any) => {
+    bridge.herdEventDispatcher = dispatcher;
+  };
+  anyBridge.onCLIRelaunchNeededCallback = (cb: (sessionId: string) => void) => {
+    bridge.onCLIRelaunchNeeded = cb;
+  };
+  anyBridge.onPermissionModeChangedCallback = (cb: (sessionId: string, newMode: string) => void) => {
+    bridge.onPermissionModeChanged = cb;
+  };
+  anyBridge.onSessionRelaunchRequestedCallback = (cb: (sessionId: string) => void) => {
+    bridge.onSessionRelaunchRequested = cb;
+  };
+  anyBridge.onUserMessageCallback = (cb: any) => {
+    bridge.onUserMessage = cb;
+  };
+  anyBridge.onTurnCompletedCallback = (cb: any) => {
+    bridge.onTurnCompleted = cb;
+  };
+  anyBridge.onAgentPausedCallback = (cb: any) => {
+    bridge.onAgentPaused = cb;
+  };
+  bridge.herdEventDispatcher = new HerdEventDispatcher(
+    {
+      subscribeTakodeEvents: () => () => {},
+      injectUserMessage: () => "no_session",
+      getSession: (sessionId: string) => bridge.getSession(sessionId) as any,
+    },
+    {
+      getHerdedSessions: (orchId: string) => bridge.launcher?.getHerdedSessions?.(orchId) ?? [],
+      getSession: (sessionId: string) => bridge.launcher?.getSession?.(sessionId),
+    },
+    {
+      requestCliRelaunch: (sessionId: string) => bridge.onCLIRelaunchNeeded?.(sessionId),
+      getSessionNum: (sessionId: string) => bridge.launcher?.getSessionNum?.(sessionId),
+      getSessionName: (sessionId: string) => bridge.sessionNameGetter?.(sessionId),
+      getSessions: () => anyBridge.sessions,
+      getLeaderIdleDeps: () => anyBridge.getSessionRegistryDeps(),
+    },
+  );
+  anyBridge.applyInitialSessionState = (sessionId: string, options: any) => {
+    const session = bridge.getOrCreateSession(sessionId);
+    applyInitialSessionStateController(session as any, options, {
+      persistSession: (targetSession) => bridge.persistSessionById((targetSession as any).id),
+      prefillSlashCommands: (targetSession) => anyBridge.prefillSlashCommands.call(anyBridge, targetSession),
+    });
+  };
+  anyBridge.markWorktree = (
+    sessionId: string,
+    repoRoot: string,
+    worktreeCwd: string,
+    defaultBranch?: string,
+    diffBaseBranch?: string,
+  ) => {
+    anyBridge.applyInitialSessionState(sessionId, {
+      cwd: worktreeCwd,
+      worktree: { repoRoot, defaultBranch, diffBaseBranch },
+    });
+  };
+  anyBridge.getTrafficStatsSnapshot = () => trafficStats.snapshot();
+  anyBridge.resetTrafficStats = () => {
+    trafficStats.reset();
+  };
+  anyBridge.setDiffBaseBranch = (sessionId: string, branch: string) => {
+    const session = bridge.getSession(sessionId);
+    if (!session) return false;
+    setDiffBaseBranchController(session as any, branch, anyBridge.getSessionGitStateDeps());
+    return true;
+  };
+  anyBridge.refreshGitInfoPublic = async (
+    sessionId: string,
+    options: { broadcastUpdate?: boolean; notifyPoller?: boolean; force?: boolean } = {},
+  ) => {
+    const session = bridge.getSession(sessionId);
+    if (!session) return false;
+    await refreshGitInfoPublicController(session as any, anyBridge.getSessionGitStateDeps(), options);
+    return true;
+  };
+  anyBridge.onSessionArchived = (sessionId: string) => {
+    cleanupBranchStateIndex(sessionId, {
+      branchToSessions: anyBridge.branchToSessions,
+      sessionBranches: anyBridge.sessionBranches,
+      lastCrossSessionRefreshAt: anyBridge.lastCrossSessionRefreshAt,
+    });
+  };
+  anyBridge.onSessionUnarchived = (sessionId: string) => {
+    const session = bridge.getSession(sessionId);
+    if (!session) return;
+    updateBranchIndexState(session, {
+      isArchived: bridge.launcher?.getSession(session.id)?.archived === true,
+      branchToSessions: anyBridge.branchToSessions,
+      sessionBranches: anyBridge.sessionBranches,
+    });
+  };
+  const workBoardStateDeps = {
+    getBoardDispatchableSignature: (session: any, questId: string) => anyBridge.getBoardDispatchableSignature(session.id, questId),
+    markNotificationDone: (sessionId: string, notifId: string, done: boolean) => {
+      const session = bridge.getSession(sessionId);
+      if (!session) return false;
+      return markNotificationDoneController(session, notifId, done, { broadcastToBrowsers: (_session: any, msg: any) => bridge.broadcastToSession(sessionId, msg), persistSession: () => bridge.persistSessionById(sessionId) });
+    },
+    broadcastBoard: (session: any, board: unknown[], completedBoard: unknown[]) =>
+      bridge.broadcastToSession(session.id, { type: "board_updated", board, completedBoard } as any),
+    persistSession: (session: any) => bridge.persistSessionById(session.id),
+    notifyReview: (sessionId: string, summary: string) => { const session = bridge.getSession(sessionId); if (session) notifyUserController(session, "review", summary, getNotificationTestDeps(bridge)); },
+  };
+  anyBridge.getBoard = (sessionId: string) => bridge.getSession(sessionId) ? getBoardController(bridge.getSession(sessionId)!) : [];
+  anyBridge.upsertBoardRow = (sessionId: string, row: any) => bridge.getSession(sessionId) ? upsertBoardRowController(bridge.getSession(sessionId)!, row, workBoardStateDeps) : null;
+  anyBridge.removeBoardRows = (sessionId: string, questIds: string[]) => bridge.getSession(sessionId) ? removeBoardRowsController(bridge.getSession(sessionId)!, questIds, workBoardStateDeps) : null;
+  anyBridge.advanceBoardRow = (sessionId: string, questId: string) => bridge.getSession(sessionId) ? advanceBoardRowController(bridge.getSession(sessionId)!, questId, ["QUEUED", "PLANNING", "IMPLEMENTING", "SKEPTIC_REVIEWING", "GROOM_REVIEWING", "PORTING"], workBoardStateDeps) : null;
+  anyBridge.getCompletedBoard = (sessionId: string) => bridge.getSession(sessionId) ? getCompletedBoardController(bridge.getSession(sessionId)!) : [];
+  anyBridge.getCompletedBoardCount = (sessionId: string) => bridge.getSession(sessionId)?.completedBoard.size ?? 0;
+  anyBridge.getVsCodeSelectionState = () => getVsCodeSelectionStateController(anyBridge.getBrowserTransportState());
+  anyBridge.updateVsCodeSelectionState = (nextState: any) =>
+    updateVsCodeSelectionStateController(anyBridge.getBrowserTransportState(), nextState, anyBridge.getBrowserTransportDeps());
+  anyBridge.getVsCodeWindowStates = () =>
+    getVsCodeWindowStatesController(anyBridge.getBrowserTransportState(), anyBridge.getBrowserTransportDeps());
+  anyBridge.upsertVsCodeWindowState = (nextState: any) => upsertVsCodeWindowStateController(anyBridge.getBrowserTransportState(), nextState);
+  anyBridge.pollVsCodeOpenFileCommands = (sourceId: string, limit = 1) =>
+    pollVsCodeOpenFileCommandsController(anyBridge.getBrowserTransportState(), sourceId, limit);
+  anyBridge.resolveVsCodeOpenFileResult = (sourceId: string, commandId: string, result: { ok: boolean; error?: string }) =>
+    resolveVsCodeOpenFileResultController(anyBridge.getBrowserTransportState(), sourceId, commandId, result);
+  anyBridge.requestVsCodeOpenFile = (target: any, options?: { timeoutMs?: number }) =>
+    requestVsCodeOpenFileController(anyBridge.getBrowserTransportState(), target, anyBridge.getBrowserTransportDeps(), options);
+  return bridge as TestBridge;
+}
+
 function expectCodexStartPendingTurnLike(
   turn: any,
   expected: {
@@ -213,14 +436,14 @@ function makeClaudeSdkAdapterMock() {
   };
 }
 
-let bridge: WsBridge;
+let bridge: TestBridge;
 let tempDir: string;
 let store: SessionStore;
 
 beforeEach(() => {
   tempDir = mkdtempSync(join(tmpdir(), "bridge-test-"));
   store = new SessionStore(tempDir);
-  bridge = new WsBridge();
+  bridge = attachBoardFacade(new WsBridge());
   bridge.setStore(store);
   bridge.resetTrafficStats();
   mockExecSync.mockReset();
@@ -281,12 +504,12 @@ describe("traffic accounting", () => {
       throw new Error("socket failed");
     });
 
-    bridge.broadcastSessionUpdate("s1", { cwd: "/repo" });
+    bridge.broadcastToSession("s1", { type: "session_update", session: { cwd: "/repo" } } as any);
     await flushAsync(); // traffic stats are now deferred via queueMicrotask
 
     const snapshot = bridge.getTrafficStatsSnapshot();
     const bucket = snapshot.buckets.find(
-      (entry) => entry.channel === "browser" && entry.direction === "out" && entry.messageType === "session_update",
+      (entry: any) => entry.channel === "browser" && entry.direction === "out" && entry.messageType === "session_update",
     );
 
     expect(bucket).toBeDefined();
@@ -305,7 +528,7 @@ describe("traffic accounting", () => {
 
     const snapshot = bridge.getTrafficStatsSnapshot();
     const bucket = snapshot.buckets.find(
-      (entry) => entry.channel === "browser" && entry.direction === "in" && entry.messageType === "session_subscribe",
+      (entry: any) => entry.channel === "browser" && entry.direction === "in" && entry.messageType === "session_subscribe",
     );
 
     expect(bucket).toMatchObject({
@@ -329,10 +552,10 @@ describe("traffic accounting", () => {
 
     const snapshot = bridge.getTrafficStatsSnapshot();
     const cliIn = snapshot.buckets.find(
-      (entry) => entry.channel === "cli" && entry.direction === "in" && entry.messageType === "keep_alive",
+      (entry: any) => entry.channel === "cli" && entry.direction === "in" && entry.messageType === "keep_alive",
     );
     const cliOut = snapshot.buckets.find(
-      (entry) => entry.channel === "cli" && entry.direction === "out" && entry.messageType === "user",
+      (entry: any) => entry.channel === "cli" && entry.direction === "out" && entry.messageType === "user",
     );
 
     expect(cliIn?.messages).toBe(1);
@@ -446,7 +669,7 @@ describe("Codex pending input delivery", () => {
 
     await store.flushAll(); // ensure fire-and-forget writeFile completes before reading back
 
-    const restored = new WsBridge();
+    const restored = attachBoardFacade(new WsBridge());
     restored.setStore(store);
     await restored.restoreFromDisk();
 
@@ -558,7 +781,7 @@ describe("Session management", () => {
     bridge.getOrCreateSession("s1");
     bridge.getOrCreateSession("s2");
     bridge.getOrCreateSession("s3");
-    const all = bridge.getAllSessions();
+    const all = ["s1", "s2", "s3"].map((sessionId) => bridge.getSession(sessionId)!.state);
     expect(all).toHaveLength(3);
     const ids = all.map((s) => s.session_id);
     expect(ids).toContain("s1");
@@ -585,8 +808,8 @@ describe("Session management", () => {
     bridge.handleBrowserOpen(browser, "s1");
     browser.send.mockClear();
 
-    bridge.setSessionClaimedQuest("s1", { id: "q-1", title: "Quest One", status: "in_progress" });
-    bridge.setSessionClaimedQuest("s1", { id: "q-1", title: "Quest One", status: "in_progress" });
+    applyClaimedQuest(bridge, "s1", { id: "q-1", title: "Quest One", status: "in_progress" });
+    applyClaimedQuest(bridge, "s1", { id: "q-1", title: "Quest One", status: "in_progress" });
 
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
     const questEvents = calls.filter((c: any) => c.type === "session_quest_claimed");
@@ -601,7 +824,7 @@ describe("Session management", () => {
     bridge.handleBrowserOpen(browser, "s1");
     browser.send.mockClear();
 
-    bridge.setSessionClaimedQuest("s1", { id: "q-1", title: "Quest One", status: "in_progress" });
+    applyClaimedQuest(bridge, "s1", { id: "q-1", title: "Quest One", status: "in_progress" });
 
     const session = bridge.getSession("s1")!;
     const bufferedTypes = session.eventBuffer.map((e: any) => e.message.type);
@@ -615,7 +838,7 @@ describe("Session management", () => {
     bridge.handleBrowserOpen(browser, "s1");
     browser.send.mockClear();
 
-    bridge.broadcastNameUpdate("s1", "New Session Name", "quest");
+    bridge.broadcastToSession("s1", { type: "session_name_update", name: "New Session Name", source: "quest" } as any);
 
     const session = bridge.getSession("s1")!;
     const bufferedTypes = session.eventBuffer.map((e: any) => e.message.type);
@@ -845,7 +1068,7 @@ describe("CLI handlers", () => {
     bridge.handleCLIClose(cli1, 1006, "relaunch");
 
     // Mark relaunch pending (as cli-launcher does via onBeforeRelaunch callback)
-    bridge.markRelaunchPending("s1");
+    session.relaunchPending = true;
 
     // New CLI process connects
     const cli2 = makeCliSocket("s1");
@@ -963,7 +1186,7 @@ describe("CLI handlers", () => {
     vi.advanceTimersByTime(600);
     await Promise.resolve();
 
-    expect(bridge.getLastUserMessage(leaderId)).toContain("1 event from 1 session");
+    expect(bridge.getSession(leaderId)?.lastUserMessage).toContain("1 event from 1 session");
     const outboundDuringReplay = leaderCli.send.mock.calls
       .map(([arg]: [string]) => arg as string)
       .find((line: string) => line.includes('"type":"user"'));
@@ -1085,7 +1308,7 @@ describe("CLI handlers", () => {
     });
 
     const callback = vi.fn();
-    bridge.onCLISessionIdReceived(callback);
+    bridge.onCLISessionId = callback;
 
     const cli = makeCliSocket("s1");
     bridge.handleCLIOpen(cli, "s1");
@@ -1130,8 +1353,8 @@ describe("CLI handlers", () => {
   });
 
   it("handleCLIMessage: system.init preserves host cwd for containerized sessions", async () => {
-    // markContainerized sets the host cwd and is_containerized before CLI connects
-    bridge.markContainerized("s1", "/Users/stan/Dev/myproject");
+    // applyInitialSessionState pre-populates container host cwd before CLI connects
+    bridge.applyInitialSessionState("s1", { containerizedHostCwd: "/Users/stan/Dev/myproject" });
 
     mockExecSync.mockImplementation((cmd: string) => {
       if (cmd.includes("--abbrev-ref HEAD")) return "main\n";
@@ -1857,7 +2080,7 @@ describe("Browser handlers", () => {
     (session as any).backendSocket = { send: vi.fn() };
 
     const gitInfoCb = vi.fn();
-    bridge.onSessionGitInfoReadyCallback(gitInfoCb);
+    bridge.onGitInfoReady = gitInfoCb;
 
     const browser = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browser, "s1");
@@ -3419,7 +3642,10 @@ describe("CLI message routing", () => {
     // even though the user-triggered completion still leaves review attention.
     expect(bridge.getSession("s1")!.isGenerating).toBe(false);
 
-    bridge.markSessionRead("s1");
+    clearAttentionAndMarkReadController(bridge.getSession("s1")!, {
+      broadcastToBrowsers: (session, msg) => bridge.broadcastToSession((session as any).id, msg as any),
+      persistSession: (session) => bridge.persistSessionById((session as any).id),
+    });
 
     bridge.handleCLIMessage(
       cli,
@@ -4817,7 +5043,7 @@ describe("Browser message routing", () => {
     spy.mockRestore();
   });
 
-  it("routeExternalInterrupt: emits turn_end with interrupt_source=leader", async () => {
+  it("routeBrowserMessage interrupt from leader emits turn_end with interrupt_source=leader", async () => {
     const spy = vi.spyOn(bridge, "emitTakodeEvent");
 
     bridge.handleBrowserMessage(
@@ -4827,7 +5053,10 @@ describe("Browser message routing", () => {
         content: "start work",
       }),
     );
-    await bridge.routeExternalInterrupt(bridge.getSession("s1")!, "leader");
+    await (bridge as any).routeBrowserMessage(bridge.getSession("s1")!, {
+      type: "interrupt",
+      interruptSource: "leader",
+    });
     bridge.handleCLIMessage(
       cli,
       JSON.stringify({
@@ -4915,16 +5144,13 @@ describe("Browser message routing", () => {
       timestamp: Date.now(),
     });
 
-    bridge.routeExternalPermissionResponse(
-      session,
-      {
-        type: "permission_response",
-        request_id: "perm-exit-plan-leader",
-        behavior: "deny",
-        message: "Keep planning",
-      },
-      "leader-7",
-    );
+    (bridge as any).routeBrowserMessage(session, {
+      type: "permission_response",
+      request_id: "perm-exit-plan-leader",
+      behavior: "deny",
+      message: "Keep planning",
+      actorSessionId: "leader-7",
+    });
     bridge.handleCLIMessage(
       cli,
       JSON.stringify({
@@ -4963,16 +5189,13 @@ describe("Browser message routing", () => {
       timestamp: Date.now(),
     });
 
-    bridge.routeExternalPermissionResponse(
-      session,
-      {
-        type: "permission_response",
-        request_id: "perm-exit-plan-system",
-        behavior: "deny",
-        message: "Keep planning",
-      },
-      "system:auto",
-    );
+    (bridge as any).routeBrowserMessage(session, {
+      type: "permission_response",
+      request_id: "perm-exit-plan-system",
+      behavior: "deny",
+      message: "Keep planning",
+      actorSessionId: "system:auto",
+    });
     bridge.handleCLIMessage(
       cli,
       JSON.stringify({
@@ -6557,9 +6780,9 @@ describe("Restore from disk with pendingPermissions", () => {
   });
 });
 
-// ─── broadcastNameUpdate ──────────────────────────────────────────────────────
+// ─── session_name_update broadcast ────────────────────────────────────────────
 
-describe("broadcastNameUpdate", () => {
+describe("session_name_update broadcast", () => {
   it("sends session_name_update to connected browsers", () => {
     const cli = makeCliSocket("s1");
     bridge.handleCLIOpen(cli, "s1");
@@ -6569,7 +6792,7 @@ describe("broadcastNameUpdate", () => {
     bridge.handleBrowserOpen(browser1, "s1");
     bridge.handleBrowserOpen(browser2, "s1");
 
-    bridge.broadcastNameUpdate("s1", "Fix Auth Bug");
+    bridge.broadcastToSession("s1", { type: "session_name_update", name: "Fix Auth Bug" } as any);
 
     const calls1 = browser1.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
     const calls2 = browser2.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
@@ -6579,7 +6802,7 @@ describe("broadcastNameUpdate", () => {
 
   it("does nothing for unknown sessions", () => {
     // Should not throw
-    bridge.broadcastNameUpdate("nonexistent", "Name");
+    bridge.broadcastToSession("nonexistent", { type: "session_name_update", name: "Name" } as any);
   });
 });
 
@@ -10833,7 +11056,7 @@ describe("Codex adapter result handling", () => {
       },
     });
 
-    bridge.setInitialCwd("s2", "/repo");
+    bridge.applyInitialSessionState("s2", { cwd: "/repo" });
 
     const state = bridge.getSession("s2")!.state;
     expect(state.skills).toEqual(["review"]);
@@ -11227,7 +11450,7 @@ describe("Codex adapter result handling", () => {
   it("recovers a missing Codex claim title from authoritative quest state", async () => {
     const browser = makeBrowserSocket("s1");
     const adapter = makeCodexAdapterMock();
-    bridge.setQuestTitleResolver(async (questId) => (questId === "q-74" ? "Fix Codex quest lifecycle chips" : null));
+    bridge.resolveQuestTitle = async (questId) => (questId === "q-74" ? "Fix Codex quest lifecycle chips" : null);
     bridge.attachCodexAdapter("s1", adapter as any);
     bridge.handleBrowserOpen(browser, "s1");
     browser.send.mockClear();
@@ -11306,7 +11529,7 @@ describe("Codex adapter result handling", () => {
     const browser = makeBrowserSocket("s1");
     const reconnectBrowser = makeBrowserSocket("s1");
     const adapter = makeCodexAdapterMock();
-    bridge.setQuestTitleResolver(async (questId) => (questId === "q-74" ? "Fix Codex quest lifecycle chips" : null));
+    bridge.resolveQuestTitle = async (questId) => (questId === "q-74" ? "Fix Codex quest lifecycle chips" : null);
     bridge.attachCodexAdapter("s1", adapter as any);
     bridge.handleBrowserOpen(browser, "s1");
     browser.send.mockClear();
@@ -11373,12 +11596,11 @@ describe("Codex adapter result handling", () => {
     const browser = makeBrowserSocket("s1");
     const adapter = makeCodexAdapterMock();
     let resolveClaimTitle: ((value: string | null) => void) | null = null;
-    bridge.setQuestTitleResolver(
+    bridge.resolveQuestTitle =
       () =>
         new Promise<string | null>((resolve) => {
           resolveClaimTitle = resolve;
-        }),
-    );
+        });
     bridge.attachCodexAdapter("s1", adapter as any);
     bridge.handleBrowserOpen(browser, "s1");
     browser.send.mockClear();
@@ -11482,12 +11704,11 @@ describe("Codex adapter result handling", () => {
     const browser = makeBrowserSocket("s1");
     const adapter = makeCodexAdapterMock();
     let resolveClaimTitle: ((value: string | null) => void) | null = null;
-    bridge.setQuestTitleResolver(
+    bridge.resolveQuestTitle =
       () =>
         new Promise<string | null>((resolve) => {
           resolveClaimTitle = resolve;
-        }),
-    );
+        });
     bridge.attachCodexAdapter("s1", adapter as any);
     bridge.handleBrowserOpen(browser, "s1");
     browser.send.mockClear();
@@ -11581,12 +11802,11 @@ describe("Codex adapter result handling", () => {
     const browser = makeBrowserSocket("s1");
     const adapter = makeCodexAdapterMock();
     let resolveClaimTitle: ((value: string | null) => void) | null = null;
-    bridge.setQuestTitleResolver(
+    bridge.resolveQuestTitle =
       () =>
         new Promise<string | null>((resolve) => {
           resolveClaimTitle = resolve;
-        }),
-    );
+        });
     bridge.attachCodexAdapter("s1", adapter as any);
     bridge.handleBrowserOpen(browser, "s1");
     browser.send.mockClear();
@@ -11713,12 +11933,11 @@ describe("Codex adapter result handling", () => {
     const browser = makeBrowserSocket("s1");
     const adapter = makeCodexAdapterMock();
     let resolveClaimTitle: ((value: string | null) => void) | null = null;
-    bridge.setQuestTitleResolver(
+    bridge.resolveQuestTitle =
       () =>
         new Promise<string | null>((resolve) => {
           resolveClaimTitle = resolve;
-        }),
-    );
+        });
     bridge.attachCodexAdapter("s1", adapter as any);
     bridge.handleBrowserOpen(browser, "s1");
     browser.send.mockClear();
@@ -11840,7 +12059,7 @@ describe("Codex adapter result handling", () => {
     bridge.handleBrowserOpen(browser, "s1");
     browser.send.mockClear();
 
-    bridge.setSessionClaimedQuest("s1", {
+    applyClaimedQuest(bridge, "s1", {
       id: "q-74",
       title: "Fix Codex quest lifecycle chips",
       status: "in_progress",
@@ -11917,7 +12136,7 @@ describe("Codex adapter result handling", () => {
     };
     bridge.setLauncher(launcherMock as any);
 
-    bridge.setSessionClaimedQuest("leader-1", {
+    applyClaimedQuest(bridge, "leader-1", {
       id: "q-74",
       title: "Fix Codex quest lifecycle chips",
       status: "in_progress",
@@ -11993,7 +12212,7 @@ describe("Codex adapter result handling", () => {
     bridge.handleBrowserOpen(browser, "s1");
     browser.send.mockClear();
 
-    bridge.setSessionClaimedQuest("s1", {
+    applyClaimedQuest(bridge, "s1", {
       id: "q-74",
       title: "Fix Codex quest lifecycle chips",
       status: "in_progress",
@@ -12502,10 +12721,12 @@ describe("markCodexRelaunchIntentional (q-16 double-spawn fix)", () => {
     bridge.handleBrowserOpen(browser, sid);
     browser.send.mockClear();
     relaunchCb.mockClear();
+    const session = bridge.getSession(sid)!;
 
     // Mark the upcoming disconnect as intentional (simulating what
     // cli-launcher.relaunch() does via onBeforeRelaunch callback)
-    bridge.markCodexRelaunchIntentional(sid, "relaunch");
+    session.intentionalCodexRelaunchUntil = Date.now() + 15_000;
+    session.intentionalCodexRelaunchReason = "relaunch";
 
     // Simulate the disconnect from killing the old process
     adapter.emitDisconnect();
@@ -12515,7 +12736,6 @@ describe("markCodexRelaunchIntentional (q-16 double-spawn fix)", () => {
     expect(relaunchCb).not.toHaveBeenCalled();
 
     // Failure counter should not have been incremented
-    const session = bridge.getSession(sid)!;
     expect(session.consecutiveAdapterFailures).toBe(0);
   });
 });
@@ -17646,7 +17866,7 @@ describe("Claude SDK adapter queue handoff", () => {
 
   it("tags user_message with [User HH:MM] when sent through SDK adapter path", () => {
     // Verifies the adapter path (not just handleUserMessage) applies timestamp tags
-    const bridge = new WsBridge();
+    const bridge = attachBoardFacade(new WsBridge());
     const sid = "sdk-ts-1";
     bridge.getOrCreateSession(sid);
     const session = bridge.getSession(sid)!;
@@ -17670,7 +17890,7 @@ describe("Claude SDK adapter queue handoff", () => {
 
   it("tags user_message with [Leader <session> HH:MM] in herded SDK session", () => {
     // Verifies herded workers get [Leader <session>] tag through the adapter path
-    const bridge = new WsBridge();
+    const bridge = attachBoardFacade(new WsBridge());
     const sid = "sdk-ts-herded";
     bridge.getOrCreateSession(sid);
     const session = bridge.getSession(sid)!;
@@ -17887,7 +18107,7 @@ describe("Codex adapter sets cliInitReceived on attach", () => {
     bridge.attachCodexAdapter(sid, adapter as any);
 
     // Should be idle: codexAdapter set, cliInitReceived true, not generating
-    expect(bridge.isSessionIdle(sid)).toBe(true);
+    expect(isSessionIdleRuntime(bridge.getSession(sid) as any)).toBe(true);
   });
 
   it("isSessionIdle returns false while Codex session is generating", () => {
@@ -17910,7 +18130,7 @@ describe("Codex adapter sets cliInitReceived on attach", () => {
 
     const session = bridge.getSession(sid)!;
     expect(session.isGenerating).toBe(true);
-    expect(bridge.isSessionIdle(sid)).toBe(false);
+    expect(isSessionIdleRuntime(bridge.getSession(sid) as any)).toBe(false);
   });
 });
 
@@ -18206,10 +18426,10 @@ describe("CLI slash command interception", () => {
   // to the CLI without timestamp tagging. The timestamp prefix (e.g.
   // "[User 7:41 PM] /context") breaks the CLI's internal slash command parser.
 
-  let bridge: WsBridge;
+  let bridge: TestBridge;
 
   beforeEach(() => {
-    bridge = new WsBridge();
+    bridge = attachBoardFacade(new WsBridge());
     bridge.setLauncher({
       touchActivity: vi.fn(),
       touchUserMessage: vi.fn(),
@@ -18750,7 +18970,7 @@ describe("prepareSessionForRevert", () => {
   it("prunes toolResults that are no longer reachable after revert truncation", () => {
     // Revert should drop lazy-fetch tool results for previews that were
     // truncated out of history so retained payload metrics don't stay inflated.
-    const bridge = new WsBridge();
+    const bridge = attachBoardFacade(new WsBridge());
     const cli = makeCliSocket("revert-prunes-tool-results");
     bridge.handleCLIOpen(cli, "revert-prunes-tool-results");
 
@@ -18796,7 +19016,7 @@ describe("prepareSessionForRevert", () => {
   it("prunes stale toolResults even when reachable preview count matches map size", () => {
     // Equal cardinality is not equal membership: rollback/resume can leave a
     // stale tool ID in the map while history references a different preview ID.
-    const bridge = new WsBridge();
+    const bridge = attachBoardFacade(new WsBridge());
     const cli = makeCliSocket("revert-prunes-equal-cardinality");
     bridge.handleCLIOpen(cli, "revert-prunes-equal-cardinality");
 
@@ -20014,16 +20234,13 @@ describe("Claude SDK interactive tool permissions", () => {
 
     // External permission responses carry the actor session ID. The SDK
     // denial path must preserve that actor when it synthesizes the interrupt.
-    bridge.routeExternalPermissionResponse(
-      session,
-      {
-        type: "permission_response",
-        request_id: "perm-exit-plan-sdk-deny",
-        behavior: "deny",
-        message: "Keep refining",
-      },
-      "leader-7",
-    );
+    (bridge as any).routeBrowserMessage(session, {
+      type: "permission_response",
+      request_id: "perm-exit-plan-sdk-deny",
+      behavior: "deny",
+      message: "Keep refining",
+      actorSessionId: "leader-7",
+    });
 
     const interruptCalls = adapter.sendBrowserMessage.mock.calls
       .map((args: any[]) => args[0])
@@ -20413,7 +20630,7 @@ describe("getHerdDiagnostics field name consistency", () => {
     const adapter = makeClaudeSdkAdapterMock();
     bridge.attachClaudeSdkAdapter(sid, adapter as any);
 
-    const diag = bridge.getHerdDiagnostics(sid);
+    const diag = getHerdDiagnosticsController(new Map([[sid, bridge.getSession(sid)!]]), sid);
     expect(diag).not.toBeNull();
     // Must use "cliConnected" — this is what the frontend reads.
     expect(diag!.cliConnected).toBe(true);
@@ -20426,7 +20643,7 @@ describe("getHerdDiagnostics field name consistency", () => {
     const browser = makeBrowserSocket(sid);
     bridge.handleBrowserOpen(browser, sid);
 
-    const diag = bridge.getHerdDiagnostics(sid);
+    const diag = getHerdDiagnosticsController(new Map([[sid, bridge.getSession(sid)!]]), sid);
     expect(diag).not.toBeNull();
     expect(diag!.cliConnected).toBe(false);
     expect("backendConnected" in diag!).toBe(false);
@@ -20875,7 +21092,7 @@ describe("work board", () => {
     await new Promise((r) => setTimeout(r, 200));
 
     // Restore from disk
-    const restored = new WsBridge();
+    const restored = attachBoardFacade(new WsBridge());
     restored.setStore(store);
     await restored.restoreFromDisk();
 
@@ -21134,8 +21351,8 @@ describe("work board", () => {
     expect(result).not.toBeNull();
     expect(result?.removed).toBe(false);
     expect(result?.newState).toBe("IMPLEMENTING");
-    expect(result?.board.map((row) => row.questId)).toEqual(["q-460", "q-461"]);
-    expect(result?.board.find((row) => row.questId === "q-461")).toEqual(
+    expect(result?.board.map((row: any) => row.questId)).toEqual(["q-460", "q-461"]);
+    expect(result?.board.find((row: any) => row.questId === "q-461")).toEqual(
       expect.objectContaining({
         status: "QUEUED",
         waitFor: ["q-460"],
@@ -21445,7 +21662,7 @@ describe("work board", () => {
     await new Promise((r) => setTimeout(r, 200));
 
     // Restore from disk
-    const restored = new WsBridge();
+    const restored = attachBoardFacade(new WsBridge());
     restored.setStore(store);
     await restored.restoreFromDisk();
 
@@ -21483,13 +21700,13 @@ describe("work board", () => {
 
     await new Promise((r) => setTimeout(r, 200));
 
-    const restored = new WsBridge();
+    const restored = attachBoardFacade(new WsBridge());
     restored.setStore(store);
-    restored.setQuestStatusResolver(async (questId) => {
+    restored.resolveQuestStatus = async (questId) => {
       if (questId === "q-460") return "in_progress";
       if (questId === "q-461") return "idea";
       return null;
-    });
+    };
     await restored.restoreFromDisk();
 
     const restoredBrowser = makeBrowserSocket("s1");
@@ -21501,8 +21718,8 @@ describe("work board", () => {
 
     expect(result?.removed).toBe(false);
     expect(result?.newState).toBe("IMPLEMENTING");
-    expect(result?.board.map((row) => row.questId)).toEqual(["q-460", "q-461"]);
-    expect(result?.board.find((row) => row.questId === "q-461")).toEqual(
+    expect(result?.board.map((row: any) => row.questId)).toEqual(["q-460", "q-461"]);
+    expect(result?.board.find((row: any) => row.questId === "q-461")).toEqual(
       expect.objectContaining({
         status: "QUEUED",
         waitFor: ["q-460"],
@@ -22192,9 +22409,9 @@ describe("board stall warnings", () => {
     });
     bridge.persistSessionSync(leaderId);
 
-    const restored = new WsBridge();
+    const restored = attachBoardFacade(new WsBridge());
     restored.setStore(store);
-    restored.setQuestStatusResolver(async (questId) => (questId === "q-1" ? "done" : null));
+    restored.resolveQuestStatus = async (questId) => (questId === "q-1" ? "done" : null);
 
     const launcherSessions = new Map<string, any>([
       [
@@ -22681,7 +22898,7 @@ describe("notifyUser herded session routing", () => {
       timestamp: Date.now(),
     });
 
-    const result = bridge.notifyUser("s1", "review", "Quest completed");
+    const result = notifyUserController(bridge.getSession("s1")!, "review", "Quest completed", getNotificationTestDeps(bridge));
     expect(result.ok).toBe(true);
 
     // Notification should be persisted to inbox
@@ -22743,7 +22960,7 @@ describe("notifyUser herded session routing", () => {
       timestamp: Date.now(),
     });
 
-    const result = bridge.notifyUser("s1", "needs-input", "Need decision on auth");
+    const result = notifyUserController(bridge.getSession("s1")!, "needs-input", "Need decision on auth", getNotificationTestDeps(bridge));
     expect(result.ok).toBe(true);
 
     // Should emit notification_needs_input event
@@ -22776,7 +22993,7 @@ describe("notifyUser herded session routing", () => {
       timestamp: Date.now(),
     });
 
-    bridge.notifyUser("s1", "review", "Task done");
+    notifyUserController(bridge.getSession("s1")!, "review", "Task done", getNotificationTestDeps(bridge));
 
     // Attention SHOULD be set for non-herded sessions
     expect(session.attentionReason).toBe("review");

@@ -2,6 +2,11 @@ import { Hono } from "hono";
 import * as questStore from "../quest-store.js";
 import type { QuestFeedbackEntry, QuestmasterTask } from "../quest-types.js";
 import { SERVER_GIT_CMD } from "../constants.js";
+import {
+  addTaskEntry as addTaskEntryController,
+  setSessionClaimedQuest as setSessionClaimedQuestController,
+  updateQuestTaskEntries as updateQuestTaskEntriesController,
+} from "../bridge/session-registry-controller.js";
 import { broadcastQuestUpdate } from "./quest-helpers.js";
 import type { RouteContext } from "./context.js";
 
@@ -67,6 +72,19 @@ export function createQuestRoutes(ctx: RouteContext) {
   const api = new Hono();
   const { launcher, wsBridge, imageStore, authenticateCompanionCallerOptional, execCaptureStdoutAsync } = ctx;
 
+  const setClaimedQuest = (sessionId: string, quest: { id: string; title: string; status?: string } | null) => {
+    const session = wsBridge.getSession(sessionId);
+    if (!session) return;
+    setSessionClaimedQuestController(session, quest, { broadcastToBrowsers: (_session, msg) => wsBridge.broadcastToSession(sessionId, msg as any), persistSession: () => wsBridge.persistSessionById(sessionId), getLauncherSessionInfo: (targetSessionId) => launcher.getSession(targetSessionId), onSessionNamedByQuest: (targetSessionId, title) => (wsBridge as any).onSessionNamedByQuest?.(targetSessionId, title) });
+  };
+
+  const persistSessionTaskHistory = (sessionId: string) => {
+    const session = wsBridge.getSession(sessionId);
+    if (!session) return;
+    wsBridge.broadcastToSession(sessionId, { type: "session_task_history", tasks: session.taskHistory } as any);
+    wsBridge.persistSessionById(sessionId);
+  };
+
   // ─── Questmaster (~/.companion/questmaster/) ──────────────────────
 
   // ─── Quest image upload/serve ────────────────────────────────────
@@ -117,10 +135,10 @@ export function createQuestRoutes(ctx: RouteContext) {
 
     const nextSessionId = "sessionId" in quest && typeof quest.sessionId === "string" ? quest.sessionId : null;
     if (currentSessionId && currentSessionId !== nextSessionId) {
-      wsBridge.setSessionClaimedQuest(currentSessionId, null);
+      setClaimedQuest(currentSessionId, null);
     }
     if (nextSessionId) {
-      wsBridge.setSessionClaimedQuest(nextSessionId, {
+      setClaimedQuest(nextSessionId, {
         id: quest.questId,
         title: quest.title,
         status: quest.status,
@@ -249,13 +267,19 @@ export function createQuestRoutes(ctx: RouteContext) {
         // Keep quest-owned session names in sync when a claimed quest is retitled.
         // setSessionClaimedQuest broadcasts session_quest_claimed + session_name_update
         // source:quest, and persists the name via callback.
-        wsBridge.setSessionClaimedQuest(quest.sessionId, {
+        setClaimedQuest(quest.sessionId, {
           id: quest.questId,
           title: quest.title,
           status: quest.status,
         });
         // Update task history entries that reference this quest
-        wsBridge.updateQuestTaskEntries(quest.sessionId, quest.questId, quest.title);
+        const session = wsBridge.getSession(quest.sessionId);
+        if (session) {
+          updateQuestTaskEntriesController(session, quest.questId, quest.title, {
+            broadcastTaskHistory: () => persistSessionTaskHistory(quest.sessionId),
+            persistSession: () => wsBridge.persistSessionById(quest.sessionId),
+          });
+        }
       }
       broadcastQuestUpdate(wsBridge);
       return c.json(quest);
@@ -323,7 +347,7 @@ export function createQuestRoutes(ctx: RouteContext) {
       broadcastQuestUpdate(wsBridge);
       // setSessionClaimedQuest broadcasts session_quest_claimed + session_name_update
       // source:quest, cancels in-flight namers, and persists the name via callback.
-      wsBridge.setSessionClaimedQuest(sessionId, { id: quest.questId, title: quest.title, status: quest.status });
+      setClaimedQuest(sessionId, { id: quest.questId, title: quest.title, status: quest.status });
       console.log(`[quest-claim] Setting session name for ${sessionId} to "${quest.title}" (quest ${quest.questId})`);
       // Use the last user message as trigger so clicking the quest chip scrolls
       // to the user message that initiated the claim (matches auto-namer behavior).
@@ -338,14 +362,20 @@ export function createQuestRoutes(ctx: RouteContext) {
           }
         }
       }
-      wsBridge.addTaskEntry(sessionId, {
+      const trackedSession = wsBridge.getSession(sessionId);
+      if (trackedSession) {
+        addTaskEntryController(trackedSession, {
         title: quest.title,
         action: "new",
         timestamp: Date.now(),
         triggerMessageId: triggerMsgId,
         source: "quest",
         questId: quest.questId,
-      });
+        }, {
+          broadcastTaskHistory: () => persistSessionTaskHistory(sessionId),
+          persistSession: () => wsBridge.persistSessionById(sessionId),
+        });
+      }
       return c.json(quest);
     } catch (e: unknown) {
       return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
@@ -364,7 +394,7 @@ export function createQuestRoutes(ctx: RouteContext) {
       // Update session's quest status so browsers can show "pending review" badge
       if ("sessionId" in quest) {
         const sid = (quest as { sessionId: string }).sessionId;
-        wsBridge.setSessionClaimedQuest(sid, { id: quest.questId, title: quest.title, status: quest.status });
+        setClaimedQuest(sid, { id: quest.questId, title: quest.title, status: quest.status });
       }
       return c.json(quest);
     } catch (e: unknown) {
@@ -397,7 +427,7 @@ export function createQuestRoutes(ctx: RouteContext) {
       broadcastQuestUpdate(wsBridge);
       // Clear the claimed quest from the active owner session since it's now cancelled.
       if (current && "sessionId" in current && typeof current.sessionId === "string") {
-        wsBridge.setSessionClaimedQuest(current.sessionId, null);
+        setClaimedQuest(current.sessionId, null);
       }
       wsBridge.removeBoardRowFromAll(c.req.param("questId"));
       return c.json(quest);

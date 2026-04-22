@@ -50,7 +50,7 @@ function createMockBridge(): WsBridgeHandle & {
     }),
     isSessionIdle: vi.fn(() => false),
     wakeIdleKilledSession: vi.fn(() => false),
-    getSessionMessages: vi.fn(() => null),
+    getSession: vi.fn(() => undefined),
     _triggerEvent: (evt: TakodeEvent) => {
       callback?.(evt);
     },
@@ -66,19 +66,21 @@ let eventCallback: ((evt: TakodeEvent) => void) | null = null;
 
 function createMocks() {
   eventCallback = null;
-  const bridge: WsBridgeHandle = {
-    subscribeTakodeEvents: vi.fn((sessions, cb) => {
+  const bridge = {
+    subscribeTakodeEvents: vi.fn<WsBridgeHandle["subscribeTakodeEvents"]>((sessions, cb) => {
       eventCallback = cb;
       return vi.fn(); // unsubscribe
     }),
-    injectUserMessage: vi.fn(() => "sent" as const),
-    isSessionIdle: vi.fn(() => false),
-    wakeIdleKilledSession: vi.fn(() => false),
-    getSessionMessages: vi.fn(() => null),
-    getBoardRow: vi.fn(() => ({ status: "IMPLEMENTING" })),
-    getBoardStallSignature: vi.fn(() => "sig-1"),
-    getBoardDispatchableSignature: vi.fn(() => "dispatchable-sig-1"),
-  };
+    injectUserMessage: vi.fn<WsBridgeHandle["injectUserMessage"]>(() => "sent"),
+    isSessionIdle: vi.fn<NonNullable<WsBridgeHandle["isSessionIdle"]>>(() => false),
+    wakeIdleKilledSession: vi.fn<NonNullable<WsBridgeHandle["wakeIdleKilledSession"]>>(() => false),
+    getSession: vi.fn<WsBridgeHandle["getSession"]>(() => undefined),
+    getBoardRow: vi.fn<NonNullable<WsBridgeHandle["getBoardRow"]>>(() => ({ status: "IMPLEMENTING" })),
+    getBoardStallSignature: vi.fn<NonNullable<WsBridgeHandle["getBoardStallSignature"]>>(() => "sig-1"),
+    getBoardDispatchableSignature: vi.fn<NonNullable<WsBridgeHandle["getBoardDispatchableSignature"]>>(
+      () => "dispatchable-sig-1",
+    ),
+  } satisfies WsBridgeHandle;
   const launcher: LauncherHandle = {
     getHerdedSessions: vi.fn(() => [{ sessionId: "worker-1" }, { sessionId: "worker-2" }]),
   };

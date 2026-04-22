@@ -12,7 +12,6 @@ interface HerdBridgeHandle {
     data: TakodeHerdReassignedEventData,
     actorSessionId?: string,
   ): void;
-  onHerdMembershipChanged(orchId: string): void;
 }
 
 interface HerdLauncherHandle {
@@ -40,7 +39,6 @@ export function createLauncherHerdChangeHandler(params: {
   return (event: HerdChangeEvent) => {
     if (event.type === "membership_changed") {
       dispatcher.onHerdChanged(event.leaderId);
-      wsBridge.onHerdMembershipChanged(event.leaderId);
       return;
     }
 

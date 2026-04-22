@@ -1,3 +1,6 @@
+import type { BrowserIncomingMessage } from "../session-types.js";
+import { sessionTag } from "../session-tag.js";
+
 // Injected into leader sessions after context compaction so they reload
 // orchestration skills and recover enough self-history before making decisions.
 export const LEADER_COMPACTION_RECOVERY_PROMPT = `Context was compacted. Before continuing, recover enough context to safely resume orchestration:
@@ -43,4 +46,68 @@ export function extractAskUserAnswers(
     }
   }
   return pairs.length ? pairs : undefined;
+}
+
+type CompactionRecoverySessionLike = {
+  id: string;
+  messageHistory: BrowserIncomingMessage[];
+};
+
+export function getCompactionRecoveryPrompt(role: "leader" | "standard"): string {
+  return role === "leader" ? LEADER_COMPACTION_RECOVERY_PROMPT : STANDARD_COMPACTION_RECOVERY_PROMPT;
+}
+
+export function isCompactionRecoveryPrompt(content: string): boolean {
+  return content === LEADER_COMPACTION_RECOVERY_PROMPT || content === STANDARD_COMPACTION_RECOVERY_PROMPT;
+}
+
+export function hasCompactionRecoveryAfterLatestMarker(
+  session: CompactionRecoverySessionLike,
+  deps: { isSystemSourceTag: (agentSource: { sessionId: string; sessionLabel?: string } | undefined) => boolean },
+): boolean {
+  let latestCompactIdx = -1;
+  for (let i = session.messageHistory.length - 1; i >= 0; i--) {
+    if (session.messageHistory[i]?.type === "compact_marker") {
+      latestCompactIdx = i;
+      break;
+    }
+  }
+  if (latestCompactIdx < 0) return false;
+
+  for (let i = latestCompactIdx + 1; i < session.messageHistory.length; i++) {
+    const entry = session.messageHistory[i] as
+      | {
+          type?: string;
+          content?: string;
+          agentSource?: { sessionId: string; sessionLabel?: string };
+        }
+      | undefined;
+    if (entry?.type !== "user_message") continue;
+    if (typeof entry.content !== "string" || !isCompactionRecoveryPrompt(entry.content)) continue;
+    if (!deps.isSystemSourceTag(entry.agentSource)) continue;
+    return true;
+  }
+  return false;
+}
+
+export function injectCompactionRecovery(
+  session: CompactionRecoverySessionLike,
+  deps: {
+    isLeaderSession: (session: CompactionRecoverySessionLike) => boolean;
+    isSystemSourceTag: (agentSource: { sessionId: string; sessionLabel?: string } | undefined) => boolean;
+    injectUserMessage: (
+      sessionId: string,
+      content: string,
+      agentSource?: { sessionId: string; sessionLabel?: string },
+    ) => void;
+  },
+): void {
+  if (hasCompactionRecoveryAfterLatestMarker(session, deps)) return;
+  const role = deps.isLeaderSession(session) ? "leader" : "standard";
+  const prompt = getCompactionRecoveryPrompt(role);
+  console.log(`[ws-bridge] Injecting ${role} compaction recovery for session ${sessionTag(session.id)}`);
+  deps.injectUserMessage(session.id, prompt, {
+    sessionId: "system",
+    sessionLabel: "System",
+  });
 }

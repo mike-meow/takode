@@ -108,7 +108,7 @@ export function createGitRoutes(ctx: RouteContext) {
     }
     // Broadcast updated git counts to all browsers for this session
     if (sessionId) {
-      wsBridge.broadcastSessionUpdate(sessionId, { git_ahead, git_behind });
+      wsBridge.broadcastToSession(sessionId, { type: "session_update", session: { git_ahead, git_behind } } as any);
     }
     return c.json({ ...result, git_ahead, git_behind });
   });

@@ -1,18 +1,44 @@
+import { randomUUID } from "node:crypto";
+import { evaluatePermission, type RecentToolCall } from "../auto-approver.js";
+import type { AutoApprovalConfig } from "../auto-approval-store.js";
 import { deriveAttachmentPaths, formatAttachmentPathAnnotation } from "../attachment-paths.js";
 import type { ImageRef } from "../image-store.js";
 import type {
   BrowserIncomingMessage,
   BrowserOutgoingMessage,
+  CLIControlRequestMessage,
   CodexOutboundTurn,
+  McpServerConfig,
+  McpServerDetail,
   PendingCodexInput,
   PermissionRequest,
   SessionState,
 } from "../session-types.js";
 import { sessionTag } from "../session-tag.js";
+import type {
+  BrowserTransportDeps,
+  BrowserTransportSessionLike,
+  BrowserTransportSocketLike,
+} from "./browser-transport-controller.js";
+import { handleBrowserProtocolMessage } from "./browser-transport-controller.js";
 import type { UserDispatchTurnTarget } from "./generation-lifecycle.js";
 import { extractAskUserAnswers } from "./compaction-recovery.js";
-import { buildPendingCodexImageDrafts, getApprovalSummary, getDenialSummary, NOTABLE_APPROVALS } from "./permission-summaries.js";
+import {
+  handlePermissionRequest as handlePermissionRequestPipeline,
+  type PermissionPipelineResult,
+} from "./permission-pipeline.js";
+import {
+  buildPendingCodexImageDrafts,
+  getApprovalSummary,
+  getAutoApprovalSummary,
+  getDenialSummary,
+  NOTABLE_APPROVALS,
+} from "./permission-summaries.js";
 type InterruptSource = "user" | "leader" | "system";
+type ControlResponseHandler = {
+  subtype: string;
+  resolve: (response: unknown) => void;
+};
 type BrowserUserMessage = Extract<BrowserOutgoingMessage, { type: "user_message" }>;
 type PermissionResponseMessage = Extract<BrowserOutgoingMessage, { type: "permission_response" }>;
 type IngestedUserMessage = {
@@ -42,6 +68,7 @@ export interface AdapterBrowserRoutingSessionLike {
   >;
   messageHistory: BrowserIncomingMessage[];
   pendingPermissions: Map<string, PermissionRequest>;
+  evaluatingAborts: Map<string, AbortController>;
   pendingMessages: string[];
   pendingCodexTurns: CodexOutboundTurn[];
   pendingCodexInputs: PendingCodexInput[];
@@ -65,22 +92,14 @@ export interface AdapterBrowserRoutingSessionLike {
       }
     | null;
 }
+
+type BrowserMessageRouterSessionLike = AdapterBrowserRoutingSessionLike &
+  BrowserTransportSessionLike & {
+    processedClientMessageIds: string[];
+    processedClientMessageIdSet: Set<string>;
+  };
+
 export interface AdapterBrowserRoutingDeps {
-  broadcastToBrowsers: (session: AdapterBrowserRoutingSessionLike, msg: BrowserIncomingMessage) => void;
-  emitTakodeEvent: (
-    sessionId: string,
-    type: string,
-    data: Record<string, unknown>,
-    actorSessionId?: string,
-  ) => void;
-  persistSession: (session: AdapterBrowserRoutingSessionLike) => void;
-  touchUserMessage: (sessionId: string) => void;
-  formatVsCodeSelectionPrompt: (selection: NonNullable<BrowserUserMessage["vscodeSelection"]>) => string;
-  buildTimestampTag: (
-    session: AdapterBrowserRoutingSessionLike,
-    ts: number,
-    agentSource?: BrowserUserMessage["agentSource"],
-  ) => string;
   sendToCLI: (
     session: AdapterBrowserRoutingSessionLike,
     ndjson: string,
@@ -89,6 +108,25 @@ export interface AdapterBrowserRoutingDeps {
       skipUserDispatchLifecycle?: boolean;
     },
   ) => UserDispatchTurnTarget | null;
+  broadcastToBrowsers: (session: AdapterBrowserRoutingSessionLike, msg: BrowserIncomingMessage) => void;
+  emitTakodeEvent: (
+    sessionId: string,
+    type: string,
+    data: Record<string, unknown>,
+    actorSessionId?: string,
+  ) => void;
+  persistSession: (session: AdapterBrowserRoutingSessionLike) => void;
+  setAttentionAction: (session: AdapterBrowserRoutingSessionLike) => void;
+  schedulePermissionNotification: (session: AdapterBrowserRoutingSessionLike, request: PermissionRequest) => void;
+  broadcastAutoApproval: (session: AdapterBrowserRoutingSessionLike, request: PermissionRequest) => void;
+  onAgentPaused?: (sessionId: string, history: AdapterBrowserRoutingSessionLike["messageHistory"], cwd: string) => void;
+  getCurrentTurnTriggerSource: (
+    session: AdapterBrowserRoutingSessionLike,
+  ) => "user" | "leader" | "system" | "unknown";
+  abortAutoApproval: (session: AdapterBrowserRoutingSessionLike, requestId: string) => void;
+  preInterrupt: (session: AdapterBrowserRoutingSessionLike, source: InterruptSource) => void;
+  touchUserMessage: (sessionId: string) => void;
+  formatVsCodeSelectionPrompt: (selection: NonNullable<BrowserUserMessage["vscodeSelection"]>) => string;
   getCliSessionId: (session: AdapterBrowserRoutingSessionLike) => string;
   nextUserMessageId: (ts: number) => string;
   storeImage?: (sessionId: string, data: string, mediaType: string) => Promise<ImageRef>;
@@ -120,11 +158,9 @@ export interface AdapterBrowserRoutingDeps {
   ) => void;
   notifyImageSendFailure: (session: AdapterBrowserRoutingSessionLike, err?: unknown) => void;
   isHerdEventSource: (agentSource: BrowserUserMessage["agentSource"]) => boolean;
-  isSystemSourceTag: (agentSource: BrowserUserMessage["agentSource"]) => boolean;
   onSessionActivityStateChanged: (sessionId: string, reason: string) => void;
   clearActionAttentionIfNoPermissions: (session: AdapterBrowserRoutingSessionLike) => void;
   cancelPermissionNotification: (sessionId: string, requestId: string) => void;
-  getInterruptSourceFromActorSessionId: (actorSessionId: string | undefined) => InterruptSource;
   markTurnInterrupted: (session: AdapterBrowserRoutingSessionLike, source: InterruptSource) => void;
   armCodexFreshTurnRequirement: (
     session: AdapterBrowserRoutingSessionLike,
@@ -157,6 +193,17 @@ export interface AdapterBrowserRoutingDeps {
       }
     | null
     | undefined;
+  requestCodexIntentionalRelaunch: (
+    session: AdapterBrowserRoutingSessionLike,
+    reason: string,
+    delayMs?: number,
+  ) => void;
+  onPermissionModeChanged?: (sessionId: string, newMode: string) => void;
+  sendControlRequest: (
+    session: AdapterBrowserRoutingSessionLike,
+    request: Record<string, unknown>,
+    onResponse?: ControlResponseHandler,
+  ) => void;
   requestCodexAutoRecovery: (session: AdapterBrowserRoutingSessionLike, reason: string) => boolean;
   requestCliRelaunch?: (sessionId: string) => void;
   handleSetModel: (session: AdapterBrowserRoutingSessionLike, model: string) => void;
@@ -166,7 +213,836 @@ export interface AdapterBrowserRoutingDeps {
   handleCodexSetReasoningEffort: (session: AdapterBrowserRoutingSessionLike, effort: string) => void;
   handleSetAskPermission: (session: AdapterBrowserRoutingSessionLike, askPermission: boolean) => void;
   handleInterruptFallback: (session: AdapterBrowserRoutingSessionLike, source: InterruptSource) => void;
+  browserTransportDeps: BrowserTransportDeps;
+  handleVsCodeSelectionUpdate: (
+    msg: Extract<BrowserOutgoingMessage, { type: "vscode_selection_update" }>,
+  ) => void;
+  touchActivity?: (sessionId: string) => void;
+  idempotentMessageTypes: ReadonlySet<string>;
+  processedClientMsgIdLimit: number;
 }
+
+const BROWSER_ACTIVITY_TYPES: ReadonlySet<string> = new Set([
+  "user_message",
+  "permission_response",
+  "interrupt",
+  "set_model",
+  "set_permission_mode",
+  "set_codex_reasoning_effort",
+]);
+
+function isSystemSourceTag(agentSource: BrowserUserMessage["agentSource"]): boolean {
+  if (!agentSource) return false;
+  return agentSource.sessionId === "system" || agentSource.sessionId.startsWith("system:");
+}
+
+function getInterruptSourceFromActorSessionId(actorSessionId: string | undefined): InterruptSource {
+  if (!actorSessionId) return "user";
+  return isSystemSourceTag({ sessionId: actorSessionId }) ? "system" : "leader";
+}
+
+function localDateKey(ts: number): string {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function buildTimestampTag(
+  session: AdapterBrowserRoutingSessionLike,
+  ts: number,
+  getLauncherSessionInfo: AdapterBrowserRoutingDeps["getLauncherSessionInfo"],
+  agentSource?: BrowserUserMessage["agentSource"],
+): string {
+  const d = new Date(ts);
+  const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const dateKey = localDateKey(ts);
+  const includeDate = !session.lastUserMessageDateTag || dateKey !== session.lastUserMessageDateTag;
+  session.lastUserMessageDateTag = dateKey;
+  const dateStr = includeDate
+    ? d.toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" }) + " "
+    : "";
+  const timeWithDate = dateStr + time;
+  const sessionInfo = getLauncherSessionInfo(session.id);
+  if (sessionInfo?.isOrchestrator) {
+    if (isSystemSourceTag(agentSource)) return `[System ${timeWithDate}] `;
+    if (agentSource?.sessionId === "herd-events") return `[Herd ${timeWithDate}] `;
+    if (agentSource) {
+      const label = agentSource.sessionLabel || agentSource.sessionId.slice(0, 8);
+      return `[Agent ${label} ${timeWithDate}] `;
+    }
+    return `[User ${timeWithDate}] `;
+  }
+  if (sessionInfo?.herdedBy && agentSource) {
+    const label = agentSource.sessionLabel || agentSource.sessionId.slice(0, 8);
+    return `[Leader ${label} ${timeWithDate}] `;
+  }
+  return `[User ${timeWithDate}] `;
+}
+
+export function buildPermissionPreview(
+  request: PermissionRequest,
+): Record<string, unknown> {
+  if (request.tool_name === "AskUserQuestion") {
+    const questions = request.input.questions as
+      | Array<{ question: string; options?: Array<{ label: string }> }>
+      | undefined;
+    if (questions?.[0]) {
+      const options = questions[0].options?.map((option) => option.label);
+      return {
+        question: questions[0].question,
+        ...(options ? { options } : {}),
+      };
+    }
+  }
+  if (request.tool_name === "ExitPlanMode") {
+    const plan = typeof request.input.plan === "string" ? request.input.plan : undefined;
+    if (!plan) return {};
+    const maxPlanContent = 10_000;
+    return {
+      planContent: plan.length > maxPlanContent ? `${plan.slice(0, maxPlanContent)}\n\n... (plan truncated)` : plan,
+    };
+  }
+  return {};
+}
+
+export function findLastAssistantMessageIndex(
+  session: AdapterBrowserRoutingSessionLike,
+): number | undefined {
+  for (let i = session.messageHistory.length - 1; i >= 0; i--) {
+    if (session.messageHistory[i].type === "assistant") return i;
+  }
+  return undefined;
+}
+
+function emitTakodePermissionRequest(
+  session: AdapterBrowserRoutingSessionLike,
+  request: PermissionRequest,
+  deps: AdapterBrowserRoutingDeps,
+): void {
+  deps.emitTakodeEvent(session.id, "permission_request", {
+    tool_name: request.tool_name,
+    request_id: request.request_id,
+    summary: request.description || request.tool_name,
+    ...buildPermissionPreview(request),
+    turn_source: deps.getCurrentTurnTriggerSource(session),
+    msg_index: findLastAssistantMessageIndex(session),
+  });
+}
+
+function emitTakodePermissionResolved(
+  sessionId: string,
+  toolName: string,
+  outcome: "approved" | "denied",
+  deps: AdapterBrowserRoutingDeps,
+  actorSessionId?: string,
+): void {
+  deps.emitTakodeEvent(sessionId, "permission_resolved", { tool_name: toolName, outcome }, actorSessionId);
+}
+
+export async function routeBrowserMessage(
+  session: BrowserMessageRouterSessionLike,
+  msg: BrowserOutgoingMessage,
+  ws: BrowserTransportSocketLike | undefined,
+  deps: AdapterBrowserRoutingDeps,
+): Promise<void> {
+  const maybeProtocolHandled = handleBrowserProtocolMessage(session, msg, ws, deps.browserTransportDeps);
+  const protocolHandled =
+    maybeProtocolHandled instanceof Promise ? await maybeProtocolHandled : maybeProtocolHandled;
+  if (protocolHandled) return;
+
+  if (msg.type === "permission_user_viewing") {
+    const requestId = msg.request_id;
+    const perm = session.pendingPermissions.get(requestId);
+    if (perm?.evaluating) {
+      deps.abortAutoApproval(session, requestId);
+      perm.evaluating = undefined;
+      deps.broadcastToBrowsers(session, {
+        type: "permission_needs_attention",
+        request_id: requestId,
+        timestamp: Date.now(),
+      });
+      deps.setAttentionAction(session);
+      console.log(
+        `[ws-bridge] Auto-approval cancelled for ${perm.tool_name} in session ${sessionTag(session.id)} — user opened dialog`,
+      );
+      deps.persistSession(session);
+    }
+    return;
+  }
+
+  if (deps.idempotentMessageTypes.has(msg.type) && "client_msg_id" in msg && msg.client_msg_id) {
+    if (session.processedClientMessageIdSet.has(msg.client_msg_id)) return;
+    session.processedClientMessageIds.push(msg.client_msg_id);
+    session.processedClientMessageIdSet.add(msg.client_msg_id);
+    if (session.processedClientMessageIds.length > deps.processedClientMsgIdLimit) {
+      const overflow = session.processedClientMessageIds.length - deps.processedClientMsgIdLimit;
+      const removed = session.processedClientMessageIds.splice(0, overflow);
+      for (const id of removed) {
+        session.processedClientMessageIdSet.delete(id);
+      }
+    }
+    deps.persistSession(session);
+  }
+
+  if (BROWSER_ACTIVITY_TYPES.has(msg.type)) {
+    deps.touchActivity?.(session.id);
+  }
+
+  if (msg.type === "vscode_selection_update") {
+    deps.handleVsCodeSelectionUpdate(msg);
+    return;
+  }
+
+  if (msg.type === "user_message" && msg.images?.length && !deps.storeImage) {
+    deps.notifyImageSendFailure(session, new Error("image store unavailable"));
+    return;
+  }
+
+  if (
+    msg.type === "user_message" &&
+    typeof msg.content === "string" &&
+    msg.content.trim().toLowerCase() === "/compact" &&
+    !msg.images?.length &&
+    session.backendType !== "codex"
+  ) {
+    handleForceCompact(session, deps);
+    return;
+  }
+
+  if (
+    msg.type === "user_message" &&
+    typeof msg.content === "string" &&
+    !msg.images?.length &&
+    session.backendType !== "codex" &&
+    isCliSlashCommand(session, msg.content.trim())
+  ) {
+    handleCliSlashCommand(session, msg.content.trim(), deps);
+    return;
+  }
+
+  const maybeAdapterRouted = routeAdapterBrowserMessage(session, msg, ws, deps);
+  const adapterRouted = maybeAdapterRouted instanceof Promise ? await maybeAdapterRouted : maybeAdapterRouted;
+  if (adapterRouted) return;
+
+  switch (msg.type) {
+    case "user_message":
+      try {
+        await handleUserMessage(session, msg, deps);
+      } catch (err) {
+        if (msg.images?.length) {
+          deps.notifyImageSendFailure(session, err);
+          break;
+        }
+        throw err;
+      }
+      break;
+
+    case "permission_response":
+      handlePermissionResponse(session, msg, deps, msg.actorSessionId);
+      break;
+
+    case "interrupt":
+      handleInterrupt(session, msg.interruptSource ?? "user", deps);
+      break;
+
+    case "set_model":
+      deps.handleSetModel(session, msg.model);
+      break;
+
+    case "set_codex_reasoning_effort":
+      break;
+
+    case "set_permission_mode":
+      handleSetPermissionMode(session, msg.mode, deps);
+      break;
+
+    case "mcp_get_status":
+      handleMcpGetStatus(session, deps);
+      break;
+
+    case "mcp_toggle":
+      handleMcpToggle(session, msg.serverName, msg.enabled, deps);
+      break;
+
+    case "mcp_reconnect":
+      handleMcpReconnect(session, msg.serverName, deps);
+      break;
+
+    case "mcp_set_servers":
+      handleMcpSetServers(session, msg.servers, deps);
+      break;
+
+    case "set_ask_permission":
+      handleSetAskPermission(session, msg.askPermission, deps);
+      break;
+  }
+}
+export function handleControlRequest(
+  session: AdapterBrowserRoutingSessionLike,
+  msg: CLIControlRequestMessage,
+  deps: AdapterBrowserRoutingDeps,
+): void {
+  if (msg.request.subtype !== "can_use_tool") return;
+  const toolName = msg.request.tool_name;
+  const applyResult = (result: PermissionPipelineResult): void => {
+    if (result.kind === "mode_auto_approved" || result.kind === "settings_rule_approved") {
+      deps.sendToCLI(
+        session,
+        JSON.stringify({
+          type: "control_response",
+          response: {
+            subtype: "success",
+            request_id: result.request.request_id,
+            response: {
+              behavior: "allow",
+              updatedInput: result.request.input,
+            },
+          },
+        }),
+      );
+      deps.broadcastAutoApproval(session, result.request);
+      return;
+    }
+    if (result.kind === "queued_for_llm_auto_approval") {
+      void tryLlmAutoApproval(session, result.request.request_id, result.request, result.autoApprovalConfig, deps);
+    }
+    if (toolName === "ExitPlanMode" && deps.onAgentPaused) {
+      deps.onAgentPaused(session.id, [...session.messageHistory], session.state.cwd);
+    }
+  };
+  const resultOrPromise = handlePermissionRequestPipeline(
+    session as never,
+    {
+      request_id: msg.request_id,
+      tool_name: toolName,
+      input: msg.request.input,
+      permission_suggestions: msg.request.permission_suggestions,
+      description: msg.request.description,
+      tool_use_id: msg.request.tool_use_id,
+      agent_id: msg.request.agent_id,
+    },
+    "claude-ws",
+    {
+      onSessionActivityStateChanged: deps.onSessionActivityStateChanged,
+      broadcastPermissionRequest: (targetSession, request) =>
+        deps.broadcastToBrowsers(targetSession as never, {
+          type: "permission_request",
+          request,
+        }),
+      persistSession: (targetSession) => deps.persistSession(targetSession as never),
+      setAttentionAction: (targetSession) => deps.setAttentionAction(targetSession as never),
+      emitTakodePermissionRequest: (targetSession, request) =>
+        emitTakodePermissionRequest(targetSession as never, request, deps),
+      schedulePermissionNotification: (targetSession, request) =>
+        deps.schedulePermissionNotification(targetSession as never, request),
+    },
+    { activityReason: "permission_request" },
+  );
+  if (resultOrPromise instanceof Promise) {
+    void resultOrPromise.then(applyResult).catch((err) => {
+      console.error(`[ws-bridge] Failed to process control_request for session ${session.id}:`, err);
+    });
+    return;
+  }
+  applyResult(resultOrPromise);
+}
+
+export function handleSdkPermissionRequest(
+  session: AdapterBrowserRoutingSessionLike,
+  perm: PermissionRequest,
+  deps: AdapterBrowserRoutingDeps,
+): void | Promise<void> {
+  const applyResult = (result: PermissionPipelineResult): void => {
+    if (result.kind === "mode_auto_approved" || result.kind === "settings_rule_approved") {
+      if (session.claudeSdkAdapter) {
+        session.claudeSdkAdapter.sendBrowserMessage({
+          type: "permission_response",
+          request_id: result.request.request_id,
+          behavior: "allow",
+          updated_input: result.request.input,
+        });
+      }
+      deps.broadcastAutoApproval(session, result.request);
+      return;
+    }
+    if (result.kind === "queued_for_llm_auto_approval") {
+      void tryLlmAutoApproval(session, result.request.request_id, result.request, result.autoApprovalConfig, deps);
+    }
+  };
+  const resultOrPromise = handlePermissionRequestPipeline(
+    session as never,
+    perm,
+    "claude-sdk",
+    {
+      onSessionActivityStateChanged: deps.onSessionActivityStateChanged,
+      broadcastPermissionRequest: (targetSession, request) =>
+        deps.broadcastToBrowsers(targetSession as never, {
+          type: "permission_request",
+          request,
+        }),
+      persistSession: (targetSession) => deps.persistSession(targetSession as never),
+      setAttentionAction: (targetSession) => deps.setAttentionAction(targetSession as never),
+      emitTakodePermissionRequest: (targetSession, request) =>
+        emitTakodePermissionRequest(targetSession as never, request, deps),
+      schedulePermissionNotification: (targetSession, request) =>
+        deps.schedulePermissionNotification(targetSession as never, request),
+    },
+    { activityReason: "sdk_permission_request" },
+  );
+  if (resultOrPromise instanceof Promise) {
+    return resultOrPromise.then(applyResult);
+  }
+  applyResult(resultOrPromise);
+}
+
+export async function tryLlmAutoApproval(
+  session: AdapterBrowserRoutingSessionLike,
+  requestId: string,
+  perm: PermissionRequest,
+  config: AutoApprovalConfig,
+  deps: AdapterBrowserRoutingDeps,
+): Promise<void> {
+  const abort = new AbortController();
+  session.evaluatingAborts.set(requestId, abort);
+  const recentToolCalls = extractRecentToolCalls(session);
+  try {
+    const result = await evaluatePermission(
+      session.id,
+      perm.tool_name,
+      perm.input,
+      perm.description,
+      session.state.cwd,
+      config,
+      abort.signal,
+      recentToolCalls,
+      session.state.model,
+      () => {
+        if (!session.pendingPermissions.has(requestId)) return;
+        perm.evaluating = "evaluating";
+        deps.broadcastToBrowsers(session, {
+          type: "permission_evaluating_status",
+          request_id: requestId,
+          evaluating: "evaluating",
+          timestamp: Date.now(),
+        });
+      },
+    );
+    session.evaluatingAborts.delete(requestId);
+    if (!session.pendingPermissions.has(requestId)) return;
+    if (result?.decision === "approve") {
+      session.pendingPermissions.delete(requestId);
+      deps.onSessionActivityStateChanged(session.id, "auto_approved_permission");
+      deps.cancelPermissionNotification(session.id, requestId);
+      deps.clearActionAttentionIfNoPermissions(session);
+      routeApprovalResponse(session, requestId, perm.input, deps);
+      deps.broadcastToBrowsers(session, {
+        type: "permission_auto_approved",
+        request_id: requestId,
+        tool_name: perm.tool_name,
+        tool_use_id: perm.tool_use_id,
+        reason: result.reason,
+        summary: getAutoApprovalSummary(perm.tool_name, perm.input),
+        timestamp: Date.now(),
+      });
+      emitTakodePermissionResolved(session.id, perm.tool_name, "approved", deps);
+      deps.persistSession(session);
+      return;
+    }
+    const deferralReason =
+      result?.decision === "defer"
+        ? result.reason || "Auto-approver deferred to human"
+        : "Auto-approval evaluation failed or timed out";
+    perm.evaluating = undefined;
+    perm.deferralReason = deferralReason;
+    deps.broadcastToBrowsers(session, {
+      type: "permission_needs_attention",
+      request_id: requestId,
+      timestamp: Date.now(),
+      reason: deferralReason,
+    });
+    emitTakodePermissionRequest(session, perm, deps);
+    deps.setAttentionAction(session);
+    deps.schedulePermissionNotification(session, perm);
+    deps.persistSession(session);
+  } catch (err) {
+    session.evaluatingAborts.delete(requestId);
+    if (session.pendingPermissions.has(requestId)) {
+      const errorReason = "Auto-approval evaluation encountered an error";
+      perm.evaluating = undefined;
+      perm.deferralReason = errorReason;
+      deps.broadcastToBrowsers(session, {
+        type: "permission_needs_attention",
+        request_id: requestId,
+        timestamp: Date.now(),
+        reason: errorReason,
+      });
+      emitTakodePermissionRequest(session, perm, deps);
+      deps.setAttentionAction(session);
+      deps.schedulePermissionNotification(session, perm);
+      deps.persistSession(session);
+    }
+    console.warn(`[auto-approver] Error evaluating ${perm.tool_name} for session ${session.id}:`, err);
+  }
+}
+
+export function handleInterrupt(
+  session: AdapterBrowserRoutingSessionLike,
+  source: InterruptSource,
+  deps: AdapterBrowserRoutingDeps,
+): void {
+  deps.preInterrupt(session, source);
+  deps.markTurnInterrupted(session, source);
+  deps.sendToCLI(
+    session,
+    JSON.stringify({
+      type: "control_request",
+      request_id: randomUUID(),
+      request: { subtype: "interrupt" },
+    }),
+  );
+}
+
+export function handleSetPermissionMode(
+  session: AdapterBrowserRoutingSessionLike,
+  mode: string,
+  deps: AdapterBrowserRoutingDeps,
+): void {
+  if (session.backendType === "claude-sdk" && session.claudeSdkAdapter) {
+    session.claudeSdkAdapter.sendBrowserMessage({ type: "set_permission_mode", mode });
+  } else {
+    deps.sendToCLI(
+      session,
+      JSON.stringify({
+        type: "control_request",
+        request_id: randomUUID(),
+        request: { subtype: "set_permission_mode", mode },
+      }),
+    );
+  }
+  const uiMode = mode === "plan" ? "plan" : "agent";
+  session.state.permissionMode = mode;
+  session.state.uiMode = uiMode;
+  const launchInfo = deps.getLauncherSessionInfo(session.id);
+  if (launchInfo) launchInfo.permissionMode = mode;
+  deps.broadcastToBrowsers(session, {
+    type: "session_update",
+    session: { permissionMode: mode, uiMode },
+  });
+  deps.persistSession(session);
+}
+
+export function handleCodexSetPermissionMode(
+  session: AdapterBrowserRoutingSessionLike,
+  mode: string,
+  deps: AdapterBrowserRoutingDeps,
+): void {
+  if (!mode || session.state.permissionMode === mode) return;
+  if (session.pendingPermissions.size > 0) {
+    const approve = mode === "bypassPermissions";
+    for (const [reqId, perm] of session.pendingPermissions) {
+      if (session.codexAdapter) {
+        session.codexAdapter.sendBrowserMessage({
+          type: "permission_response",
+          request_id: reqId,
+          behavior: approve ? "allow" : "deny",
+        });
+      }
+      if (approve) {
+        const approvedMsg: BrowserIncomingMessage = {
+          type: "permission_approved",
+          id: `approval-${reqId}`,
+          request_id: reqId,
+          tool_name: perm.tool_name,
+          tool_use_id: perm.tool_use_id,
+          summary: `${perm.tool_name}`,
+          timestamp: Date.now(),
+        };
+        session.messageHistory.push(approvedMsg);
+        deps.broadcastToBrowsers(session, approvedMsg);
+      } else {
+        deps.broadcastToBrowsers(session, { type: "permission_cancelled", request_id: reqId });
+      }
+      deps.abortAutoApproval(session, reqId);
+      deps.cancelPermissionNotification(session.id, reqId);
+      emitTakodePermissionResolved(session.id, perm.tool_name, approve ? "approved" : "denied", deps);
+    }
+    session.pendingPermissions.clear();
+    deps.clearActionAttentionIfNoPermissions(session);
+  }
+  const previousAsk = session.state.askPermission !== false;
+  const codexUiMode = mode === "plan" ? "plan" : "agent";
+  const codexAskPermission = mode === "plan" ? previousAsk : mode !== "bypassPermissions";
+  session.state.permissionMode = mode;
+  session.state.uiMode = codexUiMode;
+  session.state.askPermission = codexAskPermission;
+  const launchInfo = deps.getLauncherSessionInfo(session.id);
+  if (launchInfo) {
+    launchInfo.permissionMode = mode;
+    launchInfo.askPermission = codexAskPermission;
+  }
+  deps.broadcastToBrowsers(session, {
+    type: "session_update",
+    session: { permissionMode: mode, uiMode: codexUiMode, askPermission: codexAskPermission },
+  });
+  deps.persistSession(session);
+  deps.requestCodexIntentionalRelaunch(session, "set_permission_mode", 100);
+}
+
+export function handleSetAskPermission(
+  session: AdapterBrowserRoutingSessionLike,
+  askPermission: boolean,
+  deps: AdapterBrowserRoutingDeps,
+): void {
+  if (session.backendType === "codex") {
+    const uiMode = session.state.uiMode === "plan" ? "plan" : "agent";
+    const newMode = uiMode === "plan" ? "plan" : askPermission ? "suggest" : "bypassPermissions";
+    if (session.state.askPermission === askPermission && session.state.permissionMode === newMode) return;
+    session.state.askPermission = askPermission;
+    session.state.permissionMode = newMode;
+    session.state.uiMode = uiMode;
+    const launchInfo = deps.getLauncherSessionInfo(session.id);
+    if (launchInfo) {
+      launchInfo.permissionMode = newMode;
+      launchInfo.askPermission = askPermission;
+    }
+    deps.broadcastToBrowsers(session, {
+      type: "session_update",
+      session: { askPermission, permissionMode: newMode, uiMode },
+    });
+    deps.persistSession(session);
+    deps.requestCodexIntentionalRelaunch(session, "set_ask_permission");
+    return;
+  }
+  session.state.askPermission = askPermission;
+  const uiMode = session.state.uiMode ?? "agent";
+  const newMode = uiMode === "plan" ? "plan" : askPermission ? "acceptEdits" : "bypassPermissions";
+  session.state.permissionMode = newMode;
+  deps.broadcastToBrowsers(session, {
+    type: "session_update",
+    session: { askPermission, permissionMode: newMode, uiMode },
+  });
+  deps.persistSession(session);
+  if (session.backendType === "claude-sdk" && session.claudeSdkAdapter) {
+    session.claudeSdkAdapter.sendBrowserMessage({ type: "set_permission_mode", mode: newMode });
+    const launchInfo = deps.getLauncherSessionInfo(session.id);
+    if (launchInfo) launchInfo.permissionMode = newMode;
+  } else {
+    deps.onPermissionModeChanged?.(session.id, newMode);
+  }
+}
+
+export function handlePermissionResponse(
+  session: AdapterBrowserRoutingSessionLike,
+  msg: PermissionResponseMessage,
+  deps: AdapterBrowserRoutingDeps,
+  actorSessionId?: string,
+): void {
+  const pending = session.pendingPermissions.get(msg.request_id);
+  session.pendingPermissions.delete(msg.request_id);
+  deps.onSessionActivityStateChanged(session.id, "permission_response");
+  deps.abortAutoApproval(session, msg.request_id);
+  deps.cancelPermissionNotification(session.id, msg.request_id);
+  deps.clearActionAttentionIfNoPermissions(session);
+
+  if (msg.behavior === "allow") {
+    const response: Record<string, unknown> = {
+      behavior: "allow",
+      updatedInput: msg.updated_input ?? pending?.input ?? {},
+    };
+    if (msg.updated_permissions?.length) {
+      response.updatedPermissions = msg.updated_permissions;
+    }
+    deps.sendToCLI(
+      session,
+      JSON.stringify({
+        type: "control_response",
+        response: {
+          subtype: "success",
+          request_id: msg.request_id,
+          response,
+        },
+      }),
+    );
+
+    if (msg.updated_permissions?.length) {
+      const setMode = (msg.updated_permissions as Array<{ type: string; mode?: string }>).find(
+        (entry) => entry.type === "setMode" && entry.mode,
+      );
+      if (setMode) {
+        deps.handleSetPermissionMode(session, setMode.mode!);
+      }
+    }
+
+    if (pending && NOTABLE_APPROVALS.has(pending.tool_name)) {
+      const answers =
+        pending.tool_name === "AskUserQuestion" ? extractAskUserAnswers(pending.input, msg.updated_input) : undefined;
+      if (pending.tool_name !== "AskUserQuestion" || answers) {
+        const approvedMsg: BrowserIncomingMessage = {
+          type: "permission_approved",
+          id: `approval-${msg.request_id}`,
+          request_id: msg.request_id,
+          tool_name: pending.tool_name,
+          tool_use_id: pending.tool_use_id,
+          summary: getApprovalSummary(pending.tool_name, pending.input),
+          timestamp: Date.now(),
+          ...(answers ? { answers } : {}),
+        };
+        session.messageHistory.push(approvedMsg);
+        deps.broadcastToBrowsers(session, approvedMsg);
+      }
+    }
+
+    if (pending) {
+      emitTakodePermissionResolved(session.id, pending.tool_name, "approved", deps, actorSessionId);
+    }
+
+    if (pending?.tool_name === "ExitPlanMode") {
+      const askPerm = session.state.askPermission !== false;
+      deps.handleSetPermissionMode(session, askPerm ? "acceptEdits" : "bypassPermissions");
+      deps.setGenerating(session, true, "exit_plan_mode");
+      deps.broadcastStatusChange(session, "running");
+    }
+    if (pending?.tool_name === "EnterPlanMode") {
+      deps.handleSetPermissionMode(session, "plan");
+    }
+  } else {
+    deps.sendToCLI(
+      session,
+      JSON.stringify({
+        type: "control_response",
+        response: {
+          subtype: "success",
+          request_id: msg.request_id,
+          response: {
+            behavior: "deny",
+            message: msg.message || "Denied by user",
+          },
+        },
+      }),
+    );
+
+    if (pending?.tool_name === "ExitPlanMode") {
+      const interruptSource = getInterruptSourceFromActorSessionId(actorSessionId);
+      deps.handleInterruptFallback(session, interruptSource);
+    }
+
+    const deniedMsg: BrowserIncomingMessage = {
+      type: "permission_denied",
+      id: `denial-${msg.request_id}`,
+      request_id: msg.request_id,
+      tool_name: pending?.tool_name || "unknown",
+      tool_use_id: pending?.tool_use_id || "",
+      summary: getDenialSummary(pending?.tool_name || "unknown", pending?.input || {}),
+      timestamp: Date.now(),
+    };
+    session.messageHistory.push(deniedMsg);
+    deps.broadcastToBrowsers(session, deniedMsg);
+    emitTakodePermissionResolved(session.id, pending?.tool_name || "unknown", "denied", deps, actorSessionId);
+  }
+
+  deps.persistSession(session);
+}
+
+export function handleMcpGetStatus(
+  session: AdapterBrowserRoutingSessionLike,
+  deps: AdapterBrowserRoutingDeps,
+): void {
+  deps.sendControlRequest(
+    session,
+    { subtype: "mcp_status" },
+    {
+      subtype: "mcp_status",
+      resolve: (response) => {
+        const servers = (response as { mcpServers?: McpServerDetail[] }).mcpServers ?? [];
+        deps.broadcastToBrowsers(session, { type: "mcp_status", servers });
+      },
+    },
+  );
+}
+
+export function handleMcpToggle(
+  session: AdapterBrowserRoutingSessionLike,
+  serverName: string,
+  enabled: boolean,
+  deps: AdapterBrowserRoutingDeps,
+): void {
+  deps.sendControlRequest(session, { subtype: "mcp_toggle", serverName, enabled });
+  setTimeout(() => handleMcpGetStatus(session, deps), 500);
+}
+
+export function handleMcpReconnect(
+  session: AdapterBrowserRoutingSessionLike,
+  serverName: string,
+  deps: AdapterBrowserRoutingDeps,
+): void {
+  deps.sendControlRequest(session, { subtype: "mcp_reconnect", serverName });
+  setTimeout(() => handleMcpGetStatus(session, deps), 1000);
+}
+
+export function handleMcpSetServers(
+  session: AdapterBrowserRoutingSessionLike,
+  servers: Record<string, McpServerConfig>,
+  deps: AdapterBrowserRoutingDeps,
+): void {
+  deps.sendControlRequest(session, { subtype: "mcp_set_servers", servers });
+  setTimeout(() => handleMcpGetStatus(session, deps), 2000);
+}
+
+function extractRecentToolCalls(session: AdapterBrowserRoutingSessionLike, limit = 10): RecentToolCall[] {
+  const calls: RecentToolCall[] = [];
+  for (let i = session.messageHistory.length - 1; i >= 0 && calls.length < limit; i--) {
+    const msg = session.messageHistory[i] as
+      | (BrowserIncomingMessage & {
+          message?: { content?: Array<{ type?: string; name?: string; input?: Record<string, unknown> }> };
+        })
+      | undefined;
+    if (msg?.type !== "assistant" || !msg.message?.content) continue;
+    const blocks = msg.message.content;
+    for (let j = blocks.length - 1; j >= 0 && calls.length < limit; j--) {
+      const block = blocks[j];
+      if (block.type === "tool_use") {
+        calls.push({ toolName: block.name, input: block.input as Record<string, unknown> });
+      }
+    }
+  }
+  return calls.reverse();
+}
+
+function routeApprovalResponse(
+  session: AdapterBrowserRoutingSessionLike,
+  requestId: string,
+  updatedInput: Record<string, unknown>,
+  deps: AdapterBrowserRoutingDeps,
+): void {
+  const ndjson = JSON.stringify({
+    type: "control_response",
+    response: {
+      subtype: "success",
+      request_id: requestId,
+      response: {
+        behavior: "allow",
+        updatedInput,
+      },
+    },
+  });
+  if (session.backendType === "claude-sdk" && session.claudeSdkAdapter) {
+    session.claudeSdkAdapter.sendBrowserMessage({
+      type: "permission_response",
+      request_id: requestId,
+      behavior: "allow",
+      updated_input: updatedInput,
+    });
+  } else if (session.backendType === "codex" && session.codexAdapter) {
+    session.codexAdapter.sendBrowserMessage({
+      type: "permission_response",
+      request_id: requestId,
+      behavior: "allow",
+      updated_input: updatedInput,
+    });
+  } else {
+    deps.sendToCLI(session, ndjson);
+  }
+}
+
 export function ingestUserMessage(
   session: AdapterBrowserRoutingSessionLike,
   msg: BrowserUserMessage,
@@ -242,7 +1118,7 @@ export async function handleUserMessage(
     content = selectionText ? [{ type: "text", text: msg.content }, { type: "text", text: selectionText }] : msg.content;
   }
   if (typeof content === "string") {
-    content = deps.buildTimestampTag(session, ingested.timestamp, msg.agentSource) + content;
+    content = buildTimestampTag(session, ingested.timestamp, deps.getLauncherSessionInfo, msg.agentSource) + content;
   }
   const ndjson = JSON.stringify({
     type: "user",
@@ -434,7 +1310,7 @@ function handleSdkPermissionResponse(
     deps.handleSetPermissionMode(session, "plan");
   }
   if (msg.behavior === "deny" && pending.tool_name === "ExitPlanMode") {
-    const interruptSource = deps.getInterruptSourceFromActorSessionId(msg.actorSessionId);
+    const interruptSource = getInterruptSourceFromActorSessionId(msg.actorSessionId);
     deps.markTurnInterrupted(session, interruptSource);
     if (session.claudeSdkAdapter) {
       session.claudeSdkAdapter.sendBrowserMessage({ type: "interrupt", interruptSource });
@@ -484,7 +1360,7 @@ function handleCodexPermissionResponse(
     deps.broadcastToBrowsers(session, deniedMsg);
   }
   if (msg.behavior === "deny" && pending?.tool_name === "ExitPlanMode") {
-    const interruptSource = deps.getInterruptSourceFromActorSessionId(msg.actorSessionId);
+    const interruptSource = getInterruptSourceFromActorSessionId(msg.actorSessionId);
     deps.markTurnInterrupted(session, interruptSource);
     const activeTurnId = session.codexAdapter?.getCurrentTurnId() ?? null;
     if (activeTurnId) {
@@ -495,10 +1371,7 @@ function handleCodexPermissionResponse(
     session.codexAdapter?.sendBrowserMessage({ type: "interrupt", interruptSource });
   }
   if (pending) {
-    deps.emitTakodeEvent(session.id, "permission_resolved", {
-      tool_name: pending.tool_name,
-      outcome: msg.behavior === "allow" ? "approved" : "denied",
-    });
+    emitTakodePermissionResolved(session.id, pending.tool_name, msg.behavior === "allow" ? "approved" : "denied", deps);
   }
   deps.persistSession(session);
 }
@@ -662,7 +1535,7 @@ export function routeAdapterBrowserMessage(
       const effectiveWasGenerating = preMarkedImageRunning ? wasGeneratingBeforeUserMessage : ingested.wasGenerating;
       const interruptSource = effectiveWasGenerating
         ? msg.agentSource
-          ? deps.isSystemSourceTag(msg.agentSource)
+          ? isSystemSourceTag(msg.agentSource)
             ? "system"
             : "leader"
           : "user"
@@ -734,7 +1607,7 @@ export function routeAdapterBrowserMessage(
       const typed = adapterMsg as { content: string };
       adapterMsg = {
         ...adapterMsg,
-        content: deps.buildTimestampTag(session, msgTs, msg.agentSource) + typed.content,
+        content: buildTimestampTag(session, msgTs, deps.getLauncherSessionInfo, msg.agentSource) + typed.content,
       } as BrowserOutgoingMessage;
     }
     const adapter = session.codexAdapter || session.claudeSdkAdapter;

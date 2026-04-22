@@ -45,11 +45,40 @@ export interface GenerationLifecycleDeps<S extends GenerationLifecycleSession> {
   buildTurnToolSummary: (session: S) => Record<string, unknown>;
   recordGenerationStarted?: (session: S, reason: string) => void;
   recordGenerationEnded?: (session: S, reason: string, elapsedMs: number) => void;
+  onGenerationStopped?: (session: S, reason: string) => void;
   onOrchestratorTurnEnd?: (sessionId: string) => void;
   /** Returns who triggered the current turn on a given session. */
   getCurrentTurnTriggerSource?: (session: S) => "user" | "leader" | "system" | "unknown";
   /** Returns true if the session is a herded worker (owned by an orchestrator). */
   isHerdedWorker?: (session: S) => boolean;
+}
+
+export interface StuckWatchdogSession extends GenerationLifecycleSession {
+  backendType: string;
+  pendingCodexInputs: Array<{ timestamp: number }>;
+  codexAdapter: unknown | null;
+  toolStartTimes: Map<string, number>;
+  lastCliMessageAt: number;
+  lastToolProgressAt: number;
+  state: GenerationLifecycleSession["state"] & {
+    backend_state?: string;
+    cwd: string;
+  };
+}
+
+export interface StuckWatchdogDeps<S extends StuckWatchdogSession> {
+  stuckPendingDeliveryMs: number;
+  stuckThresholdMs: number;
+  autoRecoverMs: number;
+  autoRecoverOrchestratorMs: number;
+  requestCodexAutoRecovery: (session: S, reason: string) => void;
+  broadcastMessage: (session: S, msg: Record<string, unknown>) => void;
+  recordServerEvent?: (session: S, reason: string, payload: Record<string, unknown>) => void;
+  getLauncherSessionInfo?: (sessionId: string) => { isOrchestrator?: boolean } | null | undefined;
+  forceFlushPendingEvents?: (sessionId: string) => number;
+  backendConnected: (session: S) => boolean;
+  markTurnInterrupted: (session: S, source: InterruptSource) => void;
+  setGenerating: (session: S, generating: boolean, reason: string) => void;
 }
 
 export type UserDispatchTurnTarget = "current" | "queued";
@@ -335,4 +364,107 @@ export function setGenerating<S extends GenerationLifecycleSession>(
     }
   }
   deps.onSessionActivityStateChanged(session.id, `generating:${reason}`);
+  if (!generating) {
+    deps.onGenerationStopped?.(session, reason);
+  }
+}
+
+export function runStuckSessionWatchdogSweep<S extends StuckWatchdogSession>(
+  sessions: Iterable<S>,
+  now: number,
+  deps: StuckWatchdogDeps<S>,
+): void {
+  for (const session of sessions) {
+    if (
+      session.backendType === "codex" &&
+      session.pendingCodexInputs.length > 0 &&
+      !session.codexAdapter &&
+      session.state.backend_state !== "broken" &&
+      session.state.backend_state !== "recovering"
+    ) {
+      const oldestPending = session.pendingCodexInputs[0];
+      const pendingAge = now - oldestPending.timestamp;
+      if (pendingAge > deps.stuckPendingDeliveryMs) {
+        console.warn(
+          `[ws-bridge] Codex session ${sessionTag(session.id)} has stuck pending delivery ` +
+            `(${Math.round(pendingAge / 1000)}s, ${session.pendingCodexInputs.length} input(s), ` +
+            `backend_state=${session.state.backend_state})`,
+        );
+        deps.requestCodexAutoRecovery(session, "stuck_pending_delivery_watchdog");
+      }
+    }
+
+    if (!session.isGenerating || !session.generationStartedAt) continue;
+    if (now - session.generationStartedAt < deps.stuckThresholdMs) continue;
+
+    if (session.toolStartTimes.size > 0) {
+      let allToolsStale = true;
+      for (const startedAt of session.toolStartTimes.values()) {
+        if (now - startedAt < deps.autoRecoverMs) {
+          allToolsStale = false;
+          break;
+        }
+      }
+      if (!allToolsStale) {
+        if (session.stuckNotifiedAt) {
+          session.stuckNotifiedAt = null;
+          deps.broadcastMessage(session, { type: "session_unstuck" });
+        }
+        continue;
+      }
+    }
+
+    const lastActivity = Math.max(session.lastCliMessageAt, session.lastToolProgressAt);
+    const sinceLastActivity = lastActivity > 0 ? now - lastActivity : now - session.generationStartedAt;
+    if (sinceLastActivity < deps.stuckThresholdMs) {
+      if (session.stuckNotifiedAt) {
+        session.stuckNotifiedAt = null;
+        deps.broadcastMessage(session, { type: "session_unstuck" });
+      }
+      continue;
+    }
+
+    const elapsed = now - session.generationStartedAt;
+    if (!session.stuckNotifiedAt) {
+      session.stuckNotifiedAt = now;
+      console.warn(
+        `[ws-bridge] Session ${session.id} appears stuck (${Math.round(elapsed / 1000)}s generation, ${Math.round(sinceLastActivity / 1000)}s since last CLI activity)`,
+      );
+      deps.recordServerEvent?.(session, "stuck_detected", { elapsed, sinceLastActivity });
+      deps.broadcastMessage(session, { type: "session_stuck" });
+
+      const launcherInfo = deps.getLauncherSessionInfo?.(session.id);
+      if (launcherInfo?.isOrchestrator && deps.forceFlushPendingEvents) {
+        const flushed = deps.forceFlushPendingEvents(session.id);
+        if (flushed > 0) {
+          console.warn(
+            `[ws-bridge] Force-delivered ${flushed} pending herd event(s) to stuck orchestrator session ${session.id}`,
+          );
+        }
+      }
+    }
+
+    const launcherInfo = deps.getLauncherSessionInfo?.(session.id);
+    const isOrchestrator = !!launcherInfo?.isOrchestrator;
+    const cliConnected = deps.backendConnected(session);
+    const recoverThreshold = isOrchestrator ? deps.autoRecoverOrchestratorMs : deps.autoRecoverMs;
+    if (elapsed < recoverThreshold || (!cliConnected && elapsed < deps.autoRecoverMs)) continue;
+
+    console.warn(
+      `[ws-bridge] Auto-recovering stuck session ${sessionTag(session.id)} ` +
+        `(${Math.round(elapsed / 1000)}s stuck, CLI ${cliConnected ? "connected" : "disconnected"}` +
+        `${isOrchestrator ? ", orchestrator" : ""}, force-clearing isGenerating)`,
+    );
+    deps.recordServerEvent?.(session, "stuck_auto_recovered", {
+      elapsed,
+      sinceLastActivity,
+      cliConnected,
+      isOrchestrator,
+    });
+    deps.markTurnInterrupted(session, "system");
+    deps.setGenerating(session, false, "stuck_auto_recovery");
+    session.toolStartTimes.clear();
+    deps.broadcastMessage(session, { type: "status_change", status: "idle" });
+    deps.broadcastMessage(session, { type: "session_unstuck" });
+  }
 }

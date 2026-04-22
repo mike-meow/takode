@@ -222,30 +222,47 @@ function createMockLauncher() {
 
 function createMockBridge() {
   return {
+    _sessions: {} as Record<string, any>,
     _vscodeSelectionState: null as any,
     _vscodeWindows: [] as any[],
     closeSession: vi.fn(),
-    getSession: vi.fn(() => null),
+    getSession: vi.fn(function (this: any, sessionId: string) {
+      if (sessionId in this._sessions) return this._sessions[sessionId];
+      const stateEntries = this.getAllSessions();
+      const stateEntry = Array.isArray(stateEntries)
+        ? stateEntries.find((entry: any) => entry?.session_id === sessionId || entry?.sessionId === sessionId)
+        : null;
+      const messageHistory = this.getMessageHistory(sessionId) ?? [];
+      if (!stateEntry && messageHistory.length === 0) {
+        return null;
+      }
+      return {
+        id: sessionId,
+        state: stateEntry?.state ?? stateEntry ?? {},
+        messageHistory,
+        notifications: [],
+        pendingPermissions: new Map(),
+        taskHistory: [],
+        keywords: [],
+        lastReadAt: 0,
+        attentionReason: null,
+        isGenerating: false,
+      };
+    }),
     getOrCreateSession: vi.fn(),
     getAllSessions: vi.fn(() => []),
     refreshWorktreeGitStateForSnapshot: vi.fn(async () => null),
     getLastUserMessage: vi.fn(() => undefined),
     isBackendConnected: vi.fn(() => false),
-    getCodexRateLimits: vi.fn(() => null),
-    refreshCodexSkills: vi.fn(async () => ({ ok: true, skills: [] })),
-    markContainerized: vi.fn(),
     markWorktree: vi.fn(),
-    setInitialCwd: vi.fn(),
+    applyInitialSessionState: vi.fn(),
     setDiffBaseBranch: vi.fn(() => true),
     refreshGitInfoPublic: vi.fn(async () => true),
     onSessionArchived: vi.fn(),
     onSessionUnarchived: vi.fn(),
-    setInitialAskPermission: vi.fn(),
-    markResumedFromExternal: vi.fn(),
-    broadcastSessionUpdate: vi.fn(),
+    persistSessionById: vi.fn(),
     broadcastToSession: vi.fn(),
     broadcastGlobal: vi.fn(),
-    broadcastNameUpdate: vi.fn(),
     getVsCodeSelectionState: vi.fn(function (this: any) {
       return this._vscodeSelectionState;
     }),
@@ -268,19 +285,9 @@ function createMockBridge() {
     pollVsCodeOpenFileCommands: vi.fn(() => []),
     resolveVsCodeOpenFileResult: vi.fn(() => true),
     requestVsCodeOpenFile: vi.fn(async () => ({ sourceId: "window-a", commandId: "cmd-1" })),
-    setSessionClaimedQuest: vi.fn(),
     addTaskEntry: vi.fn(),
     updateQuestTaskEntries: vi.fn(),
     removeBoardRowFromAll: vi.fn(),
-    getBoard: vi.fn(() => []),
-    getBoardRow: vi.fn(() => null),
-    getBoardQueueWarnings: vi.fn(() => []),
-    getBoardWorkerSlotUsage: vi.fn(() => ({ used: 0, limit: 5 })),
-    getCompletedBoard: vi.fn(() => []),
-    getCompletedBoardCount: vi.fn(() => 0),
-    upsertBoardRow: vi.fn(() => []),
-    removeBoardRows: vi.fn(() => []),
-    advanceBoardRow: vi.fn(() => null),
     prepareSessionForRevert: vi.fn(
       (sessionId: string, truncateIdx: number, options?: { clearCodexState?: boolean }) => {
         const session = bridge.getOrCreateSession.mock.results.at(-1)?.value;
@@ -335,24 +342,28 @@ function createMockBridge() {
       },
     ),
     persistSessionSync: vi.fn(),
-    getSessionAttentionState: vi.fn(() => null),
-    getSessionTaskHistory: vi.fn(() => []),
-    getSessionKeywords: vi.fn(() => []),
     getMessageHistory: vi.fn(() => []),
     getToolResult: vi.fn(() => null),
-    markSessionRead: vi.fn(() => true),
-    markSessionUnread: vi.fn(() => true),
-    markAllSessionsRead: vi.fn(),
     injectUserMessage: vi.fn(() => "sent" as const),
     emitTakodeEvent: vi.fn(),
     subscribeTakodeEvents: vi.fn(() => () => {}),
     routeExternalPermissionResponse: vi.fn(),
     routeExternalInterrupt: vi.fn(async () => {}),
-    notifyUser: vi.fn(() => ({ ok: true, anchoredMessageId: "msg-123" })),
-    markNotificationDone: vi.fn(() => true),
-    markAllNotificationsDone: vi.fn(() => 0),
-    getNotifications: vi.fn(() => []),
-    isSessionBusy: vi.fn(() => false),
+    routeBrowserMessage: vi.fn(function (this: any, session: any, msg: any) {
+      if (msg?.type === "permission_response") {
+        return this.routeExternalPermissionResponse(session, {
+          type: "permission_response",
+          request_id: msg.request_id,
+          behavior: msg.behavior,
+          ...(msg.updated_input ? { updated_input: msg.updated_input } : {}),
+          ...(msg.message ? { message: msg.message } : {}),
+        }, msg.actorSessionId);
+      }
+      if (msg?.type === "interrupt") {
+        return this.routeExternalInterrupt(session, msg.interruptSource);
+      }
+      return undefined;
+    }),
     getTrafficStatsSnapshot: vi.fn(() => ({
       windowStartedAt: 1000,
       capturedAt: 2000,
@@ -377,6 +388,10 @@ function createMockBridge() {
     })),
     resetTrafficStats: vi.fn(),
   } as any;
+}
+
+function ensureBridgeSession(bridge: ReturnType<typeof createMockBridge>, sessionId: string, overrides: Record<string, unknown> = {}) {
+  return (bridge._sessions[sessionId] = { id: sessionId, state: {}, browserSockets: new Set(), messageHistory: [], notifications: [], pendingPermissions: new Map(), taskHistory: [], keywords: [], lastReadAt: 0, attentionReason: null, isGenerating: false, ...overrides });
 }
 
 function createMockStore() {
@@ -1324,8 +1339,18 @@ describe("GET /api/sessions", () => {
   it("reports generating sessions as running when the bridge is active", async () => {
     launcher.listSessions.mockReturnValue([{ sessionId: "s1", state: "connected", cwd: "/a" }]);
     vi.mocked(sessionNames.getAllNames).mockReturnValue({});
-    bridge.getAllSessions.mockReturnValue([{ session_id: "s1" }]);
-    bridge.getSession.mockReturnValue({ isGenerating: true } as any);
+    bridge.getSession.mockReturnValue({
+      id: "s1",
+      state: { session_id: "s1" },
+      pendingPermissions: new Map(),
+      messageHistory: [],
+      notifications: [],
+      taskHistory: [],
+      keywords: [],
+      lastReadAt: 0,
+      attentionReason: null,
+      isGenerating: true,
+    } as any);
     bridge.isBackendConnected.mockReturnValue(true);
 
     const res = await app.request("/api/sessions", { method: "GET" });
@@ -1384,6 +1409,13 @@ describe("GET /api/sessions", () => {
         total_lines_added: 777,
         total_lines_removed: 55,
       },
+      pendingPermissions: new Map(),
+      messageHistory: [],
+      notifications: [],
+      taskHistory: [],
+      keywords: [],
+      lastReadAt: 0,
+      attentionReason: null,
       isGenerating: false,
     };
     launcher.listSessions.mockReturnValue(sessions);
@@ -1429,6 +1461,13 @@ describe("GET /api/sessions", () => {
         total_lines_added: 777,
         total_lines_removed: 55,
       },
+      pendingPermissions: new Map(),
+      messageHistory: [],
+      notifications: [],
+      taskHistory: [],
+      keywords: [],
+      lastReadAt: 0,
+      attentionReason: null,
       isGenerating: false,
     };
     launcher.listSessions.mockReturnValue(sessions);
@@ -3120,8 +3159,10 @@ describe("POST /api/transcribe", () => {
       updatedAt: 123,
     });
     vi.mocked(sessionNames.getName).mockReturnValue("Voice edit session");
-    bridge.getSessionTaskHistory.mockReturnValue([{ title: "Fix reconnect bug" }]);
-    bridge.getMessageHistory.mockReturnValue([{ type: "user_message", content: "Please rewrite this update" }]);
+    bridge.getSession.mockReturnValue({
+      taskHistory: [{ title: "Fix reconnect bug" }],
+      messageHistory: [{ type: "user_message", content: "Please rewrite this update" }],
+    } as any);
 
     vi.mocked(fetch)
       .mockResolvedValueOnce(
@@ -5574,7 +5615,10 @@ describe("POST /api/sessions/create permission mode resolution", () => {
 
     expect(res.status).toBe(200);
     expect(launcher.launch).toHaveBeenCalledWith(expect.objectContaining({ permissionMode: "plan" }));
-    expect(bridge.setInitialAskPermission).toHaveBeenCalledWith("session-1", true, "plan");
+    expect(bridge.applyInitialSessionState).toHaveBeenCalledWith(
+      "session-1",
+      expect.objectContaining({ cwd: "/test", askPermission: true, uiMode: "plan" }),
+    );
   });
 
   it("launches Claude session with 'bypassPermissions' when askPermission is false", async () => {
@@ -5588,7 +5632,10 @@ describe("POST /api/sessions/create permission mode resolution", () => {
 
     expect(res.status).toBe(200);
     expect(launcher.launch).toHaveBeenCalledWith(expect.objectContaining({ permissionMode: "bypassPermissions" }));
-    expect(bridge.setInitialAskPermission).toHaveBeenCalledWith("session-1", false, "agent");
+    expect(bridge.applyInitialSessionState).toHaveBeenCalledWith(
+      "session-1",
+      expect.objectContaining({ cwd: "/test", askPermission: false, uiMode: "agent" }),
+    );
   });
 
   it("defaults to 'plan' permission mode when askPermission is omitted", async () => {
@@ -5612,7 +5659,10 @@ describe("POST /api/sessions/create permission mode resolution", () => {
 
     expect(res.status).toBe(200);
     expect(launcher.launch).toHaveBeenCalledWith(expect.objectContaining({ permissionMode: "suggest" }));
-    expect(bridge.setInitialAskPermission).toHaveBeenCalledWith("session-1", true, "agent");
+    expect(bridge.applyInitialSessionState).toHaveBeenCalledWith(
+      "session-1",
+      expect.objectContaining({ cwd: "/test", askPermission: true, uiMode: "agent" }),
+    );
   });
 
   it("uses 'bypassPermissions' permission mode for codex sessions when askPermission is false", async () => {
@@ -5624,7 +5674,10 @@ describe("POST /api/sessions/create permission mode resolution", () => {
 
     expect(res.status).toBe(200);
     expect(launcher.launch).toHaveBeenCalledWith(expect.objectContaining({ permissionMode: "bypassPermissions" }));
-    expect(bridge.setInitialAskPermission).toHaveBeenCalledWith("session-1", false, "agent");
+    expect(bridge.applyInitialSessionState).toHaveBeenCalledWith(
+      "session-1",
+      expect.objectContaining({ cwd: "/test", askPermission: false, uiMode: "agent" }),
+    );
   });
 
   it("forwards explicit codex permissionMode to launcher", async () => {
@@ -5645,7 +5698,10 @@ describe("POST /api/sessions/create permission mode resolution", () => {
         permissionMode: "bypassPermissions",
       }),
     );
-    expect(bridge.setInitialAskPermission).toHaveBeenCalledWith("session-1", false, "agent");
+    expect(bridge.applyInitialSessionState).toHaveBeenCalledWith(
+      "session-1",
+      expect.objectContaining({ cwd: "/test", askPermission: false, uiMode: "agent" }),
+    );
   });
 
   it("keeps codex plan mode when askPermission is false", async () => {
@@ -5662,7 +5718,10 @@ describe("POST /api/sessions/create permission mode resolution", () => {
         permissionMode: "plan",
       }),
     );
-    expect(bridge.setInitialAskPermission).toHaveBeenCalledWith("session-1", false, "plan");
+    expect(bridge.applyInitialSessionState).toHaveBeenCalledWith(
+      "session-1",
+      expect.objectContaining({ cwd: "/test", askPermission: false, uiMode: "plan" }),
+    );
   });
 });
 
@@ -5690,10 +5749,14 @@ describe("GET /api/sessions/:id/usage-limits", () => {
   });
 
   it("returns mapped Codex rate limits for a codex session", async () => {
-    bridge.getSession.mockReturnValue({ backendType: "codex" });
-    bridge.getCodexRateLimits.mockReturnValue({
-      primary: { usedPercent: 25, windowDurationMins: 300, resetsAt: 1730947200 },
-      secondary: { usedPercent: 10, windowDurationMins: 10080, resetsAt: 1731552000 },
+    bridge.getSession.mockReturnValue({
+      backendType: "codex",
+      codexAdapter: {
+        getRateLimits: () => ({
+          primary: { usedPercent: 25, windowDurationMins: 300, resetsAt: 1730947200 },
+          secondary: { usedPercent: 10, windowDurationMins: 10080, resetsAt: 1731552000 },
+        }),
+      },
     });
 
     const res = await app.request("/api/sessions/s1/usage-limits", { method: "GET" });
@@ -5713,8 +5776,7 @@ describe("GET /api/sessions/:id/usage-limits", () => {
   });
 
   it("returns empty limits when codex session has no rate limits yet", async () => {
-    bridge.getSession.mockReturnValue({ backendType: "codex" });
-    bridge.getCodexRateLimits.mockReturnValue(null);
+    bridge.getSession.mockReturnValue({ backendType: "codex", codexAdapter: { getRateLimits: () => null } });
 
     const res = await app.request("/api/sessions/s1/usage-limits", { method: "GET" });
 
@@ -5724,10 +5786,14 @@ describe("GET /api/sessions/:id/usage-limits", () => {
   });
 
   it("handles codex rate limits with null secondary", async () => {
-    bridge.getSession.mockReturnValue({ backendType: "codex" });
-    bridge.getCodexRateLimits.mockReturnValue({
-      primary: { usedPercent: 50, windowDurationMins: 300, resetsAt: 0 },
-      secondary: null,
+    bridge.getSession.mockReturnValue({
+      backendType: "codex",
+      codexAdapter: {
+        getRateLimits: () => ({
+          primary: { usedPercent: 50, windowDurationMins: 300, resetsAt: 0 },
+          secondary: null,
+        }),
+      },
     });
 
     const res = await app.request("/api/sessions/s1/usage-limits", { method: "GET" });
@@ -5740,10 +5806,14 @@ describe("GET /api/sessions/:id/usage-limits", () => {
 
   it("accepts codex reset timestamps in milliseconds", async () => {
     const resetMs = 1730947200 * 1000;
-    bridge.getSession.mockReturnValue({ backendType: "codex" });
-    bridge.getCodexRateLimits.mockReturnValue({
-      primary: { usedPercent: 25, windowDurationMins: 300, resetsAt: resetMs },
-      secondary: null,
+    bridge.getSession.mockReturnValue({
+      backendType: "codex",
+      codexAdapter: {
+        getRateLimits: () => ({
+          primary: { usedPercent: 25, windowDurationMins: 300, resetsAt: resetMs },
+          secondary: null,
+        }),
+      },
     });
 
     const res = await app.request("/api/sessions/s1/usage-limits", { method: "GET" });
@@ -5775,14 +5845,14 @@ describe("GET /api/sessions/:id/usage-limits", () => {
 
 describe("POST /api/sessions/:id/skills/refresh", () => {
   it("refreshes Codex skills for a codex session", async () => {
-    bridge.getSession.mockReturnValue({ backendType: "codex" });
-    bridge.refreshCodexSkills.mockResolvedValue({ ok: true, skills: ["review", "fix"] });
+    const refreshSkills = vi.fn(async () => ["review", "fix"]);
+    bridge.getSession.mockReturnValue({ backendType: "codex", codexAdapter: { refreshSkills } });
 
     const res = await app.request("/api/sessions/s1/skills/refresh", { method: "POST" });
 
     expect(res.status).toBe(200);
     await expect(res.json()).resolves.toEqual({ ok: true, skills: ["review", "fix"] });
-    expect(bridge.refreshCodexSkills).toHaveBeenCalledWith("s1", true);
+    expect(refreshSkills).toHaveBeenCalledWith(true);
   });
 
   it("rejects skill refresh for non-codex sessions", async () => {
@@ -6869,6 +6939,10 @@ describe("POST /api/sessions/:id/revert", () => {
 
 describe("PATCH /api/quests/:questId", () => {
   it("syncs claimed session name when in-progress quest title is updated", async () => {
+    ensureBridgeSession(bridge, "session-1", {
+      state: { claimedQuestId: "q-1", claimedQuestTitle: "Old title", claimedQuestStatus: "in_progress" },
+      taskHistory: [{ source: "quest", questId: "q-1", title: "Old title" }],
+    });
     vi.spyOn(questStore, "patchQuest").mockReturnValueOnce({
       id: "q-1-v2",
       questId: "q-1",
@@ -6878,7 +6952,6 @@ describe("PATCH /api/quests/:questId", () => {
       createdAt: Date.now(),
       updatedAt: Date.now(),
     } as any);
-
     const res = await app.request("/api/quests/q-1", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -6886,21 +6959,28 @@ describe("PATCH /api/quests/:questId", () => {
     });
 
     expect(res.status).toBe(200);
-    // setSessionClaimedQuest now handles broadcastNameUpdate source:quest and
-    // persisting the name via its onSessionNamedByQuest callback internally,
-    // so we only verify it was called with the right args.
-    expect(bridge.setSessionClaimedQuest).toHaveBeenCalledWith("session-1", {
-      id: "q-1",
-      title: "Updated quest title",
-      status: "in_progress",
+    expect(bridge._sessions["session-1"].state).toMatchObject({
+      claimedQuestId: "q-1",
+      claimedQuestTitle: "Updated quest title",
+      claimedQuestStatus: "in_progress",
     });
-    expect(bridge.updateQuestTaskEntries).toHaveBeenCalledWith("session-1", "q-1", "Updated quest title");
+    expect(bridge.broadcastToSession).toHaveBeenCalledWith(
+      "session-1",
+      expect.objectContaining({
+        type: "session_task_history",
+        tasks: expect.arrayContaining([expect.objectContaining({ questId: "q-1", title: "Updated quest title" })]),
+      }),
+    );
+    expect(bridge.persistSessionById).toHaveBeenCalledWith("session-1");
     expect(bridge.broadcastGlobal).toHaveBeenCalledWith(expect.objectContaining({ type: "quest_list_updated" }));
   });
 });
 
 describe("POST /api/quests/:questId/transition", () => {
   it("clears claimed quest from the pre-transition active owner when moved to done", async () => {
+    ensureBridgeSession(bridge, "session-1", {
+      state: { claimedQuestId: "q-1", claimedQuestTitle: "Quest", claimedQuestStatus: "needs_verification" },
+    });
     vi.spyOn(questStore, "getQuest").mockResolvedValueOnce({
       id: "q-1-v2",
       questId: "q-1",
@@ -6931,10 +7011,15 @@ describe("POST /api/quests/:questId/transition", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(bridge.setSessionClaimedQuest).toHaveBeenCalledWith("session-1", null);
+    expect(bridge._sessions["session-1"].state).toMatchObject({
+      claimedQuestId: undefined,
+      claimedQuestTitle: undefined,
+      claimedQuestStatus: undefined,
+    });
   });
 
   it("broadcasts claimed quest to the target active session for in_progress transitions", async () => {
+    ensureBridgeSession(bridge, "session-2");
     vi.spyOn(questStore, "getQuest").mockResolvedValueOnce({
       id: "q-1-v1",
       questId: "q-1",
@@ -6961,10 +7046,10 @@ describe("POST /api/quests/:questId/transition", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(bridge.setSessionClaimedQuest).toHaveBeenCalledWith("session-2", {
-      id: "q-1",
-      title: "Quest",
-      status: "in_progress",
+    expect(bridge._sessions["session-2"].state).toMatchObject({
+      claimedQuestId: "q-1",
+      claimedQuestTitle: "Quest",
+      claimedQuestStatus: "in_progress",
     });
   });
 });
@@ -7207,6 +7292,8 @@ describe("POST /api/quests/:questId/claim", () => {
     } as any);
 
     bridge.getSession.mockReturnValue({
+      id: "session-2",
+      taskHistory: [],
       messageHistory: [{ type: "user_message", id: "u-1", content: "claim", timestamp: Date.now() }],
     } as any);
 
@@ -7217,15 +7304,21 @@ describe("POST /api/quests/:questId/claim", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(bridge.addTaskEntry).toHaveBeenCalledWith(
+    expect(bridge.broadcastToSession).toHaveBeenCalledWith(
       "session-2",
       expect.objectContaining({
-        title: "Quest",
-        source: "quest",
-        questId: "q-1",
-        triggerMessageId: "u-1",
+        type: "session_task_history",
+        tasks: expect.arrayContaining([
+          expect.objectContaining({
+            title: "Quest",
+            source: "quest",
+            questId: "q-1",
+            triggerMessageId: "u-1",
+          }),
+        ]),
       }),
     );
+    expect(bridge.persistSessionById).toHaveBeenCalledWith("session-2");
   });
 });
 
@@ -7792,6 +7885,9 @@ describe("DELETE /api/quests/:questId/feedback/:index", () => {
 
 describe("POST /api/quests/:questId/done", () => {
   it("clears claimed quest from the pre-transition active owner", async () => {
+    ensureBridgeSession(bridge, "session-1", {
+      state: { claimedQuestId: "q-1", claimedQuestTitle: "Quest", claimedQuestStatus: "needs_verification" },
+    });
     vi.spyOn(questStore, "getQuest").mockResolvedValueOnce({
       id: "q-1-v2",
       questId: "q-1",
@@ -7823,12 +7919,19 @@ describe("POST /api/quests/:questId/done", () => {
 
     expect(res.status).toBe(200);
     expect(questStore.transitionQuest).toHaveBeenCalledWith("q-1", expect.objectContaining({ status: "done" }));
-    expect(bridge.setSessionClaimedQuest).toHaveBeenCalledWith("session-1", null);
+    expect(bridge._sessions["session-1"].state).toMatchObject({
+      claimedQuestId: undefined,
+      claimedQuestTitle: undefined,
+      claimedQuestStatus: undefined,
+    });
   });
 });
 
 describe("POST /api/quests/:questId/cancel", () => {
   it("clears claimed quest from the pre-transition active owner", async () => {
+    ensureBridgeSession(bridge, "session-1", {
+      state: { claimedQuestId: "q-1", claimedQuestTitle: "Quest", claimedQuestStatus: "in_progress" },
+    });
     vi.spyOn(questStore, "getQuest").mockResolvedValueOnce({
       id: "q-1-v2",
       questId: "q-1",
@@ -7859,7 +7962,11 @@ describe("POST /api/quests/:questId/cancel", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(bridge.setSessionClaimedQuest).toHaveBeenCalledWith("session-1", null);
+    expect(bridge._sessions["session-1"].state).toMatchObject({
+      claimedQuestId: undefined,
+      claimedQuestTitle: undefined,
+      claimedQuestStatus: undefined,
+    });
   });
 });
 
@@ -7971,6 +8078,27 @@ describe("Takode server-authoritative auth", () => {
     launcher.verifySessionAuthToken.mockImplementation(
       (id: string, token: string) => id === "orch-1" && token === "tok-1",
     );
+    bridge._sessions = Object.fromEntries(
+      Object.keys(sessions).map((sessionId) => [
+        sessionId,
+        {
+          id: sessionId,
+          state: {},
+          board: new Map(),
+          completedBoard: new Map(),
+          boardDispatchStates: new Map(),
+          messageHistory: [],
+          notifications: [],
+          pendingPermissions: new Map(),
+          taskHistory: [],
+          keywords: [],
+          lastReadAt: 0,
+          attentionReason: null,
+          isGenerating: false,
+        },
+      ]),
+    );
+    bridge.getSession.mockImplementation((sessionId: string) => bridge._sessions[sessionId] ?? null);
     return sessions;
   }
 
@@ -8024,6 +8152,13 @@ describe("Takode server-authoritative auth", () => {
         total_lines_added: 777,
         total_lines_removed: 55,
       },
+      pendingPermissions: new Map(),
+      messageHistory: [],
+      notifications: [],
+      taskHistory: [],
+      keywords: [],
+      lastReadAt: 0,
+      attentionReason: null,
       isGenerating: false,
     };
     bridge.getSession.mockImplementation((id: string) => (id === "worker-1" ? bridgeSession : null));
@@ -8056,6 +8191,13 @@ describe("Takode server-authoritative auth", () => {
         total_lines_added: 777,
         total_lines_removed: 55,
       },
+      pendingPermissions: new Map(),
+      messageHistory: [],
+      notifications: [],
+      taskHistory: [],
+      keywords: [],
+      lastReadAt: 0,
+      attentionReason: null,
       isGenerating: false,
     };
     bridge.getSession.mockImplementation((id: string) => (id === "worker-1" ? bridgeSession : null));
@@ -8253,8 +8395,7 @@ describe("Takode server-authoritative auth", () => {
     expect(res.status).toBe(400);
     const json = await res.json();
     expect(json.error).toBe("summary is required");
-    // notifyUser should not be called when summary is missing
-    expect(bridge.notifyUser).not.toHaveBeenCalled();
+    expect(bridge._sessions["orch-1"].notifications).toEqual([]);
   });
 
   it("passes summary string through to notifyUser", async () => {
@@ -8267,7 +8408,9 @@ describe("Takode server-authoritative auth", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(bridge.notifyUser).toHaveBeenCalledWith("orch-1", "needs-input", "Need decision on auth approach");
+    expect(bridge._sessions["orch-1"].notifications).toMatchObject([
+      { category: "needs-input", summary: "Need decision on auth approach", done: false },
+    ]);
   });
 
   it("rejects whitespace-only summary", async () => {
@@ -8282,7 +8425,7 @@ describe("Takode server-authoritative auth", () => {
     expect(res.status).toBe(400);
     const json = await res.json();
     expect(json.error).toBe("summary is required");
-    expect(bridge.notifyUser).not.toHaveBeenCalled();
+    expect(bridge._sessions["orch-1"].notifications).toEqual([]);
   });
 
   it("rejects notify with invalid category", async () => {
@@ -8310,24 +8453,22 @@ describe("Takode server-authoritative auth", () => {
     expect(res.status).toBe(403);
   });
 
-  // ── Notification Inbox ────────────────────────────────────────────
-
-  // Tests that GET /sessions/:id/notifications returns the notification list
   it("returns notification list via GET /sessions/:id/notifications", async () => {
     setupTakodeSessions();
     const mockNotifs = [{ id: "n-1", category: "review", timestamp: 1000, messageId: "mock-msg-5", done: false }];
-    bridge.getNotifications.mockReturnValue(mockNotifs);
+    bridge._sessions["orch-1"].notifications = mockNotifs;
 
     const res = await app.request("/api/sessions/orch-1/notifications");
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json).toEqual(mockNotifs);
-    expect(bridge.getNotifications).toHaveBeenCalledWith("orch-1");
   });
 
-  // Tests that POST .../notifications/:notifId/done toggles done state
   it("marks notification as done via POST", async () => {
     setupTakodeSessions();
+    bridge._sessions["orch-1"].notifications = [
+      { id: "n-1", category: "review", summary: "Done", timestamp: 1000, messageId: null, done: false },
+    ];
 
     const res = await app.request("/api/sessions/orch-1/notifications/n-1/done", {
       method: "POST",
@@ -8336,12 +8477,14 @@ describe("Takode server-authoritative auth", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(bridge.markNotificationDone).toHaveBeenCalledWith("orch-1", "n-1", true);
+    expect(bridge._sessions["orch-1"].notifications[0].done).toBe(true);
   });
 
-  // Tests that mark-done defaults to true when body.done is omitted
   it("mark-done defaults to true when done field is omitted", async () => {
     setupTakodeSessions();
+    bridge._sessions["orch-1"].notifications = [
+      { id: "n-1", category: "review", summary: "Done", timestamp: 1000, messageId: null, done: false },
+    ];
 
     const res = await app.request("/api/sessions/orch-1/notifications/n-1/done", {
       method: "POST",
@@ -8350,13 +8493,14 @@ describe("Takode server-authoritative auth", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(bridge.markNotificationDone).toHaveBeenCalledWith("orch-1", "n-1", true);
+    expect(bridge._sessions["orch-1"].notifications[0].done).toBe(true);
   });
 
-  // Tests that mark-done returns 404 for unknown notification
   it("returns 404 for unknown notification ID", async () => {
     setupTakodeSessions();
-    bridge.markNotificationDone.mockReturnValue(false);
+    bridge._sessions["orch-1"].notifications = [
+      { id: "n-1", category: "review", summary: "Done", timestamp: 1000, messageId: null, done: false },
+    ];
 
     const res = await app.request("/api/sessions/orch-1/notifications/n-999/done", {
       method: "POST",
@@ -8369,7 +8513,11 @@ describe("Takode server-authoritative auth", () => {
 
   it("marks all notifications done via POST", async () => {
     setupTakodeSessions();
-    bridge.markAllNotificationsDone.mockReturnValue(3);
+    bridge._sessions["orch-1"].notifications = [
+      { id: "n-1", category: "review", summary: "One", timestamp: 1000, messageId: null, done: false },
+      { id: "n-2", category: "review", summary: "Two", timestamp: 1001, messageId: null, done: false },
+      { id: "n-3", category: "needs-input", summary: "Three", timestamp: 1002, messageId: null, done: false },
+    ];
 
     const res = await app.request("/api/sessions/orch-1/notifications/done-all", {
       method: "POST",
@@ -8379,7 +8527,7 @@ describe("Takode server-authoritative auth", () => {
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: true, count: 3 });
-    expect(bridge.markAllNotificationsDone).toHaveBeenCalledWith("orch-1", true);
+    expect(bridge._sessions["orch-1"].notifications.every((notif: any) => notif.done)).toBe(true);
   });
 
   it("includes active needs-input notifications in takode pending output", async () => {
@@ -8456,7 +8604,7 @@ describe("Takode server-authoritative auth", () => {
       sessionId: "orch-1",
       sessionLabel: "#7",
     });
-    expect(bridge.markNotificationDone).toHaveBeenCalledWith("worker-1", "n-1", true);
+    expect(bridge.getSession("worker-1")?.notifications[0]?.done).toBe(true);
   });
 
   it("requires an explicit selector when multiple pending prompts exist", async () => {
@@ -8632,12 +8780,10 @@ describe("Takode server-authoritative auth", () => {
     launcher.getSession.mockImplementation((id: string) => sessions[id]);
     launcher.getSessionNum.mockImplementation((id: string) => sessions[id]?.sessionNum);
     bridge.isBackendConnected.mockImplementation((id: string) => id === "worker-1" || id === "reviewer-1");
-    bridge.getBoard.mockReturnValue([
-      { questId: "q-1", worker: "worker-1", workerNum: 11, status: "IMPLEMENTING", createdAt: 1, updatedAt: 1 },
-      { questId: "q-2", worker: "worker-2", workerNum: 22, status: "PLANNING", createdAt: 2, updatedAt: 2 },
+    bridge._sessions["orch-1"].board = new Map([
+      ["q-1", { questId: "q-1", worker: "worker-1", workerNum: 11, status: "IMPLEMENTING", createdAt: 1, updatedAt: 1 }],
+      ["q-2", { questId: "q-2", worker: "worker-2", workerNum: 22, status: "PLANNING", createdAt: 2, updatedAt: 2 }],
     ]);
-    bridge.getBoardQueueWarnings.mockReturnValue([]);
-    bridge.getBoardWorkerSlotUsage.mockReturnValue({ used: 2, limit: 5 });
 
     const res = await app.request("/api/sessions/orch-1/board?resolve=true", {
       method: "GET",
@@ -8651,7 +8797,7 @@ describe("Takode server-authoritative auth", () => {
         { questId: "q-2", worker: "worker-2", workerNum: 22, status: "PLANNING" },
       ],
       queueWarnings: [],
-      workerSlotUsage: { used: 2, limit: 5 },
+      workerSlotUsage: { used: 1, limit: 5 },
       rowSessionStatuses: {
         "q-1": {
           worker: { sessionId: "worker-1", sessionNum: 11, status: "running" },
@@ -8694,7 +8840,6 @@ describe("Takode server-authoritative auth", () => {
       },
     ]);
     bridge.isBackendConnected.mockReturnValue(false);
-    bridge.isSessionBusy.mockReturnValue(false);
 
     const res = await app.request("/api/sessions/worker-1/info", {
       method: "GET",
@@ -8724,8 +8869,6 @@ describe("Takode server-authoritative auth", () => {
   });
 
   it("includes pendingTimerCount in takode message views", async () => {
-    // Verifies the shared message-view payload carries timer counts for the
-    // default peek path, which both CLI state surfaces and tests rely on.
     setupTakodeSessions();
     timerManager.listTimers.mockImplementation((sessionId: string) => (sessionId === "worker-1" ? [{ id: "t2" }] : []));
     bridge.getMessageHistory.mockReturnValue([]);
@@ -8741,8 +8884,6 @@ describe("Takode server-authoritative auth", () => {
   });
 
   it("includes pendingTimerCount in takode scan message views", async () => {
-    // Verifies the scan=turns branch preserves timer counts too, so takode scan
-    // cannot regress independently from the default message-view path.
     setupTakodeSessions();
     timerManager.listTimers.mockImplementation((sessionId: string) => (sessionId === "worker-1" ? [{ id: "t4" }] : []));
     bridge.getMessageHistory.mockReturnValue([]);
@@ -8761,7 +8902,7 @@ describe("Takode server-authoritative auth", () => {
     // The CLI probes scan=turns with turnCount=0 to learn totalTurns before it
     // requests the real page. That metadata-only request must return cleanly.
     setupTakodeSessions();
-    bridge.getMessageHistory.mockReturnValue([
+    bridge._sessions["worker-1"].messageHistory = [
       {
         type: "user_message",
         content: "first turn",
@@ -8778,7 +8919,7 @@ describe("Takode server-authoritative auth", () => {
         is_error: false,
         timestamp: 1_350,
       },
-    ]);
+    ];
 
     const res = await app.request("/api/sessions/worker-1/messages?scan=turns&fromTurn=0&turnCount=0", {
       method: "GET",
@@ -8812,7 +8953,33 @@ describe("Takode server-authoritative auth", () => {
       { session_id: "worker-2", git_branch: "docs/timers", backend_type: "codex" },
     ]);
     bridge.getSession.mockImplementation((sessionId: string) =>
-      sessionId === "worker-1" ? ({ isGenerating: true } as any) : null,
+      sessionId === "worker-1"
+        ? ({
+            id: "worker-1",
+            state: { session_id: "worker-1", git_branch: "fix/build", backend_type: "claude" },
+            pendingPermissions: new Map(),
+            messageHistory: [],
+            notifications: [],
+            taskHistory: [],
+            keywords: [],
+            lastReadAt: 0,
+            attentionReason: null,
+            isGenerating: true,
+          } as any)
+        : sessionId === "worker-2"
+          ? ({
+              id: "worker-2",
+              state: { session_id: "worker-2", git_branch: "docs/timers", backend_type: "codex" },
+              pendingPermissions: new Map(),
+              messageHistory: [],
+              notifications: [],
+              taskHistory: [],
+              keywords: [],
+              lastReadAt: 0,
+              attentionReason: null,
+              isGenerating: false,
+            } as any)
+          : null,
     );
     bridge.isBackendConnected.mockImplementation((sessionId: string) => sessionId !== "worker-2");
     timerManager.listTimers.mockImplementation((sessionId: string) => {
@@ -9105,17 +9272,14 @@ describe("Takode server-authoritative auth", () => {
   });
 
   it("takode info endpoint includes diffBaseBranch in response", async () => {
-    const sessions = setupTakodeSessions();
-    bridge.getAllSessions.mockReturnValue([
-      {
-        session_id: "worker-1",
-        git_branch: "feature/x",
-        git_default_branch: "origin/jiayi",
-        diff_base_branch: "origin/main",
-      },
-    ]);
+    setupTakodeSessions();
+    bridge._sessions["worker-1"].state = {
+      session_id: "worker-1",
+      git_branch: "feature/x",
+      git_default_branch: "origin/jiayi",
+      diff_base_branch: "origin/main",
+    };
     bridge.isBackendConnected.mockReturnValue(true);
-    bridge.isSessionBusy.mockReturnValue(false);
 
     const res = await app.request("/api/sessions/worker-1/info", {
       method: "GET",

@@ -20,6 +20,7 @@ import type { SdkSessionInfo } from "./cli-launcher.js";
 import type { CliLauncher } from "./cli-launcher.js";
 import type { WorktreeTracker } from "./worktree-tracker.js";
 import type { WsBridge } from "./ws-bridge.js";
+import { applyInitialSessionState as applyInitialSessionStateController } from "./bridge/session-registry-controller.js";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -513,7 +514,7 @@ export async function recreateWorktreeIfMissing(
           worktreePath: targetPath,
           createdAt: Date.now(),
         });
-        deps.wsBridge.markWorktree(sessionId, info.repoRoot, targetPath, repoInfo.defaultBranch, info.branch);
+        seedWorktreeBridgeState(deps.wsBridge, sessionId, info.repoRoot, targetPath, repoInfo.defaultBranch, info.branch);
 
         console.log(
           `[migration] Restored worktree from archived ref ${actualBranch} for session ${sessionId}: ${targetPath}`,
@@ -552,10 +553,38 @@ export async function recreateWorktreeIfMissing(
     worktreePath: result.worktreePath,
     createdAt: Date.now(),
   });
-  deps.wsBridge.markWorktree(sessionId, info.repoRoot, result.worktreePath, repoInfo.defaultBranch, info.branch);
+  seedWorktreeBridgeState(deps.wsBridge, sessionId, info.repoRoot, result.worktreePath, repoInfo.defaultBranch, info.branch);
 
   console.log(`[migration] Recreated worktree for session ${sessionId}: ${result.worktreePath}`);
   return { recreated: true };
+}
+
+function seedWorktreeBridgeState(
+  wsBridge: WsBridge,
+  sessionId: string,
+  repoRoot: string,
+  worktreeCwd: string,
+  defaultBranch?: string,
+  diffBaseBranch?: string,
+): void {
+  const bridgeAny = wsBridge as any;
+  if (typeof bridgeAny.getOrCreateSession !== "function") {
+    bridgeAny.markWorktree?.(sessionId, repoRoot, worktreeCwd, defaultBranch, diffBaseBranch);
+    return;
+  }
+  const session = wsBridge.getOrCreateSession(sessionId);
+  const prefill = bridgeAny.prefillSlashCommands;
+  if (session && typeof prefill === "function") {
+    applyInitialSessionStateController(session as any, {
+      cwd: worktreeCwd,
+      worktree: { repoRoot, defaultBranch, diffBaseBranch },
+    }, {
+      persistSession: (targetSession) => wsBridge.persistSessionById((targetSession as any).id),
+      prefillSlashCommands: (targetSession) => prefill.call(bridgeAny, targetSession),
+    });
+    return;
+  }
+  bridgeAny.markWorktree?.(sessionId, repoRoot, worktreeCwd, defaultBranch, diffBaseBranch);
 }
 
 // ─── Merge Helpers ──────────────────────────────────────────────────────────
