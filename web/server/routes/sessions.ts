@@ -23,16 +23,19 @@ import { GIT_CMD_TIMEOUT } from "../constants.js";
 import { getDefaultModelForBackend } from "../../shared/backend-defaults.js";
 import type { HerdSessionsResponse } from "../../shared/herd-types.js";
 import type { RouteContext, OptionalAuthResult } from "./context.js";
+import {
+  SessionBackend,
+  SessionPreparationError,
+  SessionPreparationStatus,
+  applyDefaultClaudeBackend,
+  computeCodexRevertPlan,
+  getActorSessionId,
+  getArchiveSource,
+  markOrchestratorSessionAfterConnect,
+  resolveBackend,
+  throwPreparationError,
+} from "./sessions-helpers.js";
 import { deriveAttachmentPaths, formatAttachmentPathAnnotation } from "../attachment-paths.js";
-
-/** Extract the caller's session ID from an optional auth result, if available. */
-function getActorSessionId(auth: OptionalAuthResult): string | undefined {
-  return auth && "callerId" in auth ? auth.callerId : undefined;
-}
-
-function getArchiveSource(actorSessionId?: string): TakodeSessionArchivedEventData["archive_source"] {
-  return actorSessionId ? "leader" : "user";
-}
 
 export function createSessionsRoutes(ctx: RouteContext) {
   const api = new Hono();
@@ -210,55 +213,8 @@ export function createSessionsRoutes(ctx: RouteContext) {
       await heartbeatLoop;
     }
   };
-
-  function buildCodexTurnSegments(
-    messageHistory: Array<{ type: string; id?: string }>,
-  ): Array<{ startIdx: number; userMessageIds: string[] }> {
-    const segments: Array<{ startIdx: number; userMessageIds: string[] }> = [];
-    let startIdx: number | null = null;
-    let userMessageIds: string[] = [];
-
-    for (let idx = 0; idx < messageHistory.length; idx++) {
-      const msg = messageHistory[idx];
-      if (msg.type === "user_message") {
-        if (startIdx === null) startIdx = idx;
-        if (typeof msg.id === "string") userMessageIds.push(msg.id);
-      }
-      if (msg.type === "result" && startIdx !== null) {
-        segments.push({ startIdx, userMessageIds: [...userMessageIds] });
-        startIdx = null;
-        userMessageIds = [];
-      }
-    }
-
-    if (startIdx !== null) {
-      segments.push({ startIdx, userMessageIds: [...userMessageIds] });
-    }
-
-    return segments;
-  }
-
-  function computeCodexRevertPlan(
-    session: {
-      messageHistory: Array<{ type: string; id?: string }>;
-    },
-    messageId: string,
-  ): { truncateIdx: number; numTurns: number; exactTurnBoundary: boolean } | null {
-    const segments = buildCodexTurnSegments(session.messageHistory);
-    const targetTurnIndex = segments.findIndex((segment) => segment.userMessageIds.includes(messageId));
-    if (targetTurnIndex < 0) return null;
-
-    const targetSegment = segments[targetTurnIndex]!;
-    return {
-      truncateIdx: targetSegment.startIdx,
-      numTurns: segments.length - targetTurnIndex,
-      exactTurnBoundary: targetSegment.userMessageIds[0] === messageId,
-    };
-  }
   // ─── SDK Sessions (--sdk-url) ─────────────────────────────────────
-  type SessionBackend = "claude" | "codex" | "claude-sdk";
   type CreationProgressStatus = "in_progress" | "done" | "error";
-  type SessionPreparationStatus = 400 | 503;
   type EmitCreationProgress = (
     step: CreationStepId,
     label: string,
@@ -292,50 +248,12 @@ export function createSessionsRoutes(ctx: RouteContext) {
     resumeCliSessionId?: string;
   }
 
-  class SessionPreparationError extends Error {
-    constructor(
-      message: string,
-      public status: SessionPreparationStatus,
-      public step?: CreationStepId,
-    ) {
-      super(message);
-      this.name = "SessionPreparationError";
-    }
-  }
-
-  const resolveBackend = (raw: unknown): SessionBackend | null => {
-    if (raw === "claude" || raw === "codex" || raw === "claude-sdk") return raw;
-    return null;
-  };
-
-  /** Resolve "claude" to the user's configured default (WebSocket or SDK). */
-  const applyDefaultClaudeBackend = (backend: SessionBackend): SessionBackend => {
-    if (backend !== "claude") return backend;
-    const configured = getSettings().defaultClaudeBackend;
-    return configured === "claude-sdk" ? "claude-sdk" : "claude";
-  };
-
-  const throwPreparationError = (message: string, status: SessionPreparationStatus, step?: CreationStepId): never => {
-    throw new SessionPreparationError(message, status, step);
-  };
-
-  const markOrchestratorSession = (sessionId: string, backend: SessionBackend) => {
-    // Fire-and-forget: wait for CLI to connect, then send identity message
-    (async () => {
-      const maxWait = 30_000;
-      const pollMs = 200;
-      const start = Date.now();
-      while (Date.now() - start < maxWait) {
-        const info = launcher.getSession(sessionId);
-        if (info && (info.state === "connected" || info.state === "running")) {
-          wsBridge.injectUserMessage(sessionId, buildOrchestratorSystemPrompt(backend));
-          return;
-        }
-        if (info?.state === "exited") return; // CLI crashed, don't inject
-        await new Promise((r) => setTimeout(r, pollMs));
-      }
-    })().catch((e) => console.error(`[routes] Failed to inject orchestrator message:`, e));
-  };
+  const markOrchestratorSession = (sessionId: string, backend: SessionBackend) =>
+    markOrchestratorSessionAfterConnect(
+      { launcher, wsBridge },
+      sessionId,
+      buildOrchestratorSystemPrompt(backend),
+    );
 
   const applySessionPostLaunch = (
     session: Awaited<ReturnType<CliLauncher["launch"]>>,

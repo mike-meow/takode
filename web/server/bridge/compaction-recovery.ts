@@ -1,0 +1,46 @@
+// Injected into leader sessions after context compaction so they reload
+// orchestration skills and recover enough self-history before making decisions.
+export const LEADER_COMPACTION_RECOVERY_PROMPT = `Context was compacted. Before continuing, recover enough context to safely resume orchestration:
+
+1. Load skills: /takode-orchestration, /leader-dispatch, and /quest
+2. Run: takode board show && takode list
+3. Key rules:
+   - Inspect your own session history with Takode tools before resuming. Start with \`takode scan <your-session-number>\` and keep digging until you recover enough earlier context for the current orchestration state
+   - Use \`takode spawn\` to create workers (never Agent tool)
+   - Invoke /leader-dispatch before every dispatch
+   - Follow quest-journey.md for lifecycle transitions
+   - Update the board (\`takode board set/advance\`) at every stage transition
+   - Make worker instructions stage-explicit: plan only, implement and stop, reviewer-groom/rework and report back, port only when explicitly told
+   - Never implement non-trivial changes yourself -- delegate to workers`;
+
+// Injected into non-leader Takode sessions after context compaction so they
+// recover enough self-history before resuming their current role.
+export const STANDARD_COMPACTION_RECOVERY_PROMPT = `Context was compacted. Before continuing, recover enough context from your own session history to safely resume work:
+
+1. Inspect your own session history with Takode tools. Start with \`takode scan <your-session-number>\`
+2. If you still need detail, inspect your own session further with Takode tools such as \`takode peek <your-session-number>\` or \`takode read <your-session-number>\`
+3. Re-read the quest or latest assignment only after you have recovered enough earlier context from your own session
+4. Keep your current role. If you are a worker or reviewer, continue the assigned task and do not switch into leader/orchestration behavior`;
+
+/** Extract structured Q&A pairs from an AskUserQuestion approval. */
+export function extractAskUserAnswers(
+  originalInput: Record<string, unknown>,
+  updatedInput?: Record<string, unknown>,
+): { question: string; answer: string }[] | undefined {
+  const answers = updatedInput?.answers as Record<string, string> | undefined;
+  const questions = Array.isArray(originalInput.questions)
+    ? (originalInput.questions as Record<string, unknown>[])
+    : [];
+  if (!answers || !questions.length) return undefined;
+
+  const pairs: { question: string; answer: string }[] = [];
+  for (let i = 0; i < questions.length; i++) {
+    const q = questions[i];
+    const questionText = typeof q.question === "string" ? q.question : "";
+    const answer = answers[String(i)] ?? (questionText ? answers[questionText] : undefined);
+    if (questionText && answer) {
+      pairs.push({ question: questionText, answer });
+    }
+  }
+  return pairs.length ? pairs : undefined;
+}

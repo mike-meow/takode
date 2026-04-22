@@ -2,7 +2,6 @@ import type { ServerWebSocket } from "bun";
 import { randomUUID } from "node:crypto";
 import { exec as execCb } from "node:child_process";
 import { promisify } from "node:util";
-import { readFile as readFileAsync, stat as statAsync } from "node:fs/promises";
 import { GIT_CMD_TIMEOUT, SERVER_GIT_CMD } from "./constants.js";
 import { computeSessionPayloadMetrics } from "./session-payload-metrics.js";
 import { getDefaultModelForBackend } from "../shared/backend-defaults.js";
@@ -26,7 +25,7 @@ function yieldToEventLoop(): Promise<void> {
 }
 
 const GIT_SHA_REF_RE = /^[0-9a-f]{7,40}$/i;
-import { resolve, join } from "node:path";
+import { resolve } from "node:path";
 import type { PushoverNotifier } from "./pushover.js";
 import { getTrafficMessageType, trafficStats, type TrafficStatsSnapshot } from "./traffic-stats.js";
 import type {
@@ -94,13 +93,47 @@ import type { AutoApprovalConfig } from "./auto-approval-store.js";
 import { deriveAttachmentPaths, formatAttachmentPathAnnotation } from "./attachment-paths.js";
 import type { PerfTracer } from "./perf-tracer.js";
 import {
+  LEADER_COMPACTION_RECOVERY_PROMPT,
+  STANDARD_COMPACTION_RECOVERY_PROMPT,
+  extractAskUserAnswers,
+} from "./bridge/compaction-recovery.js";
+import {
   NEVER_AUTO_APPROVE,
   handlePermissionRequest as handlePermissionRequestPipeline,
   type PermissionPipelineResult,
   isSensitiveBashCommand as isSensitiveBashCommandPolicy,
   isSensitiveConfigPath as isSensitiveConfigPathPolicy,
 } from "./bridge/permission-pipeline.js";
+import {
+  NOTABLE_APPROVALS,
+  buildPendingCodexImageDrafts,
+  getApprovalSummary,
+  getAutoApprovalSummary,
+  getDenialSummary,
+} from "./bridge/permission-summaries.js";
 import { formatRenderedHerdEventBatch } from "./herd-event-dispatcher.js";
+import {
+  cleanupBranchState as cleanupBranchStateIndex,
+  invalidateSessionsSharingBranch as invalidateSessionsSharingBranchIndex,
+  removeBranchIndexEntries as removeBranchIndexEntriesIndex,
+  updateBranchIndex as updateBranchIndexState,
+} from "./bridge/branch-session-index.js";
+import {
+  armCodexFreshTurnRequirement as armCodexFreshTurnRequirementState,
+  clearCodexFreshTurnRequirement as clearCodexFreshTurnRequirementState,
+  completeCodexTurn as completeCodexTurnState,
+  completeCodexTurnsForResult as completeCodexTurnsForResultState,
+  dispatchQueuedCodexTurns as dispatchQueuedCodexTurnsState,
+  enqueueCodexTurn as enqueueCodexTurnState,
+  getCodexHeadTurn as getCodexHeadTurnState,
+  getCodexTurnAwaitingAck as getCodexTurnAwaitingAckState,
+  getCodexTurnInRecovery as getCodexTurnInRecoveryState,
+  removeCompletedCodexTurns as removeCompletedCodexTurnsState,
+} from "./bridge/codex-turn-queue.js";
+import { handleAssistantMessage as handleAssistantMessageController } from "./bridge/assistant-message-controller.js";
+import { handleSystemMessage as handleSystemMessageController } from "./bridge/system-message-controller.js";
+import { handleResultMessage as handleResultMessageController } from "./bridge/result-message-controller.js";
+import { handlePermissionResponse as handlePermissionResponseController } from "./bridge/permission-response-controller.js";
 
 // `takode board` output is compact, high-signal state that agents routinely
 // reason about. A 300-char tail preview can hide dependent rows and make the
@@ -120,6 +153,7 @@ import {
   type UserDispatchTurnTarget,
   trackUserMessageForTurn as trackUserMessageForTurnLifecycle,
 } from "./bridge/generation-lifecycle.js";
+import { makeDefaultState, readWorktreeStateFingerprint, resolveGitInfo } from "./bridge/session-git-state.js";
 import type {
   BackendAdapter,
   CompactRequestedAwareAdapter,
@@ -132,135 +166,11 @@ import type {
   TurnStartFailedAwareAdapter,
 } from "./bridge/adapter-interface.js";
 
-// ─── Denial summary helper ───────────────────────────────────────────────────
-
-/** Build a concise human-readable summary for a denied permission. */
-function getDenialSummary(toolName: string, input: Record<string, unknown>): string {
-  if (toolName === "Bash" && typeof input.command === "string") {
-    const cmd = input.command.length > 60 ? input.command.slice(0, 60) + "..." : input.command;
-    return `Denied: Bash \u2014 ${cmd}`;
-  }
-  if (typeof input.file_path === "string") {
-    return `Denied: ${toolName} \u2014 ${input.file_path}`;
-  }
-  return `Denied: ${toolName}`;
-}
-
-/** Build a concise human-readable summary for an approved permission. */
-function getApprovalSummary(toolName: string, input: Record<string, unknown>): string {
-  if (toolName === "ExitPlanMode") return "Plan approved";
-  if (toolName === "Bash" && typeof input.command === "string") {
-    const cmd = input.command.length > 60 ? input.command.slice(0, 60) + "..." : input.command;
-    return `Approved: Bash \u2014 ${cmd}`;
-  }
-  if (typeof input.file_path === "string") {
-    return `Approved: ${toolName} \u2014 ${input.file_path}`;
-  }
-  return `Approved: ${toolName}`;
-}
-
-/** Build a concise human-readable summary for an auto-approved permission.
- *  Prefers the human-readable description over raw command/file when available.
- *  Reason (LLM rationale) is kept separate — sent as its own field, not baked into summary. */
-function getAutoApprovalSummary(toolName: string, input: Record<string, unknown>): string {
-  if (toolName === "Bash") {
-    // Prefer the human-readable description (set by Claude Code for Bash calls)
-    if (typeof input.description === "string" && input.description.length > 0) {
-      return `Auto-approved: ${input.description}`;
-    }
-    if (typeof input.command === "string") {
-      const cmd = input.command.length > 60 ? input.command.slice(0, 60) + "..." : input.command;
-      return `Auto-approved: Bash \u2014 ${cmd}`;
-    }
-  }
-  if (typeof input.file_path === "string") {
-    return `Auto-approved: ${toolName} \u2014 ${input.file_path}`;
-  }
-  return `Auto-approved: ${toolName}`;
-}
-
-/** Tools whose approvals appear as chat messages (same set — interactive tools need visible records). */
-const NOTABLE_APPROVALS = NEVER_AUTO_APPROVE;
-
-/** MIME type to file extension mapping for image file path derivation (must match image-store.ts). */
-const MIME_TO_EXT: Record<string, string> = {
-  "image/png": "png",
-  "image/jpeg": "jpeg",
-  "image/jpg": "jpg",
-  "image/gif": "gif",
-  "image/webp": "webp",
-  "image/svg+xml": "svg",
-  "image/bmp": "bmp",
-  "image/tiff": "tiff",
-  "image/avif": "avif",
-  "image/heic": "heic",
-  "image/heif": "heif",
-};
-
-function buildPendingCodexImageDrafts(
-  images: { media_type: string; data: string }[] | undefined,
-): PendingCodexInputImageDraft[] | undefined {
-  if (!images?.length) return undefined;
-  return images.map((img, idx) => ({
-    name: `attachment-${idx + 1}.${MIME_TO_EXT[img.media_type] || "bin"}`,
-    base64: img.data,
-    mediaType: img.media_type,
-  }));
-}
-
 const MAX_ADAPTER_RELAUNCH_FAILURES = 3;
 const ADAPTER_FAILURE_RESET_WINDOW_MS = 120_000;
 const CODEX_INTENTIONAL_RELAUNCH_GUARD_MS = 15_000;
 const CODEX_RETRY_SAFE_RESUME_ITEM_TYPES: ReadonlySet<string> = new Set(["reasoning", "contextCompaction"]);
 const CODEX_TOOL_RESULT_WATCHDOG_MS = 120_000;
-
-// Injected into leader sessions after context compaction so they reload
-// orchestration skills and recover enough self-history before making decisions.
-const LEADER_COMPACTION_RECOVERY_PROMPT = `Context was compacted. Before continuing, recover enough context to safely resume orchestration:
-
-1. Load skills: /takode-orchestration, /leader-dispatch, and /quest
-2. Run: takode board show && takode list
-3. Key rules:
-   - Inspect your own session history with Takode tools before resuming. Start with \`takode scan <your-session-number>\` and keep digging until you recover enough earlier context for the current orchestration state
-   - Use \`takode spawn\` to create workers (never Agent tool)
-   - Invoke /leader-dispatch before every dispatch
-   - Follow quest-journey.md for lifecycle transitions
-   - Update the board (\`takode board set/advance\`) at every stage transition
-   - Make worker instructions stage-explicit: plan only, implement and stop, reviewer-groom/rework and report back, port only when explicitly told
-   - Never implement non-trivial changes yourself -- delegate to workers`;
-
-// Injected into non-leader Takode sessions after context compaction so they
-// recover enough self-history before resuming their current role.
-const STANDARD_COMPACTION_RECOVERY_PROMPT = `Context was compacted. Before continuing, recover enough context from your own session history to safely resume work:
-
-1. Inspect your own session history with Takode tools. Start with \`takode scan <your-session-number>\`
-2. If you still need detail, inspect your own session further with Takode tools such as \`takode peek <your-session-number>\` or \`takode read <your-session-number>\`
-3. Re-read the quest or latest assignment only after you have recovered enough earlier context from your own session
-4. Keep your current role. If you are a worker or reviewer, continue the assigned task and do not switch into leader/orchestration behavior`;
-
-/** Extract structured Q&A pairs from an AskUserQuestion approval. */
-function extractAskUserAnswers(
-  originalInput: Record<string, unknown>,
-  updatedInput?: Record<string, unknown>,
-): { question: string; answer: string }[] | undefined {
-  const answers = updatedInput?.answers as Record<string, string> | undefined;
-  const questions = Array.isArray(originalInput.questions)
-    ? (originalInput.questions as Record<string, unknown>[])
-    : [];
-  if (!answers || !questions.length) return undefined;
-
-  const pairs: { question: string; answer: string }[] = [];
-  for (let i = 0; i < questions.length; i++) {
-    const q = questions[i];
-    const questionText = typeof q.question === "string" ? q.question : "";
-    // Protocol uses numeric index keys ("0", "1", ...) or question text as keys
-    const answer = answers[String(i)] ?? (questionText ? answers[questionText] : undefined);
-    if (questionText && answer) {
-      pairs.push({ question: questionText, answer });
-    }
-  }
-  return pairs.length ? pairs : undefined;
-}
 
 // ─── WebSocket data tags ──────────────────────────────────────────────────────
 
@@ -528,341 +438,6 @@ type GitSessionKey =
   | "git_behind"
   | "total_lines_added"
   | "total_lines_removed";
-
-async function resolveUpstreamRef(state: SessionState): Promise<string | null> {
-  if (!state.cwd || !state.git_branch || state.git_branch === "HEAD" || state.is_worktree) return null;
-  try {
-    const { stdout } = await execPromise(
-      `${SERVER_GIT_CMD} rev-parse --abbrev-ref --symbolic-full-name ${state.git_branch}@{upstream} 2>/dev/null`,
-      { cwd: state.cwd, encoding: "utf-8", timeout: GIT_CMD_TIMEOUT },
-    );
-    const upstreamRef = stdout.trim();
-    return upstreamRef || null;
-  } catch {
-    return null;
-  }
-}
-
-function makeDefaultState(sessionId: string, backendType: BackendType = "claude"): SessionState {
-  return {
-    session_id: sessionId,
-    backend_type: backendType,
-    backend_state: "disconnected",
-    backend_error: null,
-    model: "",
-    cwd: "",
-    tools: [],
-    permissionMode: "default",
-    claude_code_version: "",
-    mcp_servers: [],
-    agents: [],
-    slash_commands: [],
-    skills: [],
-    skill_metadata: [],
-    apps: [],
-    total_cost_usd: 0,
-    num_turns: 0,
-    context_used_percent: 0,
-    codex_retained_payload_bytes: 0,
-    is_compacting: false,
-    git_branch: "",
-    git_head_sha: "",
-    git_default_branch: "",
-    diff_base_branch: "",
-    diff_base_branch_explicit: false,
-    diff_base_start_sha: "",
-    is_worktree: false,
-    is_containerized: false,
-    repo_root: "",
-    git_ahead: 0,
-    git_behind: 0,
-    total_lines_added: 0,
-    total_lines_removed: 0,
-  };
-}
-
-// ─── Git info helper ─────────────────────────────────────────────────────────
-
-async function resolveGitInfo(state: SessionState): Promise<void> {
-  if (!state.cwd) return;
-  // Preserve is_containerized — it's set during session launch, not derived from git
-  const wasContainerized = state.is_containerized;
-  try {
-    const { stdout: branchOut } = await execPromise(`${SERVER_GIT_CMD} rev-parse --abbrev-ref HEAD 2>/dev/null`, {
-      cwd: state.cwd,
-      encoding: "utf-8",
-      timeout: GIT_CMD_TIMEOUT,
-    });
-    state.git_branch = branchOut.trim();
-    try {
-      const { stdout: headOut } = await execPromise(`${SERVER_GIT_CMD} rev-parse HEAD 2>/dev/null`, {
-        cwd: state.cwd,
-        encoding: "utf-8",
-        timeout: GIT_CMD_TIMEOUT,
-      });
-      state.git_head_sha = headOut.trim();
-    } catch {
-      state.git_head_sha = "";
-    }
-
-    // Detect if this is a linked worktree
-    try {
-      const { stdout: gitDirOut } = await execPromise(`${SERVER_GIT_CMD} rev-parse --git-dir 2>/dev/null`, {
-        cwd: state.cwd,
-        encoding: "utf-8",
-        timeout: GIT_CMD_TIMEOUT,
-      });
-      state.is_worktree = gitDirOut.trim().includes("/worktrees/");
-    } catch {
-      state.is_worktree = false;
-    }
-
-    try {
-      // For worktrees, --show-toplevel gives the worktree root, not the main repo.
-      // Use --git-common-dir to find the real repo root.
-      if (state.is_worktree) {
-        const { stdout: commonDirOut } = await execPromise(`${SERVER_GIT_CMD} rev-parse --git-common-dir 2>/dev/null`, {
-          cwd: state.cwd,
-          encoding: "utf-8",
-          timeout: GIT_CMD_TIMEOUT,
-        });
-        // commonDir is e.g. /path/to/repo/.git — parent is the repo root
-        state.repo_root = resolve(state.cwd, commonDirOut.trim(), "..");
-      } else {
-        const { stdout: toplevelOut } = await execPromise(`${SERVER_GIT_CMD} rev-parse --show-toplevel 2>/dev/null`, {
-          cwd: state.cwd,
-          encoding: "utf-8",
-          timeout: GIT_CMD_TIMEOUT,
-        });
-        state.repo_root = toplevelOut.trim();
-      }
-    } catch {
-      /* ignore */
-    }
-
-    const upstreamRef = await resolveUpstreamRef(state);
-    let legacyDefaultBranch: string | null = null;
-    const getLegacyDefaultBranch = async () => {
-      if (!legacyDefaultBranch) {
-        legacyDefaultBranch = await gitUtils.resolveDefaultBranchAsync(state.repo_root || state.cwd, state.git_branch);
-      }
-      return legacyDefaultBranch;
-    };
-
-    // Non-worktree sessions should default to the current branch's upstream
-    // tracking ref (e.g. origin/jiayi), not repo default (often main).
-    if (upstreamRef) {
-      state.git_default_branch = upstreamRef;
-      if (!state.diff_base_branch_explicit) {
-        if (!state.diff_base_branch) {
-          state.diff_base_branch = upstreamRef;
-        } else {
-          // Migrate legacy sessions that auto-defaulted to repo default branch.
-          const legacyDefault = await getLegacyDefaultBranch();
-          if (state.diff_base_branch === legacyDefault) {
-            state.diff_base_branch = upstreamRef;
-          }
-        }
-      }
-    } else {
-      const fallbackBase = await getLegacyDefaultBranch();
-      state.git_default_branch = fallbackBase;
-      if (!state.diff_base_branch_explicit && !state.diff_base_branch && state.git_branch) {
-        state.diff_base_branch = fallbackBase;
-      }
-    }
-
-    // Compute ahead/behind using diff_base_branch as the reference point.
-    // Fall back to git_default_branch when diff_base_branch is "" (user selected "default").
-    const ref = state.diff_base_branch || state.git_default_branch;
-    if (ref) {
-      try {
-        const { stdout: countsOut } = await execPromise(
-          `${SERVER_GIT_CMD} rev-list --left-right --count ${ref}...HEAD 2>/dev/null`,
-          { cwd: state.cwd, encoding: "utf-8", timeout: GIT_CMD_TIMEOUT },
-        );
-        const [behind, ahead] = countsOut.trim().split(/\s+/).map(Number);
-        state.git_ahead = ahead || 0;
-        state.git_behind = behind || 0;
-      } catch {
-        state.git_ahead = 0;
-        state.git_behind = 0;
-      }
-    } else {
-      state.git_ahead = 0;
-      state.git_behind = 0;
-    }
-  } catch {
-    // Not a git repo or git not available
-    const preservedDiffBaseBranch = state.diff_base_branch;
-    const preservedDiffBaseExplicit = state.diff_base_branch_explicit;
-    state.git_branch = "";
-    state.git_default_branch = "";
-    state.diff_base_branch = preservedDiffBaseBranch;
-    state.diff_base_branch_explicit = preservedDiffBaseExplicit;
-    state.git_head_sha = "";
-    state.diff_base_start_sha = "";
-    state.is_worktree = false;
-    state.repo_root = "";
-    state.git_ahead = 0;
-    state.git_behind = 0;
-  }
-  state.is_containerized = wasContainerized;
-}
-
-async function readWorktreeStateFingerprint(cwd: string): Promise<string | null> {
-  try {
-    const gitFile = await readFileAsync(join(cwd, ".git"), "utf-8");
-    const match = gitFile.match(/^gitdir:\s*(.+)\s*$/m);
-    if (!match) return null;
-    const gitDir = resolve(cwd, match[1].trim());
-    const [headStat, indexStat] = await Promise.all([
-      statAsync(join(gitDir, "HEAD")).catch(() => null),
-      statAsync(join(gitDir, "index")).catch(() => null),
-    ]);
-    return [
-      headStat ? `${headStat.mtimeMs}:${headStat.size}` : "missing",
-      indexStat ? `${indexStat.mtimeMs}:${indexStat.size}` : "missing",
-    ].join("|");
-  } catch {
-    return null;
-  }
-}
-
-function clampPercent(value: number): number {
-  return Math.max(0, Math.min(100, value));
-}
-
-function inferContextWindowFromModel(model: string | undefined): number | undefined {
-  if (!model) return undefined;
-  const normalized = model.toLowerCase();
-  if (normalized.includes("[1m]") || normalized.includes("context-1m")) {
-    return 1_000_000;
-  }
-  if (normalized.startsWith("claude-")) {
-    // Claude models default to 200k unless explicitly marked as 1m.
-    return 200_000;
-  }
-  return undefined;
-}
-
-function resolveResultContextWindow(
-  model: string | undefined,
-  modelUsage: CLIResultMessage["modelUsage"] | undefined,
-): number | undefined {
-  let fromUsage = 0;
-  if (modelUsage) {
-    for (const usage of Object.values(modelUsage)) {
-      if (usage.contextWindow > 0) {
-        fromUsage = Math.max(fromUsage, usage.contextWindow);
-      }
-    }
-  }
-  const fromModel = inferContextWindowFromModel(model) ?? 0;
-  const resolved = Math.max(fromUsage, fromModel);
-  return resolved > 0 ? resolved : undefined;
-}
-
-/** Token usage fields shared between assistant and result messages. */
-export interface TokenUsage {
-  input_tokens?: number;
-  output_tokens?: number;
-  cache_creation_input_tokens?: number;
-  cache_read_input_tokens?: number;
-}
-
-/**
- * Compute context fill % from token usage and a context window size.
- * output_tokens are excluded -- they are generated tokens, not context occupants.
- *
- * In the native Anthropic API, input_tokens excludes cached portions and the
- * three input fields (input_tokens, cache_creation, cache_read) are additive.
- * However, when routed through the LiteLLM Copilot proxy, OpenAI's
- * prompt_tokens (which is the TOTAL including cached) is mapped to
- * input_tokens. Adding cache_read on top would double-count.
- *
- * Detection: if cache tokens are reported AND their sum fits within
- * input_tokens, then input_tokens already includes them (OpenAI semantics).
- */
-export function computeContextUsedPercent(usage: TokenUsage, contextWindow: number): number | undefined {
-  const inputTokens = Number(usage.input_tokens || 0);
-  const cacheCreation = Number(usage.cache_creation_input_tokens || 0);
-  const cacheRead = Number(usage.cache_read_input_tokens || 0);
-  const totalCache = cacheCreation + cacheRead;
-
-  let usedInContext: number;
-  if (totalCache > 0 && totalCache <= inputTokens) {
-    // Cache tokens are a subset of input_tokens (OpenAI/Copilot semantics):
-    // input_tokens already includes cached portions. Use it directly.
-    usedInContext = inputTokens;
-  } else {
-    // Native Anthropic semantics: fields are mutually exclusive and additive.
-    usedInContext = inputTokens + totalCache;
-  }
-  if (usedInContext <= 0) return undefined;
-
-  const pct = Math.round((usedInContext / contextWindow) * 100);
-  return clampPercent(pct);
-}
-
-/**
- * Compute context_used_percent from a turn result. Prefers the last assistant
- * message's per-turn usage (accurate context fill for one API call) over the
- * result message's per-turn usage. Falls through when the assistant message
- * has zero usage (e.g. Claude SDK sessions where the CLI sends all-zero usage
- * on assistant messages but provides real per-turn usage on the result).
- */
-function computeResultContextUsedPercent(
-  model: string | undefined,
-  msg: CLIResultMessage,
-  lastAssistantUsage: TokenUsage | undefined,
-): number | undefined {
-  const contextWindow = resolveResultContextWindow(model, msg.modelUsage);
-  if (!contextWindow) return undefined;
-
-  // Prefer per-turn assistant usage — it reflects what actually fit in the
-  // context window for the most recent API call.
-  if (lastAssistantUsage) {
-    const pct = computeContextUsedPercent(lastAssistantUsage, contextWindow);
-    // If assistant usage is all zeros (SDK sessions), fall through to
-    // result usage instead of returning undefined.
-    if (pct != null) return pct;
-  }
-
-  // Fallback: use the result's per-turn usage. For SDK sessions this is the
-  // primary source since assistant messages have zero usage. For WebSocket
-  // (NDJSON) sessions result.usage is cumulative across all turns and must
-  // be skipped — a single turn's input tokens can never exceed the context
-  // window, so exceeding it is a reliable signal of cumulative data.
-  if (!msg.usage) return undefined;
-  const fallbackInput = Number(msg.usage.input_tokens || 0);
-  if (fallbackInput > contextWindow) return undefined;
-  return computeContextUsedPercent(msg.usage, contextWindow);
-}
-
-function extractClaudeTokenDetails(
-  modelUsage: CLIResultMessage["modelUsage"],
-): SessionState["claude_token_details"] | undefined {
-  if (!modelUsage) return undefined;
-  const usage = Object.values(modelUsage).find((entry) => entry && typeof entry === "object");
-  if (!usage) return undefined;
-
-  const inputTokens = Number(usage.inputTokens || 0);
-  const outputTokens = Number(usage.outputTokens || 0);
-  const cachedInputTokens = Number(usage.cacheReadInputTokens || 0) + Number(usage.cacheCreationInputTokens || 0);
-  const modelContextWindow = Number(usage.contextWindow || 0);
-
-  if (inputTokens <= 0 && outputTokens <= 0 && cachedInputTokens <= 0 && modelContextWindow <= 0) {
-    return undefined;
-  }
-
-  return {
-    inputTokens,
-    outputTokens,
-    cachedInputTokens,
-    modelContextWindow,
-  };
-}
 
 // ─── Stuck Session Constants ─────────────────────────────────────────────────
 // Shared between the watchdog and system.init reconnect handler.
@@ -2459,53 +2034,28 @@ export class WsBridge {
    * Skips archived sessions entirely.
    */
   private updateBranchIndex(session: Session): void {
-    const sessionId = session.id;
-    // Skip archived sessions
-    if (this.launcher?.getSession(sessionId)?.archived) {
-      this.removeBranchIndexEntries(sessionId);
-      return;
-    }
-
-    // Remove old entries for this session
-    this.removeBranchIndexEntries(sessionId);
-
-    // Add current branch references
-    const branches = new Set<string>();
-    for (const ref of [session.state.git_branch, session.state.diff_base_branch, session.state.git_default_branch]) {
-      const name = ref?.trim();
-      if (!name) continue;
-      branches.add(name);
-      let set = this.branchToSessions.get(name);
-      if (!set) {
-        set = new Set();
-        this.branchToSessions.set(name, set);
-      }
-      set.add(sessionId);
-    }
-    if (branches.size > 0) {
-      this.sessionBranches.set(sessionId, branches);
-    }
+    updateBranchIndexState(session, {
+      isArchived: this.launcher?.getSession(session.id)?.archived === true,
+      branchToSessions: this.branchToSessions,
+      sessionBranches: this.sessionBranches,
+    });
   }
 
   /** Remove all branch index entries for a session. */
   private removeBranchIndexEntries(sessionId: string): void {
-    const oldBranches = this.sessionBranches.get(sessionId);
-    if (oldBranches) {
-      for (const branch of oldBranches) {
-        const set = this.branchToSessions.get(branch);
-        if (set) {
-          set.delete(sessionId);
-          if (set.size === 0) this.branchToSessions.delete(branch);
-        }
-      }
-      this.sessionBranches.delete(sessionId);
-    }
+    removeBranchIndexEntriesIndex(sessionId, {
+      branchToSessions: this.branchToSessions,
+      sessionBranches: this.sessionBranches,
+    });
   }
 
   /** Fully clean up branch index + throttle state for a removed/archived session. */
   private cleanupBranchState(sessionId: string): void {
-    this.removeBranchIndexEntries(sessionId);
-    this.lastCrossSessionRefreshAt.delete(sessionId);
+    cleanupBranchStateIndex(sessionId, {
+      branchToSessions: this.branchToSessions,
+      sessionBranches: this.sessionBranches,
+      lastCrossSessionRefreshAt: this.lastCrossSessionRefreshAt,
+    });
   }
 
   /**
@@ -2515,55 +2065,23 @@ export class WsBridge {
    * sees updated ahead/behind counts.
    */
   private invalidateSessionsSharingBranch(triggerSession: Session): void {
-    const changedBranch = triggerSession.state.git_branch?.trim();
+    const { changedBranch, invalidatedCount } = invalidateSessionsSharingBranchIndex(triggerSession, {
+      sessions: this.sessions,
+      branchToSessions: this.branchToSessions,
+      sessionBranches: this.sessionBranches,
+      lastCrossSessionRefreshAt: this.lastCrossSessionRefreshAt,
+      throttleMs: WsBridge.CROSS_SESSION_THROTTLE_MS,
+      isArchived: (sessionId) => this.launcher?.getSession(sessionId)?.archived === true,
+      refreshSession: (session) => this.refreshGitInfoThenRecomputeDiff(session as Session, { broadcastUpdate: true }),
+    });
+
     if (!changedBranch) return;
-
-    const affectedSessionIds = this.branchToSessions.get(changedBranch);
-    if (!affectedSessionIds || affectedSessionIds.size === 0) return;
-
-    // Snapshot to avoid iterator invalidation -- async refreshes can mutate the Set
-    const snapshot = Array.from(affectedSessionIds);
-    const now = Date.now();
-    let invalidatedCount = 0;
-    for (const sessionId of snapshot) {
-      if (sessionId === triggerSession.id) continue;
-
-      const session = this.sessions.get(sessionId);
-      if (!session) continue;
-
-      // Skip archived sessions
-      if (this.launcher?.getSession(sessionId)?.archived) continue;
-
-      // Per-session throttle to prevent cascading
-      const lastRefresh = this.lastCrossSessionRefreshAt.get(sessionId) ?? 0;
-      if (now - lastRefresh < WsBridge.CROSS_SESSION_THROTTLE_MS) continue;
-
-      this.lastCrossSessionRefreshAt.set(sessionId, now);
-      session.diffStatsDirty = true;
-      this.refreshGitInfoThenRecomputeDiff(session, { broadcastUpdate: true });
-      invalidatedCount++;
-    }
     if (invalidatedCount > 0) {
       console.log(
         `[ws-bridge] Cross-session invalidation: ${triggerSession.id} (branch ${changedBranch}) triggered refresh of ${invalidatedCount} session(s)`,
       );
     }
   }
-
-  /** Tools that cannot modify the filesystem — any other tool marks diff stats dirty. */
-  private static readonly READ_ONLY_TOOLS = new Set([
-    "Read",
-    "Grep",
-    "Glob",
-    "WebFetch",
-    "WebSearch",
-    "TodoWrite",
-    "AskUserQuestion",
-    "EnterPlanMode",
-    "ExitPlanMode",
-    "TaskOutput",
-    "TaskStop",
-  ]);
 
   /**
    * Recompute diff stats only if agent activity has occurred since the last computation.
@@ -4140,77 +3658,46 @@ export class WsBridge {
   }
 
   private getCodexHeadTurn(session: Session): CodexOutboundTurn | null {
-    return session.pendingCodexTurns[0] ?? null;
+    return getCodexHeadTurnState(session);
   }
 
   private getCodexTurnAwaitingAck(session: Session): CodexOutboundTurn | null {
-    const head = this.getCodexHeadTurn(session);
-    return head?.status === "dispatched" ? head : null;
+    return getCodexTurnAwaitingAckState(session);
   }
 
   private getCodexTurnInRecovery(session: Session): CodexOutboundTurn | null {
-    const head = this.getCodexHeadTurn(session);
-    if (!head) return null;
-    if (
-      head.status === "queued" ||
-      head.status === "dispatched" ||
-      head.status === "backend_acknowledged" ||
-      head.status === "blocked_broken_session"
-    ) {
-      return head;
-    }
-    return null;
+    return getCodexTurnInRecoveryState(session);
   }
 
   private enqueueCodexTurn(session: Session, turn: CodexOutboundTurn): CodexOutboundTurn {
-    session.pendingCodexTurns.push(turn);
-    return turn;
+    return enqueueCodexTurnState(session, turn);
   }
 
   private removeCompletedCodexTurns(session: Session): boolean {
-    let removed = 0;
-    while (session.pendingCodexTurns[0]?.status === "completed") {
-      session.pendingCodexTurns.shift();
-      removed++;
-    }
-    return removed > 0;
+    return removeCompletedCodexTurnsState(session);
   }
 
   private completeCodexTurn(session: Session, turn: CodexOutboundTurn | null, updatedAt = Date.now()): boolean {
-    if (!turn) return false;
-    turn.status = "completed";
-    turn.updatedAt = updatedAt;
-    return this.removeCompletedCodexTurns(session);
+    return completeCodexTurnState(session, turn, updatedAt);
   }
 
   private completeCodexTurnsForResult(session: Session, msg: CLIResultMessage, updatedAt = Date.now()): boolean {
-    const codexTurnId = typeof msg.codex_turn_id === "string" ? msg.codex_turn_id : null;
-    if (codexTurnId) {
-      let matched = false;
-      for (const turn of session.pendingCodexTurns) {
-        if (turn.turnId !== codexTurnId) continue;
-        turn.status = "completed";
-        turn.updatedAt = updatedAt;
-        matched = true;
-      }
-      if (matched) {
-        this.removeCompletedCodexTurns(session);
+    const outcome = completeCodexTurnsForResultState(session, msg, updatedAt);
+    if (outcome.codexTurnId) {
+      if (outcome.matched) {
         this.reconcileRecoveredQueuedTurnLifecycle(session, "codex_result_turn_id_completed");
         return true;
       }
       console.warn(
-        `[ws-bridge] Ignoring Codex result for untracked turn ${codexTurnId} in session ${sessionTag(session.id)}`,
+        `[ws-bridge] Ignoring Codex result for untracked turn ${outcome.codexTurnId} in session ${sessionTag(session.id)}`,
       );
       return false;
     }
-
-    this.completeCodexTurn(session, this.getCodexHeadTurn(session), updatedAt);
-    return true;
+    return outcome.matched;
   }
 
   private armCodexFreshTurnRequirement(session: Session, turnId: string, reason: string): void {
-    if (session.codexFreshTurnRequiredUntilTurnId === turnId) return;
-    session.codexFreshTurnRequiredUntilTurnId = turnId;
+    if (!armCodexFreshTurnRequirementState(session, turnId)) return;
     console.log(
       `[ws-bridge] Blocking Codex steering until turn ${turnId} ends for session ${sessionTag(session.id)} (${reason})`,
     );
@@ -4222,55 +3709,24 @@ export class WsBridge {
     reason: string,
     options?: { completedTurnId?: string | null },
   ): void {
-    const blockedTurnId = session.codexFreshTurnRequiredUntilTurnId;
-    if (!blockedTurnId) return;
-    const completedTurnId = options?.completedTurnId;
-    if (completedTurnId && blockedTurnId !== completedTurnId) return;
-    session.codexFreshTurnRequiredUntilTurnId = null;
+    const { cleared, blockedTurnId } = clearCodexFreshTurnRequirementState(session, options);
+    if (!cleared || !blockedTurnId) return;
     console.log(
-      `[ws-bridge] Codex fresh-turn requirement cleared for session ${sessionTag(session.id)} (${reason}${completedTurnId ? `: ${completedTurnId}` : ""})`,
+      `[ws-bridge] Codex fresh-turn requirement cleared for session ${sessionTag(session.id)} (${reason}${options?.completedTurnId ? `: ${options.completedTurnId}` : ""})`,
     );
     this.persistSession(session);
   }
 
   private dispatchQueuedCodexTurns(session: Session, reason: string): void {
-    const adapter = session.codexAdapter;
-    if (!adapter) return;
-    if (session.codexAdapter !== adapter) return;
-    if (session.state.backend_state !== "connected" || !adapter.isConnected()) return;
-    this.pruneStalePendingCodexHerdInputs(session, `${reason}_before_dispatch`);
-
-    const head = this.getCodexHeadTurn(session);
-    if (!head) return;
-    if (head.status === "blocked_broken_session") {
-      head.status = "queued";
-      head.updatedAt = Date.now();
-      head.lastError = null;
-      head.turnId = null;
-      head.acknowledgedAt = null;
-      head.disconnectedAt = null;
-      head.resumeConfirmedAt = null;
-    }
-    if (head.status === "backend_acknowledged" || head.status === "dispatched") return;
-
-    const now = Date.now();
-    const accepted = adapter.sendBrowserMessage(head.adapterMsg);
-    if (!accepted) {
-      head.status = "queued";
-      head.updatedAt = now;
-      head.lastError = `Codex adapter rejected outbound turn during ${reason}.`;
-      this.persistSession(session);
-      return;
-    }
-
-    head.status = "dispatched";
-    head.dispatchCount += 1;
-    head.updatedAt = now;
-    head.lastError = null;
-    this.setPendingCodexInputsCancelable(session, head.pendingInputIds ?? [head.userMessageId], false);
-    this.persistSession(session);
+    const outcome = dispatchQueuedCodexTurnsState(session, reason, {
+      pruneStalePendingCodexHerdInputs: (dispatchReason) =>
+        this.pruneStalePendingCodexHerdInputs(session, dispatchReason),
+      setPendingCodexInputsCancelable: (ids) => this.setPendingCodexInputsCancelable(session, ids, false),
+      persistSession: () => this.persistSession(session),
+    });
+    if (outcome.status !== "dispatched" || !outcome.head) return;
     console.log(
-      `[ws-bridge] Dispatched queued Codex turn for session ${sessionTag(session.id)} (${reason}, attempt ${head.dispatchCount})`,
+      `[ws-bridge] Dispatched queued Codex turn for session ${sessionTag(session.id)} (${reason}, attempt ${outcome.head.dispatchCount})`,
     );
   }
 
@@ -6695,322 +6151,38 @@ export class WsBridge {
       | CLISystemCompactBoundaryMessage
       | CLISystemTaskNotificationMessage,
   ) {
-    if (msg.subtype === "init") {
-      // Mark CLI as fully initialized — safe to send messages now
-      session.cliInitReceived = true;
-
-      // Keep the launcher-assigned session_id as the canonical ID.
-      // The CLI may report its own internal session_id which differs
-      // from the launcher UUID, causing duplicate entries in the sidebar.
-
-      // Store the CLI's internal session_id so we can --resume on relaunch
-      if (msg.session_id && this.onCLISessionId) {
-        this.onCLISessionId(session.id, msg.session_id);
-      }
-
-      session.state.model = msg.model;
-      // Initialize context usage details from the model name so the UI shows
-      // the context bar immediately, before the first result message arrives
-      // with actual token counts.
-      const inferredContextWindow = inferContextWindowFromModel(msg.model);
-      if (inferredContextWindow && !session.state.claude_token_details) {
-        session.state.claude_token_details = {
-          inputTokens: 0,
-          outputTokens: 0,
-          cachedInputTokens: 0,
-          modelContextWindow: inferredContextWindow,
-        };
-      }
-      // For containerized sessions, the CLI reports /workspace as its cwd.
-      // Keep the host path (set by markContainerized()) for correct project grouping.
-      if (!session.state.is_containerized) {
-        session.state.cwd = msg.cwd;
-      }
-      session.state.tools = msg.tools;
-      // On --resume reconnect, the CLI reports its launch-time permissionMode
-      // (typically "plan"), which would overwrite any mode the user approved
-      // before the disconnect (e.g. ExitPlanMode → acceptEdits). Preserve the
-      // server's existing permissionMode for resumed sessions.
-      const isResume = session.messageHistory.length > 0;
-      if (!isResume) {
-        session.state.permissionMode = msg.permissionMode;
-      }
-      session.state.claude_code_version = msg.claude_code_version;
-      // During --resume replay, the CLI replays ALL historical system.init
-      // messages (one per subagent/Task invocation). We can't clear cliResuming
-      // on the first system.init because the replay isn't done — later replayed
-      // system.status messages would slip through the compaction/uiMode guards.
-      // Instead, debounce: clear cliResuming 2s after the LAST system.init.
-      if (session.cliResuming) {
-        if (session.cliResumingClearTimer) clearTimeout(session.cliResumingClearTimer);
-        session.cliResumingClearTimer = setTimeout(() => {
-          session.cliResumingClearTimer = null;
-          session.cliResuming = false;
-          console.log(
-            `[revert] cliResuming cleared for session ${session.id.slice(0, 8)} — replay done. Final historyLen=${session.messageHistory.length}`,
-          );
-          // Reset stale replay compaction state unless a real /compact is
-          // still queued for delivery after replay.
-          const compactPending = this.hasPendingForceCompact(session);
-          session.forceCompactPending = compactPending;
-          session.state.is_compacting = compactPending;
-          session.awaitingCompactSummary = false;
-          session.claudeCompactBoundarySeen = false;
-          if (compactPending) {
-            this.broadcastToBrowsers(session, { type: "status_change", status: "compacting" });
-          }
-          // Flush messages deferred from system.init during replay. The CLI
-          // silently drops user messages received mid-replay, so we wait until
-          // the last replayed system.init + 2s debounce before delivering.
-          if (session.pendingMessages.length > 0) {
-            this.flushQueuedCliMessages(session, "after replay done");
-          }
-          // Flush herd events deferred from system.init during replay.
-          if (this.herdEventDispatcher) {
-            const launcherInfo = this.launcher?.getSession(session.id);
-            if (launcherInfo?.isOrchestrator) {
-              this.herdEventDispatcher.onOrchestratorTurnEnd(session.id);
-            }
-          }
-        }, 2000);
-      } else {
-        // Not resuming — clear compaction state immediately.
-        session.state.is_compacting = false;
-      }
-      session.state.mcp_servers = msg.mcp_servers;
-      session.state.agents = msg.agents ?? [];
-      session.state.slash_commands = msg.slash_commands ?? [];
-      session.state.skills = msg.skills ?? [];
-      session.state.skill_metadata = [];
-      session.state.apps = [];
-
-      // Cache slash commands per project so new sessions get them immediately
-      const projectKey = session.state.repo_root || session.state.cwd;
-      if (projectKey && (msg.slash_commands?.length || msg.skills?.length)) {
+    handleSystemMessageController(session, msg, {
+      onCLISessionId: this.onCLISessionId ?? undefined,
+      cacheSlashCommands: (projectKey, data) => {
         this.slashCommandCache.set(projectKey, {
-          slash_commands: msg.slash_commands ?? [],
-          skills: msg.skills ?? [],
+          ...data,
           skill_metadata: [],
           apps: [],
         });
-        // Push to other sessions in the same project that don't have commands yet
-        this.backfillSlashCommands(projectKey, session.id);
-      }
-
-      // Resolve and publish git info
-      this.refreshGitInfoThenRecomputeDiff(session, { notifyPoller: true });
-
-      const launcherInfo = this.launcher?.getSession(session.id);
-      this.broadcastToBrowsers(session, {
-        type: "session_init",
-        session: {
-          ...session.state,
-          isOrchestrator: launcherInfo?.isOrchestrator === true,
-        },
-      });
-      this.persistSession(session);
-
-      // Force-clear isGenerating on system.init ONLY for actual relaunches (new CLI
-      // process via --resume). On seamless reconnects (5-minute token refresh), the CLI
-      // process is still alive and may still be mid-generation — clearing isGenerating
-      // would emit a false turn_end takode event while the agent is still working.
-      // Exception (q-307): if generation has been running for 2+ minutes at the time of
-      // a seamless reconnect, the CLI had a full token-refresh cycle (~5 min) to produce
-      // output and didn't — the session is provably stuck even on a seamless reconnect.
-      // Also preserve running state if we already dispatched a user message and are
-      // waiting for that turn's backend output, to avoid a spurious turn_end before
-      // the real turn starts producing output.
-      const generationAge = session.generationStartedAt ? Date.now() - session.generationStartedAt : 0;
-      const seamlessButStuck = session.seamlessReconnect && generationAge >= STUCK_GENERATION_THRESHOLD_MS;
-      if (seamlessButStuck) {
-        console.warn(
-          `[ws-bridge] Seamless reconnect with stale generation (${Math.round(generationAge / 1000)}s) for session ${sessionTag(session.id)} — treating as relaunch`,
-        );
-      }
-      if (session.isGenerating && (!session.seamlessReconnect || seamlessButStuck)) {
-        const hasInFlightUserDispatch =
-          typeof session.lastOutboundUserNdjson === "string" &&
-          this.isCliUserMessagePayload(session.lastOutboundUserNdjson);
-        if (hasInFlightUserDispatch) {
-          console.log(
-            `[ws-bridge] Preserving running state on system.init for in-flight user dispatch in session ${sessionTag(session.id)}`,
-          );
-        } else {
-          console.log(
-            `[ws-bridge] Force-clearing stale isGenerating on system.init for session ${sessionTag(session.id)}${seamlessButStuck ? " (seamless but stuck)" : ""}`,
-          );
-          this.markTurnInterrupted(session, "system");
-          this.setGenerating(session, false, "system_init_reset");
-          // Note: queued turn draining is now handled by setGenerating via
-          // generation-lifecycle.ts RECOVERY_REASONS check (q-307).
-          this.broadcastToBrowsers(session, { type: "status_change", status: "idle" });
-        }
-      }
-      // Clear the seamless reconnect flag — consumed. Future system.init messages
-      // (from actual relaunches) should force-clear isGenerating normally.
-      session.seamlessReconnect = false;
-      session.disconnectWasGenerating = false;
-
-      // Flush queued messages and herd events. For resuming sessions, defer
-      // until replay completes (cliResuming cleared) -- the CLI silently drops
-      // user messages received during --resume replay, so flushing here would
-      // lose them permanently (the splice empties the queue).
-      if (!session.cliResuming) {
-        if (session.pendingMessages.length > 0) {
-          this.flushQueuedCliMessages(session, "after init");
-        }
-        if (this.herdEventDispatcher) {
-          const launcherInfo = this.launcher?.getSession(session.id);
-          if (launcherInfo?.isOrchestrator) {
-            this.herdEventDispatcher.onOrchestratorTurnEnd(session.id);
-          }
-        }
-      } else if (session.pendingMessages.length > 0) {
-        console.log(
-          `[ws-bridge] ${session.pendingMessages.length} queued message(s) deferred until replay done for session ${sessionTag(session.id)}`,
-        );
-      }
-      this.onSessionActivityStateChanged(session.id, "system_init");
-    } else if (msg.subtype === "status") {
-      const wasCompacting = session.state.is_compacting;
-      const forceCompactPending = session.forceCompactPending;
-      session.state.is_compacting = msg.status === "compacting";
-      const enteringCompacting = msg.status === "compacting" && (!wasCompacting || forceCompactPending);
-      if (msg.status === "compacting") {
-        session.forceCompactPending = false;
-      }
-      if (enteringCompacting && session.backendType === "claude") {
-        session.claudeCompactBoundarySeen = false;
-      }
-      // Guard: only emit compaction_started for NEW compaction transitions (not
-      // re-notifications of already-known compaction) and skip --resume replay
-      // which replays stale status messages from the CLI's history.
-      // NOTE: Do NOT call setGenerating(false) here. Compaction is not a turn
-      // boundary — the CLI continues its turn after compaction. Killing the
-      // generation lifecycle mid-turn means the actual result at end of turn
-      // is a no-op (isGenerating already false), leaving the session stuck as
-      // idle while still actively working.
-      if (enteringCompacting && !session.cliResuming) {
-        session.compactedDuringTurn = true;
-        this.emitTakodeEvent(session.id, "compaction_started", {
-          ...(typeof session.state.context_used_percent === "number"
-            ? { context_used_percent: session.state.context_used_percent }
-            : {}),
-        });
-      }
-      if (wasCompacting && msg.status !== "compacting" && !session.cliResuming) {
-        this.emitTakodeEvent(session.id, "compaction_finished", {
-          ...(typeof session.state.context_used_percent === "number"
-            ? { context_used_percent: session.state.context_used_percent }
-            : {}),
-        });
-        if (session.backendType !== "claude" || session.claudeCompactBoundarySeen) {
-          this.injectCompactionRecovery(session);
-        }
-      }
-      if (wasCompacting && msg.status !== "compacting" && session.backendType === "claude") {
-        session.claudeCompactBoundarySeen = false;
-      }
-
-      if (msg.permissionMode) {
-        session.state.permissionMode = msg.permissionMode;
-        // During --resume replay, the CLI sends stale system.status messages
-        // with old permissionMode values. Updating uiMode from these would
-        // revert user-approved mode transitions (e.g. ExitPlanMode → agent
-        // gets overwritten back to plan). Only update uiMode from real-time
-        // status changes (after replay completes and cliResuming is cleared).
-        if (!session.cliResuming) {
-          const uiMode = msg.permissionMode === "plan" ? "plan" : "agent";
-          session.state.uiMode = uiMode;
-          this.broadcastToBrowsers(session, {
-            type: "session_update",
-            session: { permissionMode: msg.permissionMode, uiMode },
-          });
-        } else {
-          // Still broadcast permissionMode (CLI state) without changing uiMode
-          this.broadcastToBrowsers(session, {
-            type: "session_update",
-            session: { permissionMode: msg.permissionMode },
-          });
-        }
-      }
-
-      // During --resume replay, the CLI sends stale system.status messages
-      // from completed turns. Broadcasting these to browsers would override
-      // the correct state_snapshot (idle) with a stale "running" status,
-      // leaving the UI stuck. Guard matches permissionMode (line 5535) and
-      // compaction (lines 5511/5519) patterns above.
-      if (!session.cliResuming) {
-        this.broadcastToBrowsers(session, {
-          type: "status_change",
-          status: msg.status ?? null,
-        });
-        this.onSessionActivityStateChanged(session.id, "system_status");
-      }
-    } else if (msg.subtype === "compact_boundary") {
-      // During --resume replay, replayed compact_boundary must be ignored on
-      // the WebSocket path too. Without this, stale compaction markers and
-      // summary capture can be re-created after reconnect.
-      if (session.cliResuming) return;
-      // CLI has compacted its context — append a compact marker as a divider.
-      // Old messages are preserved for browser display; the marker visually separates
-      // pre- and post-compaction segments. The next CLI "user" message with a text
-      // block will contain the compaction summary.
-      const cliUuid = (msg as CLISystemCompactBoundaryMessage).uuid;
-      const meta = (msg as CLISystemCompactBoundaryMessage).compact_metadata;
-
-      if (session.backendType === "claude") {
-        session.claudeCompactBoundarySeen = true;
-      }
-
-      // Dedup: CLI replays compact_boundary on --resume. Skip if a marker with
-      // the same CLI uuid already exists in history (replay after server restart).
-      if (this.hasCompactBoundaryReplay(session, cliUuid, meta)) return;
-
-      const ts = Date.now();
-      const markerId = `compact-boundary-${ts}`;
-      session.messageHistory.push({
-        type: "compact_marker" as const,
-        timestamp: ts,
-        id: markerId,
-        cliUuid,
-        trigger: meta?.trigger,
-        preTokens: meta?.pre_tokens,
-      });
-      this.freezeHistoryThroughCurrentTail(session);
-      // NOTE: pre_tokens is a diagnostic snapshot of context BEFORE compaction.
-      // Do NOT use it to set context_used_percent -- that would display the
-      // pre-compaction value as current, and subsequent result messages may not
-      // provide a valid post-compaction value to overwrite it (leaving it stale).
-      // The next assistant/result message with real usage will update the percent.
-      session.awaitingCompactSummary = true;
-      this.broadcastToBrowsers(session, {
-        type: "compact_boundary",
-        id: markerId,
-        timestamp: ts,
-        trigger: meta?.trigger,
-        preTokens: meta?.pre_tokens,
-      });
-      this.persistSession(session);
-    } else if (msg.subtype === "task_notification") {
-      // Forward background agent completion notifications to browsers.
-      // Persist in messageHistory so completion survives reconnects/page refreshes.
-      // Deduplicate: CLI resume can replay historical task_notifications.
-      const browserMsg = {
-        type: "task_notification" as const,
-        task_id: msg.task_id,
-        tool_use_id: msg.tool_use_id,
-        status: msg.status,
-        output_file: msg.output_file,
-        summary: msg.summary,
-      };
-      if (msg.task_id && msg.tool_use_id && this.hasTaskNotificationReplay(session, msg.task_id, msg.tool_use_id)) {
-        return;
-      }
-      session.messageHistory.push(browserMsg);
-      this.broadcastToBrowsers(session, browserMsg);
-      this.persistSession(session);
-    }
+      },
+      backfillSlashCommands: (projectKey, sourceSessionId) => this.backfillSlashCommands(projectKey, sourceSessionId),
+      refreshGitInfoThenRecomputeDiff: (targetSession, options) =>
+        this.refreshGitInfoThenRecomputeDiff(targetSession as Session, options),
+      getLauncherSessionInfo: (sessionId) => this.launcher?.getSession(sessionId),
+      broadcastToBrowsers: (targetSession, browserMsg, options) =>
+        this.broadcastToBrowsers(targetSession as Session, browserMsg, options),
+      persistSession: (targetSession) => this.persistSession(targetSession as Session),
+      hasPendingForceCompact: (targetSession) => this.hasPendingForceCompact(targetSession as Session),
+      flushQueuedCliMessages: (targetSession, reason) => this.flushQueuedCliMessages(targetSession as Session, reason),
+      onOrchestratorTurnEnd: (sessionId) => this.herdEventDispatcher?.onOrchestratorTurnEnd(sessionId),
+      isCliUserMessagePayload: (ndjson) => this.isCliUserMessagePayload(ndjson),
+      markTurnInterrupted: (targetSession, source) => this.markTurnInterrupted(targetSession as Session, source),
+      setGenerating: (targetSession, generating, reason) => this.setGenerating(targetSession as Session, generating, reason),
+      onSessionActivityStateChanged: (sessionId, reason) => this.onSessionActivityStateChanged(sessionId, reason),
+      emitTakodeEvent: (sessionId, type, data) => this.emitTakodeEvent(sessionId, type as any, data as any),
+      injectCompactionRecovery: (targetSession) => this.injectCompactionRecovery(targetSession as Session),
+      hasCompactBoundaryReplay: (targetSession, cliUuid, meta) =>
+        this.hasCompactBoundaryReplay(targetSession as Session, cliUuid, meta),
+      freezeHistoryThroughCurrentTail: (targetSession) => this.freezeHistoryThroughCurrentTail(targetSession as Session),
+      hasTaskNotificationReplay: (targetSession, taskId, toolUseId) =>
+        this.hasTaskNotificationReplay(targetSession as Session, taskId, toolUseId),
+      stuckGenerationThresholdMs: STUCK_GENERATION_THRESHOLD_MS,
+    });
   }
 
   private handleAssistantMessage(session: Session, msg: CLIAssistantMessage) {
@@ -7034,286 +6206,12 @@ export class WsBridge {
       this.setGenerating(session, true, "cli_initiated_turn");
       this.broadcastToBrowsers(session, { type: "status_change", status: "running" });
     }
-
-    // No ID — forward as-is (defensive)
-    if (!msgId) {
-      if (session.cliResuming) {
-        console.log(
-          `[revert] Replay assistant msg with NO ID — appending to history (uuid=${msg.uuid ?? "none"}, cliResuming=${session.cliResuming})`,
-        );
-      }
-      const browserMsg: BrowserIncomingMessage = {
-        type: "assistant",
-        message: msg.message,
-        parent_tool_use_id: msg.parent_tool_use_id,
-        timestamp: Date.now(),
-        uuid: msg.uuid,
-      };
-      session.messageHistory.push(browserMsg);
-      this.broadcastToBrowsers(session, browserMsg);
-      this.maybeUpdateContextUsedPercentFromAssistantUsage(session, msg.message.usage, msg.message.model);
-      // NOTE: Do NOT inject leader addressing reminder here.
-      // Deferred to handleResultMessage (turn end).
-      this.persistSession(session);
-      return;
-    }
-
-    const acc = session.assistantAccumulator.get(msgId);
-
-    if (!acc) {
-      // No accumulator — either first time seeing this message, or a replay
-      // after server restart (accumulators are in-memory only).
-      if (this.hasAssistantReplay(session, msgId)) {
-        if (session.cliResuming) {
-          console.log(
-            `[revert] Replay assistant msg DEDUPED (msgId=${msgId}, uuid=${msg.uuid ?? "none"}, historyLen=${session.messageHistory.length})`,
-          );
-        }
-        return;
-      }
-
-      if (session.cliResuming) {
-        console.log(
-          `[revert] Replay assistant msg APPENDING (new, msgId=${msgId}, uuid=${msg.uuid ?? "none"}, historyLen=${session.messageHistory.length})`,
-        );
-      }
-      {
-        // Truly first occurrence — store and broadcast
-        const contentBlockIds = new Set<string>();
-        const now = Date.now();
-        const toolStartTimesMap: Record<string, number> = {};
-        for (const block of msg.message.content) {
-          if (block.type === "tool_use" && block.id) {
-            contentBlockIds.add(block.id);
-            if (!session.toolStartTimes.has(block.id)) {
-              session.toolStartTimes.set(block.id, now);
-            }
-            session.toolProgressOutput.delete(block.id);
-            toolStartTimesMap[block.id] = session.toolStartTimes.get(block.id)!;
-          }
-        }
-
-        const browserMsg: BrowserIncomingMessage = {
-          type: "assistant",
-          message: { ...msg.message, content: [...msg.message.content] },
-          parent_tool_use_id: msg.parent_tool_use_id,
-          timestamp: Date.now(),
-          uuid: msg.uuid,
-          ...(Object.keys(toolStartTimesMap).length > 0 ? { tool_start_times: toolStartTimesMap } : {}),
-        };
-        const accEntry = { contentBlockIds };
-        session.assistantAccumulator.set(msgId, accEntry);
-        session.messageHistory.push(browserMsg);
-        this.broadcastToBrowsers(session, browserMsg);
-      }
-    } else {
-      // Subsequent occurrence — merge new content blocks into the history entry
-      const historyEntry = session.messageHistory.findLast(
-        (m) => m.type === "assistant" && (m as { message?: { id?: string } }).message?.id === msgId,
-      ) as
-        | {
-            type: "assistant";
-            message: CLIAssistantMessage["message"];
-            timestamp?: number;
-          }
-        | undefined;
-
-      if (!historyEntry) return; // shouldn't happen
-
-      // Collect new blocks to merge, avoiding in-place mutation of the content
-      // array. The event buffer holds a reference to the same historyEntry
-      // object, so push() would retroactively corrupt the original event.
-      const newBlocks = this.getAssistantContentAppendBlocks(
-        historyEntry.message.content,
-        msg.message.content,
-        acc.contentBlockIds,
-      );
-      if (newBlocks.length > 0) {
-        for (const block of newBlocks) {
-          if (block.type === "tool_use" && block.id) {
-            if (!session.toolStartTimes.has(block.id)) {
-              session.toolStartTimes.set(block.id, Date.now());
-            }
-            session.toolProgressOutput.delete(block.id);
-          }
-        }
-        historyEntry.message.content = [...historyEntry.message.content, ...newBlocks];
-      }
-
-      // Update stop_reason and usage from the latest message
-      if (msg.message.stop_reason) {
-        historyEntry.message.stop_reason = msg.message.stop_reason;
-      }
-      if (msg.message.usage) {
-        historyEntry.message.usage = msg.message.usage;
-      }
-
-      // Collect tool start times for all tool_use blocks in the accumulated message
-      const allToolStartTimes: Record<string, number> = {};
-      for (const block of historyEntry.message.content) {
-        if (block.type === "tool_use" && block.id && session.toolStartTimes.has(block.id)) {
-          allToolStartTimes[block.id] = session.toolStartTimes.get(block.id)!;
-        }
-      }
-
-      // Treat the latest part as the completion timestamp for this assistant message.
-      historyEntry.timestamp = Date.now();
-      // Re-broadcast the full accumulated message with tool start times
-      const rebroadcast: BrowserIncomingMessage = {
-        ...(historyEntry as BrowserIncomingMessage),
-        ...(Object.keys(allToolStartTimes).length > 0 ? { tool_start_times: allToolStartTimes } : {}),
-      };
-      // Re-broadcast the accumulated message to browsers so they see merged
-      // content blocks. Skip the event buffer — the original first-occurrence
-      // broadcast already created the buffer entry, and adding another would
-      // create a duplicate with the same msg_id.
-      this.broadcastToBrowsers(session, rebroadcast, { skipBuffer: true });
-      // NOTE: Do NOT inject the leader addressing reminder here.
-      // Deferred to handleResultMessage (turn end) to avoid false nudges
-      // during intermediate tool-call gaps.
-    }
-
-    // NOTE: we intentionally do NOT delete the accumulator on stop_reason.
-    // The CLI may send the same message ID in multiple parts (e.g. [text] first,
-    // then [tool_use] second, both with stop_reason: tool_use). Keeping the
-    // accumulator alive lets part 2 hit the normal merge path above. The
-    // accumulator is in-memory only, so it naturally resets on server restart —
-    // replayed messages from CLI reconnect will be correctly skipped via the
-    // alreadyInHistory check.
-
-    // Extract activity preview from TodoWrite/TaskUpdate tool calls
-    // (mirrors browser-side extractTaskItemsFromToolUse in ws.ts)
-    this.extractActivityPreview(session, msg.message.content);
-
-    // Mark diff stats dirty when non-read-only tools are used (any tool that could modify files)
-    if (Array.isArray(msg.message.content)) {
-      for (const block of msg.message.content) {
-        if (block.type !== "tool_use") continue;
-        const name = (block as { name?: string }).name ?? "";
-        if (!WsBridge.READ_ONLY_TOOLS.has(name)) {
-          session.diffStatsDirty = true;
-          break; // One dirty tool is enough
-        }
-      }
-    }
-
-    this.maybeUpdateContextUsedPercentFromAssistantUsage(session, msg.message.usage, msg.message.model);
-    this.persistSession(session);
-  }
-
-  private getAssistantContentAppendBlocks(
-    existing: CLIAssistantMessage["message"]["content"],
-    incoming: CLIAssistantMessage["message"]["content"],
-    seenToolUseIds: Set<string>,
-  ): CLIAssistantMessage["message"]["content"] {
-    if (incoming.length === 0) return [];
-
-    const existingSignatures = existing.map((block) => this.getAssistantContentBlockSignature(block));
-    const incomingSignatures = incoming.map((block) => this.getAssistantContentBlockSignature(block));
-
-    // Resume/reconnect can resend a full or partial snapshot for the same
-    // assistant message. If we already have the exact sequence anywhere in the
-    // accumulated content, there is nothing new to append.
-    if (this.hasAssistantContentSequence(existingSignatures, incomingSignatures)) {
-      return [];
-    }
-
-    const overlap = this.getAssistantContentOverlapLength(existingSignatures, incomingSignatures);
-    const append: CLIAssistantMessage["message"]["content"] = [];
-
-    for (let index = overlap; index < incoming.length; index++) {
-      const block = incoming[index]!;
-      if (block.type === "tool_use" && block.id) {
-        if (seenToolUseIds.has(block.id)) continue;
-        seenToolUseIds.add(block.id);
-      }
-      append.push(block);
-    }
-
-    return append;
-  }
-
-  private getAssistantContentBlockSignature(block: CLIAssistantMessage["message"]["content"][number]): string {
-    return JSON.stringify(block);
-  }
-
-  private hasAssistantContentSequence(haystack: string[], needle: string[]): boolean {
-    if (needle.length === 0) return true;
-    if (needle.length > haystack.length) return false;
-
-    for (let start = 0; start <= haystack.length - needle.length; start++) {
-      let matches = true;
-      for (let offset = 0; offset < needle.length; offset++) {
-        if (haystack[start + offset] !== needle[offset]) {
-          matches = false;
-          break;
-        }
-      }
-      if (matches) return true;
-    }
-
-    return false;
-  }
-
-  private getAssistantContentOverlapLength(existing: string[], incoming: string[]): number {
-    const maxOverlap = Math.min(existing.length, incoming.length);
-    for (let size = maxOverlap; size > 0; size--) {
-      let matches = true;
-      for (let offset = 0; offset < size; offset++) {
-        if (existing[existing.length - size + offset] !== incoming[offset]) {
-          matches = false;
-          break;
-        }
-      }
-      if (matches) return size;
-    }
-    return 0;
-  }
-
-  private maybeUpdateContextUsedPercentFromAssistantUsage(
-    session: Session,
-    usage: TokenUsage | undefined,
-    modelHint: string | undefined,
-  ) {
-    if (!usage) return;
-    const model = session.state.model || modelHint;
-    const contextWindow = resolveResultContextWindow(model, undefined);
-    if (!contextWindow) return;
-    const nextContextPct = computeContextUsedPercent(usage, contextWindow);
-    if (typeof nextContextPct !== "number") return;
-    if (session.state.context_used_percent === nextContextPct) return;
-    session.state.context_used_percent = nextContextPct;
-    this.broadcastToBrowsers(session, {
-      type: "session_update",
-      session: { context_used_percent: nextContextPct },
+    handleAssistantMessageController(session, msg, {
+      hasAssistantReplay: (targetSession, messageId) => this.hasAssistantReplay(targetSession as Session, messageId),
+      broadcastToBrowsers: (targetSession, browserMsg, options) =>
+        this.broadcastToBrowsers(targetSession as Session, browserMsg, options),
+      persistSession: (targetSession) => this.persistSession(targetSession as Session),
     });
-  }
-
-  /**
-   * Extract the current activity preview from TodoWrite/TaskUpdate tool_use blocks.
-   * Mirrors browser-side logic in ws.ts extractTaskItemsFromToolUse — but only
-   * extracts the in_progress task's activeForm text for push notification context.
-   */
-  private extractActivityPreview(session: Session, content: unknown[]): void {
-    if (!Array.isArray(content)) return;
-    for (const block of content) {
-      const b = block as { type?: string; name?: string; input?: Record<string, unknown> };
-      if (b.type !== "tool_use") continue;
-
-      if (b.name === "TodoWrite") {
-        const todos = b.input?.todos as { status?: string; activeForm?: string; content?: string }[] | undefined;
-        if (Array.isArray(todos)) {
-          const active = todos.find((t) => t.status === "in_progress");
-          session.lastActivityPreview = active ? (active.activeForm || active.content || "").slice(0, 80) : undefined;
-        }
-      } else if (b.name === "TaskUpdate") {
-        const status = b.input?.status as string | undefined;
-        const activeForm = b.input?.activeForm as string | undefined;
-        if (status === "in_progress" && activeForm) {
-          session.lastActivityPreview = activeForm.slice(0, 80);
-        }
-      }
-    }
   }
 
   /**
@@ -7348,182 +6246,58 @@ export class WsBridge {
   }
 
   private handleResultMessage(session: Session, msg: CLIResultMessage) {
-    // Dedup: CLI replays result messages on --resume. Skip if already in history
-    // to avoid re-triggering attention/notifications for old completions.
-    // Still reconcile lifecycle drift so a replayed terminal result can clear
-    // stale running/stuck state after reconnect.
-    if (msg.uuid) {
-      if (this.hasResultReplay(session, msg.uuid)) {
-        if (session.cliResuming) {
-          console.log(
-            `[revert] Replay result msg DEDUPED (uuid=${msg.uuid}, historyLen=${session.messageHistory.length})`,
-          );
+    handleResultMessageController(session, msg, {
+      hasResultReplay: (targetSession, resultUuid) => this.hasResultReplay(targetSession as Session, resultUuid),
+      reconcileReplayState: (targetSession) =>
+        reconcileTerminalResultStateLifecycle(this.getGenerationLifecycleDeps(), targetSession as Session, "result_replay"),
+      drainInlineQueuedClaudeTurns: (targetSession, reason) =>
+        this.drainInlineQueuedClaudeTurns(targetSession as Session, reason),
+      markTurnInterrupted: (targetSession, source) => this.markTurnInterrupted(targetSession as Session, source),
+      getCurrentTurnTriggerSource: (targetSession) => this.getCurrentTurnTriggerSource(targetSession as Session),
+      reconcileTerminalResultState: (targetSession) => {
+        reconcileTerminalResultStateLifecycle(this.getGenerationLifecycleDeps(), targetSession as Session, "result");
+      },
+      finalizeOrphanedTerminalToolsOnResult: (targetSession, resultMsg) =>
+        this.finalizeOrphanedTerminalToolsOnResult(targetSession as Session, resultMsg),
+      refreshGitInfoThenRecomputeDiff: (targetSession, options) =>
+        this.refreshGitInfoThenRecomputeDiff(targetSession as Session, options),
+      broadcastToBrowsers: (targetSession, browserMsg, options) =>
+        this.broadcastToBrowsers(targetSession as Session, browserMsg, options),
+      persistSession: (targetSession) => this.persistSession(targetSession as Session),
+      freezeHistoryThroughCurrentTail: (targetSession) => this.freezeHistoryThroughCurrentTail(targetSession as Session),
+      cancelPermissionNotification: (sessionId, requestId) => this.pushoverNotifier?.cancelPermission(sessionId, requestId),
+      onSessionActivityStateChanged: (sessionId, reason) => this.onSessionActivityStateChanged(sessionId, reason),
+      onResultAttentionAndNotifications: (targetSession, resultMsg, turnTriggerSource) => {
+        const concreteSession = targetSession as Session;
+        const shouldNotifyHuman = this.shouldNotifyHumanOnResult(concreteSession, turnTriggerSource);
+        if (shouldNotifyHuman) {
+          this.setAttention(concreteSession, resultMsg.is_error ? "error" : "review", {
+            allowHerdedWorker: this.isHerdedWorkerSession(concreteSession) && turnTriggerSource === "user",
+          });
         }
-        const reconciled = reconcileTerminalResultStateLifecycle(
-          this.getGenerationLifecycleDeps(),
-          session,
-          "result_replay",
-        );
-        const drainedQueuedTurns = this.drainInlineQueuedClaudeTurns(session, "result_replay");
-        if (drainedQueuedTurns || reconciled.clearedResidualState) {
-          this.broadcastToBrowsers(session, { type: "status_change", status: "idle" });
-          this.persistSession(session);
+        if (resultMsg.is_error) {
+          this.emitTakodeEvent(concreteSession.id, "session_error", {
+            error: typeof resultMsg.result === "string" ? resultMsg.result.slice(0, 200) : "Unknown error",
+          });
         }
-        return;
-      }
-    }
-
-    // Update session cost/turns
-    session.state.total_cost_usd = msg.total_cost_usd;
-    session.state.num_turns = msg.num_turns;
-
-    // Extract per-turn usage from the last top-level assistant message.
-    // This is the accurate context fill for the most recent API call, unlike
-    // msg.usage which is cumulative across the entire session.
-    const lastAssistant = session.messageHistory.findLast(
-      (m) => m.type === "assistant" && (m as { parent_tool_use_id?: string | null }).parent_tool_use_id == null,
-    ) as { message?: { usage?: TokenUsage } } | undefined;
-    const lastAssistantUsage = lastAssistant?.message?.usage;
-
-    const nextContextPct = computeResultContextUsedPercent(session.state.model, msg, lastAssistantUsage);
-    if (typeof nextContextPct === "number") {
-      session.state.context_used_percent = nextContextPct;
-    }
-    const nextClaudeTokenDetails = extractClaudeTokenDetails(msg.modelUsage);
-    if (nextClaudeTokenDetails) {
-      session.state.claude_token_details = nextClaudeTokenDetails;
-    }
-
-    // Re-check git state after each turn (session idle), then recompute diff stats.
-    // Chained so git_default_branch is populated before diff computation.
-    session.diffStatsDirty = true;
-    this.refreshGitInfoThenRecomputeDiff(session, { broadcastUpdate: true, notifyPoller: true });
-
-    // Broadcast updated metrics to all browsers
-    this.broadcastToBrowsers(session, {
-      type: "session_update",
-      session: {
-        total_cost_usd: session.state.total_cost_usd,
-        num_turns: session.state.num_turns,
-        context_used_percent: session.state.context_used_percent,
-        ...(nextClaudeTokenDetails ? { claude_token_details: nextClaudeTokenDetails } : {}),
+        if (this.pushoverNotifier && shouldNotifyHuman) {
+          if (resultMsg.is_error) {
+            this.pushoverNotifier.scheduleNotification(
+              concreteSession.id,
+              "error",
+              typeof resultMsg.result === "string" ? resultMsg.result.slice(0, 100) : "Error",
+            );
+          } else {
+            this.pushoverNotifier.scheduleNotification(concreteSession.id, "completed");
+          }
+        }
+      },
+      onTurnCompleted: (targetSession) => {
+        if (!this.onTurnCompleted) return;
+        const concreteSession = targetSession as Session;
+        this.onTurnCompleted(concreteSession.id, [...concreteSession.messageHistory], concreteSession.state.cwd);
       },
     });
-
-    const turnDurationMs =
-      typeof session.generationStartedAt === "number"
-        ? Math.max(0, Date.now() - session.generationStartedAt)
-        : undefined;
-
-    const stopReason = typeof msg.stop_reason === "string" ? msg.stop_reason.toLowerCase() : "";
-    const resultInterrupted = stopReason.includes("interrupt") || stopReason.includes("cancel");
-    if (resultInterrupted && !session.interruptedDuringTurn && session.queuedTurnStarts > 0) {
-      const queuedInterruptSource = session.queuedTurnInterruptSources[0] ?? "user";
-      this.markTurnInterrupted(session, queuedInterruptSource);
-    }
-    const turnWasInterrupted = session.interruptedDuringTurn || resultInterrupted;
-    this.drainInlineQueuedClaudeTurns(session, "result");
-
-    const turnTriggerSource = this.getCurrentTurnTriggerSource(session);
-    reconcileTerminalResultStateLifecycle(this.getGenerationLifecycleDeps(), session, "result");
-    this.finalizeOrphanedTerminalToolsOnResult(session, msg);
-    // A completed turn means no tools are in-flight. Clear stale entries
-    // that would otherwise permanently disable stuck detection (q-237).
-    session.toolStartTimes.clear();
-    // Broadcast idle status for backends that don't send a separate
-    // system.status message after result (e.g. Claude SDK via Agent SDK).
-    // WebSocket sessions get idle via CLI's system.status {status:null},
-    // but SDK sessions only get result → no status follow-up. Without this,
-    // the UI stays in "running" state after the turn completes.
-    if (!session.isGenerating) {
-      this.broadcastToBrowsers(session, { type: "status_change", status: "idle" });
-    }
-    // Turn completed — the user message was processed. Clear the re-queue
-    // tracker so we don't re-send it on a subsequent disconnect.
-    session.lastOutboundUserNdjson = null;
-    const shouldNotifyHuman = this.shouldNotifyHumanOnResult(session, turnTriggerSource);
-
-    // Persist turn duration on the latest top-level assistant message and
-    // rebroadcast it so the chat feed can render the completed turn timing.
-    if (typeof turnDurationMs === "number") {
-      const latestAssistant = session.messageHistory.findLast(
-        (m) => m.type === "assistant" && (m as { parent_tool_use_id?: string | null }).parent_tool_use_id == null,
-      ) as (BrowserIncomingMessage & { type: "assistant"; turn_duration_ms?: number }) | undefined;
-      if (latestAssistant) {
-        latestAssistant.turn_duration_ms = turnDurationMs;
-        // Re-broadcast with turn_duration_ms so the browser can render turn
-        // timing. Skip the event buffer — the original assistant broadcast
-        // already created the buffer entry, and the in-place mutation above
-        // updates it (same object reference). A second buffer entry would be
-        // a duplicate with identical content.
-        this.broadcastToBrowsers(session, latestAssistant, { skipBuffer: true });
-      }
-    }
-
-    // Safety net: clear any stale pending permissions when a turn completes.
-    // A completed turn means the CLI has no outstanding tool calls, so any
-    // leftover pendingPermissions are stale (e.g. cancelled by hooks that the
-    // server missed, or race conditions during interrupts).
-    if (session.pendingPermissions.size > 0) {
-      for (const [reqId] of session.pendingPermissions) {
-        this.broadcastToBrowsers(session, { type: "permission_cancelled", request_id: reqId });
-        this.pushoverNotifier?.cancelPermission(session.id, reqId);
-      }
-      console.log(
-        `[ws-bridge] Cleared ${session.pendingPermissions.size} stale pending permission(s) on result for session ${sessionTag(session.id)}`,
-      );
-      session.pendingPermissions.clear();
-      this.onSessionActivityStateChanged(session.id, "result_cleared_permissions");
-    }
-
-    const resultBrowserMsg: BrowserIncomingMessage = {
-      type: "result",
-      data: msg,
-      ...(turnWasInterrupted ? { interrupted: true } : {}),
-    };
-    session.messageHistory.push(resultBrowserMsg);
-    this.freezeHistoryThroughCurrentTail(session);
-    this.broadcastToBrowsers(session, resultBrowserMsg);
-    this.persistSession(session);
-
-    // Skip attention, error events, and notifications for interrupted turns.
-    // Interrupts are normal control flow -- the turn_end takode event with
-    // `interrupted: true` already signals the leader. Surfacing a red error
-    // badge, session_error herd event, or push notification for an interrupt
-    // is misleading and blocks orchestration.
-    if (!turnWasInterrupted) {
-      // Set attention only when this turn should surface to the human.
-      if (shouldNotifyHuman) {
-        this.setAttention(session, msg.is_error ? "error" : "review", {
-          allowHerdedWorker: this.isHerdedWorkerSession(session) && turnTriggerSource === "user",
-        });
-      }
-
-      // Takode: session_error when the result indicates an error
-      if (msg.is_error) {
-        this.emitTakodeEvent(session.id, "session_error", {
-          error: typeof msg.result === "string" ? msg.result.slice(0, 200) : "Unknown error",
-        });
-      }
-
-      // Schedule Pushover notification for session completion/error
-      if (this.pushoverNotifier && shouldNotifyHuman) {
-        if (msg.is_error) {
-          this.pushoverNotifier.scheduleNotification(
-            session.id,
-            "error",
-            typeof msg.result === "string" ? msg.result.slice(0, 100) : "Error",
-          );
-        } else {
-          this.pushoverNotifier.scheduleNotification(session.id, "completed");
-        }
-      }
-    }
-
-    // Trigger auto-naming re-evaluation after turn completion (async, fire-and-forget)
-    if (this.onTurnCompleted) {
-      this.onTurnCompleted(session.id, [...session.messageHistory], session.state.cwd);
-    }
   }
 
   private handleStreamEvent(session: Session, msg: CLIStreamEventMessage) {
@@ -9952,166 +8726,32 @@ export class WsBridge {
     },
     actorSessionId?: string,
   ) {
-    // Remove from pending
-    const pending = session.pendingPermissions.get(msg.request_id);
-    session.pendingPermissions.delete(msg.request_id);
-    this.onSessionActivityStateChanged(session.id, "permission_response");
-
-    // Abort any in-flight LLM auto-approval evaluation
-    this.abortAutoApproval(session, msg.request_id);
-
-    // Cancel any pending Pushover notification for this permission
-    this.pushoverNotifier?.cancelPermission(session.id, msg.request_id);
-
-    this.clearActionAttentionIfNoPermissions(session);
-
-    if (msg.behavior === "allow") {
-      const response: Record<string, unknown> = {
-        behavior: "allow",
-        updatedInput: msg.updated_input ?? pending?.input ?? {},
-      };
-      if (msg.updated_permissions?.length) {
-        response.updatedPermissions = msg.updated_permissions;
-      }
-      const ndjson = JSON.stringify({
-        type: "control_response",
-        response: {
-          subtype: "success",
-          request_id: msg.request_id,
-          response,
-        },
-      });
-      this.sendToCLI(session, ndjson);
-
-      // If the permission response includes a setMode update (e.g. user clicked
-      // "Set mode to acceptEdits"), send a separate set_permission_mode control
-      // request to the CLI so it actually changes its permission mode.
-      if (msg.updated_permissions?.length) {
-        const setMode = (msg.updated_permissions as Array<{ type: string; mode?: string }>).find(
-          (p) => p.type === "setMode" && p.mode,
-        );
-        if (setMode) {
-          this.handleSetPermissionMode(session, setMode.mode!);
-        }
-      }
-
-      // Broadcast approval record for notable approvals only.
-      // Most tool approvals are redundant since the ToolBlock already shows
-      // the command/file/question. ExitPlanMode and AskUserQuestion need
-      // visible markers (plan state transition / user's chosen answer).
-      if (pending && NOTABLE_APPROVALS.has(pending.tool_name)) {
-        const answers =
-          pending.tool_name === "AskUserQuestion" ? extractAskUserAnswers(pending.input, msg.updated_input) : undefined;
-        // Skip AskUserQuestion if we couldn't extract answers (avoids redundant chip)
-        if (pending.tool_name !== "AskUserQuestion" || answers) {
-          const approvedMsg: BrowserIncomingMessage = {
-            type: "permission_approved",
-            id: `approval-${msg.request_id}`,
-            request_id: msg.request_id,
-            tool_name: pending.tool_name,
-            tool_use_id: pending.tool_use_id,
-            summary: getApprovalSummary(pending.tool_name, pending.input),
-            timestamp: Date.now(),
-            ...(answers ? { answers } : {}),
-          };
-          session.messageHistory.push(approvedMsg);
-          this.broadcastToBrowsers(session, approvedMsg);
-        }
-      }
-
-      // Takode: permission_resolved (approved) -- emit for all approvals, not just notable ones
-      if (pending) {
-        this.emitTakodeEvent(
-          session.id,
-          "permission_resolved",
-          {
-            tool_name: pending.tool_name,
-            outcome: "approved",
-          },
-          actorSessionId,
-        );
-      }
-
-      // After ExitPlanMode approval, switch the CLI to the appropriate execution
-      // mode. The CLI does NOT auto-transition out of plan mode — it needs an
-      // explicit set_permission_mode control_request.
-      //   askPermission=true  → acceptEdits (edits auto-approved, Bash prompted)
-      //   askPermission=false → bypassPermissions (everything auto-approved)
-      if (pending?.tool_name === "ExitPlanMode") {
-        const askPerm = session.state.askPermission !== false; // default true
-        const postPlanMode = askPerm ? "acceptEdits" : "bypassPermissions";
-        this.handleSetPermissionMode(session, postPlanMode);
-        // Immediately tell browsers the session is running — the CLI will
-        // start executing the plan right away but its own status update
-        // takes a round-trip to arrive.
-        this.setGenerating(session, true, "exit_plan_mode");
-        this.broadcastToBrowsers(session, { type: "status_change", status: "running" });
-        console.log(
-          `[ws-bridge] ExitPlanMode approved for session ${sessionTag(session.id)}, switching to ${postPlanMode} (askPermission=${askPerm})`,
-        );
-      }
-
-      // After EnterPlanMode approval, sync the UI to plan mode so the button
-      // reflects the agent's actual state. The CLI already enters plan mode
-      // internally when EnterPlanMode is executed, but the server's uiMode
-      // and permissionMode need to be updated to match.
-      if (pending?.tool_name === "EnterPlanMode") {
-        this.handleSetPermissionMode(session, "plan");
-        console.log(`[ws-bridge] EnterPlanMode approved for session ${sessionTag(session.id)}, switching to plan mode`);
-      }
-    } else {
-      const ndjson = JSON.stringify({
-        type: "control_response",
-        response: {
-          subtype: "success",
-          request_id: msg.request_id,
-          response: {
-            behavior: "deny",
-            message: msg.message || "Denied by user",
-          },
-        },
-      });
-      this.sendToCLI(session, ndjson);
-
-      // When ExitPlanMode is denied, also interrupt the CLI so it stops
-      // and waits for new user input (matches Claude Code vanilla behavior)
-      if (pending?.tool_name === "ExitPlanMode") {
-        this.handleInterrupt(session, this.getInterruptSourceFromActorSessionId(actorSessionId));
-        // Don't broadcast "idle" here — let the CLI's interrupt response set
-        // the status naturally. Broadcasting idle eagerly causes a flash when
-        // the browser auto-rejects a plan by sending a new message (deny →
-        // interrupt → user_message), because the CLI's interrupt response
-        // arrives after user_message's "running" broadcast and overwrites it.
-        console.log(`[ws-bridge] ExitPlanMode denied for session ${sessionTag(session.id)}, sending interrupt`);
-      }
-
-      // Broadcast denial record to all browsers and persist in history
-      const deniedMsg: BrowserIncomingMessage = {
-        type: "permission_denied",
-        id: `denial-${msg.request_id}`,
-        request_id: msg.request_id,
-        tool_name: pending?.tool_name || "unknown",
-        tool_use_id: pending?.tool_use_id || "",
-        summary: getDenialSummary(pending?.tool_name || "unknown", pending?.input || {}),
-        timestamp: Date.now(),
-      };
-      session.messageHistory.push(deniedMsg);
-      this.broadcastToBrowsers(session, deniedMsg);
-
-      // Takode: permission_resolved (denied)
+    handlePermissionResponseController(
+      session,
+      msg,
       {
-        this.emitTakodeEvent(
-          session.id,
-          "permission_resolved",
-          {
-            tool_name: pending?.tool_name || "unknown",
-            outcome: "denied",
-          },
-          actorSessionId,
-        );
-      }
-    }
-    this.persistSession(session);
+        onSessionActivityStateChanged: (sessionId, reason) => this.onSessionActivityStateChanged(sessionId, reason),
+        abortAutoApproval: (targetSession, requestId) => this.abortAutoApproval(targetSession as Session, requestId),
+        cancelPermissionNotification: (sessionId, requestId) => this.pushoverNotifier?.cancelPermission(sessionId, requestId),
+        clearActionAttentionIfNoPermissions: (targetSession) =>
+          this.clearActionAttentionIfNoPermissions(targetSession as Session),
+        sendToCLI: (targetSession, ndjson) => this.sendToCLI(targetSession as Session, ndjson),
+        handleSetPermissionMode: (targetSession, mode) => this.handleSetPermissionMode(targetSession as Session, mode),
+        getApprovalSummary: (toolName, input) => getApprovalSummary(toolName, input),
+        getDenialSummary: (toolName, input) => getDenialSummary(toolName, input),
+        broadcastToBrowsers: (targetSession, browserMsg) => this.broadcastToBrowsers(targetSession as Session, browserMsg),
+        emitTakodePermissionResolved: (sessionId, toolName, outcome, actorId) =>
+          this.emitTakodeEvent(sessionId, "permission_resolved", { tool_name: toolName, outcome }, actorId),
+        setGeneratingRunningAfterExitPlanMode: (targetSession) => {
+          this.setGenerating(targetSession as Session, true, "exit_plan_mode");
+          this.broadcastToBrowsers(targetSession as Session, { type: "status_change", status: "running" });
+        },
+        handleInterrupt: (targetSession, actorId) =>
+          this.handleInterrupt(targetSession as Session, this.getInterruptSourceFromActorSessionId(actorId)),
+        persistSession: (targetSession) => this.persistSession(targetSession as Session),
+      },
+      actorSessionId,
+    );
   }
 
   private handleInterrupt(session: Session, source: InterruptSource = "user") {
