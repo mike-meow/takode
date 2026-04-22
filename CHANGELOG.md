@@ -1,5 +1,201 @@
 # Takode Changelog
 
+## 2026-04-21
+
+### Fixed
+
+- **Worktree archive/creation timeouts** -- Worktree setup and archive operations no longer block the event loop on NFS, preventing cascading WebSocket disconnects
+- **Voice mode persistence** -- Voice mode preference persists across sessions without hydration races
+- **Image upload ordering** -- Attachments are now uploaded before the message is sent
+- **Stale Codex recovery state** -- Cleared stale queued recovery state that could block Codex turn delivery
+
+## 2026-04-20
+
+### Added
+
+- **Timer event cards** -- Timer messages render as collapsed event cards in the chat feed instead of plain text rows
+- **Composer autocomplete for refs** -- Typing `q-` or `#` in the composer autocompletes quest IDs and session numbers
+
+### Fixed
+
+- **False "server unreachable" banner** -- Suppressed spurious unreachable banner that appeared while the chat was actively connected and streaming
+- **Transcription upload feedback** -- Upload and acknowledgement phases now show progress before speech-to-text completes
+- **Notification chip layout** -- Per-type chip counts, flattened layout, and compact mobile inbox review rows
+- **Worktree diff totals** -- Cleared stale diff totals for worktrees that are not ahead of their base branch
+- **Codex image follow-ups during streaming** -- Queued image follow-ups are no longer dropped during active streaming
+- **Worktree settings preservation** -- Tracked Claude settings files are preserved in worktrees
+- **Timer event row layout** -- Flattened timer event rows to prevent misaligned cards in the chat feed
+
+## 2026-04-19
+
+### Added
+
+- **Grep-style quest search** -- `quest grep` provides ripgrep-style search across all quest content with match highlighting
+- **Pushover event filters** -- Pushover push notifications can be filtered by event type (e.g. only needs-input, only review-ready)
+- **Stalled board row warnings** -- The work board warns when queued rows appear stalled, helping leaders spot stuck workers
+- **Table viewer overlay** -- Markdown table viewer uses a wider overlay for better readability
+
+### Fixed
+
+- **Mobile composer and navigation** -- Reply composer stays expanded on mobile, status chips no longer overlap the mobile nav bar, and WebSocket reconnect sockets recover correctly on mobile
+- **Voice mode on mobile** -- Mobile composer stays open while recording (q-282)
+- **Codex image attachments** -- Hardened the full image attachment flow: send stages are visible, queued follow-ups survive overlap, and image send status shows in the purring chip
+- **Markdown numbered lists** -- Numbered lists continue correctly across interleaved bullet sublists
+- **Codex compaction with VS Code context** -- Fixed compaction failing when the Codex session included VS Code context blocks
+- **Compaction recovery prompts** -- Force-compact no longer drops recovery prompts; improved recovery prompt wording after compaction
+- **Herd wakeup delivery** -- Fixed replay-deferred herd wakeups not being delivered after session reconnect
+- **Duplicate Codex relaunch** -- Prevented double relaunch when injected prompts arrived on a dead Codex socket
+- **Link result previews** -- Takode links now show result previews for successful (not just failed) tool calls
+- **Board queued dependents** -- Restored queued dependents are now correctly preserved when board state is recovered
+
+### Changed
+
+- **Active timers page** -- The scheduled-messages page has been repurposed to show active session timers with live countdown chips
+- **Timer sidebar icons** -- Idle sessions with active timers show a timer icon; icon state syncs with timer lifecycle
+- **Board docked state** -- The docked work board remembers its open/closed state across page loads
+- **Session-group creation defaults** -- The session-group creation dialog remembers your last-used defaults (backend, model, etc.)
+- **Removed legacy linear session view** -- The old linear session list in the sidebar has been removed in favor of the grouped view
+- **Questmaster copy IDs** -- Quest IDs can now be copied directly from quest detail views
+- **Editor selection chip UX** -- Improved the backend/model selector chip interaction in the composer
+
+## 2026-04-18
+
+### Added
+
+- **History windowed sections** -- Long message history sections are windowed on demand to reduce rendering cost
+- **Quest commit diff totals** -- Quest detail views show synced commit diff totals for at-a-glance change size
+- **Work board ordering and columns** -- Board items are now ordered by status and dependencies, with reordered columns and clearer status labels
+- **Cross-linked quest and session hovers** -- Quest and session hover cards are cross-linked for faster navigation
+- **Orchestration visibility improvements** -- Improved board output, scan probe, and message-link hover rendering
+- **Work board original command** -- Board rows now show the original board command used to create them
+
+### Fixed
+
+- **Markdown wide tables** -- Wide tables now expand properly instead of being clipped
+- **Quest images** -- Quest images open in a lightbox modal instead of navigating away
+- **Board resolved deps** -- Cleared resolved wait-for dependencies that were persisting incorrectly
+- **Board status labels** -- Inline status labels are now properly formatted
+- **Codex stall disconnects** -- Surfaced Codex stall disconnects to orchestration so leaders can react
+- **Worktree detailed diffs** -- Anchored worktree detailed diffs to the correct base
+- **Todo list rendering** -- New task lists now appear immediately without requiring a refresh
+
+### Changed
+
+- **Completed row timestamps** -- Completed board rows now show when they were completed
+
+## 2026-04-17
+
+### Added
+
+- **Terminal inspector drag and resize** -- The terminal/tool inspector panel is now draggable and resizable
+- **Session search category filters** -- Search results can be filtered by category (messages, tools, quests, etc.)
+- **Herd event session chip links** -- Session chips in herd events are now clickable, linking directly to the session
+- **Timer indicator on session chips** -- Sidebar session chips show a timer indicator when the session has active timers
+
+### Fixed
+
+- **Diff viewer for new files** -- Content-only new file edits now render correctly in the diff viewer
+- **Codex view_image tool blocks** -- Raw `view_image` tool blocks are now surfaced in the chat feed
+- **Quest session numbers** -- Session numbers are now shown in quest detail views
+- **Quest lifecycle naming** -- Quest lifecycle naming order is preserved in the bridge
+
+### Changed
+
+- **Journey status labels** -- Questmaster journey status labels are now styled distinctly
+
+## 2026-04-16
+
+### Added
+
+- **Negated quest search** -- Quest search supports negated filters (e.g. `-tag:ms` to exclude a tag)
+- **Quest summary comments** -- Quest verification now enforces a summary comment before submission
+- **Quest synced commits on verification** -- Verification handoffs automatically attach synced commit SHAs
+- **Browser perf collector** -- Client-side performance metrics are collected for debugging render bottlenecks
+
+### Fixed
+
+- **Markdown single newlines** -- Single newlines are now respected in the shared Markdown renderer
+- **Codex message delivery after restart** -- Unblocked stuck Codex message delivery after server restart (q-385)
+- **Codex image send order** -- Image send order is preserved for multi-image messages
+- **Quest title auto-renames** -- Leaders can no longer accidentally rename quest titles
+- **Spurious restart interruptions** -- Suppressed spurious restart interruptions in the WebSocket bridge
+- **Mobile transcription timeout** -- Extended mobile transcription timeout to avoid premature cutoffs
+- **Composer re-render churn** -- Reduced composer re-renders during rapid session churn
+- **Diagnostics section visibility** -- Task panel diagnostics section stays visible when it should
+
+### Changed
+
+- **Codex continued turn merging** -- Codex continued assistant turns are now merged in the chat feed
+- **Leader archive confirmation** -- Archiving a leader with an active herd now requires confirmation
+- **Reviewer-groom guardrails** -- Tightened reviewer-groom workflow guardrails for more consistent reviews
+
+## 2026-04-15
+
+### Added
+
+- **Timer titles and descriptions** -- Session timers now support separate titles and descriptions
+- **Force herd reassignment** -- Leaders can forcibly reassign a herded session to a different worker
+- **Bell urgency coloring** -- The notification bell icon color reflects the highest-urgency unread notification
+- **Herd event activity compression** -- Repetitive tool-use activity in herd events is compressed to reduce noise
+
+### Fixed
+
+- **Compaction recovery** -- Suppressed false Claude compaction recovery and replayed compaction recovery noise (q-317)
+- **Codex image transport** -- Restored native localImage transport for image messages (q-322)
+- **Worktree branch on archive/unarchive** -- Worktree branches are archived as lightweight refs and restored correctly on unarchive (q-329)
+- **Re-render reduction** -- Reduced unnecessary re-renders from polling and event floods across sidebar, composer, and shell store (q-334)
+- **Codex disconnect recovery** -- Hardened disconnect recovery and diagnostics for Codex sessions
+- **Subagent state on history sync** -- Reset stale subagent state when history is re-synced from the server
+- **Quest comment composer** -- Quest comment composer stays visible when scrolling
+- **Codex config on relaunch** -- Global Codex config is refreshed on session relaunch
+- **Codex denied-plan guard** -- Preserved denied-plan fresh-turn guard across session state changes
+- **False notify chips** -- Eliminated false notification chips that appeared without real events
+
+### Changed
+
+- **Reviewer-groom workflow** -- Reworked reviewer-groom workflow for more consistent reviews
+- **Mobile log viewer** -- Improved mobile log viewer usability with fully collapsible filters (q-330)
+
+## 2026-04-14
+
+### Added
+
+- **FolderPicker redesign** -- Rebuilt with breadcrumb navigation, inline filter, and full keyboard navigation (q-315)
+- **Production logging system** -- Server-side production logging with a mobile-friendly log viewer (q-299)
+- **Auto-collapse plan file writes** -- Plan-file tool writes are auto-collapsed in the chat feed to reduce noise (q-314)
+- **AskUserQuestion send button** -- The "Other" free-text input in AskUserQuestion now has a send button (q-319)
+- **Edit and delete agent feedback** -- Questmaster feedback entries from agents can now be edited or deleted inline
+
+### Fixed
+
+- **Streaming lag from Composer re-renders** -- Narrowed Composer store selectors to prevent lag during streaming (q-265)
+- **Notification and timer chip alignment** -- Notification and timer chips are now on the same line (q-309)
+- **Horizontal scroll in chat** -- Prevented horizontal scrolling in the chat feed (q-313)
+- **Stuck session detection** -- Robust detection and recovery of stuck sessions with extracted shared threshold constant (q-307)
+- **Permission mode across SDK init** -- `permissionMode` is now preserved across SDK `session_init` events (q-316)
+- **Diff base branch persistence** -- Worktree diff base branch survives server restarts (q-318)
+
+### Changed
+
+- **Review chip checkbox** -- Review notification chips now show a checkbox affordance (q-302)
+
+## 2026-04-13
+
+### Added
+
+- **Session rollback / revert** -- Codex sessions now support reverting to a previous message, safely exposed via the UI (q-289)
+- **Session message size hover card** -- Session details popover shows message history size in the hover card so users can gauge API limit proximity (q-291)
+- **Pending session timers** -- `takode list` and the sidebar show active timers on sessions, giving leaders visibility into scheduled work
+- **Notification chips in collapsed turns** -- Collapsed assistant turns show notification chip counts so important events stay visible (q-277)
+- **Token-efficient scan/peek format** -- `takode scan`/`peek` JSON output is optimized for lower token usage (q-287)
+- **Takode timer enforcement** -- System prompt enforces `takode timer` over `sleep`/`ScheduleWakeup` for waits over 1 minute (q-303)
+- **Mandatory notify summary** -- `takode notify` now requires a summary argument (q-304)
+
+### Fixed
+
+- **Herd event pending delivery** -- Unblocked herd-event pending delivery (q-275)
+- **Codex image transport** -- Switched to path-only image transport (q-298)
+
 ## 2026-04-12
 
 ### Added
