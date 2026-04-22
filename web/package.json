@@ -38,6 +38,7 @@
     "test": "./scripts/run-local-tool.sh vitest run --silent --reporter=verbose",
     "test:watch": "./scripts/run-local-tool.sh vitest",
     "test:codex-contract": "./scripts/run-local-tool.sh vitest run server/codex-protocol-*.test.ts",
+    "check:staged-file-line-limit": "bun ./scripts/check-staged-file-line-limit.ts",
     "format": "biome format --write .",
     "format:check": "biome format ."
   },

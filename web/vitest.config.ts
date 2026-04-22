@@ -25,6 +25,7 @@ export default defineConfig({
       "src/**/*.test.ts",
       "src/**/*.test.tsx",
       "bin/**/*.test.ts",
+      "scripts/**/*.test.ts",
       "shared/**/*.test.ts",
     ],
     environmentMatchGlobs: [
