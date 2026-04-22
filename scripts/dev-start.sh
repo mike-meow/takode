@@ -16,6 +16,8 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 WEB_DIR="$ROOT_DIR/web"
 BACKEND_PORT=3457
 VITE_PORT=5174
+BACKEND_HEALTH_PATH="/api/health"
+VITE_HEALTH_PATH="/"
 BACKEND_PID_FILE="$ROOT_DIR/.dev-backend.pid"
 VITE_PID_FILE="$ROOT_DIR/.dev-vite.pid"
 BACKEND_LOG="$ROOT_DIR/.dev-backend.log"
@@ -34,14 +36,39 @@ step()  { echo -e "${CYAN}-->>${NC} $*"; }
 
 # --------------- helpers ---------------
 
+start_detached() {
+  local log_file="$1"
+  shift
+  python3 - "$log_file" "$@" <<'PY'
+import subprocess
+import sys
+
+log_path = sys.argv[1]
+cmd = sys.argv[2:]
+
+with open(log_path, "ab", buffering=0) as log:
+    proc = subprocess.Popen(
+        cmd,
+        stdin=subprocess.DEVNULL,
+        stdout=log,
+        stderr=log,
+        start_new_session=True,
+        close_fds=True,
+    )
+
+print(proc.pid)
+PY
+}
+
 is_port_listening() {
   lsof -iTCP:"$1" -sTCP:LISTEN -t &>/dev/null
 }
 
 is_http_healthy() {
   local port="$1"
+  local path="${2:-/}"
   local code
-  code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 "http://localhost:$port" 2>/dev/null || echo "000")
+  code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 "http://localhost:$port$path" 2>/dev/null || echo "000")
   [[ "$code" =~ ^[23] ]]
 }
 
@@ -87,11 +114,12 @@ wait_for_port() {
   local port="$1"
   local label="$2"
   local pid_file="$3"
+  local health_path="$4"
   local max_wait=60
   local waited=0
 
   while [ $waited -lt $max_wait ]; do
-    if is_http_healthy "$port"; then
+    if is_http_healthy "$port" "$health_path"; then
       return 0
     fi
     if [ -f "$pid_file" ] && ! kill -0 "$(cat "$pid_file")" 2>/dev/null; then
@@ -106,7 +134,7 @@ wait_for_port() {
 
   local log_file
   [ "$port" = "$BACKEND_PORT" ] && log_file="$BACKEND_LOG" || log_file="$VITE_LOG"
-  die "Timeout waiting for $label (${max_wait}s). Logs:\n$(tail -20 "$log_file")"
+  die "Timeout waiting for $label health at http://localhost:$port$health_path (${max_wait}s). Logs:\n$(tail -20 "$log_file")"
 }
 
 # --------------- commands ---------------
@@ -124,20 +152,20 @@ cmd_stop() {
 cmd_status() {
   local ok=true
 
-  if is_port_listening "$BACKEND_PORT" && is_http_healthy "$BACKEND_PORT"; then
+  if is_port_listening "$BACKEND_PORT" && is_http_healthy "$BACKEND_PORT" "$BACKEND_HEALTH_PATH"; then
     info "Backend running on http://localhost:$BACKEND_PORT (PID: $(get_pid_on_port "$BACKEND_PORT"))"
   elif is_port_listening "$BACKEND_PORT"; then
-    warn "Backend port $BACKEND_PORT occupied but not healthy"
+    warn "Backend port $BACKEND_PORT occupied but health check failed at $BACKEND_HEALTH_PATH"
     ok=false
   else
     warn "Backend is not running"
     ok=false
   fi
 
-  if is_port_listening "$VITE_PORT" && is_http_healthy "$VITE_PORT"; then
+  if is_port_listening "$VITE_PORT" && is_http_healthy "$VITE_PORT" "$VITE_HEALTH_PATH"; then
     info "Vite running on http://localhost:$VITE_PORT (PID: $(get_pid_on_port "$VITE_PORT"))"
   elif is_port_listening "$VITE_PORT"; then
-    warn "Vite port $VITE_PORT occupied but not healthy"
+    warn "Vite port $VITE_PORT occupied but health check failed at $VITE_HEALTH_PATH"
     ok=false
   else
     warn "Vite is not running"
@@ -151,8 +179,8 @@ cmd_start() {
   cd "$WEB_DIR"
 
   # --- Fast path: both already running and healthy ---
-  if is_port_listening "$BACKEND_PORT" && is_http_healthy "$BACKEND_PORT" \
-     && is_port_listening "$VITE_PORT" && is_http_healthy "$VITE_PORT"; then
+  if is_port_listening "$BACKEND_PORT" && is_http_healthy "$BACKEND_PORT" "$BACKEND_HEALTH_PATH" \
+     && is_port_listening "$VITE_PORT" && is_http_healthy "$VITE_PORT" "$VITE_HEALTH_PATH"; then
     info "Backend already running on http://localhost:$BACKEND_PORT"
     info "Vite already running on http://localhost:$VITE_PORT"
     exit 0
@@ -160,6 +188,7 @@ cmd_start() {
 
   # --- Check bun ---
   command -v bun &>/dev/null || die "bun not found. Install: https://bun.sh"
+  command -v python3 &>/dev/null || die "python3 not found. Required for detached dev server startup."
   info "bun $(bun --version)"
 
   # --- Install deps (bun install is idempotent) ---
@@ -168,7 +197,7 @@ cmd_start() {
   info "Dependencies OK"
 
   # --- Start backend if needed ---
-  if is_port_listening "$BACKEND_PORT" && is_http_healthy "$BACKEND_PORT"; then
+  if is_port_listening "$BACKEND_PORT" && is_http_healthy "$BACKEND_PORT" "$BACKEND_HEALTH_PATH"; then
     info "Backend already running on http://localhost:$BACKEND_PORT"
   else
     if is_port_listening "$BACKEND_PORT"; then
@@ -180,16 +209,15 @@ cmd_start() {
     clean_stale_pid "$BACKEND_PID_FILE"
 
     step "Starting backend on port $BACKEND_PORT..."
-    nohup bun --watch server/index.ts > "$BACKEND_LOG" 2>&1 &
-    echo $! > "$BACKEND_PID_FILE"
+    start_detached "$BACKEND_LOG" bun server/index.ts > "$BACKEND_PID_FILE"
 
-    wait_for_port "$BACKEND_PORT" "Backend" "$BACKEND_PID_FILE"
+    wait_for_port "$BACKEND_PORT" "Backend" "$BACKEND_PID_FILE" "$BACKEND_HEALTH_PATH"
     echo ""
     info "Backend ready on http://localhost:$BACKEND_PORT (PID: $(cat "$BACKEND_PID_FILE"))"
   fi
 
   # --- Start Vite if needed ---
-  if is_port_listening "$VITE_PORT" && is_http_healthy "$VITE_PORT"; then
+  if is_port_listening "$VITE_PORT" && is_http_healthy "$VITE_PORT" "$VITE_HEALTH_PATH"; then
     info "Vite already running on http://localhost:$VITE_PORT"
   else
     if is_port_listening "$VITE_PORT"; then
@@ -201,10 +229,9 @@ cmd_start() {
     clean_stale_pid "$VITE_PID_FILE"
 
     step "Starting Vite dev server on port $VITE_PORT..."
-    nohup bun run dev:vite > "$VITE_LOG" 2>&1 &
-    echo $! > "$VITE_PID_FILE"
+    start_detached "$VITE_LOG" bun run dev:vite > "$VITE_PID_FILE"
 
-    wait_for_port "$VITE_PORT" "Vite" "$VITE_PID_FILE"
+    wait_for_port "$VITE_PORT" "Vite" "$VITE_PID_FILE" "$VITE_HEALTH_PATH"
     echo ""
     info "Vite ready on http://localhost:$VITE_PORT (PID: $(cat "$VITE_PID_FILE"))"
   fi
