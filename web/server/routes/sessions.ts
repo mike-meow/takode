@@ -9,7 +9,6 @@ import * as envManager from "../env-manager.js";
 import * as gitUtils from "../git-utils.js";
 import * as sessionNames from "../session-names.js";
 import * as treeGroupStore from "../tree-group-store.js";
-import { recreateWorktreeIfMissing } from "../migration.js";
 import { containerManager, ContainerManager, type ContainerConfig, type ContainerInfo } from "../container-manager.js";
 import type { CreationStepId, TakodeSessionArchivedEventData } from "../session-types.js";
 import { hasContainerClaudeAuth } from "../claude-container-auth.js";
@@ -42,6 +41,7 @@ import {
   resolveBackend,
   throwPreparationError,
 } from "./sessions-helpers.js";
+import { registerSessionsArchiveRoutes } from "./sessions-archive-routes.js";
 import { deriveAttachmentPaths, formatAttachmentPathAnnotation } from "../attachment-paths.js";
 
 export function createSessionsRoutes(ctx: RouteContext) {
@@ -63,7 +63,6 @@ export function createSessionsRoutes(ctx: RouteContext) {
     buildOrchestratorSystemPrompt,
     resolveInitialModeState,
   } = ctx;
-
   // ─── Worktree cleanup helper ────────────────────────────────────
   type WorktreeCleanupStatus = "pending" | "done" | "failed";
   type WorktreeCleanupResult = { cleaned?: boolean; dirty?: boolean; path?: string; reason?: string } | undefined;
@@ -784,7 +783,6 @@ export function createSessionsRoutes(ctx: RouteContext) {
       containerInfo,
     };
   };
-
   api.post("/sessions/create", async (c) => {
     const body = await c.req.json().catch(() => ({}));
     try {
@@ -822,9 +820,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
       return c.json({ error: msg }, 500);
     }
   });
-
   // ─── SSE Session Creation (with progress streaming) ─────────────────────
-
   api.post("/sessions/create-stream", async (c) => {
     const body = await c.req.json().catch(() => ({}));
 
@@ -910,9 +906,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
       }
     });
   });
-
   // ─── CLI Session Discovery (for resume) ──────────────────────────────────
-
   api.get("/cli-sessions", async (c) => {
     try {
       const backendFilter = c.req.query("backend") as "claude" | "codex" | undefined;
@@ -1203,12 +1197,10 @@ export function createSessionsRoutes(ctx: RouteContext) {
     const inferred = await gitUtils.getRepoInfoAsync(info.cwd);
     if (inferred?.repoRoot) info.repoRoot = inferred.repoRoot;
   };
-
   api.get("/sessions", async (c) => {
     const enriched = await buildEnrichedSessions();
     return c.json(enriched);
   });
-
   api.get("/sessions/search", (c) => {
     const rawQuery = (c.req.query("q") || "").trim();
     if (!rawQuery) {
@@ -1261,7 +1253,6 @@ export function createSessionsRoutes(ctx: RouteContext) {
       results,
     });
   });
-
   api.get("/sessions/:id", (c) => {
     const id = resolveId(c.req.param("id"));
     if (!id) return c.json({ error: "Session not found" }, 404);
@@ -1283,7 +1274,6 @@ export function createSessionsRoutes(ctx: RouteContext) {
     if (!session) return c.json({ error: "Session not found" }, 404);
     return c.json({ prompt: session.injectedSystemPrompt ?? null });
   });
-
   api.patch("/sessions/:id/name", async (c) => {
     const id = resolveId(c.req.param("id"));
     if (!id) return c.json({ error: "Session not found" }, 404);
@@ -1297,7 +1287,6 @@ export function createSessionsRoutes(ctx: RouteContext) {
     wsBridge.broadcastToSession(id, { type: "session_update", session: { name: body.name.trim() } } as any);
     return c.json({ ok: true, name: body.name.trim() });
   });
-
   // ─── Tree Groups (herd-centric grouping) ─────────────────────────────
 
   /** Helper: broadcast current tree group state to all browsers. */
@@ -1310,12 +1299,10 @@ export function createSessionsRoutes(ctx: RouteContext) {
       treeNodeOrder: tgs.nodeOrder,
     } as any);
   }
-
   api.get("/tree-groups", async (c) => {
     const state = await treeGroupStore.getState();
     return c.json(state);
   });
-
   api.put("/tree-groups", async (c) => {
     const body = await c.req.json().catch(() => ({}));
     if (!body || typeof body !== "object") {
@@ -1325,7 +1312,6 @@ export function createSessionsRoutes(ctx: RouteContext) {
     await broadcastTreeGroups();
     return c.json({ ok: true });
   });
-
   api.post("/tree-groups/groups", async (c) => {
     const body = await c.req.json().catch(() => ({}));
     const name = typeof body.name === "string" ? body.name.trim() : "";
@@ -1336,7 +1322,6 @@ export function createSessionsRoutes(ctx: RouteContext) {
     await broadcastTreeGroups();
     return c.json({ ok: true, group });
   });
-
   api.patch("/tree-groups/groups/:id", async (c) => {
     const id = c.req.param("id");
     const body = await c.req.json().catch(() => ({}));
@@ -1349,7 +1334,6 @@ export function createSessionsRoutes(ctx: RouteContext) {
     await broadcastTreeGroups();
     return c.json({ ok: true });
   });
-
   api.delete("/tree-groups/groups/:id", async (c) => {
     const id = c.req.param("id");
     const ok = await treeGroupStore.deleteGroup(id);
@@ -1357,7 +1341,6 @@ export function createSessionsRoutes(ctx: RouteContext) {
     await broadcastTreeGroups();
     return c.json({ ok: true });
   });
-
   api.patch("/tree-groups/assign", async (c) => {
     const body = await c.req.json().catch(() => ({}));
     const sessionId = typeof body.sessionId === "string" ? body.sessionId : "";
@@ -1369,7 +1352,6 @@ export function createSessionsRoutes(ctx: RouteContext) {
     await broadcastTreeGroups();
     return c.json({ ok: true });
   });
-
   api.patch("/tree-groups/node-order", async (c) => {
     const body = await c.req.json().catch(() => ({}));
     const groupId = typeof body.groupId === "string" ? body.groupId : "";
@@ -1381,7 +1363,6 @@ export function createSessionsRoutes(ctx: RouteContext) {
     await broadcastTreeGroups();
     return c.json({ ok: true });
   });
-
   api.patch("/sessions/:id/diff-base", async (c) => {
     const id = resolveId(c.req.param("id"));
     if (!id) return c.json({ error: "Session not found" }, 404);
@@ -1392,7 +1373,6 @@ export function createSessionsRoutes(ctx: RouteContext) {
     }
     return c.json({ ok: true, diff_base_branch: branch });
   });
-
   api.patch("/sessions/:id/read", (c) => {
     const id = resolveId(c.req.param("id"));
     if (!id) return c.json({ error: "Session not found" }, 404);
@@ -1401,7 +1381,6 @@ export function createSessionsRoutes(ctx: RouteContext) {
     clearAttentionAndMarkReadController(session, sessionAttentionDeps);
     return c.json({ ok: true });
   });
-
   api.patch("/sessions/:id/unread", (c) => {
     const id = resolveId(c.req.param("id"));
     if (!id) return c.json({ error: "Session not found" }, 404);
@@ -1410,7 +1389,6 @@ export function createSessionsRoutes(ctx: RouteContext) {
     markSessionUnreadController(session, sessionUnreadDeps);
     return c.json({ ok: true });
   });
-
   api.post("/sessions/mark-all-read", (c) => {
     for (const info of launcher.listSessions()) {
       const session = wsBridge.getSession(info.sessionId);
@@ -1419,7 +1397,6 @@ export function createSessionsRoutes(ctx: RouteContext) {
     }
     return c.json({ ok: true });
   });
-
   api.post("/sessions/:id/kill", async (c) => {
     const id = resolveId(c.req.param("id"));
     if (!id) return c.json({ error: "Session not found" }, 404);
@@ -1524,7 +1501,6 @@ export function createSessionsRoutes(ctx: RouteContext) {
 
     return c.json(result as HerdSessionsResponse);
   });
-
   api.post("/sessions/:id/relaunch", async (c) => {
     const id = resolveId(c.req.param("id"));
     if (!id) return c.json({ error: "Session not found" }, 404);
@@ -1575,7 +1551,6 @@ export function createSessionsRoutes(ctx: RouteContext) {
     }
     return c.json({ ok: true });
   });
-
   // ─── Transport Upgrade: WebSocket → SDK ───────────────────────
   api.post("/sessions/:id/upgrade-transport", async (c) => {
     const id = resolveId(c.req.param("id"));
@@ -1603,7 +1578,6 @@ export function createSessionsRoutes(ctx: RouteContext) {
     console.log(`[transport] Upgrade complete for ${id.slice(0, 8)}`);
     return c.json(result);
   });
-
   // ─── Transport Downgrade: SDK → WebSocket ─────────────────────
   api.post("/sessions/:id/downgrade-transport", async (c) => {
     const id = resolveId(c.req.param("id"));
@@ -1630,7 +1604,6 @@ export function createSessionsRoutes(ctx: RouteContext) {
     console.log(`[transport] Downgrade complete for ${id.slice(0, 8)}`);
     return c.json(result);
   });
-
   api.post("/sessions/:id/force-compact", async (c) => {
     const id = resolveId(c.req.param("id"));
     if (!id) return c.json({ error: "Session not found" }, 404);
@@ -1648,7 +1621,6 @@ export function createSessionsRoutes(ctx: RouteContext) {
     }
     return c.json({ ok: true });
   });
-
   api.post("/sessions/:id/skills/refresh", async (c) => {
     const id = resolveId(c.req.param("id"));
     if (!id) return c.json({ error: "Session not found" }, 404);
@@ -1667,7 +1639,6 @@ export function createSessionsRoutes(ctx: RouteContext) {
       return c.json({ error: err instanceof Error ? err.message : String(err) || "Failed to refresh skills" }, 503);
     }
   });
-
   api.post("/sessions/:id/revert", async (c) => {
     const id = resolveId(c.req.param("id"));
     if (!id) return c.json({ error: "Session not found" }, 404);
@@ -1826,7 +1797,6 @@ export function createSessionsRoutes(ctx: RouteContext) {
     console.log(`[revert] === REVERT COMPLETE === session=${id.slice(0, 8)}`);
     return c.json({ ok: true });
   });
-
   api.delete("/sessions/:id", async (c) => {
     const id = resolveId(c.req.param("id"));
     if (!id) return c.json({ error: "Session not found" }, 404);
@@ -1864,194 +1834,21 @@ export function createSessionsRoutes(ctx: RouteContext) {
     });
     return c.json({ ok: true, worktree: worktreeResult });
   });
-
-  // Shared helper: archive a single session (kill, cleanup, persist).
-  // Used by both /archive and /archive-group endpoints.
-  async function archiveSingleSession(id: string, actorSessionId?: string) {
-    // Emit herd event before killing -- the leader needs to know a worker was archived.
-    const archivedSessionInfo = launcher.getSession(id);
-    if (archivedSessionInfo?.herdedBy) {
-      wsBridge.emitTakodeEvent(
-        id,
-        "session_archived",
-        { archive_source: getArchiveSource(actorSessionId) },
-        actorSessionId,
-      );
-    }
-
-    await launcher.kill(id);
-
-    // Clean up container if any
-    containerManager.removeContainer(id);
-
-    // Stop PR polling for this session
-    prPoller?.unwatch(id);
-
-    // Force-delete the worktree directory on archive. The branch tip is saved
-    // as an archived ref (refs/companion/archived/) so committed work can be
-    // restored on unarchive without polluting the active branch list (q-329).
-    const worktreeResult = queueArchivedWorktreeCleanup(id, { archiveBranch: true });
-    launcher.setArchived(id, true);
-    await sessionStore.setArchived(id, true);
-
-    // Cancel all session-scoped timers when archiving.
-    if (ctx.timerManager) {
-      void ctx.timerManager.cancelAllTimers(id);
-    }
-
-    // Auto-stop reviewer sessions tied to this parent.
-    // Reviewer sessions are temporary quality gates -- when the parent worker is
-    // archived, the reviewer is no longer useful and should be cleaned up.
-    // listSessions() returns a new array (Array.from), and kill() only mutates
-    // session.state without removing from the sessions map, so iteration is safe.
-    const archivedNum = launcher.getSessionNum(id);
-    if (archivedNum !== undefined) {
-      const allSessions = launcher.listSessions();
-      for (const s of allSessions) {
-        if (s.reviewerOf === archivedNum && !s.archived) {
-          console.log(`[routes] Auto-stopping reviewer session ${s.sessionId} (reviewerOf=#${archivedNum})`);
-          await launcher.kill(s.sessionId);
-          containerManager.removeContainer(s.sessionId);
-          queueArchivedWorktreeCleanup(s.sessionId, { archiveBranch: true });
-          launcher.setArchived(s.sessionId, true);
-          await sessionStore.setArchived(s.sessionId, true);
-          // Emit after kill so the leader doesn't query a still-alive session
-          if (s.herdedBy) {
-            wsBridge.emitTakodeEvent(s.sessionId, "session_archived", { archive_source: "cascade" });
-          }
-        }
-      }
-    }
-    return worktreeResult;
-  }
-
-  api.post("/sessions/:id/archive", async (c) => {
-    const id = resolveId(c.req.param("id"));
-    if (!id) return c.json({ error: "Session not found" }, 404);
-    await c.req.json().catch(() => ({}));
-
-    const actorId = getActorSessionId(authenticateCompanionCallerOptional(c));
-    const worktreeResult = await archiveSingleSession(id, actorId);
-    return c.json({ ok: true, worktree: worktreeResult });
+  registerSessionsArchiveRoutes(api, {
+    resolveId,
+    authenticateCompanionCallerOptional,
+    launcher,
+    wsBridge,
+    sessionStore,
+    worktreeTracker,
+    prPoller,
+    pathExists,
+    timerManager: ctx.timerManager,
+    queueArchivedWorktreeCleanup,
+    pendingWorktreeCleanups,
+    applyInitialSessionState,
   });
-
-  api.post("/sessions/:id/archive-group", async (c) => {
-    const id = resolveId(c.req.param("id"));
-    if (!id) return c.json({ error: "Session not found" }, 404);
-
-    const leader = launcher.getSession(id);
-    if (!leader) return c.json({ error: "Session not found" }, 404);
-    if (!leader.isOrchestrator) {
-      return c.json({ error: "Session is not an orchestrator" }, 400);
-    }
-
-    const actorId = getActorSessionId(authenticateCompanionCallerOptional(c));
-
-    // Find all non-archived herded workers
-    const workers = launcher.getHerdedSessions(id).filter((s) => !s.archived);
-
-    const results: Array<{ sessionId: string; ok: boolean; error?: string }> = [];
-
-    // Archive workers first, then the leader (avoids herd events to a dead leader)
-    for (const w of workers) {
-      try {
-        await archiveSingleSession(w.sessionId, actorId);
-        results.push({ sessionId: w.sessionId, ok: true });
-      } catch (e) {
-        results.push({
-          sessionId: w.sessionId,
-          ok: false,
-          error: e instanceof Error ? e.message : String(e),
-        });
-      }
-    }
-
-    // Archive the leader itself
-    try {
-      await archiveSingleSession(id);
-      results.push({ sessionId: id, ok: true });
-    } catch (e) {
-      results.push({
-        sessionId: id,
-        ok: false,
-        error: e instanceof Error ? e.message : String(e),
-      });
-    }
-
-    const anyFailed = results.some((r) => !r.ok);
-    return c.json({
-      ok: !anyFailed,
-      archived: results.filter((r) => r.ok).length,
-      failed: results.filter((r) => !r.ok).length,
-      results,
-    });
-  });
-
-  api.post("/sessions/:id/unarchive", async (c) => {
-    const id = resolveId(c.req.param("id"));
-    if (!id) return c.json({ error: "Session not found" }, 404);
-    const info = launcher.getSession(id);
-    if (!info) return c.json({ error: "Session not found" }, 404);
-    if (info.worktreeCleanupStatus === "pending") {
-      if (pendingWorktreeCleanups.has(id)) {
-        return c.json({ error: "Worktree cleanup is still running. Try unarchiving again in a few seconds." }, 409);
-      }
-      launcher.setWorktreeCleanupState(id, {
-        status: "failed",
-        error: info.worktreeCleanupError || "Cleanup was interrupted before completion.",
-        startedAt: info.worktreeCleanupStartedAt,
-        finishedAt: Date.now(),
-      });
-    }
-
-    launcher.setArchived(id, false);
-    await sessionStore.setArchived(id, false);
-
-    // For worktree sessions: recreate the worktree if it was deleted during archiving
-    let worktreeRecreated = false;
-    if (info.isWorktree && info.repoRoot && info.branch) {
-      if (!(await pathExists(info.cwd))) {
-        try {
-          const result = await recreateWorktreeIfMissing(id, info, { launcher, worktreeTracker, wsBridge });
-          if (result.error) {
-            return c.json({ ok: false, error: `Failed to recreate worktree: ${result.error}` }, 500);
-          }
-          worktreeRecreated = result.recreated;
-        } catch (e) {
-          console.error(`[routes] Failed to recreate worktree for session ${id}:`, e);
-          return c.json(
-            {
-              ok: false,
-              error: `Failed to recreate worktree: ${e instanceof Error ? e.message : String(e)}`,
-            },
-            500,
-          );
-        }
-      } else {
-        // Worktree still exists — re-register tracker and bridge state
-        worktreeTracker.addMapping({
-          sessionId: id,
-          repoRoot: info.repoRoot,
-          branch: info.branch,
-          actualBranch: info.actualBranch || info.branch,
-          worktreePath: info.cwd,
-          createdAt: Date.now(),
-        });
-        applyInitialSessionState(id, {
-          cwd: info.cwd,
-          worktree: { repoRoot: info.repoRoot, defaultBranch: undefined, diffBaseBranch: info.branch },
-        });
-      }
-    }
-
-    // Auto-relaunch the CLI so the session is immediately usable
-    const relaunchResult = await launcher.relaunch(id);
-
-    return c.json({ ok: true, worktreeRecreated, relaunch: relaunchResult });
-  });
-
   // ─── Task History (table of contents) ──────────────────────
-
   api.get("/sessions/:id/tasks", (c) => {
     const sessionId = resolveId(c.req.param("id"));
     if (!sessionId) return c.json({ error: "Session not found" }, 404);
@@ -2106,9 +1903,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
       tasks,
     });
   });
-
   // ─── Tool result lazy fetch ────────────────────────────────
-
   api.get("/sessions/:id/tool-result/:toolUseId", (c) => {
     const sessionId = resolveId(c.req.param("id"));
     if (!sessionId) return c.json({ error: "Session not found" }, 404);
@@ -2128,9 +1923,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
 
     return c.json(result);
   });
-
   // ─── Background agent output file ────────────────────────────
-
   api.get("/sessions/:id/agent-output", async (c) => {
     const filePath = c.req.query("path");
     if (!filePath) return c.text("Missing path parameter", 400);
@@ -2143,9 +1936,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
       return c.text("File not found", 404);
     }
   });
-
   // ─── Image serving ─────────────────────────────────────────
-
   api.post("/sessions/:id/images/prepare-user-message", async (c) => {
     if (!imageStore) return c.json({ error: "Image store not configured" }, 503);
     const id = resolveId(c.req.param("id"));
@@ -2176,7 +1967,6 @@ export function createSessionsRoutes(ctx: RouteContext) {
       attachmentAnnotation: formatAttachmentPathAnnotation(paths),
     });
   });
-
   api.get("/images/:sessionId/:imageId/thumb", async (c) => {
     if (!imageStore) return c.json({ error: "Image store not configured" }, 503);
     const { sessionId, imageId } = c.req.param();
@@ -2192,7 +1982,6 @@ export function createSessionsRoutes(ctx: RouteContext) {
       },
     });
   });
-
   api.get("/images/:sessionId/:imageId/full", async (c) => {
     if (!imageStore) return c.json({ error: "Image store not configured" }, 503);
     const { sessionId, imageId } = c.req.param();
@@ -2206,6 +1995,5 @@ export function createSessionsRoutes(ctx: RouteContext) {
       },
     });
   });
-
   return api;
 }
