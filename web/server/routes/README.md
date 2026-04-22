@@ -19,6 +19,8 @@ Each file owns a route domain and is mounted by [index.ts](./index.ts).
 
 - [sessions.ts](./sessions.ts)
   - Session create/list/search/lifecycle APIs (archive, relaunch, naming, ordering).
+- [sessions-archive-routes.ts](./sessions-archive-routes.ts)
+  - Session archive/unarchive endpoints, worktree recreation for archived sessions.
 - [takode.ts](./takode.ts)
   - Orchestration APIs (`takode list/herd/send/peek/read/answer`).
 - [quests.ts](./quests.ts)
@@ -33,13 +35,19 @@ Each file owns a route domain and is mounted by [index.ts](./index.ts).
   - STT/transcription API and transcription debug endpoints.
 - [recordings.ts](./recordings.ts)
   - Raw protocol recording list/start/stop/status endpoints.
+- [logs.ts](./logs.ts)
+  - Server log streaming (SSE) and log level/time filtering.
+- [timers.ts](./timers.ts)
+  - Session-scoped timer CRUD and listing endpoints.
 - [system.ts](./system.ts)
   - Health, service/system endpoints, migration/export/import, backend discovery.
 
-## Small helper module
+## Helper modules
 
 - [quest-helpers.ts](./quest-helpers.ts)
   - Shared quest transition helper used by quest routes.
+- [sessions-helpers.ts](./sessions-helpers.ts)
+  - Shared session creation helpers: backend detection, auth context, archive source resolution.
 
 ## How it fits together
 

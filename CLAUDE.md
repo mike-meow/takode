@@ -114,29 +114,122 @@ Browser (React) ←→ WebSocket ←→ Hono Server (Bun) ←→ WebSocket (NDJS
 ### All code lives under `web/`
 
 - **`web/server/`** — Hono + Bun backend (runs on port 3456)
+
+  **Core runtime:**
   - `index.ts` — Server bootstrap, Bun.serve with dual WebSocket upgrade (CLI vs browser)
-  - `ws-bridge.ts` — Core message router. Maintains per-session state (backend socket, browser sockets, message history, pending permissions) and broadcasts canonical session updates.
-  - `bridge/` — Extracted bridge subsystems (permission pipeline, generation lifecycle, quest detection) shared by `ws-bridge.ts`.
-  - `cli-launcher.ts` — Spawns/kills/relaunches Claude Code CLI processes. Handles `--resume` for session recovery. Persists session state across server restarts.
-  - `claude-sdk-adapter.ts` / `codex-adapter.ts` — Backend protocol adapters (Claude NDJSON and Codex JSON-RPC) normalized into the bridge's common event format.
-  - `session-store.ts` — JSON file persistence to `~/.companion/sessions/` (port-scoped subdirectories when needed). Debounced writes.
-  - `session-types.ts` — All TypeScript types for CLI messages (NDJSON), browser messages, session state, permissions.
+  - `ws-bridge.ts` — Session-level state machine and WebSocket message router. Orchestrates bridge subsystems, broadcasts canonical session updates.
+  - `bridge/` — Extracted bridge controllers (see details below). Each handles a focused concern (permissions, lifecycle, transport, recovery) and operates on narrow interfaces rather than full bridge state.
+  - `service.ts` — Shared service container wiring server-wide dependencies.
+
+  **CLI launchers** (split by backend and concern):
+  - `cli-launcher.ts` — Core process lifecycle: spawn, kill, relaunch Claude Code CLI. Handles `--resume` for session recovery.
+  - `cli-launcher-codex.ts` — Codex-specific process lifecycle and spawn logic.
+  - `cli-launcher-instructions.ts` — Generates per-session CLAUDE.md / system instructions injected at launch.
+  - `cli-launcher-worktree.ts` — Worktree setup: guardrails injection, git exclude, settings symlinks (all async).
+
+  **Backend adapters:**
+  - `claude-sdk-adapter.ts` / `codex-adapter.ts` — Protocol adapters (Claude NDJSON and Codex JSON-RPC) normalized into the bridge's common event format.
+  - `codex-adapter-utils.ts` — Shared Codex adapter helpers.
+  - `codex-jsonrpc-transport.ts` — Low-level JSON-RPC transport for Codex connections.
+  - `codex-approval-manager.ts` — Codex-specific permission approval handling.
+  - `codex-item-event-manager.ts` — Codex item-level event tracking.
+  - `codex-mcp-manager.ts` — MCP server lifecycle for Codex sessions.
+
+  **Session state:**
+  - `session-store.ts` — JSON file persistence to `~/.companion/sessions/`. Debounced async writes.
+  - `session-types.ts` — All TypeScript types for CLI messages, browser messages, session state, permissions.
+  - `session-names.ts` / `session-namer.ts` / `session-namer-arbitration.ts` — Auto-naming pipeline with conflict arbitration.
+  - `session-tag.ts` — Session tagging (leader/worker/reviewer roles, custom labels).
+  - `session-search.ts` — Full-text session search across messages and metadata.
+  - `session-payload-metrics.ts` — Token and payload size tracking per session.
+
+  **Permissions & auto-approval:**
+  - `auto-approval-store.ts` / `auto-approver.ts` — Persistent auto-approval rules and LLM-based approval evaluation.
+  - `settings-manager.ts` — Manages `settings.json` with chained async writes.
+
+  **Routes:**
   - `routes.ts` — Thin API entrypoint that mounts domain route modules from `routes/`.
-  - `routes/` — Domain-specific REST modules (`sessions`, `quests`, `settings`, `filesystem`, `git`, `takode`, `recordings`, `system`, `transcription`, plus shared auth/helpers).
-  - `quest-store.ts` / `quest-integration.ts` / `quest-cli.ts` — Quest persistence and lifecycle integration with session activity.
+  - `routes/` — Domain-specific REST modules: `sessions`, `sessions-archive-routes`, `quests`, `settings`, `filesystem`, `git`, `takode`, `recordings`, `system`, `transcription`, `context`, `logs`, `timers`, plus shared helpers (`auth`, `sessions-helpers`, `quest-helpers`).
+
+  **Questmaster:**
+  - `quest-store.ts` / `quest-types.ts` / `quest-integration.ts` / `quest-list-filters.ts` / `quest-grep.ts` — Quest persistence, lifecycle integration, filtering, and search.
+
+  **Orchestration & herd:**
   - `takode-integration.ts` / `takode-messages.ts` — Takode orchestration integration and event/message handling.
-  - `container-manager.ts` — Optional containerized session runtime setup and lifecycle.
-  - `idle-manager.ts` — Idle-time monitoring and automatic session cleanup behavior.
-  - `perf-tracer.ts` — Lightweight server-side performance tracing utilities.
-  - `transcription.ts` / `transcription-enhancer.ts` — Speech-to-text endpoint and transcript post-processing pipeline.
+  - `herd-event-dispatcher.ts` / `herd-change-handler.ts` / `herd-activity-formatter.ts` — Cross-session herd event dispatch and formatting.
+
+  **Cron & timers:**
+  - `cron-scheduler.ts` / `cron-store.ts` / `cron-types.ts` — Cron job scheduling and persistence.
+  - `timer-manager.ts` / `timer-store.ts` / `timer-types.ts` / `timer-parse.ts` — Session-scoped timer system.
+
+  **Recording & transcription:**
+  - `recorder.ts` / `replay.ts` / `recording-traffic-report.ts` — Protocol recording, replay utilities, and traffic analysis.
+  - `transcription.ts` / `transcription-enhancer.ts` — Speech-to-text and transcript post-processing.
+
+  **Infrastructure:**
+  - `idle-manager.ts` — Idle-time monitoring and automatic session cleanup.
+  - `relaunch-queue.ts` — Queued relaunch coordination to prevent concurrent relaunches.
+  - `container-manager.ts` — Optional containerized session runtime.
   - `env-manager.ts` — CRUD for environment profiles stored in `~/.companion/envs/`.
+  - `git-utils.ts` / `github-pr.ts` / `pr-poller.ts` / `worktree-tracker.ts` — Git operations, GitHub PR integration, worktree lifecycle tracking.
+  - `server-logger.ts` — Buffered async logging with periodic flush.
+  - `perf-tracer.ts` — Lightweight performance tracing utilities.
+  - `pushover.ts` — Push notification delivery.
+  - `traffic-stats.ts` / `usage-limits.ts` — Traffic analytics and usage limit enforcement.
+  - `sleep-inhibitor.ts` — Prevents OS sleep during active sessions.
+  - `ripgrep.ts` / `fs-search.ts` — Server-side file search via ripgrep.
+  - `migration.ts` — Data migration utilities for session/settings schema changes.
+  - `skill-symlink.ts` — Symlinks project skills into global skill directories at startup.
+
+  **Bridge controllers** (`bridge/` -- extracted from `ws-bridge.ts`):
+
+  *Transport:*
+  - `browser-transport-controller.ts` — Browser WebSocket transport, history sync hashing, session tagging.
+  - `claude-cli-transport-controller.ts` — Claude CLI WebSocket transport layer.
+  - `adapter-browser-routing-controller.ts` — Routes browser messages to the active backend adapter (with auto-approval evaluation).
+  - `adapter-interface.ts` — Shared `AdapterSessionMeta` interface and base adapter contract.
+
+  *Permissions:*
+  - `permission-pipeline.ts` — Permission request normalization, mode-based auto-approve, LLM approval queuing, human-review fallback.
+  - `permission-response-controller.ts` — Handles permission responses from browser back to backend.
+  - `permission-summaries.ts` — Formats permission request summaries (including Codex image drafts).
+  - `settings-rule-matcher.ts` — Matches SDK permission requests against settings.json rules.
+
+  *Lifecycle & state:*
+  - `generation-lifecycle.ts` — Turn lifecycle state machine: running/idle transitions, interruption, turn event emission.
+  - `session-registry-controller.ts` — In-memory registry of active sessions.
+  - `session-git-state.ts` — Reads git state (branch, status) for a session's worktree.
+  - `context-usage.ts` — Context window token usage tracking.
+  - `branch-session-index.ts` — Indexes sessions by git branch for fast lookup.
+  - `board-watchdog-controller.ts` — Watches for stuck/stalled sessions and triggers recovery.
+
+  *Message processing:*
+  - `claude-message-controller.ts` — Processes Claude CLI messages into session events.
+  - `result-message-controller.ts` — Processes and emits final result messages for a turn.
+  - `system-message-controller.ts` — Handles system-level messages (init, reconnect signals).
+  - `quest-detector.ts` — Detects quest lifecycle signals in session output.
+
+  *Codex-specific:*
+  - `codex-adapter-browser-message-controller.ts` — Routes browser messages to the Codex adapter.
+  - `codex-recovery-orchestrator.ts` — Resume/recovery snapshots for Codex turns after failures.
+  - `codex-turn-queue.ts` — Queues and drains Codex turns across reconnects.
+  - `claude-sdk-adapter-lifecycle-controller.ts` — Lifecycle management for the Claude SDK adapter.
+
+  *Recovery:*
+  - `compaction-recovery.ts` — Recovery after context compaction events.
+  - `tool-result-recovery-controller.ts` — Recovers stuck tool-result state across reconnects.
 
 - **`web/src/`** — React 19 frontend
   - `store.ts` — Zustand store. All state keyed by session ID (messages, streaming text, permissions, tasks, connection status).
+  - `store-types.ts` / `store-initial.ts` / `store-equality.ts` — Store type definitions, initial state factories, and equality comparators.
+  - `store-session-search.ts` — Full-text session search state and logic.
   - `ws-transport.ts` / `ws-handlers.ts` / `ws.ts` — Browser WebSocket transport + message handlers, with `ws.ts` as compatibility facade.
+  - `terminal-ws.ts` — WebSocket transport for terminal/shell sessions.
   - `types.ts` — Re-exports server types + client-only types (`ChatMessage`, `TaskItem`, `SdkSessionInfo`).
   - `api.ts` — REST client for session management.
   - `App.tsx` — Root layout with sidebar, chat view, task panel. Hash routing (`#/playground`).
+  - `hooks/` — Custom React hooks (WebSocket subscriptions, session state selectors, UI behavior).
+  - `utils/` — Shared utilities (`scoped-storage.ts` for server-scoped localStorage, formatting, etc.).
   - `components/` — UI: `ChatView`, `MessageFeed`, `MessageBubble`, `ToolBlock`, `Composer`, `Sidebar`, `TopBar`, `TaskPanel`, `PermissionBanner`, `EnvManager`, `SessionCreationView`, `QuestmasterPage`, `CronManager`, `Playground`.
 
 - **`web/bin/cli.ts`** — Main CLI entry point (currently invoked as `bunx the-companion`). Sets `__COMPANION_PACKAGE_ROOT` and imports the server.

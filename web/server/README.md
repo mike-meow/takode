@@ -33,7 +33,7 @@ This directory contains the server process that:
 - [routes/](./routes/)
   - REST endpoints, organized by domain modules.
 - [bridge/](./bridge/)
-  - Extracted ws-bridge subsystems (permission pipeline, generation lifecycle, adapter contract).
+  - Extracted ws-bridge controllers (~21 modules), grouped by concern: transport (browser/CLI WebSocket layers), permissions (pipeline, response handling, rule matching), lifecycle & state (generation state machine, session registry, context usage, branch index, watchdog), message processing (Claude messages, results, system events, quest detection), Codex-specific (browser routing, recovery, turn queue), and recovery (compaction, stuck tool-results). See [bridge/README.md](./bridge/README.md) for full listing.
 - [codex-adapter.ts](./codex-adapter.ts)
   - Codex JSON-RPC adapter to/from bridge message model.
 - [claude-sdk-adapter.ts](./claude-sdk-adapter.ts)
@@ -41,10 +41,16 @@ This directory contains the server process that:
 
 ## Supporting subsystems
 
-- Orchestration and Takode: `takode-*.ts`, [herd-event-dispatcher.ts](./herd-event-dispatcher.ts), [session-tag.ts](./session-tag.ts)
-- Questmaster: `quest-*.ts`, [quest-integration.ts](./quest-integration.ts)
-- Transcription: [transcription.ts](./transcription.ts), [transcription-enhancer.ts](./transcription-enhancer.ts)
-- Infra/utilities: [recorder.ts](./recorder.ts), [replay.ts](./replay.ts), [server-logger.ts](./server-logger.ts), [usage-limits.ts](./usage-limits.ts), [perf-tracer.ts](./perf-tracer.ts), [git-utils.ts](./git-utils.ts)
+- **CLI launchers:** `cli-launcher.ts` (Claude Code), `cli-launcher-codex.ts` (Codex), `cli-launcher-instructions.ts` (per-session instructions), `cli-launcher-worktree.ts` (worktree setup)
+- **Session state:** `session-names.ts` / `session-namer.ts` / `session-namer-arbitration.ts` (auto-naming), `session-tag.ts`, `session-search.ts`, `session-payload-metrics.ts`
+- **Permissions & auto-approval:** `auto-approval-store.ts`, `auto-approver.ts`, `settings-manager.ts`
+- **Codex subsystem:** `codex-adapter-utils.ts`, `codex-jsonrpc-transport.ts`, `codex-approval-manager.ts`, `codex-item-event-manager.ts`, `codex-mcp-manager.ts`
+- **Orchestration & Takode:** `takode-*.ts`, [herd-event-dispatcher.ts](./herd-event-dispatcher.ts), [herd-change-handler.ts](./herd-change-handler.ts), [herd-activity-formatter.ts](./herd-activity-formatter.ts), [session-tag.ts](./session-tag.ts)
+- **Questmaster:** `quest-*.ts`, [quest-integration.ts](./quest-integration.ts)
+- **Cron & timers:** `cron-scheduler.ts` / `cron-store.ts` / `cron-types.ts`, `timer-manager.ts` / `timer-store.ts` / `timer-types.ts` / `timer-parse.ts`
+- **Transcription:** [transcription.ts](./transcription.ts), [transcription-enhancer.ts](./transcription-enhancer.ts)
+- **Git & GitHub:** `git-utils.ts`, `github-pr.ts`, `pr-poller.ts`, `worktree-tracker.ts`
+- **Infra/utilities:** [recorder.ts](./recorder.ts), [replay.ts](./replay.ts), [server-logger.ts](./server-logger.ts), [usage-limits.ts](./usage-limits.ts), [perf-tracer.ts](./perf-tracer.ts), `relaunch-queue.ts`, `sleep-inhibitor.ts`, `pushover.ts`, `traffic-stats.ts`, `migration.ts`, `ripgrep.ts`, `fs-search.ts`
 
 ## How pieces fit together
 
