@@ -36,6 +36,7 @@ async function runQuest(
   args: string[],
   env: Record<string, string | undefined>,
   cwd = process.cwd(),
+  stdinText?: string,
 ): Promise<{
   status: number | null;
   stdout: string;
@@ -54,7 +55,7 @@ async function runQuest(
   const child = spawn(process.execPath, [questPath, ...args], {
     env: childEnv,
     cwd,
-    stdio: ["ignore", "pipe", "pipe"],
+    stdio: ["pipe", "pipe", "pipe"],
   });
 
   let stdout = "";
@@ -66,14 +67,20 @@ async function runQuest(
     stderr += String(chunk);
   });
 
+  if (stdinText !== undefined) {
+    child.stdin?.write(stdinText);
+  }
+  child.stdin?.end();
+
   const [code] = await once(child, "close");
   return { status: code as number | null, stdout, stderr };
 }
 
 describe("quest CLI help", () => {
-  it("documents search tips for list filtering vs grep snippets", async () => {
+  it("documents search tips and safer rich-text input paths", async () => {
     // Guard the user-facing `quest --help` copy so the grep discoverability
-    // wording stays aligned with the CLI entrypoint, not just generated docs.
+    // wording and safer-input guidance stay aligned with the CLI entrypoint,
+    // not just generated docs.
     const result = await runQuest(["--help"], { ...process.env });
 
     expect(result.status).toBe(0);
@@ -84,6 +91,400 @@ describe("quest CLI help", () => {
     expect(result.stdout).toContain(
       'quest grep "foo|bar"      Search inside quest text/comments with contextual snippets',
     );
+    expect(result.stdout).toContain("quest feedback q-1 --text-file note.md");
+    expect(result.stdout).toContain("quest complete q-1 --items-file items.txt");
+
+    const lines = result.stdout.split("\n");
+    expect(lines).toContain("  printf '%s\\n' 'Line 1' '`$(nope)`' | quest feedback q-1 --text-file -");
+    expect(lines).toContain(
+      `  printf '%s\\n' 'Review comma-heavy item, "quotes", {braces}' | quest complete q-1 --items-file -`,
+    );
+  });
+});
+
+describe("quest CLI safer rich-text inputs", () => {
+  it("reads feedback text from --text-file and preserves shell-like payloads literally", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "quest-feedback-text-file-"));
+    const authDir = getSessionAuthDir(tmp);
+    mkdirSync(authDir, { recursive: true });
+    const authPath = centralAuthPath(tmp, tmp);
+    const textPath = join(tmp, "feedback.txt");
+    const payload = [
+      "Refreshed summary: literal backticks `!#tag` should survive.",
+      'Copied log: excluding: "artifact $(rm -rf /tmp/nope)"',
+      'Quotes and braces stay literal: {"mode":"safe","ok":true}',
+    ].join("\n");
+    writeFileSync(textPath, payload, "utf-8");
+
+    const seenBodies: JsonObject[] = [];
+    const server = createServer(async (req, res) => {
+      if (req.method === "POST" && req.url === "/api/quests/q-1/feedback") {
+        seenBodies.push(await readJson(req));
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ questId: "q-1", title: "Quest", status: "in_progress", feedback: [] }));
+        return;
+      }
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    });
+    server.listen(0);
+    await once(server, "listening");
+    const port = (server.address() as AddressInfo).port;
+
+    writeFileSync(
+      authPath,
+      JSON.stringify({ sessionId: "session-file", authToken: "file-token", port, serverId: "test-server-id" }),
+      "utf-8",
+    );
+
+    try {
+      const result = await runQuest(
+        ["feedback", "q-1", "--text-file", textPath, "--json"],
+        {
+          ...process.env,
+          COMPANION_SESSION_ID: undefined,
+          COMPANION_AUTH_TOKEN: undefined,
+          COMPANION_PORT: undefined,
+          HOME: tmp,
+        },
+        tmp,
+      );
+
+      expect(result.status).toBe(0);
+      expect(seenBodies[0]).toMatchObject({
+        text: payload,
+        author: "agent",
+        sessionId: "session-file",
+      });
+    } finally {
+      server.close();
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("reads feedback text from stdin via --text-file -", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "quest-feedback-stdin-"));
+    const authDir = getSessionAuthDir(tmp);
+    mkdirSync(authDir, { recursive: true });
+    const authPath = centralAuthPath(tmp, tmp);
+    const payload = [
+      "Addressed: copied shell transcript stays literal.",
+      "Treat `foo` and $(bar) as text, not shell.",
+      'Final line keeps commas, quotes "yes", and braces {ok:true}.',
+    ].join("\n");
+
+    const seenBodies: JsonObject[] = [];
+    const server = createServer(async (req, res) => {
+      if (req.method === "POST" && req.url === "/api/quests/q-1/feedback") {
+        seenBodies.push(await readJson(req));
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ questId: "q-1", title: "Quest", status: "in_progress", feedback: [] }));
+        return;
+      }
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    });
+    server.listen(0);
+    await once(server, "listening");
+    const port = (server.address() as AddressInfo).port;
+
+    writeFileSync(
+      authPath,
+      JSON.stringify({ sessionId: "session-file", authToken: "file-token", port, serverId: "test-server-id" }),
+      "utf-8",
+    );
+
+    try {
+      const result = await runQuest(
+        ["feedback", "q-1", "--text-file", "-", "--json"],
+        {
+          ...process.env,
+          COMPANION_SESSION_ID: undefined,
+          COMPANION_AUTH_TOKEN: undefined,
+          COMPANION_PORT: undefined,
+          HOME: tmp,
+        },
+        tmp,
+        payload,
+      );
+
+      expect(result.status).toBe(0);
+      expect(seenBodies[0]).toMatchObject({
+        text: payload,
+        author: "agent",
+        sessionId: "session-file",
+      });
+    } finally {
+      server.close();
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects mixing --text with --text-file", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "quest-feedback-mixed-input-"));
+    const textPath = join(tmp, "feedback.txt");
+    writeFileSync(textPath, "literal payload", "utf-8");
+
+    try {
+      const result = await runQuest(
+        ["feedback", "q-1", "--text", "inline", "--text-file", textPath],
+        {
+          ...process.env,
+          COMPANION_PORT: undefined,
+          COMPANION_SESSION_ID: "session-inline",
+          COMPANION_AUTH_TOKEN: "token-inline",
+          HOME: tmp,
+        },
+        tmp,
+      );
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("Use either --text or --text-file, not both");
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("reads verification items from --items-file line input with shell-fragile characters", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "quest-complete-items-file-"));
+    const authDir = getSessionAuthDir(tmp);
+    mkdirSync(authDir, { recursive: true });
+    const authPath = centralAuthPath(tmp, tmp);
+    const itemsPath = join(tmp, "items.txt");
+    const items = [
+      "Confirm copied log line `excluding:` stays literal and readable",
+      'Confirm `!#tag`, $(dont-run), and "quotes" survive untouched',
+      "Confirm commas, braces {ok:true}, and copied snippets remain one checklist item",
+    ];
+    writeFileSync(itemsPath, `${items.join("\n")}\n`, "utf-8");
+
+    const seenBodies: JsonObject[] = [];
+    const server = createServer(async (req, res) => {
+      if (req.method === "POST" && req.url === "/api/quests/q-1/complete") {
+        seenBodies.push(await readJson(req));
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ questId: "q-1", title: "Quest", status: "needs_verification" }));
+        return;
+      }
+      if (req.method === "POST" && req.url === "/api/quests/_notify") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true }));
+        return;
+      }
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    });
+    server.listen(0);
+    await once(server, "listening");
+    const port = (server.address() as AddressInfo).port;
+
+    writeFileSync(
+      authPath,
+      JSON.stringify({ sessionId: "session-file", authToken: "file-token", port, serverId: "test-server-id" }),
+      "utf-8",
+    );
+
+    try {
+      const result = await runQuest(
+        ["complete", "q-1", "--items-file", itemsPath, "--json"],
+        {
+          ...process.env,
+          COMPANION_SESSION_ID: undefined,
+          COMPANION_AUTH_TOKEN: undefined,
+          COMPANION_PORT: undefined,
+          HOME: tmp,
+        },
+        tmp,
+      );
+
+      expect(result.status).toBe(0);
+      expect(seenBodies[0]).toMatchObject({
+        verificationItems: items.map((text) => ({ text, checked: false })),
+      });
+    } finally {
+      server.close();
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("reads verification items from stdin via --items-file - using JSON array input", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "quest-complete-items-stdin-"));
+    const authDir = getSessionAuthDir(tmp);
+    mkdirSync(authDir, { recursive: true });
+    const authPath = centralAuthPath(tmp, tmp);
+    const items = [
+      "Confirm JSON array input keeps `backticks` literal",
+      'Confirm "$(echo nope)" and braces {"safe":true} stay in one item',
+    ];
+    const stdinJson = JSON.stringify(items);
+
+    const seenBodies: JsonObject[] = [];
+    const server = createServer(async (req, res) => {
+      if (req.method === "POST" && req.url === "/api/quests/q-1/complete") {
+        seenBodies.push(await readJson(req));
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ questId: "q-1", title: "Quest", status: "needs_verification" }));
+        return;
+      }
+      if (req.method === "POST" && req.url === "/api/quests/_notify") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true }));
+        return;
+      }
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    });
+    server.listen(0);
+    await once(server, "listening");
+    const port = (server.address() as AddressInfo).port;
+
+    writeFileSync(
+      authPath,
+      JSON.stringify({ sessionId: "session-file", authToken: "file-token", port, serverId: "test-server-id" }),
+      "utf-8",
+    );
+
+    try {
+      const result = await runQuest(
+        ["complete", "q-1", "--items-file", "-", "--json"],
+        {
+          ...process.env,
+          COMPANION_SESSION_ID: undefined,
+          COMPANION_AUTH_TOKEN: undefined,
+          COMPANION_PORT: undefined,
+          HOME: tmp,
+        },
+        tmp,
+        stdinJson,
+      );
+
+      expect(result.status).toBe(0);
+      expect(seenBodies[0]).toMatchObject({
+        verificationItems: items.map((text) => ({ text, checked: false })),
+      });
+    } finally {
+      server.close();
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("reads verification items from --items-file JSON object arrays", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "quest-complete-items-object-json-"));
+    const authDir = getSessionAuthDir(tmp);
+    mkdirSync(authDir, { recursive: true });
+    const authPath = centralAuthPath(tmp, tmp);
+    const itemsPath = join(tmp, "items.json");
+    writeFileSync(
+      itemsPath,
+      JSON.stringify([
+        { text: "Confirm object-array input keeps `backticks` literal" },
+        { text: ' Confirm "$(echo nope)" and braces {"safe":true} stay in one item ' },
+      ]),
+      "utf-8",
+    );
+
+    const seenBodies: JsonObject[] = [];
+    const server = createServer(async (req, res) => {
+      if (req.method === "POST" && req.url === "/api/quests/q-1/complete") {
+        seenBodies.push(await readJson(req));
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ questId: "q-1", title: "Quest", status: "needs_verification" }));
+        return;
+      }
+      if (req.method === "POST" && req.url === "/api/quests/_notify") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true }));
+        return;
+      }
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    });
+    server.listen(0);
+    await once(server, "listening");
+    const port = (server.address() as AddressInfo).port;
+
+    writeFileSync(
+      authPath,
+      JSON.stringify({ sessionId: "session-file", authToken: "file-token", port, serverId: "test-server-id" }),
+      "utf-8",
+    );
+
+    try {
+      const result = await runQuest(
+        ["complete", "q-1", "--items-file", itemsPath, "--json"],
+        {
+          ...process.env,
+          COMPANION_SESSION_ID: undefined,
+          COMPANION_AUTH_TOKEN: undefined,
+          COMPANION_PORT: undefined,
+          HOME: tmp,
+        },
+        tmp,
+      );
+
+      expect(result.status).toBe(0);
+      expect(seenBodies[0]).toMatchObject({
+        verificationItems: [
+          { text: "Confirm object-array input keeps `backticks` literal", checked: false },
+          { text: 'Confirm "$(echo nope)" and braces {"safe":true} stay in one item', checked: false },
+        ],
+      });
+    } finally {
+      server.close();
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects invalid JSON object items in --items-file", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "quest-complete-invalid-object-json-"));
+    const itemsPath = join(tmp, "items.json");
+    writeFileSync(itemsPath, JSON.stringify([{ label: "missing text" }, { text: "ok" }]), "utf-8");
+
+    try {
+      const result = await runQuest(
+        ["complete", "q-1", "--items-file", itemsPath],
+        {
+          ...process.env,
+          COMPANION_PORT: undefined,
+          COMPANION_SESSION_ID: "session-inline",
+          COMPANION_AUTH_TOKEN: "token-inline",
+          HOME: tmp,
+        },
+        tmp,
+      );
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain(
+        "--items-file item 1 must be a non-empty string or object with a non-empty text field",
+      );
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects mixing --items with --items-file", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "quest-complete-mixed-input-"));
+    const itemsPath = join(tmp, "items.txt");
+    writeFileSync(itemsPath, "literal item", "utf-8");
+
+    try {
+      const result = await runQuest(
+        ["complete", "q-1", "--items", "inline item", "--items-file", itemsPath],
+        {
+          ...process.env,
+          COMPANION_PORT: undefined,
+          COMPANION_SESSION_ID: "session-inline",
+          COMPANION_AUTH_TOKEN: "token-inline",
+          HOME: tmp,
+        },
+        tmp,
+      );
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("Use either --items or --items-file, not both");
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
   });
 });
 

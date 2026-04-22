@@ -42,14 +42,14 @@ quest history <id> [--json]                                   Show version histo
 quest tags   [--json]                                         List all existing tags with counts
 quest create <title> [--desc "..."] [--tags "t1,t2"] [--image <path>] [--images "p1,p2"] [--json] Create a quest (auto-assigns ID)
 quest claim  <id> [--session <sid>] [--json]                  Claim for your session
-quest complete <id> --items "c1,c2" [--no-code] [--commit <sha>] [--commits "c1,c2"] [--json]  Submit for verification
+quest complete <id> [--items "c1,c2" | --items-file <path>|-] [--no-code] [--commit <sha>] [--commits "c1,c2"] [--json]  Submit for verification
 quest done   <id> [--notes "..."] [--cancelled] [--json]      Mark as done/cancelled
 quest transition <id> --status <s> [--desc "..."] [--json]    Change status
 quest later  <id> [--json]                                    Move quest out of Verification Inbox
 quest inbox  <id> [--json]                                    Move quest back to Verification Inbox
 quest edit   <id> [--title "..."] [--desc "..."] [--tags "t1,t2"] [--json]     Edit in place (NEVER use to create)
 quest check  <id> <index> [--json]                            Toggle verification item
-quest feedback <id> --text "..." [--author agent|human] [--image <path>] [--images "p1,p2"] [--json]  Add feedback entry
+quest feedback <id> [--text "..." | --text-file <path>|-] [--author agent|human] [--image <path>] [--images "p1,p2"] [--json]  Add feedback entry
 quest address <id> <index> [--json]                          Toggle feedback addressed status
 quest delete <id> [--json]                                    Delete quest
 quest resize-image <path> [--max-dim 1920] [--json]           Resize an image to fit within max dimension
@@ -110,31 +110,35 @@ Use `quest grep` when you need to search **inside** quest titles, descriptions, 
 | `--session <id>` | Session ID to claim for (required if COMPANION_SESSION_ID not set) |
 | `--json` | Output JSON |
 
-### quest feedback <id> --text "..." [flags]
+### quest feedback <id> [--text "..." | --text-file <path>|-] [flags]
 | Flag | Description |
 |------|-------------|
-| `--text "..."` | Feedback text (REQUIRED) |
+| `--text "..."` | Short inline feedback text |
+| `--text-file <path>` | Read feedback text from a file, or use `-` to read from stdin |
 | `--author agent\|human` | Who wrote this (default: "agent") |
 | `--session <id>` | Session ID |
 | `--image <path>` | Attach an image (can repeat: --image a.png --image b.png) |
 | `--images "a.png,b.png"` | Attach multiple images (comma-separated) |
 | `--json` | Output JSON |
 
-**Shell quoting safety:** if feedback text may contain backticks, `$(...)`, quotes, braces, copied CLI output, or other shell-sensitive content, do not inline it directly in double quotes. Build the text with a single-quoted heredoc and pass the variable instead:
+**Shell quoting safety:** if feedback text may contain backticks, `$(...)`, quotes, braces, copied CLI output, or other shell-sensitive content, prefer `--text-file <path>` or `--text-file -` instead of inline shell quoting:
 
 ```bash
-msg=$(cat <<'EOF'
+cat >/tmp/quest-feedback.txt <<'EOF'
 Port summary: commit abc123 ...
 Treat `foo $(bar)` as literal text, not shell.
 EOF
-)
-quest feedback q-12 --text "$msg"
+quest feedback q-12 --text-file /tmp/quest-feedback.txt
+
+printf '%s\n' 'Port summary: commit abc123 ...' 'Treat `foo $(bar)` as literal text, not shell.' | \
+  quest feedback q-12 --text-file -
 ```
 
-### quest complete <id> --items "item1,item2"
+### quest complete <id> [--items "item1,item2" | --items-file <path>|-]
 | Flag | Description |
 |------|-------------|
-| `--items "i1,i2"` | Comma-separated verification checklist items (REQUIRED) |
+| `--items "i1,i2"` | Comma-separated verification checklist items |
+| `--items-file <path>` | Read verification items from a file, or use `-` to read from stdin. Supports one item per line or a JSON array of strings / `{ "text": "..." }` objects |
 | `--no-code` | Local CLI reminder switch for zero-code / artifact-only handoffs; it suppresses port-noise reminders but does not persist quest metadata |
 | `--commit <sha>` | Attach one synced commit SHA (repeatable) |
 | `--commits "s1,s2"` | Attach multiple synced commit SHAs in order |
@@ -194,7 +198,11 @@ quest edit q-12 --title "Fix sidebar overflow" --tags "ui,bugfix"
 quest feedback q-12 --text "Fixed with flex-wrap, see screenshot" --image /tmp/screenshot.png
 
 # Submit for verification
-quest complete q-12 --items "Sidebar fits on iPhone SE,No horizontal scroll on mobile"
+cat >/tmp/verify-items.txt <<'EOF'
+Sidebar fits on iPhone SE
+No horizontal scroll on mobile
+EOF
+quest complete q-12 --items-file /tmp/verify-items.txt
 
 # Acknowledge a verification quest (move it out of inbox)
 quest later q-12
@@ -225,9 +233,9 @@ When the user asks you to work on a quest — whether via the Companion "Assign"
    - Immediately re-run `quest show q-N` and verify the final title/description/tags are clean.
    - Title rule: concise, **less than 10 words**. Move details to description.
    - Reuse existing tags. Only create new tags when no existing tag fits.
-4. **Work**: Implement the changes. Use TodoWrite for sub-step tracking if needed. **If there is human feedback**, address each entry, then mark it: `quest address q-N <index>` and reply with what you did: `quest feedback q-N --text "Addressed: ..."`. Run `quest show q-N` to confirm entries show `addressed`.
+4. **Work**: Implement the changes. Use TodoWrite for sub-step tracking if needed. **If there is human feedback**, address each entry, then mark it: `quest address q-N <index>` and reply with what you did: `quest feedback q-N --text "Addressed: ..."` for short replies, or `quest feedback q-N --text-file -` / `--text-file <path>` when your response includes copied logs or shell-like text. Run `quest show q-N` to confirm entries show `addressed`.
 5. **Self-check**: Before submitting, verify everything you can yourself. For refactor quests, the current full pre-commit-equivalent automated gate is `cd web && bun run typecheck`, `cd web && bun run test`, and `cd web && bun run format:check`. `format:check` is the current lint/format-equivalent gate in this repo; there is no separate `lint` script right now. If a full run is infeasible, document the exception explicitly in your summary or handoff before submitting. Do not include self-verifiable items in the verification checklist. **Verify all human feedback entries are marked addressed** — run `quest show q-N` and check.
-6. **Submit**: `quest complete q-N --items "..."` — only list items that truly require human verification (UI appearance, UX feel, edge cases needing judgment). Keep items concise — one short sentence each, scannable at a glance.
+6. **Submit**: `quest complete q-N --items "..."` for simple inline lists, or `quest complete q-N --items-file <path>` / `--items-file -` for comma-heavy or copied verification text. Only list items that truly require human verification (UI appearance, UX feel, edge cases needing judgment). Keep items concise — one short sentence each, scannable at a glance.
    - **Worktree sessions:** If you're working in a git worktree, do **not** run `quest complete` or move the quest to `needs_verification` until your changes are synced to the main repo checkout and pushed. The human verifies from the main repo, not your worktree.
 
 ## Tags
@@ -295,7 +303,7 @@ idea → refined → in_progress → needs_verification → done
 **Pre-submission checklist (all three required -- the skeptic reviewer will verify each one and CHALLENGE if any are missing):**
 
 1. **Address all human feedback.** For each human feedback entry on the quest:
-   - Post an explicit reply explaining HOW you addressed it: `quest feedback q-N --text "Addressed: fixed mobile layout with flex-wrap"`
+   - Post an explicit reply explaining HOW you addressed it: `quest feedback q-N --text "Addressed: fixed mobile layout with flex-wrap"` for short replies, or `quest feedback q-N --text-file -` when quoting logs or shell-like text
    - Mark the entry as addressed: `quest address q-N <index>` (run `quest show q-N` after to confirm it shows `addressed`)
    - Both steps are required -- a reply without marking, or marking without explaining, is incomplete
    - Do not claim feedback was addressed unless both happened
@@ -310,7 +318,7 @@ idea → refined → in_progress → needs_verification → done
    - The goal: someone reading only the quest (not the session conversation) should understand what happened
    - Treat this as a required worker deliverable before you report back that the quest is ready
 
-3. **Verification items must require human eyes only.** When writing `quest complete --items "..."`:
+3. **Verification items must require human eyes only.** When writing `quest complete --items "..."` or `quest complete --items-file ...`:
    - Do NOT include items you can verify yourself: "tests pass", "typecheck clean", "code compiles", "no regressions in test suite"
    - DO include items needing human judgment: "popover appears correctly on mobile", "notification chip matches TimerChip styling", "scroll-to-message highlights the right message"
    - If you can self-verify an item, verify it yourself and don't add it to the checklist

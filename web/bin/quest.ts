@@ -434,6 +434,113 @@ function parsePositiveIntegerFlag(name: string, fallback: number, label: string)
   return parsed;
 }
 
+let stdinTextPromise: Promise<string> | null = null;
+
+async function readStdinText(): Promise<string> {
+  if (!stdinTextPromise) {
+    process.stdin.setEncoding("utf8");
+    stdinTextPromise = (async () => {
+      let text = "";
+      for await (const chunk of process.stdin) {
+        text += chunk;
+      }
+      return text;
+    })();
+  }
+  return stdinTextPromise;
+}
+
+async function readOptionTextFile(pathOrDash: string, flagName: string): Promise<string> {
+  if (pathOrDash === "-") {
+    return readStdinText();
+  }
+
+  try {
+    return await readFile(resolve(pathOrDash), "utf-8");
+  } catch (error) {
+    const detail = error instanceof Error && error.message ? `: ${error.message}` : "";
+    die(`Cannot read ${flagName} input from ${pathOrDash}${detail}`);
+  }
+}
+
+async function readRichTextOption(args: {
+  inlineFlag: string;
+  fileFlag: string;
+  label: string;
+  allowEmpty?: boolean;
+}): Promise<string> {
+  const inlineValue = option(args.inlineFlag);
+  const fileValue = option(args.fileFlag);
+  const hasInlineFlag = flag(args.inlineFlag);
+  const hasFileFlag = flag(args.fileFlag);
+
+  if (hasInlineFlag && inlineValue === undefined) {
+    die(`--${args.inlineFlag} requires a value`);
+  }
+  if (hasFileFlag && fileValue === undefined) {
+    die(`--${args.fileFlag} requires a path or '-' for stdin`);
+  }
+  if (inlineValue !== undefined && fileValue !== undefined) {
+    die(`Use either --${args.inlineFlag} or --${args.fileFlag}, not both`);
+  }
+
+  const value =
+    fileValue !== undefined
+      ? await readOptionTextFile(fileValue, `--${args.fileFlag}`)
+      : inlineValue !== undefined
+        ? inlineValue
+        : undefined;
+
+  if (value === undefined) {
+    die(
+      `${args.label} is required. Use --${args.inlineFlag} for short inline text or ` +
+        `--${args.fileFlag} <path> (or '-') for arbitrary rich text.`,
+    );
+  }
+
+  if (!args.allowEmpty && !value.trim()) {
+    die(`${args.label} is required`);
+  }
+
+  return value;
+}
+
+function parseVerificationItems(raw: string, sourceLabel: string): { text: string; checked: boolean }[] {
+  const trimmed = raw.trim();
+  if (!trimmed) return [];
+
+  if (trimmed.startsWith("[")) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch (error) {
+      const detail = error instanceof Error && error.message ? `: ${error.message}` : "";
+      die(`Invalid JSON in ${sourceLabel}${detail}`);
+    }
+    if (!Array.isArray(parsed)) {
+      die(`${sourceLabel} JSON input must be an array of strings or { text } objects`);
+    }
+    return parsed.map((entry, index) => {
+      const text =
+        typeof entry === "string"
+          ? entry
+          : entry && typeof entry === "object" && "text" in entry && typeof entry.text === "string"
+            ? entry.text
+            : null;
+      if (!text || !text.trim()) {
+        die(`${sourceLabel} item ${index + 1} must be a non-empty string or object with a non-empty text field`);
+      }
+      return { text: text.trim(), checked: false };
+    });
+  }
+
+  return raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((text) => ({ text, checked: false }));
+}
+
 async function uploadQuestImage(port: string, rawPath: string): Promise<QuestImageRef> {
   const filePath = resolve(rawPath);
   const data = await readFile(filePath);
@@ -733,23 +840,38 @@ async function cmdClaim(): Promise<void> {
 }
 
 async function cmdComplete(): Promise<void> {
-  validateFlags(["items", "commit", "commits", "no-code", "json"]);
+  validateFlags(["items", "items-file", "commit", "commits", "no-code", "json"]);
   const id = positional(0);
   if (!id) {
     die(
-      'Usage: quest complete <questId> [--items "check1,check2"] [--no-code] [--commit <sha>] [--commits "sha1,sha2"]',
+      'Usage: quest complete <questId> [--items "check1,check2" | --items-file <path>|-] ' +
+        '[--no-code] [--commit <sha>] [--commits "sha1,sha2"]',
     );
   }
 
-  const itemsStr = option("items");
+  if (flag("items") && option("items") === undefined) {
+    die("--items requires a comma-separated value");
+  }
+  if (flag("items-file") && option("items-file") === undefined) {
+    die("--items-file requires a path or '-' for stdin");
+  }
   const commitShas = parseCommitShasFromFlags();
   const noCode = flag("no-code");
   if (noCode && commitShas.length > 0) {
     die("--no-code cannot be combined with --commit/--commits");
   }
+  const inlineItems = option("items");
+  const itemsFile = option("items-file");
+  if (inlineItems !== undefined && itemsFile !== undefined) {
+    die("Use either --items or --items-file, not both");
+  }
+
   let items: { text: string; checked: boolean }[] = [];
-  if (itemsStr) {
-    items = itemsStr
+  if (itemsFile !== undefined) {
+    const rawItems = await readOptionTextFile(itemsFile, "--items-file");
+    items = parseVerificationItems(rawItems, "--items-file");
+  } else if (inlineItems) {
+    items = inlineItems
       .split(",")
       .map((t) => t.trim())
       .filter(Boolean)
@@ -757,7 +879,8 @@ async function cmdComplete(): Promise<void> {
   }
   if (items.length === 0) {
     console.error(
-      "Warning: quest submitted for verification without verification items. Consider adding --items for trackable verification.",
+      "Warning: quest submitted for verification without verification items. " +
+        "Consider adding --items for simple inline lists or --items-file <path> / --items-file - for richer input.",
     );
   }
 
@@ -814,7 +937,9 @@ async function cmdComplete(): Promise<void> {
 function formatCompletionReminder(questId: string, options: { noCode: boolean }): string {
   const summaryLine =
     `Reminder: keep one substantive quest summary comment up to date with ` +
-    `\`quest feedback ${questId} --text "Summary: <what was done>"\` before reporting that the quest is ready.`;
+    `\`quest feedback ${questId} --text "Summary: <what was done>"\`` +
+    ` before reporting that the quest is ready. Use \`--text-file <path>\` or \`--text-file -\`` +
+    ` when that summary includes copied logs, backticks, or other shell-like text.`;
   if (options.noCode) {
     return (
       summaryLine +
@@ -1077,16 +1202,20 @@ async function cmdCheck(): Promise<void> {
 }
 
 async function cmdFeedback(): Promise<void> {
-  validateFlags(["text", "author", "session", "image", "images", "json"]);
+  validateFlags(["text", "text-file", "author", "session", "image", "images", "json"]);
   const id = positional(0);
   if (!id) {
     die(
-      'Usage: quest feedback <questId> --text "..." [--author agent|human] [--session <sid>] [--image <path>] [--images "p1,p2"]',
+      'Usage: quest feedback <questId> (--text "..." | --text-file <path>|-) ' +
+        '[--author agent|human] [--session <sid>] [--image <path>] [--images "p1,p2"]',
     );
   }
 
-  const text = option("text");
-  if (!text?.trim()) die("--text is required");
+  const text = await readRichTextOption({
+    inlineFlag: "text",
+    fileFlag: "text-file",
+    label: "Feedback text",
+  });
 
   const authorOpt = option("author");
   const author = authorOpt === "human" ? "human" : "agent";
@@ -1310,7 +1439,7 @@ Commands:
   tags   [--json]                                        List all existing tags with counts
   create <title> [--desc "..."] [--tags "t1,t2"] [--image <path>] [--images "p1,p2"] [--json] Create a quest
   claim  <id> [--session <sid>] [--json]                 Claim for session
-  complete <id> --items "c1,c2" [--commit <sha>] [--commits "s1,s2"] [--json]
+  complete <id> [--items "c1,c2" | --items-file <path>|-] [--commit <sha>] [--commits "s1,s2"] [--json]
                                                          Submit for verification
   done   <id> [--notes "..."] [--cancelled] [--json]      Mark as done/cancelled
   cancel <id> [--notes "reason"] [--json]                Cancel from any status
@@ -1320,7 +1449,8 @@ Commands:
   inbox  <id> [--json]                                   Move verification quest back to inbox
   edit   <id> [--title "..."] [--desc "..."] [--json]    Edit in place
   check  <id> <index> [--json]                           Toggle verification item
-  feedback <id> --text "..." [--author agent|human] [--session <sid>] [--image <path>] [--images "p1,p2"] [--json]  Add feedback entry
+  feedback <id> [--text "..." | --text-file <path>|-] [--author agent|human] [--session <sid>] [--image <path>] [--images "p1,p2"] [--json]
+                                                         Add feedback entry
   address <id> <index> [--json]                          Toggle feedback addressed status
   delete <id> [--json]                                   Delete quest
   resize-image <path> [--max-dim 1920] [--json]          Resize an image to fit within max dimension
@@ -1340,7 +1470,13 @@ Verification scopes:
 
 Search tips:
   quest list --text "foo"   Filter quests broadly by text
-  quest grep "foo|bar"      Search inside quest text/comments with contextual snippets`);
+  quest grep "foo|bar"      Search inside quest text/comments with contextual snippets
+
+Safer rich-text input:
+  quest feedback q-1 --text-file note.md
+  printf '%s\\n' 'Line 1' '\`$(nope)\`' | quest feedback q-1 --text-file -
+  quest complete q-1 --items-file items.txt
+  printf '%s\\n' 'Review comma-heavy item, "quotes", {braces}' | quest complete q-1 --items-file -`);
 }
 
 // ─── Main ───────────────────────────────────────────────────────────────────

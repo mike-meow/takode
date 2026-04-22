@@ -134,7 +134,7 @@ The `--reviewer` flag automatically:
 
 When new human feedback lands on a quest:
 
-1. **Record the feedback**: `quest feedback <id> --text "..." --author human` (attach screenshots with `--image <path>`)
+1. **Record the feedback**: `quest feedback <id> --text "..." --author human` for short notes, or `quest feedback <id> --text-file - --author human` when recording copied logs or shell-like text (attach screenshots with `--image <path>`)
 2. **Decide whether the quest status itself must move backward**:
    - If the quest is currently in `needs_verification` or `done`, run `quest transition <id> --status refined` first. Those statuses describe a completed review handoff, so the quest itself must re-open before the fresh cycle begins.
    - If the quest is already active (`refined` or `in_progress`), do **not** transition it backward just because new feedback arrived. The quest is already open; the coordination fix is to reset the board row, not to create another status transition.

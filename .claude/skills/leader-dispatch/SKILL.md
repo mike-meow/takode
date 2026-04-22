@@ -104,7 +104,7 @@ Do not leave a quest in `QUEUED` just because `takode list` says `Worker slots u
 takode spawn --message "<dispatch>"
 ```
 
-**Shell quoting safety.** Do not paste complex text payloads inline inside double quotes if they may contain backticks, `$(...)`, quotes, braces, copied CLI output, or other shell-sensitive content. Your shell can execute or corrupt that text locally before the target command receives it. This applies to `takode send`, `takode spawn --message`, `quest feedback`, and any other shell command carrying arbitrary text. For multi-line or shell-like payloads, compose the text with a single-quoted heredoc and pass the variable instead:
+**Shell quoting safety.** Do not paste complex text payloads inline inside double quotes if they may contain backticks, `$(...)`, quotes, braces, copied CLI output, or other shell-sensitive content. Your shell can execute or corrupt that text locally before the target command receives it. For `takode send` / `takode spawn --message`, compose multi-line or shell-like payloads with a single-quoted heredoc and pass the variable instead:
 
 ```bash
 msg=$(cat <<'EOF'
@@ -117,15 +117,17 @@ takode spawn --message "$msg"
 takode send 2 "$msg"
 ```
 
-Use the same pattern for quest comments and port summaries:
+For quest comments or port summaries, prefer the quest CLI's safer rich-text path instead of inline shell quoting:
 
 ```bash
-msg=$(cat <<'EOF'
+cat >/tmp/quest-feedback.txt <<'EOF'
 Port summary: commit abc123 ...
 Treat `foo $(bar)` as literal text, not shell.
 EOF
-)
-quest feedback q-123 --text "$msg"
+quest feedback q-123 --text-file /tmp/quest-feedback.txt
+
+printf '%s\n' 'Port summary: commit abc123 ...' 'Treat `foo $(bar)` as literal text, not shell.' | \
+  quest feedback q-123 --text-file -
 ```
 
 **Never use `--no-worktree` unless the user explicitly asks for it** or the project's repo instructions require it. All workers get worktrees by default -- including investigation and debugging tasks, since they almost always lead to code changes. Don't use `--fixed-name` for regular workers -- they auto-name from their quest.
