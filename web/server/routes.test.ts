@@ -8800,6 +8800,57 @@ describe("Takode server-authoritative auth", () => {
     );
   });
 
+  it("takode answer fills every AskUserQuestion answer slot when the leader replies with free text", async () => {
+    setupTakodeSessions();
+    bridge.getSession.mockReturnValue({
+      pendingPermissions: new Map([
+        [
+          "req-multi-question",
+          {
+            request_id: "req-multi-question",
+            tool_name: "AskUserQuestion",
+            timestamp: 1000,
+            input: {
+              questions: [{ question: "Which rollout?" }, { question: "Which logger?" }],
+            },
+          },
+        ],
+      ]),
+      notifications: [],
+      messageHistory: [{ type: "permission_request", request: { request_id: "req-multi-question" } }],
+    });
+
+    const res = await app.request("/api/sessions/worker-1/answer", {
+      method: "POST",
+      headers: authHeaders("orch-1", "tok-1"),
+      body: JSON.stringify({ response: "Use staged rollout with structured logs." }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      ok: true,
+      kind: "permission",
+      tool_name: "AskUserQuestion",
+      answer: "Use staged rollout with structured logs.",
+    });
+    expect(bridge.routeExternalPermissionResponse).toHaveBeenCalledWith(
+      expect.objectContaining({ pendingPermissions: expect.any(Map) }),
+      {
+        type: "permission_response",
+        request_id: "req-multi-question",
+        behavior: "allow",
+        updated_input: {
+          questions: [{ question: "Which rollout?" }, { question: "Which logger?" }],
+          answers: {
+            "0": "Use staged rollout with structured logs.",
+            "1": "Use staged rollout with structured logs.",
+          },
+        },
+      },
+      "orch-1",
+    );
+  });
+
   it("blocks spoofed sender identity and accepts authenticated send", async () => {
     setupTakodeSessions();
     launcher.isAlive.mockReturnValue(true);

@@ -274,6 +274,70 @@ describe("permission response handling in browser routing", () => {
     ]);
   });
 
+  it("auto-answers pending AskUserQuestion from a fresh leader message instead of sending a new turn", async () => {
+    const session = makeSession();
+    session.pendingPermissions.set("req-leader-question", {
+      request_id: "req-leader-question",
+      tool_name: "AskUserQuestion",
+      input: {
+        questions: [{ question: "Which rollout?", options: [{ label: "Staged" }, { label: "Immediate" }] }],
+      },
+      tool_use_id: "tool-leader-question",
+      timestamp: 1,
+    });
+    const deps = makeDeps();
+
+    await routeBrowserMessage(
+      session as any,
+      {
+        type: "user_message",
+        content: "Use staged rollout",
+        agentSource: { sessionId: "leader-7", sessionLabel: "#7 Leader" },
+      },
+      undefined,
+      deps,
+    );
+
+    expect(session.pendingPermissions.size).toBe(0);
+    expect(session.messageHistory).toHaveLength(1);
+    expect(session.messageHistory[0]).toEqual(
+      expect.objectContaining({
+        type: "permission_approved",
+        request_id: "req-leader-question",
+        tool_name: "AskUserQuestion",
+        answers: [{ question: "Which rollout?", answer: "Use staged rollout" }],
+      }),
+    );
+    expect(deps.emitTakodeEvent).toHaveBeenCalledWith(
+      "s1",
+      "permission_resolved",
+      { tool_name: "AskUserQuestion", outcome: "approved" },
+      "leader-7",
+    );
+
+    const sendCalls = (deps.sendToCLI as any).mock.calls.map(([targetSession, payload]: [unknown, string]) => [
+      targetSession,
+      JSON.parse(payload),
+    ]);
+    expect(sendCalls).toHaveLength(1);
+    expect(sendCalls[0]).toEqual([
+      session,
+      expect.objectContaining({
+        type: "control_response",
+        response: expect.objectContaining({
+          request_id: "req-leader-question",
+          response: expect.objectContaining({
+            behavior: "allow",
+            updatedInput: {
+              questions: [{ question: "Which rollout?", options: [{ label: "Staged" }, { label: "Immediate" }] }],
+              answers: { "0": "Use staged rollout" },
+            },
+          }),
+        }),
+      }),
+    ]);
+  });
+
   it("clears Codex permission notifications and action attention before denial side effects", () => {
     const session = makeSession();
     session.backendType = "codex";

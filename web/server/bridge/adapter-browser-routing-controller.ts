@@ -223,6 +223,28 @@ function findPendingExitPlanPermission(session: AdapterBrowserRoutingSessionLike
   return undefined;
 }
 
+function findPendingAskUserQuestionPermission(session: AdapterBrowserRoutingSessionLike): PermissionRequest | undefined {
+  for (const perm of session.pendingPermissions.values()) {
+    if (perm.tool_name === "AskUserQuestion") return perm;
+  }
+  return undefined;
+}
+
+function buildAskUserQuestionAnswers(
+  pendingInput: Record<string, unknown>,
+  answerText: string,
+): Record<string, string> | undefined {
+  const questions = Array.isArray(pendingInput.questions) ? pendingInput.questions : [];
+  const answerCount = Math.max(1, questions.length);
+  if (answerCount <= 0) return undefined;
+
+  const answers: Record<string, string> = {};
+  for (let i = 0; i < answerCount; i++) {
+    answers[String(i)] = answerText;
+  }
+  return answers;
+}
+
 function getPendingPlanRejectionMessage(msg: BrowserUserMessage): string {
   if (msg.agentSource?.sessionId && !isSystemSourceTag(msg.agentSource)) {
     return "Plan rejected — leader sent a new message";
@@ -258,6 +280,41 @@ function maybeAutoRejectPendingPlanForUserMessage(
     return;
   }
   handlePermissionResponse(session, denial, deps, actorSessionId);
+}
+
+function maybeAutoAnswerPendingQuestionForUserMessage(
+  session: AdapterBrowserRoutingSessionLike,
+  msg: BrowserUserMessage,
+  deps: AdapterBrowserRoutingDeps,
+): boolean {
+  const pending = findPendingAskUserQuestionPermission(session);
+  if (!pending) return false;
+  if (msg.agentSource?.sessionId === "herd-events") return false;
+  if (isSystemSourceTag(msg.agentSource)) return false;
+  if (typeof msg.content !== "string") return false;
+
+  const answers = buildAskUserQuestionAnswers(pending.input, msg.content);
+  if (!answers) return false;
+
+  const actorSessionId = msg.agentSource?.sessionId;
+  const approval: PermissionResponseMessage = {
+    type: "permission_response",
+    request_id: pending.request_id,
+    behavior: "allow",
+    updated_input: { ...pending.input, answers },
+    ...(actorSessionId ? { actorSessionId } : {}),
+  };
+
+  if (session.backendType === "claude-sdk") {
+    handleSdkPermissionResponse(session, approval, deps);
+    return true;
+  }
+  if (session.backendType === "codex") {
+    handleCodexPermissionResponse(session, approval, deps);
+    return true;
+  }
+  handlePermissionResponse(session, approval, deps, actorSessionId);
+  return true;
 }
 
 function localDateKey(ts: number): string {
@@ -486,6 +543,7 @@ export async function routeBrowserMessage(
   }
 
   if (msg.type === "user_message") {
+    if (maybeAutoAnswerPendingQuestionForUserMessage(session, msg, deps)) return;
     maybeAutoRejectPendingPlanForUserMessage(session, msg, deps);
   }
 

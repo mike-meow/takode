@@ -896,13 +896,17 @@ export function createTakodeRoutes(ctx: RouteContext) {
       } else {
         answerValue = response; // free text
       }
+      const answers: Record<string, string> = {};
+      for (let i = 0; i < Math.max(1, questions?.length ?? 0); i++) {
+        answers[String(i)] = answerValue;
+      }
 
       if (typeof bridgeAny.routeBrowserMessage === "function") {
         await bridgeAny.routeBrowserMessage(session, {
           type: "permission_response",
           request_id: target.request_id,
           behavior: "allow",
-          updated_input: { ...target.input, answers: { "0": answerValue } },
+          updated_input: { ...target.input, answers },
           actorSessionId: auth.callerId,
         });
       } else {
@@ -912,7 +916,7 @@ export function createTakodeRoutes(ctx: RouteContext) {
             type: "permission_response",
             request_id: target.request_id,
             behavior: "allow",
-            updated_input: { ...target.input, answers: { "0": answerValue } },
+            updated_input: { ...target.input, answers },
           },
           auth.callerId,
         );
