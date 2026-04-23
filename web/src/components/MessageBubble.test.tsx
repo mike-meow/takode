@@ -6,6 +6,7 @@ import type { ChatMessage, ContentBlock } from "../types.js";
 
 const revertToMessageMock = vi.hoisted(() => vi.fn(async () => ({})));
 const markNotificationDoneMock = vi.hoisted(() => vi.fn(async () => ({})));
+const writeClipboardTextMock = vi.hoisted(() => vi.fn(async () => undefined));
 vi.mock("../api.js", () => ({
   api: {
     revertToMessage: revertToMessageMock,
@@ -36,6 +37,17 @@ vi.mock("remark-gfm", () => ({
 import { MessageBubble, NotificationMarker, HerdEventMessage } from "./MessageBubble.js";
 import { parseHerdEvents } from "../utils/herd-event-parser.js";
 import { useStore } from "../store.js";
+
+beforeEach(() => {
+  writeClipboardTextMock.mockClear();
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: {
+      writeText: writeClipboardTextMock,
+      write: vi.fn(),
+    },
+  });
+});
 
 function makeMessage(overrides: Partial<ChatMessage> & { role: ChatMessage["role"] }): ChatMessage {
   return {
@@ -311,6 +323,29 @@ describe("MessageBubble - user messages", () => {
     fireEvent.click(screen.getByTitle("Message options"));
     expect(screen.getByText("Copy message")).toBeTruthy();
     expect(screen.queryByText("Revert to here")).toBeNull();
+  });
+
+  it("copies a stable message link for user messages", async () => {
+    const prevSdkSessions = useStore.getState().sdkSessions;
+    useStore.setState({
+      sdkSessions: [
+        { sessionId: "session-abc", state: "connected", cwd: "/repo", createdAt: 1, sessionNum: 123 } as any,
+      ],
+    });
+
+    try {
+      const msg = makeMessage({ id: "user-msg-42", role: "user", content: "Link me" });
+      render(<MessageBubble message={msg} sessionId="session-abc" />);
+
+      fireEvent.click(screen.getByTitle("Message options"));
+      fireEvent.click(screen.getByText("Copy message link"));
+
+      await waitFor(() => {
+        expect(writeClipboardTextMock).toHaveBeenCalledWith("http://localhost:3000/#/session/123/msg/user-msg-42");
+      });
+    } finally {
+      useStore.setState({ sdkSessions: prevSdkSessions });
+    }
   });
 
   it("restores image attachments into the composer draft after revert", async () => {
@@ -788,6 +823,29 @@ describe("MessageBubble - assistant messages", () => {
 
     const markdown = screen.getByTestId("markdown");
     expect(markdown.textContent).toBe("Here is the answer");
+  });
+
+  it("copies a stable message link for assistant messages", async () => {
+    const prevSdkSessions = useStore.getState().sdkSessions;
+    useStore.setState({
+      sdkSessions: [
+        { sessionId: "session-abc", state: "connected", cwd: "/repo", createdAt: 1, sessionNum: 123 } as any,
+      ],
+    });
+
+    try {
+      const msg = makeMessage({ id: "asst-msg-42", role: "assistant", content: "Assistant link target" });
+      render(<MessageBubble message={msg} sessionId="session-abc" />);
+
+      fireEvent.click(screen.getByTitle("Copy message"));
+      fireEvent.click(screen.getByText("Copy message link"));
+
+      await waitFor(() => {
+        expect(writeClipboardTextMock).toHaveBeenCalledWith("http://localhost:3000/#/session/123/msg/asst-msg-42");
+      });
+    } finally {
+      useStore.setState({ sdkSessions: prevSdkSessions });
+    }
   });
 
   it("renders tool_use content blocks as ToolBlock components", () => {

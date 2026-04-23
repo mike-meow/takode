@@ -1,8 +1,12 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
+  absoluteUrlForHash,
+  messageIdFromHash,
   parseHash,
+  resolveSessionIdFromRoute,
   sessionHash,
+  sessionMessageHash,
   navigateToSession,
   navigateHome,
   navigateToMostRecentSession,
@@ -75,6 +79,14 @@ describe("parseHash", () => {
     });
   });
 
+  it("parses session route with a stable message ID in the path", () => {
+    expect(parseHash("#/session/123/msg/asst-42")).toEqual({
+      page: "session",
+      sessionId: "123",
+      messageId: "asst-42",
+    });
+  });
+
   it("returns home for session route with empty ID", () => {
     // #/session/ with no ID should be treated as home
     expect(parseHash("#/session/")).toEqual({ page: "home" });
@@ -106,6 +118,50 @@ describe("sessionHash", () => {
 
   it("builds hash for a UUID session ID", () => {
     expect(sessionHash("a1b2c3d4-e5f6-7890-abcd-ef1234567890")).toBe("#/session/a1b2c3d4-e5f6-7890-abcd-ef1234567890");
+  });
+
+  it("builds hash for a session number", () => {
+    expect(sessionHash(123)).toBe("#/session/123");
+  });
+});
+
+describe("sessionMessageHash", () => {
+  it("builds a stable message-ID path under the session route", () => {
+    expect(sessionMessageHash(123, "asst-42")).toBe("#/session/123/msg/asst-42");
+  });
+});
+
+describe("messageIdFromHash", () => {
+  it("reads the stable message ID from the session path", () => {
+    expect(messageIdFromHash("#/session/123/msg/asst-42")).toBe("asst-42");
+    expect(messageIdFromHash("#/session/123?msg=42")).toBeNull();
+  });
+});
+
+describe("resolveSessionIdFromRoute", () => {
+  it("passes through UUID-style session IDs", () => {
+    expect(resolveSessionIdFromRoute("session-abc", [])).toBe("session-abc");
+  });
+
+  it("resolves numeric session routes through sdk session numbers", () => {
+    expect(
+      resolveSessionIdFromRoute("123", [
+        { sessionId: "session-abc", createdAt: 1, state: "connected", cwd: "/repo", sessionNum: 123 },
+      ]),
+    ).toBe("session-abc");
+  });
+
+  it("returns null when a numeric session route cannot be resolved", () => {
+    expect(resolveSessionIdFromRoute("123", [])).toBeNull();
+  });
+});
+
+describe("absoluteUrlForHash", () => {
+  it("preserves the current server origin and pathname while swapping the hash", () => {
+    history.replaceState(null, "", "/takode?foo=1#/session/s1");
+    expect(absoluteUrlForHash("#/session/123/msg/asst-42")).toBe(
+      "http://localhost:3000/takode?foo=1#/session/123/msg/asst-42",
+    );
   });
 });
 

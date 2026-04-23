@@ -14,8 +14,14 @@ interface MockStoreState {
   newSessionModalState: null;
   serverRestarting: boolean;
   serverReachable: boolean;
+  sdkSessions: Array<{ sessionId: string; sessionNum?: number | null; createdAt: number; state: string; cwd: string }>;
   setServerReachable: ReturnType<typeof vi.fn>;
   setCurrentSession: ReturnType<typeof vi.fn>;
+  setSdkSessions: ReturnType<typeof vi.fn>;
+  setSessionName: ReturnType<typeof vi.fn>;
+  setServerName: ReturnType<typeof vi.fn>;
+  requestScrollToMessage: ReturnType<typeof vi.fn>;
+  setExpandAllInTurn: ReturnType<typeof vi.fn>;
   markSessionViewed: ReturnType<typeof vi.fn>;
   closeNewSessionModal: ReturnType<typeof vi.fn>;
   setSidebarOpen: ReturnType<typeof vi.fn>;
@@ -37,8 +43,14 @@ function resetStore(overrides: Partial<MockStoreState> = {}) {
     newSessionModalState: null,
     serverRestarting: false,
     serverReachable: true,
+    sdkSessions: [{ sessionId: "s1", state: "connected", cwd: "/repo", createdAt: 1 }],
     setServerReachable: vi.fn(),
     setCurrentSession: vi.fn(),
+    setSdkSessions: vi.fn(),
+    setSessionName: vi.fn(),
+    setServerName: vi.fn(),
+    requestScrollToMessage: vi.fn(),
+    setExpandAllInTurn: vi.fn(),
     markSessionViewed: vi.fn(),
     closeNewSessionModal: vi.fn(),
     setSidebarOpen: vi.fn(),
@@ -55,17 +67,25 @@ vi.mock("./store.js", () => {
 
 const mockCheckHealth = vi.fn().mockResolvedValue(true);
 const mockMarkSessionRead = vi.fn().mockResolvedValue({ ok: true });
+const mockGetSettings = vi.fn().mockResolvedValue({ serverId: "test-server", serverName: "" });
+const mockListSessions = vi
+  .fn()
+  .mockResolvedValue([{ sessionId: "s1", state: "connected", cwd: "/repo", createdAt: 1 }]);
+const mockConnectSession = vi.fn();
+const mockDisconnectSession = vi.fn();
 
 vi.mock("./api.js", () => ({
   api: {
     markSessionRead: (...args: unknown[]) => mockMarkSessionRead(...args),
+    getSettings: (...args: unknown[]) => mockGetSettings(...args),
+    listSessions: (...args: unknown[]) => mockListSessions(...args),
   },
   checkHealth: (...args: unknown[]) => mockCheckHealth(...args),
 }));
 
 vi.mock("./ws.js", () => ({
-  connectSession: vi.fn(),
-  disconnectSession: vi.fn(),
+  connectSession: (...args: unknown[]) => mockConnectSession(...args),
+  disconnectSession: (...args: unknown[]) => mockDisconnectSession(...args),
   sendVsCodeSelectionUpdate: vi.fn(),
 }));
 
@@ -146,6 +166,7 @@ import App from "./App.js";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  localStorage.clear();
   resetStore();
   window.location.hash = "#/session/s1";
 });
@@ -202,5 +223,31 @@ describe("App hidden panels", () => {
     render(<App />);
 
     expect(screen.getByText("Server unreachable")).toBeInTheDocument();
+  });
+
+  it("resolves compact numeric session routes through sdk session numbers", () => {
+    window.location.hash = "#/session/123";
+    resetStore({
+      currentSessionId: null,
+      sdkSessions: [{ sessionId: "session-abc", state: "connected", cwd: "/repo", createdAt: 1, sessionNum: 123 }],
+    });
+
+    render(<App />);
+
+    expect(mockState.setCurrentSession).toHaveBeenCalledWith("session-abc");
+    expect(mockConnectSession).toHaveBeenCalledWith("session-abc");
+  });
+
+  it("routes stable message-ID links through the existing scroll-to-message path", () => {
+    window.location.hash = "#/session/123/msg/asst-42";
+    resetStore({
+      currentSessionId: null,
+      sdkSessions: [{ sessionId: "session-abc", state: "connected", cwd: "/repo", createdAt: 1, sessionNum: 123 }],
+    });
+
+    render(<App />);
+
+    expect(mockState.requestScrollToMessage).toHaveBeenCalledWith("session-abc", "asst-42");
+    expect(mockState.setExpandAllInTurn).toHaveBeenCalledWith("session-abc", "asst-42");
   });
 });

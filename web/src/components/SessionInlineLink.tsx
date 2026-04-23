@@ -1,6 +1,6 @@
 import { useRef, useMemo, useEffect, useState, type MouseEvent, type ReactNode } from "react";
 import { useStore, countUserPermissions } from "../store.js";
-import { navigateToSession, navigateToSessionMessage, sessionHash } from "../utils/routing.js";
+import { navigateToSession, navigateToSessionMessage, routeSessionRefForId, sessionHash } from "../utils/routing.js";
 import { SessionHoverCard } from "./SessionHoverCard.js";
 import type { SidebarSessionItem as SessionItemType } from "../utils/sidebar-session-item.js";
 import { MessageLinkHoverCard } from "./MessageLinkHoverCard.js";
@@ -130,8 +130,8 @@ export function SessionInlineLink({
 
   const href = resolvedSessionId
     ? messageIndex != null
-      ? `${sessionHash(resolvedSessionId)}?msg=${messageIndex}`
-      : sessionHash(resolvedSessionId)
+      ? `${sessionHash(resolvedSessionNum ?? routeSessionRefForId(resolvedSessionId, sdkSessions))}?msg=${messageIndex}`
+      : sessionHash(resolvedSessionNum ?? routeSessionRefForId(resolvedSessionId, sdkSessions))
     : "#";
   const sessionLabel = resolvedSessionNum != null ? `#${resolvedSessionNum}` : "session";
   const title = resolvedSessionId

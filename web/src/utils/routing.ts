@@ -3,7 +3,7 @@ import type { SdkSessionInfo } from "../types.js";
 
 export type Route =
   | { page: "home" }
-  | { page: "session"; sessionId: string }
+  | { page: "session"; sessionId: string; messageId?: string }
   | { page: "settings" }
   | { page: "logs" }
   | { page: "terminal" }
@@ -43,8 +43,14 @@ export function parseHash(hash: string): Route {
   if (path === "#/playground") return { page: "playground" };
 
   if (path.startsWith(SESSION_PREFIX)) {
-    const sessionId = decodeURIComponent(path.slice(SESSION_PREFIX.length));
-    if (sessionId) return { page: "session", sessionId };
+    const sessionPath = path.slice(SESSION_PREFIX.length);
+    const messageMarker = "/msg/";
+    const markerIdx = sessionPath.indexOf(messageMarker);
+    const rawSessionId = markerIdx >= 0 ? sessionPath.slice(0, markerIdx) : sessionPath;
+    const rawMessageId = markerIdx >= 0 ? sessionPath.slice(markerIdx + messageMarker.length) : "";
+    const sessionId = decodeURIComponent(rawSessionId);
+    const messageId = rawMessageId ? decodeURIComponent(rawMessageId) : undefined;
+    if (sessionId) return messageId ? { page: "session", sessionId, messageId } : { page: "session", sessionId };
   }
 
   return { page: "home" };
@@ -83,8 +89,15 @@ export function withoutQuestIdInHash(hash: string): string {
 /**
  * Build a hash string for a given session ID.
  */
-export function sessionHash(sessionId: string): string {
-  return `#/session/${sessionId}`;
+export function sessionHash(sessionId: string | number): string {
+  return `#/session/${encodeURIComponent(String(sessionId))}`;
+}
+
+/**
+ * Build a hash string for a given session + stable message ID.
+ */
+export function sessionMessageHash(sessionId: string | number, messageId: string): string {
+  return `${sessionHash(sessionId)}/msg/${encodeURIComponent(messageId)}`;
 }
 
 /**
@@ -130,6 +143,27 @@ export function navigateToSessionMessage(sessionId: string, messageIndex: number
 }
 
 /**
+ * Navigate to a specific message ID within a session.
+ */
+export function navigateToSessionMessageId(
+  sessionId: string,
+  messageId: string,
+  options: { replace?: boolean; routeSessionId?: string | number } = {},
+): void {
+  const { replace = false, routeSessionId = sessionId } = options;
+  const newHash = sessionMessageHash(routeSessionId, messageId);
+  if (replace) {
+    history.replaceState(null, "", newHash);
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+  } else {
+    window.location.hash = newHash.startsWith("#") ? newHash.slice(1) : newHash;
+  }
+  const store = useStore.getState();
+  store.requestScrollToMessage(sessionId, messageId);
+  store.setExpandAllInTurn(sessionId, messageId);
+}
+
+/**
  * Read message index from hash query param (e.g. `?msg=42`).
  */
 export function messageIndexFromHash(hash: string): number | null {
@@ -138,6 +172,43 @@ export function messageIndexFromHash(hash: string): number | null {
   if (!raw) return null;
   const idx = parseInt(raw, 10);
   return isNaN(idx) || idx < 0 ? null : idx;
+}
+
+/**
+ * Resolve a stable message ID from the path portion of the hash.
+ */
+export function messageIdFromHash(hash: string): string | null {
+  const route = parseHash(hash);
+  return route.page === "session" ? (route.messageId ?? null) : null;
+}
+
+/**
+ * Resolve a session route segment to a live session UUID.
+ * Numeric references are treated as Takode session numbers.
+ */
+export function resolveSessionIdFromRoute(sessionRef: string, sdkSessions: SdkSessionInfo[]): string | null {
+  if (!/^\d+$/.test(sessionRef)) {
+    return sessionRef;
+  }
+  const sessionNum = Number.parseInt(sessionRef, 10);
+  return sdkSessions.find((session) => session.sessionNum === sessionNum)?.sessionId ?? null;
+}
+
+/**
+ * Pick the most readable route identifier for a live session.
+ * Prefer the human session number, otherwise fall back to the UUID.
+ */
+export function routeSessionRefForId(sessionId: string, sdkSessions: SdkSessionInfo[]): string | number {
+  return sdkSessions.find((session) => session.sessionId === sessionId)?.sessionNum ?? sessionId;
+}
+
+/**
+ * Build an absolute app URL for the current server origin/path and the given hash.
+ */
+export function absoluteUrlForHash(hash: string): string {
+  const url = new URL(window.location.href);
+  url.hash = hash.startsWith("#") ? hash : `#${hash}`;
+  return url.toString();
 }
 
 /**

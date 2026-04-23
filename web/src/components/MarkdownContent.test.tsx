@@ -264,7 +264,7 @@ describe("MarkdownContent quest links", () => {
     render(<MarkdownContent text="[#123](session:123)" />);
 
     const link = screen.getByRole("link", { name: "#123" });
-    expect(link.getAttribute("href")).toBe("#/session/session-abc");
+    expect(link.getAttribute("href")).toBe("#/session/123");
     fireEvent.click(link);
     expect(window.location.hash).toBe("#/session/session-abc");
   });
@@ -287,7 +287,7 @@ describe("MarkdownContent quest links", () => {
 
     const link = screen.getByRole("link", { name: "#123 msg 42" });
     // Href should include ?msg= query param for right-click "open in new tab" support
-    expect(link.getAttribute("href")).toBe("#/session/session-abc?msg=42");
+    expect(link.getAttribute("href")).toBe("#/session/123?msg=42");
     expect(link.getAttribute("title")).toBe("Open session #123, message 42");
   });
 

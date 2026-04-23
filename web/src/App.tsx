@@ -1,16 +1,20 @@
-import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useStore } from "./store.js";
 import { connectSession, disconnectSession, sendVsCodeSelectionUpdate } from "./ws.js";
 import { api, checkHealth } from "./api.js";
 
 import {
+  messageIdFromHash,
   parseHash,
+  resolveSessionIdFromRoute,
   navigateToSession,
   navigateToMostRecentSession,
   messageIndexFromHash,
   scrollToMessageIndex,
 } from "./utils/routing.js";
+import { bootstrapServerId, scopedGetItem } from "./utils/scoped-storage.js";
+import { createMessageLinkHandoff } from "./utils/message-link-handoff.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { ChatView } from "./components/ChatView.js";
 import { TopBar } from "./components/TopBar.js";
@@ -66,6 +70,9 @@ export default function App() {
     newSessionModalState,
     serverRestarting,
     serverReachable,
+    sdkSessions,
+    setCurrentSession,
+    setServerName,
   } = useStore(
     useShallow((s) => ({
       colorTheme: s.colorTheme,
@@ -79,10 +86,18 @@ export default function App() {
       newSessionModalState: s.newSessionModalState,
       serverRestarting: s.serverRestarting,
       serverReachable: s.serverReachable,
+      sdkSessions: s.sdkSessions,
+      setCurrentSession: s.setCurrentSession,
+      setServerName: s.setServerName,
     })),
   );
   const hash = useHash();
   const route = useMemo(() => parseHash(hash), [hash]);
+  const routeMessageId = useMemo(() => messageIdFromHash(hash), [hash]);
+  const resolvedRouteSessionId = useMemo(
+    () => (route.page === "session" ? resolveSessionIdFromRoute(route.sessionId, sdkSessions) : null),
+    [route, sdkSessions],
+  );
   const isSettingsPage = route.page === "settings";
   const isLogsPage = route.page === "logs";
   const isTerminalPage = route.page === "terminal";
@@ -221,6 +236,82 @@ export default function App() {
   // so the mount logic can use it even if the hash-sync branch would clear it.
   const restoredIdRef = useRef(useStore.getState().currentSessionId);
   const connectedSessionIdRef = useRef<string | null>(null);
+  const [serverId, setServerId] = useState(() =>
+    typeof window !== "undefined" ? localStorage.getItem("cc-server-id") || "" : "",
+  );
+  const handoffRef = useRef<ReturnType<typeof createMessageLinkHandoff> | null>(null);
+  const handoffAttemptedRef = useRef(false);
+
+  useEffect(() => {
+    api
+      .getSettings()
+      .then((settings) => {
+        if (settings.serverName) setServerName(settings.serverName);
+        if (!settings.serverId) return;
+        setServerId(settings.serverId);
+        const migrated = bootstrapServerId(settings.serverId);
+        if (!migrated) return;
+        const store = useStore.getState();
+        const sessionId = scopedGetItem("cc-current-session");
+        store.setCurrentSession(sessionId);
+        const namesRaw = scopedGetItem("cc-session-names");
+        if (!namesRaw) return;
+        try {
+          for (const [id, name] of JSON.parse(namesRaw)) {
+            store.setSessionName(id, name);
+          }
+        } catch {
+          // Ignore malformed localStorage entries so startup can continue.
+        }
+      })
+      .catch(() => {});
+  }, [setServerName]);
+
+  useEffect(() => {
+    api
+      .listSessions()
+      .then((sessions) => {
+        useStore.getState().setSdkSessions(sessions);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!serverId) return;
+
+    handoffRef.current?.cleanup();
+    handoffRef.current = createMessageLinkHandoff({
+      serverId,
+      onNavigateHash: (targetHash) => {
+        history.replaceState(null, "", targetHash);
+        window.dispatchEvent(new HashChangeEvent("hashchange"));
+      },
+    });
+
+    return () => {
+      handoffRef.current?.cleanup();
+      handoffRef.current = null;
+    };
+  }, [serverId]);
+
+  useEffect(() => {
+    if (handoffAttemptedRef.current) return;
+    if (!routeMessageId) {
+      handoffAttemptedRef.current = true;
+      return;
+    }
+    if (!handoffRef.current) return;
+
+    handoffAttemptedRef.current = true;
+    void handoffRef.current.requestReuse(hash).then((handled) => {
+      if (!handled) return;
+      try {
+        window.close();
+      } catch {
+        // Browsers can refuse close() for non-script-opened tabs. Best effort only.
+      }
+    });
+  }, [hash, routeMessageId, serverId]);
 
   // Sync hash → store. On mount, restore a localStorage session into the URL first.
   useEffect(() => {
@@ -234,35 +325,51 @@ export default function App() {
 
     if (route.page === "session") {
       const store = useStore.getState();
-      if (store.currentSessionId !== route.sessionId) {
-        store.setCurrentSession(route.sessionId);
+      if (!resolvedRouteSessionId) {
+        if (store.currentSessionId !== null) {
+          setCurrentSession(null);
+        }
+        if (connectedSessionIdRef.current) {
+          disconnectSession(connectedSessionIdRef.current);
+          connectedSessionIdRef.current = null;
+        }
+        return;
       }
 
-      // Handle ?msg=N query param for message-level deep links (right-click → open in new tab)
-      const msgIdx = messageIndexFromHash(hash);
-      if (msgIdx != null) {
-        scrollToMessageIndex(route.sessionId, msgIdx);
+      if (store.currentSessionId !== resolvedRouteSessionId) {
+        setCurrentSession(resolvedRouteSessionId);
+      }
+
+      if (route.messageId) {
+        store.requestScrollToMessage(resolvedRouteSessionId, route.messageId);
+        store.setExpandAllInTurn(resolvedRouteSessionId, route.messageId);
+      } else {
+        // Handle legacy ?msg=N query param for message-level deep links.
+        const msgIdx = messageIndexFromHash(hash);
+        if (msgIdx != null) {
+          scrollToMessageIndex(resolvedRouteSessionId, msgIdx);
+        }
       }
       // Don't connect WebSocket or fire REST calls for pending sessions
       // (they don't exist on the server yet)
-      if (isPendingId(route.sessionId)) {
+      if (isPendingId(resolvedRouteSessionId)) {
         if (connectedSessionIdRef.current) {
           disconnectSession(connectedSessionIdRef.current);
           connectedSessionIdRef.current = null;
         }
       } else {
-        if (connectedSessionIdRef.current && connectedSessionIdRef.current !== route.sessionId) {
+        if (connectedSessionIdRef.current && connectedSessionIdRef.current !== resolvedRouteSessionId) {
           disconnectSession(connectedSessionIdRef.current);
         }
-        store.markSessionViewed(route.sessionId);
-        api.markSessionRead?.(route.sessionId).catch(() => {});
-        connectSession(route.sessionId);
-        connectedSessionIdRef.current = route.sessionId;
+        store.markSessionViewed(resolvedRouteSessionId);
+        api.markSessionRead?.(resolvedRouteSessionId).catch(() => {});
+        connectSession(resolvedRouteSessionId);
+        connectedSessionIdRef.current = resolvedRouteSessionId;
       }
     } else if (route.page === "home") {
       const store = useStore.getState();
       if (store.currentSessionId !== null) {
-        store.setCurrentSession(null);
+        setCurrentSession(null);
       }
       if (connectedSessionIdRef.current) {
         disconnectSession(connectedSessionIdRef.current);
@@ -276,7 +383,7 @@ export default function App() {
         connectedSessionIdRef.current = null;
       }
     }
-  }, [route]);
+  }, [hash, resolvedRouteSessionId, route, setCurrentSession]);
 
   useEffect(() => {
     return () => {

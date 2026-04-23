@@ -409,7 +409,7 @@ export function PlaygroundOverviewSections() {
       {/* ─── Copy Features ──────────────────────────────── */}
       <Section
         title="Copy Features"
-        description="Copy-to-clipboard for code blocks in markdown and tool calls (hover to reveal), plus assistant message copy menu (Markdown/Rich Text/Plain Text)"
+        description="Copy-to-clipboard for code blocks in markdown and tool calls (hover to reveal), plus user/assistant message menus with copy-link support"
       >
         <div className="space-y-4 max-w-3xl">
           <Card label="Code block in markdown — hover to reveal copy button">
@@ -433,8 +433,11 @@ export function PlaygroundOverviewSections() {
               toolUseId="copy-tb-2"
             />
           </Card>
-          <Card label="Assistant message — hover for copy menu">
-            <MessageBubble message={MSG_ASSISTANT} />
+          <Card label="Assistant message — hover for copy and copy-link menu">
+            <MessageBubble message={MSG_ASSISTANT} sessionId="playground-copy" />
+          </Card>
+          <Card label="User message — hover for message options including copy link">
+            <MessageBubble message={MSG_USER} sessionId="playground-copy" />
           </Card>
         </div>
       </Section>

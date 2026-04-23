@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useCallback, useContext, useLayoutEffect, useEffect, memo } from "react";
-import type { ChatMessage, ContentBlock } from "../types.js";
+import type { ChatMessage, ContentBlock, SdkSessionInfo } from "../types.js";
 import { isSubagentToolName } from "../types.js";
 import { ToolBlock, getToolIcon, getToolLabel, ToolIcon } from "./ToolBlock.js";
 import { MarkdownContent } from "./MarkdownContent.js";
@@ -11,7 +11,7 @@ import { getMessageMarkdown, getMessagePlainText, copyRichText, writeClipboardTe
 import { EVENT_HEADER_RE, HERD_CHIP_BASE, HERD_CHIP_INTERACTIVE, parseHerdEvents } from "../utils/herd-event-parser.js";
 import { useStore, getSessionSearchState, countUserPermissions } from "../store.js";
 import { formatVsCodeSelectionAttachmentLabel } from "../utils/vscode-context.js";
-import { navigateToSession } from "../utils/routing.js";
+import { absoluteUrlForHash, navigateToSession, routeSessionRefForId, sessionMessageHash } from "../utils/routing.js";
 import { api } from "../api.js";
 import { PawTrailAvatar, HidePawContext } from "./PawTrail.js";
 import { QuestClaimBlock } from "./QuestClaimBlock.js";
@@ -69,6 +69,12 @@ function formatTurnDuration(ms: number): string {
   const mins = Math.floor(seconds / 60);
   const secs = Math.round(seconds % 60);
   return `${mins}m ${secs}s`;
+}
+
+function buildCopyMessageLink(sessionId: string | undefined, messageId: string, sdkSessions: SdkSessionInfo[]) {
+  if (!sessionId) return null;
+  const sessionRef = routeSessionRefForId(sessionId, sdkSessions);
+  return absoluteUrlForHash(sessionMessageHash(sessionRef, messageId));
 }
 
 function buildDraftImageName(mediaType: string, index: number): string {
@@ -1101,15 +1107,22 @@ function UserMessageMenu({
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [copied, setCopied] = useState(false);
   const btnRef = useRef<HTMLButtonElement>(null);
+  const sdkSessions = useStore((s) => s.sdkSessions);
+
+  const showCopied = useCallback(() => {
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }, []);
 
   const handleCopy = useCallback(() => {
-    writeClipboardText(message.content)
-      .then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
-      })
-      .catch(console.error);
-  }, [message.content]);
+    writeClipboardText(message.content).then(showCopied).catch(console.error);
+  }, [message.content, showCopied]);
+
+  const handleCopyLink = useCallback(() => {
+    const link = buildCopyMessageLink(sessionId, message.id, sdkSessions);
+    if (!link) return;
+    writeClipboardText(link).then(showCopied).catch(console.error);
+  }, [message.id, sdkSessions, sessionId, showCopied]);
 
   const handleRevert = useCallback(async () => {
     if (!sessionId || !message.id) return;
@@ -1142,6 +1155,9 @@ function UserMessageMenu({
 
   const items = useMemo(() => {
     const list: ContextMenuItem[] = [{ label: "Copy message", onClick: handleCopy }];
+    if (sessionId) {
+      list.push({ label: "Copy message link", onClick: handleCopyLink });
+    }
     if (canRevert) {
       list.push({
         label: "Revert to here",
@@ -1155,7 +1171,7 @@ function UserMessageMenu({
       });
     }
     return list;
-  }, [handleCopy, handleRevert, canRevert]);
+  }, [canRevert, handleCopy, handleCopyLink, handleRevert, sessionId]);
 
   return (
     <div className="shrink-0 self-start mt-1">
@@ -1356,7 +1372,7 @@ function MessageActionBar({
   return (
     <div className="absolute top-0 right-0 shrink-0 flex items-center opacity-100 sm:opacity-0 sm:group-hover/msg:opacity-100 transition-opacity">
       {sessionId && <ReplyButton message={message} sessionId={sessionId} />}
-      <CopyMessageButton message={message} contentRef={contentRef} />
+      <CopyMessageButton message={message} contentRef={contentRef} sessionId={sessionId} />
     </div>
   );
 }
@@ -1399,13 +1415,16 @@ function ReplyButton({ message, sessionId }: { message: ChatMessage; sessionId: 
 function CopyMessageButton({
   message,
   contentRef,
+  sessionId,
 }: {
   message: ChatMessage;
   contentRef: React.RefObject<HTMLDivElement | null>;
+  sessionId?: string;
 }) {
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
+  const sdkSessions = useStore((s) => s.sdkSessions);
 
   const showFeedback = useCallback((label: string) => {
     setCopied(label);
@@ -1434,6 +1453,14 @@ function CopyMessageButton({
       .catch(console.error);
   }, [message, contentRef, showFeedback]);
 
+  const handleCopyLink = useCallback(() => {
+    const link = buildCopyMessageLink(sessionId, message.id, sdkSessions);
+    if (!link) return;
+    writeClipboardText(link)
+      .then(() => showFeedback("Link"))
+      .catch(console.error);
+  }, [message.id, sdkSessions, sessionId, showFeedback]);
+
   const toggle = useCallback(() => {
     if (menuPos) {
       setMenuPos(null);
@@ -1448,8 +1475,9 @@ function CopyMessageButton({
       { label: "Copy as Markdown", onClick: handleCopyMarkdown },
       { label: "Copy as Rich Text", onClick: handleCopyRichText },
       { label: "Copy as Plain Text", onClick: handleCopyPlainText },
+      ...(sessionId ? [{ label: "Copy message link", onClick: handleCopyLink }] : []),
     ],
-    [handleCopyMarkdown, handleCopyRichText, handleCopyPlainText],
+    [handleCopyLink, handleCopyMarkdown, handleCopyPlainText, handleCopyRichText, sessionId],
   );
 
   return (
