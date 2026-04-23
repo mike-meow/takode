@@ -5,7 +5,7 @@ export interface UseVoiceInputOptions {
   onAudioReady?: (blob: Blob) => void;
 }
 
-export type TranscriptionPhase = "uploading" | "transcribing" | "enhancing" | "editing" | "appending" | null;
+export type TranscriptionPhase = "preparing" | "transcribing" | "enhancing" | "editing" | "appending" | null;
 export type VoiceInputUnsupportedReason =
   | "insecure-context"
   | "missing-media-devices"
@@ -20,7 +20,7 @@ export interface UseVoiceInputReturn {
   unsupportedReason: VoiceInputUnsupportedReason | null;
   unsupportedMessage: string | null;
   isTranscribing: boolean;
-  /** Current transcription phase: "uploading", "transcribing", "enhancing"/"editing", or null */
+  /** Current transcription phase: "preparing", "transcribing", "enhancing"/"editing", or null */
   transcriptionPhase: TranscriptionPhase;
   error: string | null;
   /** Normalized volume level 0–1 while recording, 0 otherwise */
@@ -38,6 +38,22 @@ export interface UseVoiceInputReturn {
 }
 
 const DEFAULT_RECORDING_MIME_TYPE = "audio/webm";
+const VOICE_CAPTURE_CONSTRAINTS: MediaTrackConstraints = {
+  channelCount: { ideal: 1 },
+  echoCancellation: { ideal: true },
+  noiseSuppression: { ideal: true },
+  autoGainControl: { ideal: true },
+};
+const DEFAULT_AUDIO_BITS_PER_SECOND = 32_000;
+const MP4_AUDIO_BITS_PER_SECOND = 48_000;
+const RECORDER_MIME_TYPE_CANDIDATES = [
+  "audio/mp4;codecs=mp4a.40.2",
+  "audio/mp4",
+  "audio/webm;codecs=opus",
+  "audio/webm",
+  "audio/ogg;codecs=opus",
+  "audio/ogg",
+] as const;
 
 export function resolveRecordedMimeType(recorderMimeType: string | null | undefined, chunks: Blob[]): string {
   const candidates = [recorderMimeType, ...chunks.map((chunk) => chunk.type)];
@@ -47,6 +63,22 @@ export function resolveRecordedMimeType(recorderMimeType: string | null | undefi
     if (trimmed) return trimmed;
   }
   return DEFAULT_RECORDING_MIME_TYPE;
+}
+
+export function resolveVoiceRecorderOptions(): MediaRecorderOptions {
+  const supportsMimeType =
+    typeof MediaRecorder !== "undefined" && typeof MediaRecorder.isTypeSupported === "function"
+      ? (mimeType: string) => MediaRecorder.isTypeSupported(mimeType)
+      : () => false;
+  const preferredMimeType = RECORDER_MIME_TYPE_CANDIDATES.find((mimeType) => supportsMimeType(mimeType));
+  return preferredMimeType
+    ? {
+        mimeType: preferredMimeType,
+        audioBitsPerSecond: preferredMimeType.startsWith("audio/mp4")
+          ? MP4_AUDIO_BITS_PER_SECOND
+          : DEFAULT_AUDIO_BITS_PER_SECOND,
+      }
+    : { audioBitsPerSecond: DEFAULT_AUDIO_BITS_PER_SECOND };
 }
 
 interface VoiceInputSupport {
@@ -228,7 +260,7 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
     cachedStreamRef.current = null;
 
     const promise = navigator.mediaDevices
-      .getUserMedia({ audio: true })
+      .getUserMedia({ audio: VOICE_CAPTURE_CONSTRAINTS })
       .then((stream) => {
         cachedStreamRef.current = stream;
         resetIdleTimeout();
@@ -281,7 +313,7 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
       if (!stream) {
         cachedStreamRef.current = null;
         // No cached stream available -- fall back to fresh getUserMedia
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream = await navigator.mediaDevices.getUserMedia({ audio: VOICE_CAPTURE_CONSTRAINTS });
       }
 
       // Clear idle timeout -- we're using the stream now
@@ -298,7 +330,7 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
       // Start volume metering
       startVolumeMonitor(stream);
 
-      const recorder = new MediaRecorder(stream);
+      const recorder = new MediaRecorder(stream, resolveVoiceRecorderOptions());
       recorderRef.current = recorder;
 
       recorder.ondataavailable = (e) => {

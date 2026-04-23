@@ -10,9 +10,9 @@ const TRANSCRIPTION_REQUEST_BYTES_PER_EXTRA_SECOND = 64 * 1024;
 
 /**
  * The transcription route does not start streaming SSE until after the browser
- * finishes uploading the multipart body and the server parses it. A fixed 45s
- * timeout is fine for short dictation, but longer mobile recordings can spend
- * most of that budget just getting the upload to the server on a slow uplink.
+ * finishes sending the request body and the server starts the SSE response. A
+ * fixed 45s timeout is fine for short dictation, but longer mobile recordings
+ * can spend most of that budget just getting audio to the server on a slow uplink.
  *
  * Scale the pre-response timeout with audio size while keeping short clips at
  * the existing baseline and capping the total wait to avoid hanging forever.
@@ -501,7 +501,7 @@ export interface TranscriptionLogIndexEntry {
   timestamp: number;
   sessionId: string | null;
   mode?: "dictation" | "edit" | "append";
-  /** Browser upload + server multipart parse time before SSE begins. */
+  /** Browser upload + server request-body read/setup time before SSE begins. */
   uploadDurationMs: number;
   sttModel: string;
   sttDurationMs: number;
@@ -528,7 +528,7 @@ export interface TranscriptionLogEntry extends TranscriptionLogIndexEntry {
 }
 
 export type VoiceTranscriptionMode = "dictation" | "edit" | "append";
-export type VoiceTranscriptionPhase = "uploading" | "transcribing" | "enhancing" | "editing" | "appending";
+export type VoiceTranscriptionPhase = "preparing" | "transcribing" | "enhancing" | "editing" | "appending";
 
 export interface VoiceTranscriptionResult {
   mode?: VoiceTranscriptionMode;
@@ -1001,28 +1001,44 @@ export const api = {
       onPhase?: (phase: VoiceTranscriptionPhase) => void;
     },
   ): Promise<VoiceTranscriptionResult> => {
+    const mode = options?.mode ?? "dictation";
     const audioFileName = resolveAudioUploadFilename(audio.type);
-    const form = new FormData();
-    form.append("audio", audio, audioFileName);
-    if (options?.backend) form.append("backend", options.backend);
-    if (options?.mode) form.append("mode", options.mode);
-    if (options?.sessionId) form.append("sessionId", options.sessionId);
-    if (options?.composerText !== undefined) form.append("composerText", options.composerText);
-    // This timeout only covers the pre-SSE phase (upload + server multipart parse
-    // + route startup). Once the response body starts streaming, the reader below
+    const canUseRawAudioTransport = mode === "dictation" && options?.composerText === undefined;
+    const query = new URLSearchParams();
+    if (options?.backend) query.set("backend", options.backend);
+    if (mode) query.set("mode", mode);
+    if (options?.sessionId) query.set("sessionId", options.sessionId);
+    const path = `${BASE}/transcribe${query.size > 0 ? `?${query.toString()}` : ""}`;
+    const headers = new Headers();
+    let body: BodyInit;
+    if (canUseRawAudioTransport) {
+      body = audio;
+      headers.set("Content-Type", audio.type || "application/octet-stream");
+      headers.set("X-Companion-Audio-Filename", audioFileName);
+    } else {
+      const form = new FormData();
+      form.append("audio", audio, audioFileName);
+      if (options?.backend) form.append("backend", options.backend);
+      if (mode) form.append("mode", mode);
+      if (options?.sessionId) form.append("sessionId", options.sessionId);
+      if (options?.composerText !== undefined) form.append("composerText", options.composerText);
+      body = form;
+    }
+    // This timeout only covers the pre-SSE phase (audio upload/body read +
+    // route startup). Once the response body starts streaming, the reader below
     // owns the rest of the request lifecycle.
     const controller = new AbortController();
     const timeoutMs = getTranscriptionRequestTimeoutMs(audio.size);
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     let res: Response;
-    options?.onPhase?.("uploading");
+    options?.onPhase?.("preparing");
     try {
-      res = await fetch(`${BASE}/transcribe`, { method: "POST", body: form, signal: controller.signal });
+      res = await fetch(path, { method: "POST", body, headers, signal: controller.signal });
     } catch (err) {
       clearTimeout(timeout);
       if (err instanceof DOMException && err.name === "AbortError") {
         throw new Error(
-          `Transcription timed out after ${Math.round(timeoutMs / 1000)}s — the upload or server took too long to respond.`,
+          `Transcription timed out after ${Math.round(timeoutMs / 1000)}s — sending audio or starting transcription took too long.`,
         );
       }
       throw err;

@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
-import { getVoiceInputSupport, normalizeMeterLevel, resolveRecordedMimeType, useVoiceInput } from "./useVoiceInput.js";
+import {
+  getVoiceInputSupport,
+  normalizeMeterLevel,
+  resolveRecordedMimeType,
+  resolveVoiceRecorderOptions,
+  useVoiceInput,
+} from "./useVoiceInput.js";
 
 // ── Mocks ──────────────────────────────────────────────────────────────────
 
@@ -27,15 +33,20 @@ function makeMockStream(trackState: "live" | "ended" = "live"): MediaStream {
  *  that need to trigger error events after recording starts. */
 class MockMediaRecorder {
   static lastInstance: MockMediaRecorder | null = null;
+  static supportedMimeTypes = new Set<string>();
+  static isTypeSupported = vi.fn((mimeType: string) => MockMediaRecorder.supportedMimeTypes.has(mimeType));
 
   state: "inactive" | "recording" | "paused" = "inactive";
   mimeType = "audio/webm";
+  options: MediaRecorderOptions;
   ondataavailable: ((e: { data: Blob }) => void) | null = null;
   onstop: (() => void) | null = null;
   onerror: (() => void) | null = null;
 
-  constructor() {
+  constructor(_stream?: MediaStream, options: MediaRecorderOptions = {}) {
     MockMediaRecorder.lastInstance = this;
+    this.options = options;
+    if (options.mimeType) this.mimeType = options.mimeType;
   }
 
   start() {
@@ -94,6 +105,13 @@ beforeEach(() => {
   vi.useFakeTimers();
 
   getUserMediaMock = vi.fn().mockResolvedValue(makeMockStream());
+  MockMediaRecorder.lastInstance = null;
+  MockMediaRecorder.supportedMimeTypes = new Set([
+    "audio/mp4;codecs=mp4a.40.2",
+    "audio/webm;codecs=opus",
+    "audio/webm",
+  ]);
+  MockMediaRecorder.isTypeSupported.mockClear();
 
   Object.defineProperty(window, "isSecureContext", {
     configurable: true,
@@ -180,6 +198,23 @@ describe("resolveRecordedMimeType", () => {
   });
 });
 
+describe("resolveVoiceRecorderOptions", () => {
+  it("prefers Safari-friendly mp4 when the browser reports support", () => {
+    expect(resolveVoiceRecorderOptions()).toEqual({
+      mimeType: "audio/mp4;codecs=mp4a.40.2",
+      audioBitsPerSecond: 48_000,
+    });
+  });
+
+  it("falls back to bitrate-only recording when no preferred mime type is supported", () => {
+    MockMediaRecorder.supportedMimeTypes = new Set();
+
+    expect(resolveVoiceRecorderOptions()).toEqual({
+      audioBitsPerSecond: 32_000,
+    });
+  });
+});
+
 // ── Hook tests: isPreparing transitions ────────────────────────────────────
 
 describe("useVoiceInput — isPreparing", () => {
@@ -246,6 +281,27 @@ describe("useVoiceInput — isPreparing", () => {
     expect(result.current.isPreparing).toBe(false);
     expect(result.current.isRecording).toBe(false);
   });
+
+  it("requests mono speech-friendly audio constraints and recorder options", async () => {
+    const { result } = renderHook(() => useVoiceInput());
+
+    await act(async () => {
+      result.current.startRecording();
+    });
+
+    expect(getUserMediaMock).toHaveBeenCalledWith({
+      audio: {
+        channelCount: { ideal: 1 },
+        echoCancellation: { ideal: true },
+        noiseSuppression: { ideal: true },
+        autoGainControl: { ideal: true },
+      },
+    });
+    expect(MockMediaRecorder.lastInstance?.options).toEqual({
+      mimeType: "audio/mp4;codecs=mp4a.40.2",
+      audioBitsPerSecond: 48_000,
+    });
+  });
 });
 
 // ── Hook tests: warmMicrophone ─────────────────────────────────────────────
@@ -262,7 +318,14 @@ describe("useVoiceInput — warmMicrophone", () => {
     });
 
     expect(getUserMediaMock).toHaveBeenCalledTimes(1);
-    expect(getUserMediaMock).toHaveBeenCalledWith({ audio: true });
+    expect(getUserMediaMock).toHaveBeenCalledWith({
+      audio: {
+        channelCount: { ideal: 1 },
+        echoCancellation: { ideal: true },
+        noiseSuppression: { ideal: true },
+        autoGainControl: { ideal: true },
+      },
+    });
   });
 
   it("no-ops on repeated warmMicrophone calls when stream is already cached and live", async () => {

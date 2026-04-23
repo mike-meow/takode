@@ -324,7 +324,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
     cursorContext: { before: string; after: string },
   ) {
     setIsTranscribing(true);
-    setTranscriptionPhase("uploading");
+    setTranscriptionPhase("preparing");
     try {
       if (mode === "edit") {
         const {
@@ -1792,8 +1792,8 @@ export function Composer({ sessionId }: { sessionId: string }) {
     (isPreparing
       ? "Preparing microphone..."
       : isTranscribing
-        ? transcriptionPhase === "uploading"
-          ? "Uploading..."
+        ? transcriptionPhase === "preparing"
+          ? "Preparing transcript..."
           : transcriptionPhase === "editing"
             ? "Editing..."
             : transcriptionPhase === "appending"

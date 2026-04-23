@@ -108,8 +108,8 @@ export function ComposerStatusBlocks({
         <div className="flex items-center gap-2 px-4 pt-2 text-[11px] text-cc-primary">
           <span className="w-2 h-2 rounded-full bg-cc-primary animate-pulse" />
           <span>
-            {transcriptionPhase === "uploading"
-              ? "Uploading..."
+            {transcriptionPhase === "preparing"
+              ? "Preparing transcript..."
               : transcriptionPhase === "editing"
                 ? "Editing..."
                 : transcriptionPhase === "appending"

@@ -951,8 +951,9 @@ describe("Composer voice edit mode", () => {
     expect(mockGetSettings).toHaveBeenCalledTimes(1);
   });
 
-  it("shows an uploading state before the transcription stream switches to STT", async () => {
-    // q-485: keep the pre-response wait visible as an upload step instead of
+  it("shows a preparation state before the transcription stream switches to STT", async () => {
+    // q-485/q-566: keep the pre-response wait visible, but avoid claiming the
+    // whole period is only network upload work.
     // immediately claiming transcription is already in progress.
     let resolveTranscription: ((value: VoiceTranscriptionResult) => void) | undefined;
     mockTranscribe.mockImplementationOnce(
@@ -966,13 +967,13 @@ describe("Composer voice edit mode", () => {
     fireEvent.click(screen.getByLabelText("Voice input"));
 
     await waitFor(() => {
-      expect(screen.getByText("Uploading...")).toBeTruthy();
+      expect(screen.getByText("Preparing transcript...")).toBeTruthy();
     });
 
     if (!resolveTranscription) throw new Error("mock transcription resolver was not initialized");
     resolveTranscription({ mode: "dictation", text: "done", backend: "openai", enhanced: false });
     await waitFor(() => {
-      expect(screen.queryByText("Uploading...")).toBeNull();
+      expect(screen.queryByText("Preparing transcript...")).toBeNull();
     });
   });
 

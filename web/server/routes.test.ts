@@ -3038,7 +3038,7 @@ describe("POST /api/transcribe", () => {
     expect((uploadedFile as File).name).toBe("recording.mp4");
   });
 
-  it("records pre-stream upload time separately from STT timing", async () => {
+  it("records pre-stream upload time separately from STT timing for raw dictation uploads", async () => {
     vi.mocked(settingsManager.getSettings).mockReturnValue({
       serverName: "",
       serverId: "",
@@ -3076,11 +3076,14 @@ describe("POST /api/transcribe", () => {
       }),
     );
 
-    const form = new FormData();
-    form.append("audio", new File([new Uint8Array([0x52, 0x49, 0x46, 0x46])], "recording.wav", { type: "audio/wav" }));
-    form.append("backend", "openai");
-
-    const res = await app.request("/api/transcribe", { method: "POST", body: form });
+    const res = await app.request("/api/transcribe?backend=openai&mode=dictation", {
+      method: "POST",
+      headers: {
+        "Content-Type": "audio/wav",
+        "X-Companion-Audio-Filename": "recording.wav",
+      },
+      body: new Uint8Array([0x52, 0x49, 0x46, 0x46]),
+    });
 
     expect(res.status).toBe(200);
     await res.text();
@@ -3091,9 +3094,16 @@ describe("POST /api/transcribe", () => {
         rawTranscript: "timed transcript",
       }),
     );
+
+    const [, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+    const outboundForm = init.body as FormData;
+    const uploadedFile = outboundForm.get("file");
+    expect(uploadedFile).toBeInstanceOf(File);
+    expect((uploadedFile as File).type).toBe("audio/wav");
+    expect((uploadedFile as File).name).toBe("recording.wav");
   });
 
-  it("emits an early phase ack before stt_complete so uploading can end before STT finishes", async () => {
+  it("emits an early phase ack before stt_complete so the pre-STT state can end before STT finishes", async () => {
     vi.mocked(settingsManager.getSettings).mockReturnValue({
       serverName: "",
       serverId: "",

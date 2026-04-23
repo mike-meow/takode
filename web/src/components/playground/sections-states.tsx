@@ -477,12 +477,12 @@ export function PlaygroundStateSections() {
             </div>
           </Card>
           <div className="mt-4" />
-          <Card label="Uploading — request body in flight">
+          <Card label="Preparing transcript — request in flight">
             <div className="border-t border-cc-border bg-cc-card px-4 py-3">
               <div className="bg-cc-input-bg border border-cc-border rounded-[14px] overflow-hidden">
                 <div className="flex items-center gap-2 px-4 pt-2 text-[11px] text-cc-primary">
                   <span className="w-2 h-2 rounded-full bg-cc-primary animate-pulse" />
-                  <span>Uploading...</span>
+                  <span>Preparing transcript...</span>
                 </div>
                 <textarea
                   readOnly

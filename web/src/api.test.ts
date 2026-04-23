@@ -351,9 +351,9 @@ describe("transcribe", () => {
     }
   });
 
-  it("surfaces uploading before the SSE response opens, then switches to transcribing", async () => {
+  it("surfaces preparing before the SSE response opens, then switches to transcribing", async () => {
     // q-485: mobile upload time happens before the server can open the SSE
-    // stream, so the client must stay in "Uploading..." until the server
+    // stream, so the client must stay in a pre-STT preparation state until the server
     // actually flushes the first SSE chunk acknowledging STT has started.
     const encoder = new TextEncoder();
     let resolveResponse: ((value: Response | PromiseLike<Response>) => void) | undefined;
@@ -368,7 +368,7 @@ describe("transcribe", () => {
     const onPhase = vi.fn();
     const pending = api.transcribe(new Blob([new Uint8Array([1, 2, 3])], { type: "audio/webm" }), { onPhase });
 
-    expect(onPhase.mock.calls).toEqual([["uploading"]]);
+    expect(onPhase.mock.calls).toEqual([["preparing"]]);
 
     if (!resolveResponse) throw new Error("transcription response resolver was not initialized");
     resolveResponse(
@@ -383,7 +383,7 @@ describe("transcribe", () => {
     );
 
     await Promise.resolve();
-    expect(onPhase.mock.calls).toEqual([["uploading"]]);
+    expect(onPhase.mock.calls).toEqual([["preparing"]]);
 
     if (!streamController) throw new Error("stream controller was not initialized");
     streamController.enqueue(encoder.encode('event: phase\ndata: {"phase":"transcribing","mode":"dictation"}\n\n'));
@@ -399,12 +399,65 @@ describe("transcribe", () => {
     streamController.close();
 
     await pending;
-    expect(onPhase.mock.calls).toEqual([["uploading"], ["transcribing"]]);
+    expect(onPhase.mock.calls).toEqual([["preparing"], ["transcribing"]]);
   });
 
-  it("uploads short audio and parses the SSE transcription result", async () => {
-    // Keep the normal short-dictation path working: the client should still
-    // POST multipart audio, surface phase changes, and return the final result.
+  it("uses raw audio transport for empty-draft dictation and parses the SSE result", async () => {
+    // q-566: the common mobile dictation path should avoid multipart overhead
+    // and send the audio blob directly while preserving the phase-aware SSE flow.
+    const encoder = new TextEncoder();
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode('event: phase\ndata: {"phase":"transcribing","mode":"dictation"}\n\n'));
+        controller.enqueue(
+          encoder.encode(
+            `event: result\ndata: ${JSON.stringify({
+              text: "hello",
+              backend: "openai",
+              enhanced: false,
+            } satisfies VoiceTranscriptionResult)}\n\n`,
+          ),
+        );
+        controller.close();
+      },
+    });
+    mockFetch.mockResolvedValueOnce(
+      new Response(body, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      }),
+    );
+
+    const onPhase = vi.fn();
+    const shortAudio = new Blob([new Uint8Array([1, 2, 3, 4])], { type: "audio/mp4" });
+    const result = await api.transcribe(shortAudio, {
+      mode: "dictation",
+      sessionId: "session-1",
+      backend: "openai",
+      onPhase,
+    });
+
+    expect(onPhase.mock.calls).toEqual([["preparing"], ["transcribing"]]);
+    expect(result).toEqual({
+      text: "hello",
+      backend: "openai",
+      enhanced: false,
+    });
+
+    const [url, opts] = mockFetch.mock.calls[0];
+    expect(url).toBe("/api/transcribe?backend=openai&mode=dictation&sessionId=session-1");
+    expect(opts?.method).toBe("POST");
+    expect(opts?.signal).toBeInstanceOf(AbortSignal);
+    expect(opts?.body).toBe(shortAudio);
+    expect(opts?.headers).toBeInstanceOf(Headers);
+    const headers = opts?.headers as Headers;
+    expect(headers.get("Content-Type")).toBe("audio/mp4");
+    expect(headers.get("X-Companion-Audio-Filename")).toBe("recording.mp4");
+  });
+
+  it("keeps multipart transport for voice edit requests and parses the SSE result", async () => {
+    // Edit/append still need the existing composer text, so keep the multipart
+    // path working while the empty-draft dictation path is optimized separately.
     const encoder = new TextEncoder();
     const body = new ReadableStream({
       start(controller) {
@@ -438,7 +491,7 @@ describe("transcribe", () => {
       onPhase,
     });
 
-    expect(onPhase.mock.calls).toEqual([["uploading"], ["transcribing"], ["editing"]]);
+    expect(onPhase.mock.calls).toEqual([["preparing"], ["transcribing"], ["editing"]]);
     expect(result).toEqual({
       text: "- first\n- second",
       rawText: "turn this into bullets",
@@ -449,7 +502,7 @@ describe("transcribe", () => {
     });
 
     const [url, opts] = mockFetch.mock.calls[0];
-    expect(url).toBe("/api/transcribe");
+    expect(url).toBe("/api/transcribe?mode=edit&sessionId=session-1");
     expect(opts?.method).toBe("POST");
     expect(opts?.signal).toBeInstanceOf(AbortSignal);
     const form = opts?.body as FormData;
