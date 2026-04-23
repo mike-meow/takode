@@ -270,6 +270,7 @@ export class HerdEventDispatcher {
       getSessionName?: (sessionId: string) => string | undefined;
       getSessions?: () => LeaderIdleStateLike["sessions"];
       getLeaderIdleDeps?: () => Parameters<typeof updateLeaderGroupIdleStateController>[3];
+      markNotificationDone?: (sessionId: string, notifId: string, done: boolean) => boolean;
     },
   ) {}
 
@@ -468,6 +469,15 @@ export class HerdEventDispatcher {
 
     // Confirm in-flight events: the turn completed, so the CLI consumed them
     if (inbox.inFlightUpTo !== null) {
+      const confirmedEntries = inbox.entries.filter(
+        (entry) => entry.seq >= inbox.confirmedUpTo && entry.seq <= inbox.inFlightUpTo!,
+      );
+      for (const entry of confirmedEntries) {
+        if (entry.event.event !== "notification_needs_input") continue;
+        const notifId = entry.event.data.notificationId;
+        if (typeof notifId !== "string" || notifId.length === 0) continue;
+        this.runtime?.markNotificationDone?.(entry.event.sessionId, notifId, true);
+      }
       inbox.confirmedUpTo = inbox.inFlightUpTo + 1;
       inbox.inFlightUpTo = null;
       // Trim confirmed entries from the inbox

@@ -23664,6 +23664,13 @@ describe("notifyUser herded session routing", () => {
   // are silenced (leader tracks via board/herd events), and needs-input
   // notifications are emitted as herd events for the leader to handle.
 
+  function makeHerdNotificationDoneDeps(targetBridge: WsBridge) {
+    return {
+      broadcastToBrowsers: (session: any, msg: any) => targetBridge.broadcastToSession(session.id, msg),
+      persistSession: (session: any) => targetBridge.persistSessionById(session.id),
+    };
+  }
+
   it("suppresses attention and Pushover for herded review notifications", () => {
     const browser = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browser, "s1");
@@ -23776,6 +23783,135 @@ describe("notifyUser herded session routing", () => {
 
     // Attention should NOT be set for herded session
     expect(session.attentionReason).toBeNull();
+  });
+
+  it("keeps herded needs-input active until leader turn end confirms herd delivery", () => {
+    vi.useFakeTimers();
+    try {
+      const leaderId = "leader-1";
+      const workerId = "s1";
+      const injectUserMessage = vi.fn(() => "sent" as const);
+      const launcherMock = {
+        touchActivity: vi.fn(),
+        touchUserMessage: vi.fn(),
+        getSession: vi.fn((id: string) =>
+          id === workerId
+            ? { sessionId: workerId, state: "connected", herdedBy: leaderId }
+            : id === leaderId
+              ? { sessionId: leaderId, state: "connected", isOrchestrator: true }
+              : undefined,
+        ),
+        getHerdedSessions: vi.fn((id: string) => (id === leaderId ? [{ sessionId: workerId }] : [])),
+      };
+      bridge.setLauncher(launcherMock as any);
+
+      const dispatcher = new HerdEventDispatcher(
+        {
+          subscribeTakodeEvents: (sessions, callback, sinceEventId) =>
+            bridge.subscribeTakodeEvents(sessions, callback, sinceEventId),
+          injectUserMessage,
+          isSessionIdle: vi.fn(() => true),
+          getSession: (sessionId: string) => bridge.getSession(sessionId) as any,
+        },
+        launcherMock as any,
+        {
+          markNotificationDone: (sessionId: string, notifId: string, done: boolean) => {
+            const session = bridge.getSession(sessionId);
+            if (!session) return false;
+            return markNotificationDoneController(session as any, notifId, done, makeHerdNotificationDoneDeps(bridge));
+          },
+        },
+      );
+      bridge.setHerdEventDispatcher(dispatcher as any);
+      dispatcher.setupForOrchestrator(leaderId);
+
+      const session = bridge.getOrCreateSession(workerId);
+      session.messageHistory.push({
+        type: "assistant",
+        message: { id: "asst-1", content: [{ type: "text", text: "Need help" }] },
+        timestamp: Date.now(),
+      } as any);
+
+      notifyUserController(session, "needs-input", "Need decision on auth", getNotificationTestDeps(bridge));
+
+      expect(session.notifications).toHaveLength(1);
+      expect(session.notifications[0].done).toBe(false);
+
+      vi.advanceTimersByTime(600);
+      expect(injectUserMessage).toHaveBeenCalledTimes(1);
+      expect(session.notifications[0].done).toBe(false);
+
+      dispatcher.onOrchestratorTurnEnd(leaderId);
+
+      expect(session.notifications[0].done).toBe(true);
+      expect(session.notifications.filter((notif) => !notif.done && notif.category === "needs-input")).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps herd-delivery auto-resolution idempotent when leader answer already resolved the notification", () => {
+    vi.useFakeTimers();
+    try {
+      const leaderId = "leader-1";
+      const workerId = "s1";
+      const injectUserMessage = vi.fn(() => "sent" as const);
+      const launcherMock = {
+        touchActivity: vi.fn(),
+        touchUserMessage: vi.fn(),
+        getSession: vi.fn((id: string) =>
+          id === workerId
+            ? { sessionId: workerId, state: "connected", herdedBy: leaderId }
+            : id === leaderId
+              ? { sessionId: leaderId, state: "connected", isOrchestrator: true }
+              : undefined,
+        ),
+        getHerdedSessions: vi.fn((id: string) => (id === leaderId ? [{ sessionId: workerId }] : [])),
+      };
+      bridge.setLauncher(launcherMock as any);
+
+      const dispatcher = new HerdEventDispatcher(
+        {
+          subscribeTakodeEvents: (sessions, callback, sinceEventId) =>
+            bridge.subscribeTakodeEvents(sessions, callback, sinceEventId),
+          injectUserMessage,
+          isSessionIdle: vi.fn(() => true),
+          getSession: (sessionId: string) => bridge.getSession(sessionId) as any,
+        },
+        launcherMock as any,
+        {
+          markNotificationDone: (sessionId: string, notifId: string, done: boolean) => {
+            const session = bridge.getSession(sessionId);
+            if (!session) return false;
+            return markNotificationDoneController(session as any, notifId, done, makeHerdNotificationDoneDeps(bridge));
+          },
+        },
+      );
+      bridge.setHerdEventDispatcher(dispatcher as any);
+      dispatcher.setupForOrchestrator(leaderId);
+
+      const session = bridge.getOrCreateSession(workerId);
+      session.messageHistory.push({
+        type: "assistant",
+        message: { id: "asst-1", content: [{ type: "text", text: "Need help" }] },
+        timestamp: Date.now(),
+      } as any);
+
+      notifyUserController(session, "needs-input", "Need decision on auth", getNotificationTestDeps(bridge));
+
+      vi.advanceTimersByTime(600);
+      expect(injectUserMessage).toHaveBeenCalledTimes(1);
+
+      const doneDeps = makeHerdNotificationDoneDeps(bridge);
+      expect(markNotificationDoneController(session as any, "n-1", true, doneDeps)).toBe(true);
+      expect(session.notifications[0].done).toBe(true);
+
+      dispatcher.onOrchestratorTurnEnd(leaderId);
+
+      expect(session.notifications[0].done).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("notifies user directly for non-herded sessions (no herdedBy)", () => {
