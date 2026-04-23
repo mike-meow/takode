@@ -341,8 +341,15 @@ export default function App() {
       }
 
       if (route.messageId) {
-        store.requestScrollToMessage(resolvedRouteSessionId, route.messageId);
-        store.setExpandAllInTurn(resolvedRouteSessionId, route.messageId);
+        // If messages are already loaded, scroll immediately; otherwise defer
+        // until message_history arrives (mirrors pendingScrollToMessageIndex).
+        const messages = store.messages.get(resolvedRouteSessionId);
+        if (messages && messages.length > 0) {
+          store.requestScrollToMessage(resolvedRouteSessionId, route.messageId);
+          store.setExpandAllInTurn(resolvedRouteSessionId, route.messageId);
+        } else {
+          store.setPendingScrollToMessageId(resolvedRouteSessionId, route.messageId);
+        }
       } else {
         // Handle legacy ?msg=N query param for message-level deep links.
         const msgIdx = messageIndexFromHash(hash);

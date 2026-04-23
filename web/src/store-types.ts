@@ -79,6 +79,7 @@ export interface AppState {
   scrollToMessageId: Map<string, string | null>;
   expandAllInTurn: Map<string, string | null>;
   pendingScrollToMessageIndex: Map<string, number>;
+  pendingScrollToMessageId: Map<string, string>;
   bottomAlignNextUserMessage: Set<string>;
   activeTaskTurnId: Map<string, string | null>;
   sessionTaskPreview: Map<string, { text: string; updatedAt: number }>;
@@ -237,6 +238,8 @@ export interface AppState {
   clearExpandAllInTurn: (sessionId: string) => void;
   setPendingScrollToMessageIndex: (sessionId: string, messageIndex: number) => void;
   clearPendingScrollToMessageIndex: (sessionId: string) => void;
+  setPendingScrollToMessageId: (sessionId: string, messageId: string) => void;
+  clearPendingScrollToMessageId: (sessionId: string) => void;
   openSessionSearch: (sessionId: string) => void;
   closeSessionSearch: (sessionId: string) => void;
   setSessionSearchQuery: (sessionId: string, query: string) => void;

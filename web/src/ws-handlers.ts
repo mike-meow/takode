@@ -409,6 +409,17 @@ function resetAuthoritativeHistoryState(
 /** Resolve a pending message-index scroll from deep link navigation (session:N:M). */
 function resolvePendingMessageScroll(sessionId: string, messages: ChatMessage[]): void {
   const store = useStore.getState();
+
+  // Resolve pending message ID scroll (from /msg/<id> deep links in new tabs).
+  const pendingMsgId = store.pendingScrollToMessageId.get(sessionId);
+  if (pendingMsgId) {
+    store.clearPendingScrollToMessageId(sessionId);
+    store.requestScrollToMessage(sessionId, pendingMsgId);
+    store.setExpandAllInTurn(sessionId, pendingMsgId);
+    return; // ID-based scroll takes precedence over index-based
+  }
+
+  // Resolve pending message index scroll (from legacy ?msg=N deep links).
   const pendingIdx = store.pendingScrollToMessageIndex.get(sessionId);
   if (pendingIdx == null) return;
   store.clearPendingScrollToMessageIndex(sessionId);

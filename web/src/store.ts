@@ -148,6 +148,7 @@ export const useStore = create<AppState>((set, get) => ({
   scrollToMessageId: new Map(),
   expandAllInTurn: new Map(),
   pendingScrollToMessageIndex: new Map(),
+  pendingScrollToMessageId: new Map(),
   bottomAlignNextUserMessage: new Set(),
   activeTaskTurnId: new Map(),
   sessionTaskPreview: new Map(),
@@ -1324,6 +1325,20 @@ export const useStore = create<AppState>((set, get) => ({
       const pendingScrollToMessageIndex = new Map(s.pendingScrollToMessageIndex);
       pendingScrollToMessageIndex.delete(sessionId);
       return { pendingScrollToMessageIndex };
+    }),
+
+  setPendingScrollToMessageId: (sessionId, messageId) =>
+    set((s) => {
+      const pendingScrollToMessageId = new Map(s.pendingScrollToMessageId);
+      pendingScrollToMessageId.set(sessionId, messageId);
+      return { pendingScrollToMessageId };
+    }),
+
+  clearPendingScrollToMessageId: (sessionId) =>
+    set((s) => {
+      const pendingScrollToMessageId = new Map(s.pendingScrollToMessageId);
+      pendingScrollToMessageId.delete(sessionId);
+      return { pendingScrollToMessageId };
     }),
 
   // ─── Within-session search actions ──────────────────────────────────────────

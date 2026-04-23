@@ -51,10 +51,12 @@ function resetStore(overrides: Partial<MockStoreState> = {}) {
     setServerName: vi.fn(),
     requestScrollToMessage: vi.fn(),
     setExpandAllInTurn: vi.fn(),
+    setPendingScrollToMessageId: vi.fn(),
     markSessionViewed: vi.fn(),
     closeNewSessionModal: vi.fn(),
     setSidebarOpen: vi.fn(),
     sessions: new Map([["s1", { backend_type: "claude" }]]),
+    messages: new Map<string, unknown[]>(),
     ...overrides,
   };
 }
@@ -238,11 +240,26 @@ describe("App hidden panels", () => {
     expect(mockConnectSession).toHaveBeenCalledWith("session-abc");
   });
 
-  it("routes stable message-ID links through the existing scroll-to-message path", () => {
+  it("defers message-ID scroll when messages are not yet loaded (new tab)", () => {
     window.location.hash = "#/session/123/msg/asst-42";
     resetStore({
       currentSessionId: null,
       sdkSessions: [{ sessionId: "session-abc", state: "connected", cwd: "/repo", createdAt: 1, sessionNum: 123 }],
+    });
+
+    render(<App />);
+
+    // No messages loaded yet, so scroll should be deferred
+    expect(mockState.setPendingScrollToMessageId).toHaveBeenCalledWith("session-abc", "asst-42");
+    expect(mockState.requestScrollToMessage).not.toHaveBeenCalled();
+  });
+
+  it("scrolls immediately to message-ID when messages are already loaded", () => {
+    window.location.hash = "#/session/123/msg/asst-42";
+    resetStore({
+      currentSessionId: null,
+      sdkSessions: [{ sessionId: "session-abc", state: "connected", cwd: "/repo", createdAt: 1, sessionNum: 123 }],
+      messages: new Map([["session-abc", [{ id: "asst-42", role: "assistant" }]]]),
     });
 
     render(<App />);
