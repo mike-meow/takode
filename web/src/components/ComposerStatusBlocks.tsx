@@ -17,6 +17,7 @@ export function ComposerStatusBlocks({
   vscodeSelectionLabel,
   vscodeSelectionSummary,
   vscodeSelectionTitle,
+  attachmentBlockReason,
   onRetryTranscription,
   onDismissVoiceError,
   onAcceptVoiceEdit,
@@ -42,6 +43,7 @@ export function ComposerStatusBlocks({
   vscodeSelectionLabel: string | null;
   vscodeSelectionSummary: string | null;
   vscodeSelectionTitle: string | null;
+  attachmentBlockReason: string | null;
   onRetryTranscription: () => void;
   onDismissVoiceError: () => void;
   onAcceptVoiceEdit: () => void;
@@ -175,6 +177,18 @@ export function ComposerStatusBlocks({
           ) : (
             <div className="text-[11px] text-cc-warning">{voiceError}</div>
           )}
+        </div>
+      )}
+      {attachmentBlockReason && !isRecording && !isTranscribing && (
+        <div className="px-4 pt-2">
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex items-start gap-2 rounded-lg border border-cc-warning/25 bg-cc-warning/10 px-3 py-2 text-[11px] text-cc-warning"
+          >
+            <span className="shrink-0 mt-0.5 w-1.5 h-1.5 rounded-full bg-current opacity-80" />
+            <span className="flex-1">{attachmentBlockReason}</span>
+          </div>
         </div>
       )}
       {voiceEditProposal && !isRecording && !isTranscribing && (

@@ -40,6 +40,7 @@ const mockGetSettings = vi.fn().mockResolvedValue({ claudeDefaultModel: "" });
 const mockUpdateSettings = vi.fn().mockResolvedValue({});
 const mockRefreshSessionSkills = vi.fn().mockResolvedValue({ ok: true, skills: [] });
 const mockPrepareUserMessageImages = vi.fn();
+const mockDeletePreparedUserMessageImage = vi.fn().mockResolvedValue({ ok: true });
 
 // Build a controllable mock store state
 let mockStoreState: Record<string, unknown> = {};
@@ -56,6 +57,7 @@ vi.mock("../api.js", () => ({
     updateSettings: (...args: unknown[]) => mockUpdateSettings(...args),
     refreshSessionSkills: (...args: unknown[]) => mockRefreshSessionSkills(...args),
     prepareUserMessageImages: (...args: unknown[]) => mockPrepareUserMessageImages(...args),
+    deletePreparedUserMessageImage: (...args: unknown[]) => mockDeletePreparedUserMessageImage(...args),
     transcribe: (...args: unknown[]) => mockTranscribe(...args),
   },
 }));
@@ -255,6 +257,7 @@ function setupMockStore(
     sessionStatus?: "idle" | "running" | "compacting" | null;
     session?: Partial<SessionState>;
     draftText?: string;
+    draft?: { text: string; images: unknown[] };
     zoomLevel?: number;
     sdkSessionTotals?: { added: number; removed: number };
     sdkSessions?: SdkSessionInfo[];
@@ -280,6 +283,7 @@ function setupMockStore(
     sessionStatus = "idle",
     session = {},
     draftText = "",
+    draft,
     zoomLevel = 1,
     sdkSessionTotals,
     sdkSessions = [],
@@ -310,7 +314,11 @@ function setupMockStore(
     sessionStatus: sessionStatusMap,
     previousPermissionMode: previousPermissionModeMap,
     askPermission: askPermissionMap,
-    composerDrafts: draftText ? new Map([["s1", { text: draftText, images: [] }]]) : new Map(),
+    composerDrafts: draft
+      ? new Map([["s1", draft]])
+      : draftText
+        ? new Map([["s1", { text: draftText, images: [] }]])
+        : new Map(),
     replyContexts: new Map(),
     appendMessage: mockAppendMessage,
     updateSession: mockUpdateSession,
@@ -480,6 +488,23 @@ beforeEach(() => {
   mockUpdateSettings.mockResolvedValue({});
   mockRefreshSessionSkills.mockResolvedValue({ ok: true, skills: [] });
   mockPrepareUserMessageImages.mockReset();
+  mockDeletePreparedUserMessageImage.mockReset();
+  mockDeletePreparedUserMessageImage.mockResolvedValue({ ok: true });
+  mockPrepareUserMessageImages.mockImplementation(
+    async (sessionId: string, images: Array<{ mediaType: string }>, _signal?: AbortSignal) => ({
+      imageRefs: images.map((image, index) => ({
+        imageId: `img-${index + 1}`,
+        media_type: image.mediaType,
+      })),
+      paths: images.map((_image, index) => `/Users/test/.companion/images/${sessionId}/img-${index + 1}.orig.png`),
+      attachmentAnnotation: images
+        .map(
+          (_image, index) =>
+            `Attachment ${index + 1}: /Users/test/.companion/images/${sessionId}/img-${index + 1}.orig.png`,
+        )
+        .join("\n"),
+    }),
+  );
   mockRequestBottomAlignOnNextUserMessage.mockReset();
   mediaState.touchDevice = false;
   setViewportWidth(1024);
@@ -1138,6 +1163,65 @@ describe("Composer send button state", () => {
 });
 
 describe("Composer image attachments", () => {
+  it("blocks send as soon as an image is attached, before local file reading finishes", async () => {
+    const previousFileReader = window.FileReader;
+    const pendingReaders: Array<{
+      complete: () => void;
+    }> = [];
+    Object.defineProperty(window, "FileReader", {
+      configurable: true,
+      writable: true,
+      value: class MockFileReader {
+        result: string | ArrayBuffer | null = null;
+        onload: ((this: FileReader, ev: ProgressEvent<FileReader>) => unknown) | null = null;
+        onerror: ((this: FileReader, ev: ProgressEvent<FileReader>) => unknown) | null = null;
+
+        readAsDataURL(file: Blob) {
+          pendingReaders.push({
+            complete: () => {
+              this.result = `data:${(file as File).type || "image/png"};base64,ZmFrZQ==`;
+              this.onload?.call(this as unknown as FileReader, new ProgressEvent("load") as ProgressEvent<FileReader>);
+            },
+          });
+        }
+      },
+    });
+
+    try {
+      const { container } = render(<Composer sessionId="s1" />);
+      const textarea = container.querySelector("textarea")!;
+      const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+
+      fireEvent.change(textarea, { target: { value: "inspect this screenshot" } });
+      fireEvent.change(fileInput, { target: { files: [makeImageFile("slow.png")] } });
+
+      await waitFor(() => {
+        expect(screen.getByText("Preparing 1 image before upload.")).toBeTruthy();
+        expect(screen.getAllByText("Preparing...").length).toBeGreaterThan(0);
+      });
+
+      fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
+      expect(mockSendToSession).not.toHaveBeenCalledWith(
+        "s1",
+        expect.objectContaining({
+          type: "user_message",
+          content: "inspect this screenshot",
+        }),
+      );
+
+      await act(async () => {
+        pendingReaders[0]?.complete();
+        await Promise.resolve();
+      });
+    } finally {
+      Object.defineProperty(window, "FileReader", {
+        configurable: true,
+        writable: true,
+        value: previousFileReader,
+      });
+    }
+  });
+
   it("attaches selected image files through the upload input", async () => {
     const { container } = render(<Composer sessionId="s1" />);
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
@@ -1194,6 +1278,58 @@ describe("Composer image attachments", () => {
     await waitFor(() => {
       expect(screen.queryByText("Drop images to attach")).toBeNull();
     });
+  });
+
+  it("retries a real local read failure and resumes normal upload preparation", async () => {
+    const previousFileReader = window.FileReader;
+    let readAttempts = 0;
+    Object.defineProperty(window, "FileReader", {
+      configurable: true,
+      writable: true,
+      value: class MockFileReader {
+        result: string | ArrayBuffer | null = null;
+        onload: ((this: FileReader, ev: ProgressEvent<FileReader>) => unknown) | null = null;
+        onerror: ((this: FileReader, ev: ProgressEvent<FileReader>) => unknown) | null = null;
+
+        readAsDataURL(file: Blob) {
+          readAttempts += 1;
+          if (readAttempts === 1) {
+            this.onerror?.call(this as unknown as FileReader, new ProgressEvent("error") as ProgressEvent<FileReader>);
+            return;
+          }
+          this.result = `data:${(file as File).type || "image/png"};base64,ZmFrZQ==`;
+          this.onload?.call(this as unknown as FileReader, new ProgressEvent("load") as ProgressEvent<FileReader>);
+        }
+      },
+    });
+
+    try {
+      const { container } = render(<Composer sessionId="s1" />);
+      const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+
+      fireEvent.change(fileInput, { target: { files: [makeImageFile("read-fail.png")] } });
+
+      await waitFor(() => {
+        expect(screen.getByText("Upload failed")).toBeTruthy();
+      });
+      expect(mockPrepareUserMessageImages).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByText("Retry"));
+
+      await waitFor(() => {
+        expect(readAttempts).toBe(2);
+        expect(mockPrepareUserMessageImages).toHaveBeenCalledTimes(1);
+      });
+      await waitFor(() => {
+        expect(screen.getByText("Ready")).toBeTruthy();
+      });
+    } finally {
+      Object.defineProperty(window, "FileReader", {
+        configurable: true,
+        writable: true,
+        value: previousFileReader,
+      });
+    }
   });
 });
 
@@ -1270,7 +1406,7 @@ describe("Composer sending messages", () => {
     );
   });
 
-  it("uploads image-attached messages first and only then sends the final text-only user message", async () => {
+  it("uploads image attachments immediately and only enables send after preparation completes", async () => {
     const prepared = deferred<{
       imageRefs: Array<{ imageId: string; media_type: string }>;
       paths: string[];
@@ -1286,12 +1422,6 @@ describe("Composer sending messages", () => {
     await act(async () => {
       fireEvent.change(fileInput, { target: { files: [makeImageFile("screenshot.png")] } });
     });
-    await waitFor(() => {
-      expect(screen.getByAltText("screenshot.png")).toBeTruthy();
-    });
-
-    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
-
     expect(mockPrepareUserMessageImages).toHaveBeenCalledWith(
       "s1",
       [
@@ -1302,6 +1432,13 @@ describe("Composer sending messages", () => {
       ],
       expect.any(AbortSignal),
     );
+    await waitFor(() => {
+      expect(screen.getByAltText("screenshot.png")).toBeTruthy();
+    });
+    expect(screen.getByText("Uploading...")).toBeTruthy();
+    expect(screen.getByTitle("1 image still uploading.")).toBeTruthy();
+
+    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
     expect(mockSendToSession).not.toHaveBeenCalledWith(
       "s1",
       expect.objectContaining({
@@ -1319,6 +1456,13 @@ describe("Composer sending messages", () => {
       await prepared.promise;
     });
 
+    await waitFor(() => {
+      expect(screen.getByText("Ready")).toBeTruthy();
+      expect(screen.getByTitle("Send message")).toBeTruthy();
+    });
+
+    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
+
     expect(mockSendToSession).toHaveBeenCalledWith(
       "s1",
       expect.objectContaining({
@@ -1330,6 +1474,103 @@ describe("Composer sending messages", () => {
         client_msg_id: expect.any(String),
       }),
     );
+  });
+
+  it("blocks send on failed image preparation until the image is retried or removed", async () => {
+    mockPrepareUserMessageImages.mockRejectedValueOnce(new Error("server rejected image")).mockResolvedValueOnce({
+      imageRefs: [{ imageId: "img-1", media_type: "image/png" }],
+      paths: ["/Users/test/.companion/images/s1/img-1.orig.png"],
+      attachmentAnnotation:
+        "\n[📎 Image attachments -- read these files with the Read tool before responding:\nAttachment 1: /Users/test/.companion/images/s1/img-1.orig.png]",
+    });
+
+    const { container } = render(<Composer sessionId="s1" />);
+    const textarea = container.querySelector("textarea")!;
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+
+    fireEvent.change(textarea, { target: { value: "inspect this screenshot" } });
+    await act(async () => {
+      fireEvent.change(fileInput, { target: { files: [makeImageFile("broken.png")] } });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Upload failed")).toBeTruthy();
+      expect(screen.getByText("server rejected image")).toBeTruthy();
+    });
+    expect(screen.getByText("Remove or retry 1 failed image before sending.")).toBeTruthy();
+
+    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
+    expect(mockSendToSession).not.toHaveBeenCalledWith(
+      "s1",
+      expect.objectContaining({
+        type: "user_message",
+        content: "inspect this screenshot",
+      }),
+    );
+
+    fireEvent.click(screen.getByText("Retry"));
+    await waitFor(() => {
+      expect(screen.getByText("Ready")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByTitle("Send message"));
+    expect(mockSendToSession).toHaveBeenCalledWith(
+      "s1",
+      expect.objectContaining({
+        type: "user_message",
+        content: "inspect this screenshot",
+        imageRefs: [{ imageId: "img-1", media_type: "image/png" }],
+      }),
+    );
+  });
+
+  it("cleans up a prepared attachment when the user removes it before sending", async () => {
+    const { container } = render(<Composer sessionId="s1" />);
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+
+    await act(async () => {
+      fireEvent.change(fileInput, { target: { files: [makeImageFile("cleanup.png")] } });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Ready")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByLabelText("Remove image cleanup.png"));
+
+    await waitFor(() => {
+      expect(mockDeletePreparedUserMessageImage).toHaveBeenCalledWith("s1", "img-1");
+    });
+  });
+
+  it("cleans up a previously prepared attachment before retrying it", async () => {
+    setupMockStore({
+      draft: {
+        text: "retry this image",
+        images: [
+          {
+            id: "retry-1",
+            name: "retry.png",
+            base64: "ZmFrZQ==",
+            mediaType: "image/png",
+            status: "failed",
+            error: "previous upload failed",
+            prepared: {
+              imageRef: { imageId: "img-stale", media_type: "image/png" },
+              path: "/Users/test/.companion/images/s1/img-stale.orig.png",
+            },
+          },
+        ],
+      },
+    });
+
+    render(<Composer sessionId="s1" />);
+    fireEvent.click(screen.getByText("Retry"));
+
+    await waitFor(() => {
+      expect(mockDeletePreparedUserMessageImage).toHaveBeenCalledWith("s1", "img-stale");
+      expect(mockPrepareUserMessageImages).toHaveBeenCalled();
+    });
   });
 
   it("rejects a pending plan without sending a redundant interrupt before the new user message", () => {

@@ -3852,11 +3852,12 @@ describe("handleMessage: codex_pending_input_cancelled", () => {
     expect(draft).toEqual({
       text: "restore this image",
       images: [
-        {
+        expect.objectContaining({
           name: "attachment-1.png",
           base64: "restore-image-data",
           mediaType: "image/png",
-        },
+          status: "uploading",
+        }),
       ],
     });
   });
@@ -3872,9 +3873,15 @@ describe("handleMessage: codex_pending_input_cancelled", () => {
       stage: "delivering",
       images: [
         {
+          id: "draft-image-restore-1",
           name: "attachment-1.png",
           base64: "restore-image-data",
           mediaType: "image/png",
+          status: "ready",
+          prepared: {
+            imageRef: { imageId: "img-1", media_type: "image/png" },
+            path: "/tmp/img.png",
+          },
         },
       ],
       prepared: {
@@ -3908,11 +3915,17 @@ describe("handleMessage: codex_pending_input_cancelled", () => {
     expect(draft).toEqual({
       text: "restore this image",
       images: [
-        {
+        expect.objectContaining({
+          id: "draft-image-restore-1",
           name: "attachment-1.png",
           base64: "restore-image-data",
           mediaType: "image/png",
-        },
+          status: "ready",
+          prepared: {
+            imageRef: { imageId: "img-1", media_type: "image/png" },
+            path: "/tmp/img.png",
+          },
+        }),
       ],
     });
   });
@@ -4099,7 +4112,19 @@ describe("agentSource propagation", () => {
       content: "Inspect this screenshot",
       timestamp: 1000,
       stage: "delivering",
-      images: [{ name: "attachment-1.png", base64: "restore-image-data", mediaType: "image/png" }],
+      images: [
+        {
+          id: "draft-image-1",
+          name: "attachment-1.png",
+          base64: "restore-image-data",
+          mediaType: "image/png",
+          status: "ready",
+          prepared: {
+            imageRef: { imageId: "img-1", media_type: "image/png" },
+            path: "/tmp/img.png",
+          },
+        },
+      ],
       prepared: {
         deliveryContent:
           "Inspect this screenshot\n[📎 Image attachments -- read these files with the Read tool before responding:\nAttachment 1: /tmp/img.png]",
@@ -4135,7 +4160,19 @@ describe("agentSource propagation", () => {
       content: "Inspect this screenshot",
       timestamp: 1000,
       stage: "delivering",
-      images: [{ name: "attachment-1.png", base64: "restore-image-data", mediaType: "image/png" }],
+      images: [
+        {
+          id: "draft-image-2",
+          name: "attachment-1.png",
+          base64: "restore-image-data",
+          mediaType: "image/png",
+          status: "ready",
+          prepared: {
+            imageRef: { imageId: "img-2", media_type: "image/png" },
+            path: "/tmp/img.png",
+          },
+        },
+      ],
       prepared: {
         deliveryContent:
           "Inspect this screenshot\n[📎 Image attachments -- read these files with the Read tool before responding:\nAttachment 1: /tmp/img.png]",

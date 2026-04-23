@@ -1968,6 +1968,15 @@ export function createSessionsRoutes(ctx: RouteContext) {
       attachmentAnnotation: formatAttachmentPathAnnotation(paths),
     });
   });
+  api.delete("/sessions/:id/images/:imageId", async (c) => {
+    if (!imageStore) return c.json({ error: "Image store not configured" }, 503);
+    const id = resolveId(c.req.param("id"));
+    if (!id) return c.json({ error: "Session not found" }, 404);
+    const imageId = c.req.param("imageId");
+    if (!imageId) return c.json({ error: "Missing imageId" }, 400);
+    await imageStore.removeImage(id, imageId);
+    return c.json({ ok: true });
+  });
   api.get("/images/:sessionId/:imageId/thumb", async (c) => {
     if (!imageStore) return c.json({ error: "Image store not configured" }, 503);
     const { sessionId, imageId } = c.req.param();

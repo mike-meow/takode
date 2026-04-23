@@ -109,6 +109,7 @@ export function ComposerInputSurface({
   lightboxSrc,
   setLightboxSrc,
   removeImage,
+  retryImage,
   fileInputRef,
   handleFileSelect,
   handleComposerDragEnter,
@@ -129,10 +130,17 @@ export function ComposerInputSurface({
   topChildren,
   bottomChildren,
 }: {
-  imageSrcs: Array<{ src: string; name: string }>;
+  imageSrcs: Array<{
+    id: string;
+    src: string | null;
+    name: string;
+    status: "reading" | "uploading" | "ready" | "failed";
+    error?: string;
+  }>;
   lightboxSrc: string | null;
   setLightboxSrc: (src: string | null) => void;
   removeImage: (index: number) => void;
+  retryImage: (imageId: string) => void;
   fileInputRef: RefObject<HTMLInputElement | null>;
   handleFileSelect: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleComposerDragEnter: (e: React.DragEvent<HTMLDivElement>) => void;
@@ -157,19 +165,50 @@ export function ComposerInputSurface({
     <div className="max-w-3xl mx-auto">
       {imageSrcs.length > 0 && (
         <div className="flex items-center gap-2 mb-2 flex-wrap">
-          {imageSrcs.map(({ src, name }, i) => (
-            <div key={i} className="relative group">
-              <img
-                src={src}
-                alt={name}
-                className="w-24 h-24 rounded-lg object-cover border border-cc-border cursor-zoom-in hover:opacity-80 transition-opacity"
-                onClick={() => setLightboxSrc(src)}
-              />
+          {imageSrcs.map(({ id, src, name, status, error }, i) => (
+            <div key={id} className="relative group">
+              {src ? (
+                <img
+                  src={src}
+                  alt={name}
+                  className="w-24 h-24 rounded-lg object-cover border border-cc-border cursor-zoom-in hover:opacity-80 transition-opacity"
+                  onClick={() => setLightboxSrc(src)}
+                />
+              ) : (
+                <div className="w-24 h-24 rounded-lg border border-cc-border bg-cc-hover flex items-center justify-center text-[10px] text-cc-muted">
+                  Preparing...
+                </div>
+              )}
+              <div className="pointer-events-none absolute inset-x-1 bottom-1 rounded-md bg-black/65 px-1.5 py-1 text-[10px] text-white">
+                <div className="truncate font-medium">
+                  {status === "reading"
+                    ? "Preparing..."
+                    : status === "uploading"
+                      ? "Uploading..."
+                      : status === "failed"
+                        ? "Upload failed"
+                        : "Ready"}
+                </div>
+                {error && <div className="truncate text-white/80">{error}</div>}
+              </div>
+              {status === "failed" && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    retryImage(id);
+                  }}
+                  className="absolute left-1.5 top-1.5 rounded-full bg-cc-card/95 px-2 py-1 text-[10px] font-medium text-cc-primary shadow-sm transition-colors hover:bg-cc-card cursor-pointer"
+                >
+                  Retry
+                </button>
+              )}
               <button
                 onClick={(e) => {
                   e.stopPropagation();
                   removeImage(i);
                 }}
+                aria-label={`Remove image ${name}`}
                 className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-cc-error text-white flex items-center justify-center text-[10px] opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity cursor-pointer"
               >
                 <svg viewBox="0 0 16 16" fill="currentColor" className="w-2.5 h-2.5">

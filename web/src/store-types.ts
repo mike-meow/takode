@@ -3,6 +3,7 @@ import type { BoardRowData } from "./components/BoardTable.js";
 import type { SearchMatch, SessionSearchCategory, SessionSearchState } from "./store-session-search.js";
 import type {
   ChatMessage,
+  ComposerDraftImage,
   HistoryWindowState,
   McpServerDetail,
   PendingCodexInput,
@@ -298,11 +299,8 @@ export interface AppState {
       lastSeenContentBottom?: number | null;
     },
   ) => void;
-  composerDrafts: Map<string, { text: string; images: Array<{ name: string; base64: string; mediaType: string }> }>;
-  setComposerDraft: (
-    sessionId: string,
-    draft: { text: string; images: Array<{ name: string; base64: string; mediaType: string }> },
-  ) => void;
+  composerDrafts: Map<string, { text: string; images: ComposerDraftImage[] }>;
+  setComposerDraft: (sessionId: string, draft: { text: string; images: ComposerDraftImage[] }) => void;
   clearComposerDraft: (sessionId: string) => void;
   pendingUserUploads: Map<string, PendingUserUpload[]>;
   pendingUserUploadRestorations: Map<string, Map<string, PendingUserUpload>>;

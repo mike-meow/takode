@@ -2,7 +2,6 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api } from "../api.js";
 import { useStore } from "../store.js";
 import { sendToSession } from "../ws.js";
-import { abortPendingUserUpload } from "../pending-user-upload-manager.js";
 import type { ChatMessage, PendingCodexInput, PendingUserUpload } from "../types.js";
 import { YarnBallDot } from "./CatIcons.js";
 import { MessageBubble } from "./MessageBubble.js";
@@ -268,12 +267,15 @@ export function PendingUserUploadList({ sessionId, uploads }: { sessionId: strin
             id: `pending-upload-${upload.id}`,
             role: "user",
             content: upload.content,
-            localImages: upload.images,
+            localImages: upload.images.map(({ name, base64, mediaType }) => ({
+              name,
+              base64,
+              mediaType,
+            })),
             timestamp: upload.timestamp,
             ...(upload.vscodeSelection ? { metadata: { vscodeSelection: upload.vscodeSelection } } : {}),
             ephemeral: true,
-            pendingState:
-              upload.stage === "uploading" ? "uploading" : upload.stage === "delivering" ? "delivering" : "failed",
+            pendingState: upload.stage === "delivering" ? "delivering" : "failed",
             pendingError: upload.error,
             clientMsgId: upload.id,
           };
@@ -309,18 +311,6 @@ export function PendingUserUploadList({ sessionId, uploads }: { sessionId: strin
             <div key={upload.id} className="space-y-1.5">
               <MessageBubble message={msg} sessionId={sessionId} showTimestamp={true} />
               <div className="flex justify-end gap-2 pr-10 text-xs">
-                {upload.stage === "uploading" && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      abortPendingUserUpload(upload.id);
-                      handleRestoreToDraft();
-                    }}
-                    className="rounded-full border border-cc-border bg-cc-card px-3 py-1 text-cc-muted transition-colors hover:bg-cc-hover hover:text-cc-fg cursor-pointer"
-                  >
-                    Cancel upload
-                  </button>
-                )}
                 {upload.stage === "failed" && (
                   <>
                     {upload.prepared && (

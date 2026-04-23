@@ -1,5 +1,6 @@
 import { useStore } from "./store.js";
 import { api } from "./api.js";
+import { createComposerDraftImage } from "./components/composer-image-utils.js";
 import type { BrowserIncomingMessage, ContentBlock, ChatMessage, TaskItem } from "./types.js";
 import { generateUniqueSessionName } from "./utils/names.js";
 import { playNotificationSound, playReviewSound, playNeedsInputSound } from "./utils/notification-sound.js";
@@ -290,7 +291,17 @@ function normalizeHistoryMessages(
   const pendingLocalImagesByClientMsgId = new Map(
     [...pendingUploads, ...restorationUploads]
       .filter((upload) => upload.images.length > 0)
-      .map((upload) => [upload.id, upload.images] as const),
+      .map(
+        (upload) =>
+          [
+            upload.id,
+            upload.images.map(({ name, base64, mediaType }) => ({
+              name,
+              base64,
+              mediaType,
+            })),
+          ] as const,
+      ),
   );
   const chatMessages: ChatMessage[] = [];
   let frozenCount = 0;
@@ -515,9 +526,14 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
     case "codex_pending_input_cancelled": {
       const fallbackImages = data.input.draftImages?.length
         ? data.input.draftImages.map((img) => ({
-            name: img.name,
-            base64: img.base64,
-            mediaType: img.mediaType,
+            ...createComposerDraftImage(
+              {
+                name: img.name,
+                base64: img.base64,
+                mediaType: img.mediaType,
+              },
+              { status: "uploading" },
+            ),
           }))
         : (data.input.clientMsgId
             ? useStore.getState().getPendingUserUploadRestoration(sessionId, data.input.clientMsgId)?.images
@@ -940,7 +956,15 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
         content: data.content,
         timestamp: data.timestamp || Date.now(),
         ...(data.images?.length ? { images: data.images } : {}),
-        ...(pendingUpload?.images?.length ? { localImages: pendingUpload.images } : {}),
+        ...(pendingUpload?.images?.length
+          ? {
+              localImages: pendingUpload.images.map(({ name, base64, mediaType }) => ({
+                name,
+                base64,
+                mediaType,
+              })),
+            }
+          : {}),
         ...(typeof data.client_msg_id === "string" ? { clientMsgId: data.client_msg_id } : {}),
         ...(data.vscodeSelection ? { metadata: { vscodeSelection: data.vscodeSelection } } : {}),
         ...(data.agentSource ? { agentSource: data.agentSource } : {}),

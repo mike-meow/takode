@@ -355,7 +355,7 @@ describe("MessageBubble - user messages", () => {
     useStore.setState({ sessions: nextSessions });
     useStore.getState().setComposerDraft("codex-session", {
       text: "stale draft text",
-      images: [{ name: "stale.png", base64: "stale-data", mediaType: "image/png" }],
+      images: [{ id: "stale-1", name: "stale.png", base64: "stale-data", mediaType: "image/png", status: "ready" }],
     });
 
     const fetchMock = vi.fn(async () => ({
@@ -388,6 +388,7 @@ describe("MessageBubble - user messages", () => {
         expect(draft?.images[0]?.name).toBe("attachment-1.png");
         expect(draft?.images[0]?.mediaType).toBe("image/png");
         expect(draft?.images[0]?.base64).toBeTruthy();
+        expect(draft?.images[0]?.status).toBe("uploading");
       });
       const finalDraft = useStore.getState().composerDrafts.get("codex-session");
       expect(finalDraft?.images?.[0]?.name).not.toBe("stale.png");
@@ -405,7 +406,7 @@ describe("MessageBubble - user messages", () => {
     useStore.setState({ sessions: nextSessions });
     useStore.getState().setComposerDraft("codex-session", {
       text: "stale draft text",
-      images: [{ name: "stale.png", base64: "stale-data", mediaType: "image/png" }],
+      images: [{ id: "stale-2", name: "stale.png", base64: "stale-data", mediaType: "image/png", status: "ready" }],
     });
 
     const fetchMock = vi.fn(async () => ({
@@ -449,7 +450,7 @@ describe("MessageBubble - user messages", () => {
     useStore.setState({ sessions: nextSessions });
     useStore.getState().setComposerDraft("codex-session", {
       text: "stale draft text",
-      images: [{ name: "stale.png", base64: "stale-data", mediaType: "image/png" }],
+      images: [{ id: "stale-3", name: "stale.png", base64: "stale-data", mediaType: "image/png", status: "ready" }],
     });
 
     try {

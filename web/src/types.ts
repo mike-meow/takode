@@ -76,13 +76,29 @@ export function isSubagentToolName(name: string): boolean {
   return SUBAGENT_TOOL_NAMES.has(name);
 }
 
+export interface LocalImageAttachment {
+  name: string;
+  base64: string;
+  mediaType: string;
+}
+
+export interface ComposerDraftImage extends LocalImageAttachment {
+  id: string;
+  status: "reading" | "uploading" | "ready" | "failed";
+  error?: string;
+  prepared?: {
+    imageRef: ImageRef;
+    path: string;
+  };
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant" | "system";
   content: string;
   contentBlocks?: ContentBlock[];
   images?: ImageRef[];
-  localImages?: Array<{ name: string; base64: string; mediaType: string }>;
+  localImages?: LocalImageAttachment[];
   timestamp: number;
   parentToolUseId?: string | null;
   isStreaming?: boolean;
@@ -125,9 +141,9 @@ export interface ChatMessage {
 export interface PendingUserUpload {
   id: string;
   content: string;
-  images: Array<{ name: string; base64: string; mediaType: string }>;
+  images: ComposerDraftImage[];
   timestamp: number;
-  stage: "uploading" | "delivering" | "failed";
+  stage: "delivering" | "failed";
   error?: string;
   vscodeSelection?: VsCodeSelectionMetadata;
   prepared?: {

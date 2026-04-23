@@ -236,6 +236,90 @@ export function PlaygroundInteractiveSections() {
             </div>
           </Card>
           <div className="mt-4" />
+          <Card label="Attachment processing states">
+            <div className="border-t border-cc-border bg-cc-card px-4 py-3">
+              <div className="bg-cc-input-bg border border-cc-border rounded-[14px] overflow-hidden">
+                <div className="flex items-center gap-2 px-4 pt-3 text-[11px] text-cc-warning">
+                  <span className="w-1.5 h-1.5 rounded-full bg-current opacity-80" />
+                  <span>Remove or retry 1 failed image before sending.</span>
+                </div>
+                <div className="flex items-center gap-2 px-4 pt-3 flex-wrap">
+                  <div className="relative">
+                    <div className="w-24 h-24 rounded-lg border border-cc-border bg-[linear-gradient(135deg,#4b5563,#111827)]" />
+                    <div className="pointer-events-none absolute inset-x-1 bottom-1 rounded-md bg-black/65 px-1.5 py-1 text-[10px] text-white">
+                      <div className="truncate font-medium">Uploading...</div>
+                    </div>
+                  </div>
+                  <div className="relative">
+                    <div className="w-24 h-24 rounded-lg border border-cc-border bg-[linear-gradient(135deg,#7f1d1d,#1f2937)]" />
+                    <button
+                      type="button"
+                      className="absolute left-1.5 top-1.5 rounded-full bg-cc-card/95 px-2 py-1 text-[10px] font-medium text-cc-primary shadow-sm"
+                    >
+                      Retry
+                    </button>
+                    <div className="pointer-events-none absolute inset-x-1 bottom-1 rounded-md bg-black/65 px-1.5 py-1 text-[10px] text-white">
+                      <div className="truncate font-medium">Upload failed</div>
+                      <div className="truncate text-white/80">server rejected image</div>
+                    </div>
+                  </div>
+                  <div className="relative">
+                    <div className="w-24 h-24 rounded-lg border border-cc-border bg-[linear-gradient(135deg,#0f766e,#111827)]" />
+                    <div className="pointer-events-none absolute inset-x-1 bottom-1 rounded-md bg-black/65 px-1.5 py-1 text-[10px] text-white">
+                      <div className="truncate font-medium">Ready</div>
+                    </div>
+                  </div>
+                </div>
+                <textarea
+                  readOnly
+                  value="Please compare the ready screenshot once the retry succeeds."
+                  rows={1}
+                  className="w-full px-4 pt-3 pb-1 text-sm bg-transparent resize-none text-cc-fg font-sans-ui"
+                  style={{ minHeight: "36px" }}
+                />
+                <div className="flex items-center justify-between gap-2 px-2.5 pb-2.5 pt-1">
+                  <div className="flex min-w-0 items-center gap-2 overflow-hidden text-[11px] text-cc-muted">
+                    <div className="flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-[12px] font-medium">
+                      <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                        <path
+                          d="M2.5 4l4 4-4 4"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
+                        <path
+                          d="M8.5 4l4 4-4 4"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
+                      </svg>
+                      <span>Agent</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <div className="flex items-center justify-center w-8 h-8 rounded-lg text-cc-muted">
+                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
+                        <rect x="2" y="2" width="12" height="12" rx="2" />
+                        <circle cx="5.5" cy="5.5" r="1" fill="currentColor" stroke="none" />
+                        <path d="M2 11l3-3 2 2 3-4 4 5" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </div>
+                    <div className="flex items-center justify-center w-8 h-8 rounded-full bg-cc-hover text-cc-muted">
+                      <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
+                        <path d="M2 2.5L14 8 2 13.5 2 9.5 9 8 2 6.5Z" />
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </Card>
+          <div className="mt-4" />
           <Card label="Codex `$` skill/app picker">
             <div className="border-t border-cc-border bg-cc-card px-4 py-3">
               <div className="relative bg-cc-input-bg border border-cc-border rounded-[14px] overflow-visible">

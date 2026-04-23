@@ -855,8 +855,20 @@ describe("MessageFeed - empty state", () => {
         id: "pending-upload-1",
         content: "Inspect this screenshot",
         timestamp: Date.now(),
-        stage: "uploading",
-        images: [{ name: "attachment-1.png", base64: "ZmFrZQ==", mediaType: "image/png" }],
+        stage: "delivering",
+        images: [
+          {
+            id: "draft-image-1",
+            name: "attachment-1.png",
+            base64: "ZmFrZQ==",
+            mediaType: "image/png",
+            status: "ready",
+            prepared: {
+              imageRef: { imageId: "img-1", media_type: "image/png" },
+              path: "/tmp/img.png",
+            },
+          },
+        ],
       },
     ]);
 
@@ -864,7 +876,7 @@ describe("MessageFeed - empty state", () => {
 
     expect(screen.queryByText("Start a conversation")).toBeNull();
     expect(screen.getByText("Pending upload")).toBeTruthy();
-    expect(screen.getByText("Uploading image…")).toBeTruthy();
+    expect(screen.getByText("Sending…")).toBeTruthy();
     const image = screen.getByAltText("attachment-1.png") as HTMLImageElement;
     expect(image.src).toContain("data:image/png;base64,ZmFrZQ==");
   });

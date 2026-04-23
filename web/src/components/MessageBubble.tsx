@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useCallback, useContext, useLayoutEffect, useEffect, memo } from "react";
-import type { ChatMessage, ContentBlock, SdkSessionInfo } from "../types.js";
+import type { ChatMessage, ComposerDraftImage, ContentBlock, SdkSessionInfo } from "../types.js";
 import { isSubagentToolName } from "../types.js";
 import { ToolBlock, getToolIcon, getToolLabel, ToolIcon } from "./ToolBlock.js";
 import { MarkdownContent } from "./MarkdownContent.js";
@@ -21,6 +21,7 @@ import { getSingleAnchoredNotification } from "../utils/anchored-notifications.j
 import { FILE_TOOL_NAMES, isToolHiddenFromChat } from "../hooks/use-feed-model.js";
 import { SessionHoverCard } from "./SessionHoverCard.js";
 import type { SidebarSessionItem as SessionItemType } from "../utils/sidebar-session-item.js";
+import { createComposerDraftImage } from "./composer-image-utils.js";
 
 const EMPTY_MESSAGES: ChatMessage[] = [];
 
@@ -86,7 +87,7 @@ function buildDraftImageName(mediaType: string, index: number): string {
 async function restoreMessageImagesToDraft(
   sessionId: string,
   images: NonNullable<ChatMessage["images"]>,
-): Promise<Array<{ name: string; base64: string; mediaType: string }>> {
+): Promise<ComposerDraftImage[]> {
   const restored = await Promise.all(
     images.map(async (img, idx) => {
       const res = await fetch(`/api/images/${encodeURIComponent(sessionId)}/${encodeURIComponent(img.imageId)}/full`);
@@ -97,9 +98,14 @@ async function restoreMessageImagesToDraft(
       let binary = "";
       for (const byte of bytes) binary += String.fromCharCode(byte);
       return {
-        name: buildDraftImageName(img.media_type, idx),
-        base64: btoa(binary),
-        mediaType: blob.type || img.media_type,
+        ...createComposerDraftImage(
+          {
+            name: buildDraftImageName(img.media_type, idx),
+            base64: btoa(binary),
+            mediaType: blob.type || img.media_type,
+          },
+          { status: "uploading" },
+        ),
       };
     }),
   );

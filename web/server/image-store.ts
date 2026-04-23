@@ -145,6 +145,20 @@ export class ImageStore {
     }
   }
 
+  /** Delete a single stored image and its thumbnail. */
+  async removeImage(sessionId: string, imageId: string): Promise<void> {
+    const dir = this.sessionDir(sessionId);
+    try {
+      await access(dir);
+    } catch {
+      return;
+    }
+    const files = await readdir(dir);
+    await Promise.all(
+      files.filter((file) => file.startsWith(`${imageId}.`)).map((file) => rm(join(dir, file), { force: true })),
+    );
+  }
+
   /** Delete all images for a session. */
   async removeSession(sessionId: string): Promise<void> {
     const dir = this.sessionDir(sessionId);

@@ -4638,6 +4638,41 @@ describe("POST /api/sessions/:id/images/prepare-user-message", () => {
       `Attachment 1: ${join(homedir(), ".companion", "images", sid, "img-1.orig.png")}`,
     );
   });
+
+  it("deletes a prepared image when the composer discards it before send", async () => {
+    const imageStore = {
+      store: vi.fn(),
+      removeImage: vi.fn().mockResolvedValue(undefined),
+    } as any;
+
+    const imageApp = new Hono();
+    imageApp.route(
+      "/api",
+      createRoutes(
+        launcher,
+        bridge,
+        sessionStore,
+        tracker,
+        { getInfo: () => null, spawn: () => "", kill: () => {} } as any,
+        undefined,
+        recorder,
+        undefined,
+        timerManager,
+        imageStore,
+      ),
+    );
+
+    const sid = "sess-upload-2";
+    bridge.getOrCreateSession(sid, "codex");
+
+    const res = await imageApp.request(`/api/sessions/${sid}/images/img-stale`, {
+      method: "DELETE",
+    });
+
+    expect(res.status).toBe(200);
+    expect(imageStore.removeImage).toHaveBeenCalledWith(sid, "img-stale");
+    await expect(res.json()).resolves.toEqual({ ok: true });
+  });
 });
 
 // ─── Git ─────────────────────────────────────────────────────────────────────

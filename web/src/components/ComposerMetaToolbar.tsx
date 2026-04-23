@@ -51,6 +51,7 @@ export function ComposerMetaToolbar({
   handleInterrupt,
   handleSend,
   activePendingUploadStage,
+  sendButtonTitle,
   sendPressing,
 }: {
   sessionId: string;
@@ -99,6 +100,7 @@ export function ComposerMetaToolbar({
   handleInterrupt: () => void;
   handleSend: () => void;
   activePendingUploadStage?: string;
+  sendButtonTitle: string;
   sendPressing: boolean;
 }) {
   return (
@@ -441,7 +443,7 @@ export function ComposerMetaToolbar({
                 ? "bg-cc-primary hover:bg-cc-primary-hover text-white cursor-pointer"
                 : "bg-cc-hover text-cc-muted cursor-not-allowed"
             } ${sendPressing ? "animate-[send-morph_500ms_ease-out]" : ""}`}
-            title={activePendingUploadStage === "uploading" ? "Uploading image" : "Send message"}
+            title={activePendingUploadStage === "uploading" ? "Uploading image" : sendButtonTitle}
           >
             {sendPressing ? (
               <CatPawAvatar className="w-5 h-5 sm:w-4 sm:h-4" />

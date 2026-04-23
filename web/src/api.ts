@@ -702,6 +702,17 @@ export const api = {
     return res.json() as Promise<PreparedUserMessageImages>;
   },
 
+  deletePreparedUserMessageImage: async (sessionId: string, imageId: string) => {
+    const res = await fetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}/images/${encodeURIComponent(imageId)}`, {
+      method: "DELETE",
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(err.error || res.statusText);
+    }
+    return res.json() as Promise<{ ok: boolean }>;
+  },
+
   revertToMessage: (sessionId: string, messageId: string) =>
     post(`/sessions/${encodeURIComponent(sessionId)}/revert`, { messageId }),
 

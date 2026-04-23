@@ -196,6 +196,20 @@ describe("ImageStore", () => {
     expect(await store.getOriginalPath("sess-1", ref.imageId)).toBeNull();
   });
 
+  it("removeImage() deletes the original and thumbnail for a single prepared image", async () => {
+    const ref = await store.store("sess-1", TINY_PNG_BASE64, "image/png");
+    const origPath = await waitForValue(() => store.getOriginalPath("sess-1", ref.imageId));
+    const thumbPath = await waitForValue(() => store.getThumbnailPath("sess-1", ref.imageId));
+
+    expect(existsSync(origPath)).toBe(true);
+    expect(existsSync(thumbPath)).toBe(true);
+
+    await store.removeImage("sess-1", ref.imageId);
+
+    expect(await store.getOriginalPath("sess-1", ref.imageId)).toBeNull();
+    expect(await store.getThumbnailPath("sess-1", ref.imageId)).toBeNull();
+  });
+
   // Tests that removeSession is safe to call on nonexistent sessions
   it("removeSession() is safe for nonexistent session", async () => {
     await expect(store.removeSession("nonexistent")).resolves.not.toThrow();

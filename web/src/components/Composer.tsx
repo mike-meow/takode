@@ -21,13 +21,13 @@ import { CollapseAllButton } from "./ComposerCollapseAllButton.js";
 import { CollapsedComposerBar, ComposerInputSurface } from "./ComposerSurface.js";
 import { ComposerStatusBlocks } from "./ComposerStatusBlocks.js";
 import {
+  createComposerDraftImage,
   ensureSupportedFormat,
   getImageFiles,
   getPastedImageFiles,
   hasDraggedImageFiles,
   nextPendingUploadId,
   readFileAsBase64,
-  type ImageAttachment,
 } from "./composer-image-utils.js";
 import {
   DOLLAR_QUERY_PATTERN,
@@ -63,11 +63,13 @@ import type {
   ChatMessage,
   CodexAppReference,
   CodexSkillReference,
+  ComposerDraftImage,
   PendingUserUpload,
   QuestmasterTask,
   SdkSessionInfo,
 } from "../types.js";
 import {
+  abortPendingUserUpload,
   clearPendingUserUploadController,
   registerPendingUserUploadController,
 } from "../pending-user-upload-manager.js";
@@ -82,13 +84,14 @@ const EMPTY_PENDING_USER_UPLOADS: PendingUserUpload[] = [];
 const EMPTY_QUESTS: QuestmasterTask[] = [];
 const EMPTY_SDK_SESSIONS: SdkSessionInfo[] = [];
 const EMPTY_SESSION_NAMES = new Map<string, string>();
+const EMPTY_COMPOSER_IMAGES: ComposerDraftImage[] = [];
 
 export function Composer({ sessionId }: { sessionId: string }) {
   const draft = useStore((s) => s.composerDrafts.get(sessionId));
   const pendingUserUploads = useStore((s) => s.pendingUserUploads.get(sessionId)) ?? EMPTY_PENDING_USER_UPLOADS;
   const replyContext = useStore((s) => s.replyContexts.get(sessionId));
   const text = draft?.text ?? "";
-  const images = draft?.images ?? [];
+  const images = draft?.images ?? EMPTY_COMPOSER_IMAGES;
   const setText = useCallback(
     (t: string | ((prev: string) => string)) => {
       const store = useStore.getState();
@@ -100,7 +103,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
     [sessionId],
   );
   const setImages = useCallback(
-    (updater: ImageAttachment[] | ((prev: ImageAttachment[]) => ImageAttachment[])) => {
+    (updater: ComposerDraftImage[] | ((prev: ComposerDraftImage[]) => ComposerDraftImage[])) => {
       const store = useStore.getState();
       const current = store.composerDrafts.get(sessionId);
       const prevImages = current?.images ?? [];
@@ -144,6 +147,8 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageDragDepthRef = useRef(0);
+  const startedImageUploadsRef = useRef(new Set<string>());
+  const draftImageSourceFilesRef = useRef(new Map<string, File>());
   const menuRef = useRef<HTMLDivElement>(null);
   const dollarMenuRef = useRef<HTMLDivElement>(null);
   const referenceMenuRef = useRef<HTMLDivElement>(null);
@@ -1146,7 +1151,14 @@ export function Composer({ sessionId }: { sessionId: string }) {
   async function handleSend() {
     const store = useStore.getState();
     const msg = text.trim();
-    if ((!msg && images.length === 0) || !isConnected || voiceEditProposal) return;
+    if (
+      (!msg && images.length === 0) ||
+      !isConnected ||
+      voiceEditProposal ||
+      !allImagesReady ||
+      activePendingUserUpload
+    )
+      return;
 
     // Auto-answer pending AskUserQuestion if user types a response.
     // The typed text becomes the "Other..." answer for each question.
@@ -1260,63 +1272,52 @@ export function Composer({ sessionId }: { sessionId: string }) {
 
     if (images.length > 0) {
       const pendingId = nextPendingUploadId();
-      const uploadController = new AbortController();
-      registerPendingUserUploadController(pendingId, uploadController);
+      const paths = images.map((img) => img.prepared?.path).filter((path): path is string => !!path);
+      const imageRefs = images
+        .map((img) => img.prepared?.imageRef)
+        .filter((ref): ref is NonNullable<(typeof images)[number]["prepared"]>["imageRef"] => !!ref);
+      const attachmentAnnotation =
+        paths.length > 0
+          ? `\n[📎 Image attachments -- read these files with the Read tool before responding:\n${paths
+              .map((path, index) => `Attachment ${index + 1}: ${path}`)
+              .join("\n")}]`
+          : "";
+      const deliveryContent = `${finalContent}${attachmentAnnotation}`;
+
       store.addPendingUserUpload(sessionId, {
         id: pendingId,
         content: finalContent,
         images,
         timestamp: Date.now(),
-        stage: "uploading",
+        stage: "delivering",
         ...(vscodeSelectionPayload ? { vscodeSelection: vscodeSelectionPayload } : {}),
+        prepared: {
+          deliveryContent,
+          imageRefs,
+        },
       });
       store.clearComposerDraft(sessionId);
       store.setReplyContext(sessionId, null);
       clearComposerUi();
 
-      try {
-        const prepared = await api.prepareUserMessageImages(
-          sessionId,
-          images.map((img) => ({ mediaType: img.mediaType, data: img.base64 })),
-          uploadController.signal,
-        );
-        clearPendingUserUploadController(pendingId);
-        const deliveryContent = `${finalContent}${prepared.attachmentAnnotation}`;
-        const sent = sendToSession(sessionId, {
-          type: "user_message",
-          content: finalContent,
-          deliveryContent,
-          imageRefs: prepared.imageRefs,
-          session_id: sessionId,
-          client_msg_id: pendingId,
-          ...(vscodeSelectionPayload ? { vscodeSelection: vscodeSelectionPayload } : {}),
-        });
+      const sent = sendToSession(sessionId, {
+        type: "user_message",
+        content: finalContent,
+        deliveryContent,
+        imageRefs,
+        session_id: sessionId,
+        client_msg_id: pendingId,
+        ...(vscodeSelectionPayload ? { vscodeSelection: vscodeSelectionPayload } : {}),
+      });
 
-        store.requestBottomAlignOnNextUserMessage(sessionId);
-        finalizeReplyNotification();
-        store.updatePendingUserUpload(sessionId, pendingId, (upload) => ({
-          ...upload,
-          stage: sent ? "delivering" : "failed",
-          error: sent ? undefined : "Connection lost before delivery.",
-          prepared: {
-            deliveryContent,
-            imageRefs: prepared.imageRefs,
-          },
-        }));
-        return;
-      } catch (err) {
-        clearPendingUserUploadController(pendingId);
-        if (err instanceof DOMException && err.name === "AbortError") {
-          return;
-        }
-        const message = err instanceof Error ? err.message : "Image upload failed";
-        store.updatePendingUserUpload(sessionId, pendingId, (upload) => ({
-          ...upload,
-          stage: "failed",
-          error: message,
-        }));
-        return;
-      }
+      store.requestBottomAlignOnNextUserMessage(sessionId);
+      finalizeReplyNotification();
+      store.updatePendingUserUpload(sessionId, pendingId, (upload) => ({
+        ...upload,
+        stage: sent ? "delivering" : "failed",
+        error: sent ? undefined : "Connection lost before delivery.",
+      }));
+      return;
     }
 
     const sent = sendToSession(sessionId, {
@@ -1576,28 +1577,210 @@ export function Composer({ sessionId }: { sessionId: string }) {
     sendToSession(sessionId, { type: "interrupt" });
   }
 
+  const startImagePreparation = useCallback(
+    async (image: ComposerDraftImage) => {
+      const uploadController = new AbortController();
+      registerPendingUserUploadController(image.id, uploadController);
+      try {
+        const prepared = await api.prepareUserMessageImages(
+          sessionId,
+          [{ mediaType: image.mediaType, data: image.base64 }],
+          uploadController.signal,
+        );
+        const imageRef = prepared.imageRefs[0];
+        const path = prepared.paths[0];
+        if (!imageRef || !path) {
+          throw new Error("Image preparation returned incomplete metadata");
+        }
+        setImages((prev) =>
+          prev.map((current) =>
+            current.id === image.id
+              ? {
+                  ...current,
+                  status: "ready",
+                  error: undefined,
+                  prepared: { imageRef, path },
+                }
+              : current,
+          ),
+        );
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          return;
+        }
+        const message = err instanceof Error ? err.message : "Image upload failed";
+        setImages((prev) =>
+          prev.map((current) =>
+            current.id === image.id
+              ? {
+                  ...current,
+                  status: "failed",
+                  error: message,
+                  prepared: undefined,
+                }
+              : current,
+          ),
+        );
+      } finally {
+        clearPendingUserUploadController(image.id);
+        startedImageUploadsRef.current.delete(image.id);
+      }
+    },
+    [sessionId, setImages],
+  );
+
+  const cleanupPreparedImage = useCallback(
+    async (image: ComposerDraftImage) => {
+      const imageId = image.prepared?.imageRef.imageId;
+      if (!imageId) return;
+      try {
+        await api.deletePreparedUserMessageImage(sessionId, imageId);
+      } catch (err) {
+        console.error("Failed to clean up prepared image:", err);
+      }
+    },
+    [sessionId],
+  );
+
+  const readDraftImageFile = useCallback(
+    async (imageId: string, file: File) => {
+      try {
+        const raw = await readFileAsBase64(file);
+        const { base64, mediaType } = await ensureSupportedFormat(raw.base64, raw.mediaType);
+        draftImageSourceFilesRef.current.delete(imageId);
+        setImages((prev) =>
+          prev.map((image) =>
+            image.id === imageId
+              ? {
+                  ...image,
+                  base64,
+                  mediaType,
+                  status: "uploading",
+                  error: undefined,
+                }
+              : image,
+          ),
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Image read failed";
+        setImages((prev) =>
+          prev.map((image) =>
+            image.id === imageId
+              ? {
+                  ...image,
+                  status: "failed",
+                  error: message,
+                  prepared: undefined,
+                }
+              : image,
+          ),
+        );
+      }
+    },
+    [setImages],
+  );
+
   async function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
     await appendImages(getImageFiles(e.target.files));
     e.target.value = "";
   }
 
   function removeImage(index: number) {
+    const target = images[index];
+    if (target) {
+      abortPendingUserUpload(target.id);
+      startedImageUploadsRef.current.delete(target.id);
+      draftImageSourceFilesRef.current.delete(target.id);
+      void cleanupPreparedImage(target);
+    }
     setImages((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  async function retryImage(imageId: string) {
+    const target = images.find((image) => image.id === imageId);
+    const sourceFile = draftImageSourceFilesRef.current.get(imageId);
+    abortPendingUserUpload(imageId);
+    startedImageUploadsRef.current.delete(imageId);
+    if (target) {
+      await cleanupPreparedImage(target);
+    }
+    if (sourceFile) {
+      setImages((prev) =>
+        prev.map((image) =>
+          image.id === imageId
+            ? {
+                ...image,
+                status: "reading",
+                error: undefined,
+                prepared: undefined,
+              }
+            : image,
+        ),
+      );
+      void readDraftImageFile(imageId, sourceFile);
+      return;
+    }
+    if (target?.base64) {
+      const retryingImage: ComposerDraftImage = {
+        ...target,
+        status: "uploading",
+        error: undefined,
+        prepared: undefined,
+      };
+      setImages((prev) =>
+        prev.map((image) =>
+          image.id === imageId
+            ? {
+                ...retryingImage,
+              }
+            : image,
+        ),
+      );
+      startedImageUploadsRef.current.add(imageId);
+      void startImagePreparation(retryingImage);
+      return;
+    }
+    setImages((prev) =>
+      prev.map((image) =>
+        image.id === imageId
+          ? {
+              ...image,
+              status: "failed",
+              error: "Original file is no longer available for retry.",
+              prepared: undefined,
+            }
+          : image,
+      ),
+    );
   }
 
   async function appendImages(files: File[], buildName?: (file: File, index: number) => string) {
     if (files.length === 0) return;
-    const newImages: ImageAttachment[] = [];
-    for (const [index, file] of files.entries()) {
-      const raw = await readFileAsBase64(file);
-      const { base64, mediaType } = await ensureSupportedFormat(raw.base64, raw.mediaType);
-      newImages.push({
-        name: buildName?.(file, index) ?? file.name,
-        base64,
-        mediaType,
-      });
-    }
+    const newImages = files.map((file, index) =>
+      createComposerDraftImage(
+        {
+          name: buildName?.(file, index) ?? file.name,
+          base64: "",
+          mediaType: file.type || "image/png",
+        },
+        { status: "reading" },
+      ),
+    );
+    newImages.forEach((image, index) => {
+      const file = files[index];
+      if (file) {
+        draftImageSourceFilesRef.current.set(image.id, file);
+      }
+    });
     setImages((prev) => [...prev, ...newImages]);
+
+    await Promise.all(
+      files.map(async (file, index) => {
+        const draftImage = newImages[index];
+        if (!draftImage) return;
+        await readDraftImageFile(draftImage.id, file);
+      }),
+    );
   }
 
   async function handlePaste(e: React.ClipboardEvent) {
@@ -1655,6 +1838,21 @@ export function Composer({ sessionId }: { sessionId: string }) {
     textareaRef.current?.focus();
   }
 
+  useEffect(() => {
+    images.forEach((image) => {
+      if (
+        image.status !== "uploading" ||
+        image.prepared ||
+        !image.base64 ||
+        startedImageUploadsRef.current.has(image.id)
+      ) {
+        return;
+      }
+      startedImageUploadsRef.current.add(image.id);
+      void startImagePreparation(image);
+    });
+  }, [images, startImagePreparation]);
+
   function selectMode(mode: string) {
     if (!isConnected) return;
     if (isCodex) {
@@ -1704,11 +1902,26 @@ export function Composer({ sessionId }: { sessionId: string }) {
   });
 
   const isRunning = useStore((s) => s.sessionStatus.get(sessionId) === "running");
-  const activePendingUserUpload = pendingUserUploads.find(
-    (upload) => upload.stage === "uploading" || upload.stage === "delivering",
-  );
+  const activePendingUserUpload = pendingUserUploads.find((upload) => upload.stage === "delivering");
+  const readingImageCount = images.filter((image) => image.status === "reading").length;
+  const uploadingImageCount = images.filter((image) => image.status === "uploading").length;
+  const failedImageCount = images.filter((image) => image.status === "failed").length;
+  const readyImageCount = images.filter((image) => image.status === "ready" && image.prepared).length;
+  const allImagesReady = images.length === readyImageCount;
+  const attachmentBlockReason =
+    readingImageCount > 0
+      ? `Preparing ${readingImageCount} image${readingImageCount === 1 ? "" : "s"} before upload.`
+      : uploadingImageCount > 0
+        ? `${uploadingImageCount} image${uploadingImageCount === 1 ? "" : "s"} still uploading.`
+        : failedImageCount > 0
+          ? `Remove or retry ${failedImageCount} failed image${failedImageCount === 1 ? "" : "s"} before sending.`
+          : null;
   const canSend =
-    (text.trim().length > 0 || images.length > 0) && isConnected && !voiceEditProposal && !activePendingUserUpload;
+    (text.trim().length > 0 || images.length > 0) &&
+    isConnected &&
+    !voiceEditProposal &&
+    !activePendingUserUpload &&
+    allImagesReady;
   const isVoiceInteractionActive = isPreparing || isRecording || isTranscribing;
   const hasActiveReplyContext = !!replyContext;
 
@@ -1781,7 +1994,14 @@ export function Composer({ sessionId }: { sessionId: string }) {
   }, []);
 
   const imageSrcs = useMemo(
-    () => images.map((img) => ({ src: `data:${img.mediaType};base64,${img.base64}`, name: img.name })),
+    () =>
+      images.map((img) => ({
+        id: img.id,
+        src: img.base64 ? `data:${img.mediaType};base64,${img.base64}` : null,
+        name: img.name,
+        status: img.status,
+        error: img.error,
+      })),
     [images],
   );
   const voiceUnsupportedTooltip =
@@ -1808,6 +2028,8 @@ export function Composer({ sessionId }: { sessionId: string }) {
             : voiceIdleTitle);
   const voiceButtonDisabled = !isConnected || isTranscribing || isPreparing || !!voiceEditProposal;
   const compactVoiceButtonDisabled = voiceButtonDisabled;
+  const sendButtonTitle =
+    attachmentBlockReason || (activePendingUserUpload ? "Delivering pending message" : "Send message");
 
   useEffect(() => {
     if (voiceSupported || isRecording || isTranscribing) {
@@ -1846,6 +2068,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
           lightboxSrc={lightboxSrc}
           setLightboxSrc={setLightboxSrc}
           removeImage={removeImage}
+          retryImage={retryImage}
           fileInputRef={fileInputRef}
           handleFileSelect={handleFileSelect}
           handleComposerDragEnter={handleComposerDragEnter}
@@ -1921,6 +2144,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
                 vscodeSelectionTitle={
                   vscodeSelectionPayload ? buildVsCodeSelectionPrompt(vscodeSelectionPayload) : null
                 }
+                attachmentBlockReason={attachmentBlockReason}
                 onRetryTranscription={retryTranscription}
                 onDismissVoiceError={() => {
                   setFailedTranscription(null);
@@ -1988,6 +2212,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
               handleInterrupt={handleInterrupt}
               handleSend={handleSend}
               activePendingUploadStage={activePendingUserUpload?.stage}
+              sendButtonTitle={sendButtonTitle}
               sendPressing={sendPressing}
             />
           }

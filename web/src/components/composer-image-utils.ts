@@ -1,13 +1,29 @@
-export interface ImageAttachment {
-  name: string;
-  base64: string;
-  mediaType: string;
-}
+import type { ComposerDraftImage, LocalImageAttachment } from "../types.js";
 
 export function nextPendingUploadId(): string {
   const uuid = globalThis.crypto?.randomUUID?.();
   if (uuid) return uuid;
   return `pending-upload-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+export function createComposerDraftImage(
+  image: LocalImageAttachment,
+  overrides: Partial<ComposerDraftImage> = {},
+): ComposerDraftImage {
+  return {
+    id: overrides.id ?? nextPendingUploadId(),
+    status: overrides.status ?? "uploading",
+    ...image,
+    ...overrides,
+  };
+}
+
+export function toLocalImageAttachment(image: LocalImageAttachment): LocalImageAttachment {
+  return {
+    name: image.name,
+    base64: image.base64,
+    mediaType: image.mediaType,
+  };
 }
 
 export function getImageFiles(files: ArrayLike<File> | Iterable<File> | null | undefined): File[] {
