@@ -132,6 +132,10 @@ function setStoreMessages(sessionId: string, messages: ChatMessage[]) {
   mockStoreValues.messages = new Map([[sessionId, messages]]);
 }
 
+function setStoreNotifications(sessionId: string, notifications: Array<Record<string, unknown>>) {
+  mockStoreValues.sessionNotifications = new Map([[sessionId, notifications]]);
+}
+
 describe("MessageFeed duplicate rendering regression", () => {
   beforeEach(() => {
     for (const key of Object.keys(mockStoreValues)) delete mockStoreValues[key];
@@ -168,5 +172,90 @@ describe("MessageFeed duplicate rendering regression", () => {
 
     expect(screen.getAllByText("q-514 is complete and q-521 is unblocked.")).toHaveLength(1);
     expect(screen.getAllByText("q-521 can be dispatched now")).toHaveLength(1);
+  });
+
+  it("renders a tool-only notification-bearing assistant as one rich review banner", () => {
+    // q-568: once a `takode notify` call has an anchored notification, the
+    // message must stay a full assistant message so the banner survives and the
+    // fallback notify chip does not render alongside it.
+    const sid = "test-tool-only-notification-single-chip";
+    setStoreMessages(sid, [
+      makeMessage({ id: "u1", role: "user", content: "Tell me when the fix is ready." }),
+      makeMessage({
+        id: "a1",
+        role: "assistant",
+        content: "",
+        contentBlocks: [
+          {
+            type: "tool_use",
+            id: "tu-review-single-chip",
+            name: "Bash",
+            input: { command: 'TAKODE_API_PORT=3455 takode notify review "q-568 single rich chip"' },
+          },
+        ],
+        notification: {
+          category: "review",
+          timestamp: Date.now(),
+          summary: "q-568 single rich chip",
+        },
+      }),
+      makeMessage({ id: "u2", role: "user", content: "Thanks" }),
+    ]);
+    setStoreNotifications(sid, [
+      {
+        id: "n-review-single-chip",
+        category: "review",
+        timestamp: Date.now(),
+        messageId: "a1",
+        summary: "q-568 single rich chip",
+        done: false,
+      },
+    ]);
+
+    render(<MessageFeed sessionId={sid} />);
+
+    expect(screen.getAllByText("q-568 single rich chip")).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /Mark as reviewed|Mark as not reviewed/ })).toHaveLength(1);
+    expect(screen.queryByText("Ready for review")).toBeNull();
+  });
+
+  it("renders the lagged tool-only anchored-store notification as one rich review banner", () => {
+    // q-568: exact skeptic-review path. The tool-only assistant message has not
+    // received inline `notification` metadata yet, but the store already has a
+    // single anchored notification for its message ID.
+    const sid = "test-tool-only-lagged-anchored-store";
+    setStoreMessages(sid, [
+      makeMessage({ id: "u1", role: "user", content: "Tell me when the fix is ready." }),
+      makeMessage({
+        id: "a1",
+        role: "assistant",
+        content: "",
+        contentBlocks: [
+          {
+            type: "tool_use",
+            id: "tu-review-lagged",
+            name: "Bash",
+            input: { command: 'TAKODE_API_PORT=3455 takode notify review "q-568 single rich chip"' },
+          },
+        ],
+      }),
+      makeMessage({ id: "u2", role: "user", content: "Thanks" }),
+    ]);
+    setStoreNotifications(sid, [
+      {
+        id: "n-review-lagged",
+        category: "review",
+        timestamp: Date.now(),
+        messageId: "a1",
+        summary: "q-568 single rich chip",
+        done: false,
+      },
+    ]);
+
+    render(<MessageFeed sessionId={sid} />);
+
+    expect(screen.getAllByText("q-568 single rich chip")).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /Mark as reviewed|Mark as not reviewed/ })).toHaveLength(1);
+    expect(screen.queryByText("Ready for review")).toBeNull();
   });
 });

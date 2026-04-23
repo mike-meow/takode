@@ -563,6 +563,7 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
           contentBlocks: mergedBlocks,
           timestamp: data.timestamp || existing.timestamp,
           stopReason: msg.stop_reason || existing.stopReason,
+          ...(data.notification ? { notification: data.notification } : {}),
           ...(typeof data.turn_duration_ms === "number" ? { turnDurationMs: data.turn_duration_ms } : {}),
         });
       } else {

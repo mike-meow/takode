@@ -17,6 +17,7 @@ import { PawTrailAvatar, HidePawContext } from "./PawTrail.js";
 import { QuestClaimBlock } from "./QuestClaimBlock.js";
 import { generateReplyPreview } from "../utils/reply-preview.js";
 import { parseReplyContext } from "../utils/reply-context.js";
+import { getSingleAnchoredNotification } from "../utils/anchored-notifications.js";
 import { FILE_TOOL_NAMES, isToolHiddenFromChat } from "../hooks/use-feed-model.js";
 import { SessionHoverCard } from "./SessionHoverCard.js";
 import type { SidebarSessionItem as SessionItemType } from "../utils/sidebar-session-item.js";
@@ -1268,12 +1269,17 @@ function AssistantMessage({
   const hasTextBlock = blocks.some((b) => b.type === "text" && b.text.trim().length > 0);
   const hasThinkingBlock = blocks.some((b) => b.type === "thinking" && b.thinking.trim().length > 0);
   const shouldRenderContentFallback = message.content.trim().length > 0 && !hasTextBlock && !hasThinkingBlock;
-  const suppressToolNotificationMarker = !!message.notification;
+  const inboxAnchoredNotification = useStore((s) => {
+    if (!sessionId || message.notification || !message.id) return null;
+    return getSingleAnchoredNotification(s.sessionNotifications?.get(sessionId), message.id);
+  });
+  const resolvedNotification = message.notification ?? inboxAnchoredNotification;
+  const suppressToolNotificationMarker = !!resolvedNotification;
 
   // Only show copy-message button when there's actual text content to copy
   const hasTextContent = message.content || blocks.some((b) => b.type === "text" || b.type === "thinking");
 
-  if (blocks.length === 0 && !message.content.trim() && !message.notification) {
+  if (blocks.length === 0 && !message.content.trim() && !resolvedNotification) {
     return null;
   }
 
@@ -1283,10 +1289,10 @@ function AssistantMessage({
         {!hidePaw && <PawTrailAvatar />}
         <div ref={contentRef} className="flex-1 min-w-0 pr-6">
           <MarkdownContent text={message.content} sessionId={sessionId} searchHighlight={searchHighlight} />
-          {message.notification && (
+          {resolvedNotification && (
             <NotificationMarker
-              category={message.notification.category}
-              summary={message.notification.summary}
+              category={resolvedNotification.category}
+              summary={resolvedNotification.summary}
               sessionId={sessionId}
               messageId={message.id}
             />
@@ -1344,10 +1350,10 @@ function AssistantMessage({
             />
           );
         })}
-        {message.notification && (
+        {resolvedNotification && (
           <NotificationMarker
-            category={message.notification.category}
-            summary={message.notification.summary}
+            category={resolvedNotification.category}
+            summary={resolvedNotification.summary}
             sessionId={sessionId}
             messageId={message.id}
           />

@@ -1064,6 +1064,50 @@ describe("MessageBubble - assistant messages", () => {
     }
   });
 
+  it("promotes a matching inbox notification into the rich banner when message metadata has not landed yet", () => {
+    // q-568: notification_update can arrive before the assistant message has its
+    // inline `notification` metadata. When the inbox already has exactly one
+    // notification for this message, the richer summary-bearing banner should
+    // win immediately and suppress the fallback `takode notify` chip.
+    const prevNotifications = useStore.getState().sessionNotifications;
+    const nextNotifications = new Map(prevNotifications);
+    nextNotifications.set("review-session", [
+      {
+        id: "n-review-store-fallback",
+        category: "review",
+        timestamp: Date.now(),
+        messageId: "asst-review-store-fallback",
+        summary: "q-568 single rich chip",
+        done: false,
+      },
+    ]);
+    useStore.setState({ sessionNotifications: nextNotifications });
+
+    try {
+      const msg = makeMessage({
+        id: "asst-review-store-fallback",
+        role: "assistant",
+        content: "The verification summary is ready.",
+        contentBlocks: [
+          {
+            type: "tool_use",
+            id: "tu-review-store-fallback",
+            name: "Bash",
+            input: { command: 'TAKODE_API_PORT=3455 takode notify review "q-568 single rich chip"' },
+          },
+        ],
+      });
+
+      render(<MessageBubble message={msg} sessionId="review-session" />);
+
+      expect(screen.getAllByText("q-568 single rich chip")).toHaveLength(1);
+      expect(screen.getAllByRole("button", { name: /Mark as reviewed|Mark as not reviewed/ })).toHaveLength(1);
+      expect(screen.queryByText("Ready for review")).toBeNull();
+    } finally {
+      useStore.setState({ sessionNotifications: prevNotifications });
+    }
+  });
+
   it("renders completed review notifications with the undo label and done styling", () => {
     const prevNotifications = useStore.getState().sessionNotifications;
     const nextNotifications = new Map(prevNotifications);
