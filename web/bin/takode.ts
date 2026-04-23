@@ -5,6 +5,8 @@
  */
 
 import { readFileSync, readdirSync } from "node:fs";
+import { readFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { getDefaultModelForBackend } from "../shared/backend-defaults.js";
 import type { HerdSessionsResponse } from "../shared/herd-types.js";
 import {
@@ -296,13 +298,68 @@ function err(message: string): never {
   process.exit(1);
 }
 
+let stdinTextPromise: Promise<string> | null = null;
+
 async function readStdinText(): Promise<string> {
-  process.stdin.setEncoding("utf8");
-  let data = "";
-  for await (const chunk of process.stdin) {
-    data += chunk;
+  if (!stdinTextPromise) {
+    process.stdin.setEncoding("utf8");
+    stdinTextPromise = (async () => {
+      let data = "";
+      for await (const chunk of process.stdin) {
+        data += chunk;
+      }
+      return data;
+    })();
   }
-  return data;
+  return stdinTextPromise;
+}
+
+async function readOptionTextFile(pathOrDash: string, flagName: string): Promise<string> {
+  if (pathOrDash === "-") {
+    return readStdinText();
+  }
+
+  try {
+    return await readFile(resolve(pathOrDash), "utf-8");
+  } catch (error) {
+    const detail = error instanceof Error && error.message ? `: ${error.message}` : "";
+    err(`Cannot read ${flagName} input from ${pathOrDash}${detail}`);
+  }
+}
+
+async function readOptionalRichTextOption(
+  flags: Record<string, string | boolean>,
+  args: {
+    inlineFlag: string;
+    fileFlag: string;
+    label: string;
+  },
+): Promise<string | undefined> {
+  const inlineValue = flags[args.inlineFlag];
+  const fileValue = flags[args.fileFlag];
+
+  if (inlineValue === true) {
+    err(`--${args.inlineFlag} requires a value`);
+  }
+  if (fileValue === true) {
+    err(`--${args.fileFlag} requires a path or '-' for stdin`);
+  }
+  if (inlineValue !== undefined && fileValue !== undefined) {
+    err(`Use either --${args.inlineFlag} or --${args.fileFlag}, not both`);
+  }
+
+  const value =
+    typeof fileValue === "string"
+      ? await readOptionTextFile(fileValue, `--${args.fileFlag}`)
+      : typeof inlineValue === "string"
+        ? inlineValue
+        : undefined;
+
+  if (value !== undefined && !value.trim()) {
+    err(`${args.label} is required`);
+  }
+
+  return value;
 }
 
 /** Parse --key value pairs from argv. Supports --flag (boolean true). */
@@ -2210,7 +2267,8 @@ Options:
   --backend <type>             AI backend: "claude", "codex", or "claude-sdk" (default: inherit from leader)
   --cwd <path>                 Working directory (default: current directory)
   --count <n>                  Number of sessions to spawn (default: 1)
-  --message <text>             Initial message to send to spawned sessions
+  --message <text>             Short inline initial message
+  --message-file <path>|-      Read the initial message from a file or stdin
   --model <id>                 Override the session model
   --ask / --no-ask             Override inherited ask mode
   --internet / --no-internet   Codex-only: enable or disable internet access
@@ -2224,13 +2282,15 @@ Examples:
   takode spawn --backend claude-sdk --count 2
   takode spawn --backend codex --model gpt-5.4 --reasoning-effort high --internet
   takode spawn --count 3 --no-worktree
-  takode spawn --reviewer 42 --message "Review the changes for q-10"`;
+  takode spawn --message-file /tmp/dispatch.txt
+  printf '%s\n' 'Review q-10' 'Treat \`$(nope)\` as literal text.' | takode spawn --reviewer 42 --message-file -`;
 
 const SPAWN_ALLOWED_FLAGS = new Set([
   "backend",
   "cwd",
   "count",
   "message",
+  "message-file",
   "model",
   "ask",
   "no-ask",
@@ -2337,7 +2397,12 @@ async function handleSpawn(base: string, args: string[]): Promise<void> {
   if (flags["fixed-name"] !== undefined && !fixedName) {
     err("--fixed-name requires a non-empty name value.");
   }
-  const message = typeof flags.message === "string" ? flags.message.trim() : "";
+  const message =
+    (await readOptionalRichTextOption(flags, {
+      inlineFlag: "message",
+      fileFlag: "message-file",
+      label: "Initial message",
+    })) ?? "";
   const model = resolveStringFlag(flags, "model", "model");
   const askOverride = resolveBooleanToggleFlag(flags, "ask", "no-ask");
   const internetOverride = resolveBooleanToggleFlag(flags, "internet", "no-internet");
@@ -4072,6 +4137,7 @@ Examples:
   takode info 1 --json
   takode spawn --backend claude-sdk --count 2
   takode spawn --backend codex --count 3 --message "Check flaky tests"
+  takode spawn --message-file /tmp/dispatch.txt
   takode tasks 1
   takode timers 1
   takode scan 1

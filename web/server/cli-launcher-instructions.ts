@@ -196,7 +196,7 @@ Use the worker-slot summary from \`takode list\` / \`takode spawn\` directly. Th
 
 ## Skeptic Review
 
-Spawn reviewers with: \`takode spawn --reviewer <session-number> --message "..."\`
+Spawn reviewers with: \`takode spawn --reviewer <session-number> --message-file <path>\` (or \`--message-file -\` for stdin)
 Keep spawn messages minimal -- provide context pointers only (quest ID, session reference, message range) plus the explicit sentence \`Use the installed /skeptic-review workflow for this review.\` Full workflow details are in the SKEPTIC_REVIEWING stage of \`quest-journey.md\`.
 
 ## Work Board

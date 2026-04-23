@@ -1451,6 +1451,264 @@ describe("takode spawn", () => {
     expect(parsed.sessions.map((s) => s.sessionNum)).toEqual([31, 32]);
   });
 
+  it("reads multiline shell-sensitive initial messages from --message-file without mangling them", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "takode-spawn-message-file-"));
+    const messagePath = join(tmp, "dispatch.txt");
+    const createBodies: JsonObject[] = [];
+    const messageCalls: Array<{ id: string; body: JsonObject }> = [];
+    const shellSensitiveMessage =
+      "First line with $HOME\nSecond line with `code` and $(danger)\nThird line with {json: true}\n";
+    writeFileSync(messagePath, shellSensitiveMessage, "utf-8");
+
+    const server = createServer(async (req, res) => {
+      const method = req.method || "";
+      const url = req.url || "";
+
+      if (method === "GET" && url === "/api/takode/me") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ sessionId: "leader-file", isOrchestrator: true }));
+        return;
+      }
+
+      if (method === "GET" && url === "/api/sessions/leader-file") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ sessionId: "leader-file", sessionNum: 13, name: "File Leader", backendType: "claude" }));
+        return;
+      }
+
+      if (method === "POST" && url === "/api/sessions/create") {
+        createBodies.push(await readJson(req));
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ sessionId: "worker-file" }));
+        return;
+      }
+
+      if (method === "GET" && url === "/api/sessions/worker-file/info") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            sessionId: "worker-file",
+            sessionNum: 33,
+            name: "Worker File",
+            state: "running",
+            backendType: "claude",
+            model: "",
+            cwd: "/tmp/spawn-test",
+            createdAt: Date.now(),
+            cliConnected: true,
+            isGenerating: false,
+            askPermission: true,
+            isWorktree: true,
+          }),
+        );
+        return;
+      }
+
+      if (method === "POST" && url === "/api/sessions/worker-file/message") {
+        messageCalls.push({ id: "worker-file", body: await readJson(req) });
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true }));
+        return;
+      }
+
+      if (method === "GET" && url === "/api/takode/sessions") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify([]));
+        return;
+      }
+
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    });
+
+    server.listen(0);
+    await once(server, "listening");
+    const port = (server.address() as AddressInfo).port;
+
+    try {
+      const result = await runTakode(
+        ["spawn", "--port", String(port), "--message-file", messagePath, "--json"],
+        {
+          ...process.env,
+          COMPANION_SESSION_ID: "leader-file",
+          COMPANION_AUTH_TOKEN: "auth-file",
+        },
+        tmp,
+      );
+
+      expect(result.status).toBe(0);
+      expect(createBodies).toHaveLength(1);
+      expect(messageCalls).toEqual([
+        {
+          id: "worker-file",
+          body: {
+            content: shellSensitiveMessage,
+            agentSource: { sessionId: "leader-file", sessionLabel: "#13 File Leader" },
+          },
+        },
+      ]);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        count: 1,
+        message: shellSensitiveMessage,
+      });
+    } finally {
+      server.close();
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("reads multiline shell-sensitive initial messages from stdin via --message-file -", async () => {
+    const createBodies: JsonObject[] = [];
+    const messageCalls: Array<{ id: string; body: JsonObject }> = [];
+    const stdinMessage =
+      "First line from stdin with $HOME\nSecond line with `code` and $(danger)\nThird line with {json: true}\n";
+
+    const server = createServer(async (req, res) => {
+      const method = req.method || "";
+      const url = req.url || "";
+
+      if (method === "GET" && url === "/api/takode/me") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ sessionId: "leader-stdin-file", isOrchestrator: true }));
+        return;
+      }
+
+      if (method === "GET" && url === "/api/sessions/leader-stdin-file") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            sessionId: "leader-stdin-file",
+            sessionNum: 14,
+            name: "Stdin File Leader",
+            backendType: "claude",
+          }),
+        );
+        return;
+      }
+
+      if (method === "POST" && url === "/api/sessions/create") {
+        createBodies.push(await readJson(req));
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ sessionId: "worker-stdin-file" }));
+        return;
+      }
+
+      if (method === "GET" && url === "/api/sessions/worker-stdin-file/info") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            sessionId: "worker-stdin-file",
+            sessionNum: 34,
+            name: "Worker Stdin File",
+            state: "running",
+            backendType: "claude",
+            model: "",
+            cwd: "/tmp/spawn-test",
+            createdAt: Date.now(),
+            cliConnected: true,
+            isGenerating: false,
+            askPermission: true,
+            isWorktree: true,
+          }),
+        );
+        return;
+      }
+
+      if (method === "POST" && url === "/api/sessions/worker-stdin-file/message") {
+        messageCalls.push({ id: "worker-stdin-file", body: await readJson(req) });
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true }));
+        return;
+      }
+
+      if (method === "GET" && url === "/api/takode/sessions") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify([]));
+        return;
+      }
+
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    });
+
+    server.listen(0);
+    await once(server, "listening");
+    const port = (server.address() as AddressInfo).port;
+
+    try {
+      const result = await runTakode(
+        ["spawn", "--port", String(port), "--message-file", "-", "--json"],
+        {
+          ...process.env,
+          COMPANION_SESSION_ID: "leader-stdin-file",
+          COMPANION_AUTH_TOKEN: "auth-stdin-file",
+        },
+        process.cwd(),
+        stdinMessage,
+      );
+
+      expect(result.status).toBe(0);
+      expect(createBodies).toHaveLength(1);
+      expect(messageCalls).toEqual([
+        {
+          id: "worker-stdin-file",
+          body: {
+            content: stdinMessage,
+            agentSource: { sessionId: "leader-stdin-file", sessionLabel: "#14 Stdin File Leader" },
+          },
+        },
+      ]);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        count: 1,
+        message: stdinMessage,
+      });
+    } finally {
+      server.close();
+    }
+  });
+
+  it("rejects mixing --message with --message-file", async () => {
+    const server = createServer(async (req, res) => {
+      const method = req.method || "";
+      const url = req.url || "";
+
+      if (method === "GET" && url === "/api/takode/me") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ sessionId: "leader-mix", isOrchestrator: true }));
+        return;
+      }
+
+      if (method === "GET" && url === "/api/sessions/leader-mix") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ sessionId: "leader-mix", backendType: "claude" }));
+        return;
+      }
+
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    });
+
+    server.listen(0);
+    await once(server, "listening");
+    const port = (server.address() as AddressInfo).port;
+
+    try {
+      const result = await runTakode(
+        ["spawn", "--port", String(port), "--message", "inline", "--message-file", "-", "--json"],
+        {
+          ...process.env,
+          COMPANION_SESSION_ID: "leader-mix",
+          COMPANION_AUTH_TOKEN: "auth-mix",
+        },
+      );
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("Use either --message or --message-file, not both");
+    } finally {
+      server.close();
+    }
+  });
+
   it("claude leader spawns claude workers by default (no --backend needed)", async () => {
     // Regression test: previously, omitting --backend always defaulted to codex,
     // even when the leader was a Claude session.

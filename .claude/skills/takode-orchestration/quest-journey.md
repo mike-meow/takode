@@ -75,7 +75,9 @@ Every dispatched task follows the Quest Journey lifecycle. The work board (`tako
 ### Spawn Command
 
 ```bash
-takode spawn --reviewer <session-number> --message 'Load skills first: /takode-orchestration, /quest, /skeptic-review. Use the installed /skeptic-review workflow for this review. Then skeptic review session #X / quest q-Y. Read changes: takode peek X --from N --show-tools'
+takode spawn --reviewer <session-number> --message-file - <<'EOF'
+Load skills first: /takode-orchestration, /quest, /skeptic-review. Use the installed /skeptic-review workflow for this review. Then skeptic review session #X / quest q-Y. Read changes: takode peek X --from N --show-tools
+EOF
 ```
 
 The `--reviewer` flag automatically:

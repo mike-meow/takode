@@ -286,16 +286,17 @@ takode send 2 "Please also add tests for the edge cases"
 takode send 2 "Actually, skip the auth tests" --correction
 ```
 
-**Shell quoting safety.** Do not put complex text payloads directly inside double quotes if they may contain backticks, `$(...)`, quotes, braces, copied CLI output, or other shell-sensitive content. Your shell can execute or corrupt that text locally before the target command receives it. For `takode send` / `takode spawn --message`, build multi-line or shell-like text with a single-quoted heredoc and pass the variable instead:
+**Shell quoting safety.** Do not put complex text payloads directly inside double quotes if they may contain backticks, `$(...)`, quotes, braces, copied CLI output, or other shell-sensitive content. Your shell can execute or corrupt that text locally before the target command receives it. Use Takode's non-inline input paths instead: `takode send --stdin` for sent messages, and `takode spawn --message-file <path>` or `--message-file -` for spawn dispatches.
 
 ```bash
-msg=$(cat <<'EOF'
+takode send 2 --stdin <<'EOF'
 Investigate the failing path.
 Treat `foo $(bar)` as literal text, not shell.
 EOF
-)
-takode send 2 "$msg"
-takode spawn --message "$msg"
+takode spawn --message-file - <<'EOF'
+Investigate the failing path.
+Treat `foo $(bar)` as literal text, not shell.
+EOF
 ```
 
 For quest comments or summaries, prefer the quest CLI's safer rich-text path instead of inline shell quoting:
@@ -319,17 +320,18 @@ Claim worker sessions under your orchestrator. Each session can only have one le
 takode herd 2 3 5
 ```
 
-### `takode spawn [--backend claude|codex] [--count N] [--message "..."] [--cwd DIR] [--no-worktree] [--fixed-name "..."] [--reviewer <session>] [--json]`
+### `takode spawn [--backend claude|codex] [--count N] [--message "..."] [--message-file <path>|-] [--cwd DIR] [--no-worktree] [--fixed-name "..."] [--reviewer <session>] [--json]`
 
 Create worker sessions and auto-herd them to yourself. **Sessions always use worktrees by default.** Never pass `--no-worktree` unless the user explicitly asks for it or the project's repo instructions require it -- even investigation and debugging tasks should get worktrees since they almost always lead to code changes. Use `--fixed-name` only for reviewer sessions (regular workers get auto-named from their quest). Use `--reviewer <session>` to create a reviewer session linked to a parent worker.
 
 ```bash
 takode spawn                                                    # worktree session (default)
 takode spawn --backend claude --count 3 --cwd ~/repos/app --message "Run tests"
-takode spawn --reviewer 5 --no-worktree --fixed-name "Skeptic review of #5" --message "Review session #5 / quest q-42."
+takode spawn --message-file /tmp/dispatch.txt
+takode spawn --reviewer 5 --no-worktree --fixed-name "Skeptic review of #5" --message-file /tmp/reviewer-dispatch.txt
 ```
 
-The same shell quoting rule applies to `--message`: avoid inline double-quoted dispatch bodies when the text may contain shell-like content. Use the heredoc pattern above instead.
+Use `--message` only for short inline text. For multiline or shell-like dispatch bodies, prefer `--message-file <path>` or `--message-file -`.
 
 ### `takode rename <session> <name>`
 

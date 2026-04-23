@@ -101,20 +101,24 @@ Do not leave a quest in `QUEUED` just because `takode list` says `Worker slots u
 **Spawn fresh** when there is no strong context advantage for reuse, or when the context can be recovered safely from artifacts and history. Point the new worker to relevant quests or past sessions for context:
 
 ```bash
-takode spawn --message "<dispatch>"
+takode spawn --message-file - <<'EOF'
+<dispatch>
+EOF
 ```
 
-**Shell quoting safety.** Do not paste complex text payloads inline inside double quotes if they may contain backticks, `$(...)`, quotes, braces, copied CLI output, or other shell-sensitive content. Your shell can execute or corrupt that text locally before the target command receives it. For `takode send` / `takode spawn --message`, compose multi-line or shell-like payloads with a single-quoted heredoc and pass the variable instead:
+**Shell quoting safety.** Do not paste complex text payloads inline inside double quotes if they may contain backticks, `$(...)`, quotes, braces, copied CLI output, or other shell-sensitive content. Your shell can execute or corrupt that text locally before the target command receives it. Use Takode's non-inline input paths instead: `takode send --stdin` for sent messages, and `takode spawn --message-file <path>` or `--message-file -` for spawn dispatches.
 
 ```bash
-msg=$(cat <<'EOF'
+takode spawn --message-file - <<'EOF'
 Work on [q-XX](quest:q-XX). Read the quest and claim it: `quest show q-XX && quest claim q-XX`.
 If logs include `$(...)` or backticks, treat them as literal text.
 Return a plan for approval before implementing. After you send the plan, stop and wait for approval.
 EOF
-)
-takode spawn --message "$msg"
-takode send 2 "$msg"
+takode send 2 --stdin <<'EOF'
+Work on [q-XX](quest:q-XX). Read the quest and claim it: `quest show q-XX && quest claim q-XX`.
+If logs include `$(...)` or backticks, treat them as literal text.
+Return a plan for approval before implementing. After you send the plan, stop and wait for approval.
+EOF
 ```
 
 For quest comments or port summaries, prefer the quest CLI's safer rich-text path instead of inline shell quoting:
@@ -147,7 +151,7 @@ Work on [q-XX](quest:q-XX). Read the quest and claim it: `quest show q-XX && que
 Return a plan for approval before implementing. After you send the plan, stop and wait for approval.
 ```
 
-When sending this template through the shell, prefer the heredoc pattern above over inline double quotes if you might include shell-like text or multi-line additions.
+When sending this template through the shell, prefer `takode spawn --message-file -` or `takode spawn --message-file <path>` over inline `--message` if you might include shell-like text or multi-line additions.
 
 If the worker needs additional context (related sessions, rejected approaches, user decisions), add it to the quest description before dispatching. Workers have the same tools and skills you do -- they run `quest show q-XX` themselves.
 
