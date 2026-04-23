@@ -15,6 +15,13 @@ import type {
 } from "./types.js";
 import { api, type PRStatusResponse, type CreationProgressEvent, type CreateSessionOpts } from "./api.js";
 import type { BoardRowData } from "./components/BoardTable.js";
+import {
+  DEFAULT_SHORTCUT_SETTINGS,
+  shortcutsEqual,
+  type ShortcutActionId,
+  type ShortcutPresetId,
+  type ShortcutSettings,
+} from "./shortcuts.js";
 import { isEmbeddedInVsCode } from "./utils/embed-context.js";
 import { isDesktopShellLayout } from "./utils/layout.js";
 import { normalizeForSearch } from "../shared/search-utils.js";
@@ -469,6 +476,7 @@ interface AppState {
   notificationSound: boolean;
   notificationDesktop: boolean;
   showUsageBars: boolean;
+  shortcutSettings: ShortcutSettings;
   sidebarOpen: boolean;
   // Session ID whose info popover is currently open in TopBar.
   sessionInfoOpenSessionId: string | null;
@@ -503,6 +511,10 @@ interface AppState {
   toggleNotificationDesktop: () => void;
   setShowUsageBars: (v: boolean) => void;
   toggleShowUsageBars: () => void;
+  setShortcutsEnabled: (enabled: boolean) => void;
+  setShortcutPreset: (preset: ShortcutPresetId) => void;
+  setShortcutOverride: (actionId: ShortcutActionId, binding: string | null | undefined) => void;
+  resetShortcutOverrides: () => void;
   setSidebarOpen: (v: boolean) => void;
   setSessionInfoOpenSessionId: (sessionId: string | null) => void;
   setReorderMode: (v: boolean) => void;
@@ -800,6 +812,33 @@ function getInitialZoomLevel(): number {
   return 0.9;
 }
 
+function getInitialShortcutSettings(): ShortcutSettings {
+  if (typeof window === "undefined") return DEFAULT_SHORTCUT_SETTINGS;
+  const stored = scopedGetItem("cc-shortcuts");
+  if (!stored) return DEFAULT_SHORTCUT_SETTINGS;
+  try {
+    const parsed = JSON.parse(stored) as Partial<ShortcutSettings> | null;
+    const preset = parsed?.preset;
+    const enabled = parsed?.enabled;
+    const overrides = parsed?.overrides;
+    return {
+      enabled: typeof enabled === "boolean" ? enabled : DEFAULT_SHORTCUT_SETTINGS.enabled,
+      preset:
+        preset === "standard" || preset === "vscode-light" || preset === "vim-light"
+          ? preset
+          : DEFAULT_SHORTCUT_SETTINGS.preset,
+      overrides: overrides && typeof overrides === "object" ? overrides : {},
+    };
+  } catch {
+    return DEFAULT_SHORTCUT_SETTINGS;
+  }
+}
+
+function persistShortcutSettings(settings: ShortcutSettings): void {
+  if (typeof window === "undefined") return;
+  scopedSetItem("cc-shortcuts", JSON.stringify(settings));
+}
+
 function getInitialCollapsedSet(key: string): Set<string> {
   if (typeof window === "undefined") return new Set();
   try {
@@ -972,6 +1011,7 @@ export const useStore = create<AppState>((set) => ({
   notificationSound: getInitialNotificationSound(),
   notificationDesktop: getInitialNotificationDesktop(),
   showUsageBars: typeof window !== "undefined" ? scopedGetItem("cc-show-usage") !== "false" : true,
+  shortcutSettings: getInitialShortcutSettings(),
   sidebarOpen: typeof window !== "undefined" ? isDesktopShellLayout(getInitialZoomLevel()) : true,
   sessionInfoOpenSessionId: null,
   reorderMode: false,
@@ -1087,6 +1127,40 @@ export const useStore = create<AppState>((set) => ({
       const next = !s.showUsageBars;
       scopedSetItem("cc-show-usage", String(next));
       return { showUsageBars: next };
+    }),
+  setShortcutsEnabled: (enabled) =>
+    set((s) => {
+      const shortcutSettings = { ...s.shortcutSettings, enabled };
+      if (shortcutsEqual(shortcutSettings, s.shortcutSettings)) return {};
+      persistShortcutSettings(shortcutSettings);
+      return { shortcutSettings };
+    }),
+  setShortcutPreset: (preset) =>
+    set((s) => {
+      const shortcutSettings = { ...s.shortcutSettings, preset };
+      if (shortcutsEqual(shortcutSettings, s.shortcutSettings)) return {};
+      persistShortcutSettings(shortcutSettings);
+      return { shortcutSettings };
+    }),
+  setShortcutOverride: (actionId, binding) =>
+    set((s) => {
+      const overrides = { ...s.shortcutSettings.overrides };
+      if (binding === undefined) {
+        delete overrides[actionId];
+      } else {
+        overrides[actionId] = binding;
+      }
+      const shortcutSettings = { ...s.shortcutSettings, overrides };
+      if (shortcutsEqual(shortcutSettings, s.shortcutSettings)) return {};
+      persistShortcutSettings(shortcutSettings);
+      return { shortcutSettings };
+    }),
+  resetShortcutOverrides: () =>
+    set((s) => {
+      const shortcutSettings = { ...s.shortcutSettings, overrides: {} };
+      if (shortcutsEqual(shortcutSettings, s.shortcutSettings)) return {};
+      persistShortcutSettings(shortcutSettings);
+      return { shortcutSettings };
     }),
   setSidebarOpen: (v) => set({ sidebarOpen: v }),
   setSessionInfoOpenSessionId: (sessionId) => set({ sessionInfoOpenSessionId: sessionId }),
@@ -2547,6 +2621,7 @@ export const useStore = create<AppState>((set) => ({
       treeGroups: [],
       treeAssignments: new Map(),
       treeNodeOrder: new Map(),
+      shortcutSettings: DEFAULT_SHORTCUT_SETTINGS,
       sessionInfoOpenSessionId: null,
       activeTab: "chat" as const,
       diffPanelSelectedFile: new Map(),

@@ -44,6 +44,7 @@ import { ContextMenu, type ContextMenuItem } from "./ContextMenu.js";
 import { PawTrailAvatar, HidePawContext } from "./PawTrail.js";
 import type { SidebarSessionItem } from "../utils/sidebar-session-item.js";
 import { buildHerdGroupBadgeThemes, getHerdGroupLeaderId } from "../utils/herd-group-theme.js";
+import { getShortcutTitle } from "../shortcuts.js";
 
 // ─── Mock Data ──────────────────────────────────────────────────────────────
 
@@ -1243,6 +1244,7 @@ export function Playground() {
     const prevPendingCodexInputs = new Map(demoSessionIds.map((id) => [id, snapshot.pendingCodexInputs.get(id)]));
     const sidebarTimerDemoIds = ["leader-alpha"];
     const prevSessionTimers = new Map(sidebarTimerDemoIds.map((id) => [id, snapshot.sessionTimers.get(id)]));
+    const prevShortcutSettings = snapshot.shortcutSettings;
 
     const session: SessionState = {
       session_id: sessionId,
@@ -1279,6 +1281,8 @@ export function Playground() {
     store.setStreamingStats(sessionId, { startedAt: Date.now() - 12000, outputTokens: 1200 });
     store.addPermission(sessionId, PERM_BASH);
     store.addPermission(sessionId, PERM_DYNAMIC);
+    store.setShortcutsEnabled(true);
+    store.setShortcutPreset("standard");
 
     const sectionedSession: SessionState = {
       ...session,
@@ -1782,6 +1786,7 @@ export function Playground() {
           historyLoading,
           pendingCodexInputs,
           sessionTimers,
+          shortcutSettings: prevShortcutSettings,
         };
       });
       // Clean up quest-named demo state (sessions themselves are cleaned by the loop above)
@@ -1909,6 +1914,50 @@ export function Playground() {
             className="max-w-3xl border border-cc-border rounded-xl overflow-hidden bg-cc-card h-[620px]"
           >
             <ChatView sessionId={MOCK_SESSION_ID} />
+          </div>
+        </Section>
+
+        <Section
+          title="Shortcut Hints"
+          description="Hover helper titles for the first shortcut-enabled chat controls."
+        >
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              title={getShortcutTitle(
+                "Search messages",
+                { enabled: true, preset: "standard", overrides: {} },
+                "search_session",
+                "MacIntel",
+              )}
+              className="px-3 py-2 rounded-lg bg-cc-hover text-sm text-cc-fg"
+            >
+              Search
+            </button>
+            <button
+              type="button"
+              title={getShortcutTitle(
+                "New session",
+                { enabled: true, preset: "standard", overrides: {} },
+                "new_session",
+                "MacIntel",
+              )}
+              className="px-3 py-2 rounded-lg bg-cc-hover text-sm text-cc-fg"
+            >
+              New Session
+            </button>
+            <button
+              type="button"
+              title={getShortcutTitle(
+                "Terminal",
+                { enabled: true, preset: "standard", overrides: {} },
+                "toggle_terminal",
+                "MacIntel",
+              )}
+              className="px-3 py-2 rounded-lg bg-cc-hover text-sm text-cc-fg"
+            >
+              Terminal
+            </button>
           </div>
         </Section>
 

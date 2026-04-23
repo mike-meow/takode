@@ -37,6 +37,7 @@ import {
   getHerdGroupLeaderId,
   type HerdGroupBadgeTheme,
 } from "../utils/herd-group-theme.js";
+import { getShortcutTitle } from "../shortcuts.js";
 
 /** Restrict drag movement to vertical axis only. */
 const restrictToVerticalAxis: Modifier = ({ transform }) => ({
@@ -183,6 +184,7 @@ export function Sidebar() {
   const serverName = useStore((s) => s.serverName);
   const setServerName = useStore((s) => s.setServerName);
   const zoomLevel = useStore((s) => s.zoomLevel ?? 1);
+  const shortcutSettings = useStore((s) => s.shortcutSettings);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchResults, setSearchResults] = useState<SessionSearchResult[] | null>(null);
@@ -194,6 +196,7 @@ export function Sidebar() {
   const isScheduledPage = route.page === "scheduled";
   const isQuestmasterPage = route.page === "questmaster";
   const isDesktopLayout = isDesktopShellLayout(zoomLevel);
+  const shortcutPlatform = typeof navigator === "undefined" ? undefined : navigator.platform;
 
   // Poll for SDK sessions on mount
   useEffect(() => {
@@ -936,6 +939,7 @@ export function Sidebar() {
 
         <button
           onClick={handleNewSession}
+          title={getShortcutTitle("New session", shortcutSettings, "new_session", shortcutPlatform)}
           className="w-full py-2 px-3 text-sm font-medium rounded-[10px] bg-cc-primary hover:bg-cc-primary-hover text-white transition-colors duration-150 flex items-center justify-center gap-1.5 cursor-pointer"
         >
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
@@ -1240,7 +1244,12 @@ export function Sidebar() {
         <SidebarUsageBar />
         <div className="flex items-center justify-around">
           <button
-            title="Terminal"
+            title={getShortcutTitle(
+              isTerminalPage ? "Return to chat" : "Terminal",
+              shortcutSettings,
+              "toggle_terminal",
+              shortcutPlatform,
+            )}
             onClick={() => {
               if (isTerminalPage) {
                 const sessionId = useStore.getState().currentSessionId;

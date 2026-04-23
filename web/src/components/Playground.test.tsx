@@ -22,6 +22,7 @@ describe("Playground", () => {
 
     expect(screen.getByText("Component Playground")).toBeTruthy();
     expect(screen.getByText("Real Chat Stack")).toBeTruthy();
+    expect(screen.getByText("Shortcut Hints")).toBeTruthy();
     expect(screen.getByText("Timer Messages")).toBeTruthy();
 
     const realChat = screen.getByTestId("playground-real-chat-stack");

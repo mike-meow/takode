@@ -10,6 +10,14 @@ import {
   type PushoverEventFilters,
 } from "../api.js";
 import { useStore, COLOR_THEMES } from "../store.js";
+import {
+  SHORTCUT_ACTIONS,
+  SHORTCUT_PRESET_OPTIONS,
+  formatShortcut,
+  getEffectiveShortcutBinding,
+  getShortcutBindingOptions,
+  getShortcutPresetBindings,
+} from "../shortcuts.js";
 import { NamerDebugPanel } from "./NamerDebugPanel.js";
 import { AutoApprovalDebugPanel } from "./AutoApprovalDebugPanel.js";
 import { TranscriptionDebugPanel } from "./TranscriptionDebugPanel.js";
@@ -45,7 +53,13 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
   const setNotificationDesktop = useStore((s) => s.setNotificationDesktop);
   const showUsageBars = useStore((s) => s.showUsageBars);
   const toggleShowUsageBars = useStore((s) => s.toggleShowUsageBars);
+  const shortcutSettings = useStore((s) => s.shortcutSettings);
+  const setShortcutsEnabled = useStore((s) => s.setShortcutsEnabled);
+  const setShortcutPreset = useStore((s) => s.setShortcutPreset);
+  const setShortcutOverride = useStore((s) => s.setShortcutOverride);
+  const resetShortcutOverrides = useStore((s) => s.resetShortcutOverrides);
   const notificationApiAvailable = typeof Notification !== "undefined";
+  const shortcutPlatform = typeof navigator === "undefined" ? undefined : navigator.platform;
 
   // Edit/Write blocks default-expanded preference (localStorage, global)
   const [editBlocksExpanded, setEditBlocksExpanded] = useState(() => {
@@ -553,6 +567,13 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
     }
   }
 
+  const shortcutPresetBindings = getShortcutPresetBindings(shortcutSettings.preset);
+  const shortcutPresetIsCustom = SHORTCUT_ACTIONS.some(
+    (action) =>
+      Object.prototype.hasOwnProperty.call(shortcutSettings.overrides, action.id) &&
+      shortcutSettings.overrides[action.id] !== shortcutPresetBindings[action.id],
+  );
+
   return (
     <div
       ref={scrollRef}
@@ -683,7 +704,111 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
           )}
         </CollapsibleSection>
 
-        {/* ── 3. CLI & Backends ────────────────────────────────── */}
+        {/* ── 3. Shortcuts ─────────────────────────────────────── */}
+        <CollapsibleSection
+          id="shortcuts"
+          title="Shortcuts"
+          description="Keyboard shortcuts stay off by default. Choose a preset, then optionally override individual actions."
+        >
+          <button
+            type="button"
+            onClick={() => setShortcutsEnabled(!shortcutSettings.enabled)}
+            className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-sm bg-cc-hover text-cc-fg hover:bg-cc-active transition-colors cursor-pointer"
+          >
+            <span>Enabled</span>
+            <span className="text-xs text-cc-muted">{shortcutSettings.enabled ? "On" : "Off"}</span>
+          </button>
+
+          <div>
+            <label className="block text-sm font-medium mb-1.5" htmlFor="shortcut-preset">
+              Preset
+            </label>
+            <select
+              id="shortcut-preset"
+              value={shortcutSettings.preset}
+              onChange={(e) => setShortcutPreset(e.target.value as typeof shortcutSettings.preset)}
+              className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60"
+            >
+              {SHORTCUT_PRESET_OPTIONS.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1.5 text-xs text-cc-muted">
+              {SHORTCUT_PRESET_OPTIONS.find((option) => option.id === shortcutSettings.preset)?.description}
+            </p>
+            {shortcutPresetIsCustom && (
+              <p className="mt-1 text-xs text-cc-primary">
+                Individual actions below are overriding this preset.
+              </p>
+            )}
+          </div>
+
+          <div className="rounded-xl border border-cc-border overflow-hidden">
+            {SHORTCUT_ACTIONS.map((action, index) => {
+              const effectiveBinding = getEffectiveShortcutBinding(shortcutSettings, action.id);
+              const overrideValue = Object.prototype.hasOwnProperty.call(shortcutSettings.overrides, action.id)
+                ? shortcutSettings.overrides[action.id] ?? "__off__"
+                : "__preset__";
+              const options = getShortcutBindingOptions(action.id, shortcutPlatform, shortcutSettings.preset);
+              return (
+                <div
+                  key={action.id}
+                  className={`${index > 0 ? "border-t border-cc-border" : ""} px-3 py-3 bg-cc-hover/30 space-y-2`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-cc-fg">{action.label}</div>
+                      <p className="mt-0.5 text-xs text-cc-muted">{action.description}</p>
+                    </div>
+                    <span className="shrink-0 text-xs font-medium text-cc-primary">
+                      {effectiveBinding ? formatShortcut(effectiveBinding, shortcutPlatform) : "Off"}
+                    </span>
+                  </div>
+                  <label className="block">
+                    <span className="sr-only">{action.label} binding</span>
+                    <select
+                      value={overrideValue}
+                      onChange={(e) => {
+                        const next = e.target.value;
+                        if (next === "__preset__") {
+                          setShortcutOverride(action.id, undefined);
+                          return;
+                        }
+                        setShortcutOverride(action.id, next === "__off__" ? null : next);
+                      }}
+                      className="w-full px-3 py-2 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60"
+                    >
+                      <option value="__preset__">Preset default</option>
+                      {options.map((option) => (
+                        <option
+                          key={`${action.id}-${option.source}-${option.value ?? "off"}`}
+                          value={option.value ?? "__off__"}
+                        >
+                          {option.label} - {option.source}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-cc-muted">Hover-enabled controls will show shortcut hints only while shortcuts are on.</p>
+            <button
+              type="button"
+              onClick={resetShortcutOverrides}
+              className="px-3 py-2 rounded-lg text-xs font-medium bg-cc-hover text-cc-fg hover:bg-cc-active transition-colors cursor-pointer"
+            >
+              Reset Overrides
+            </button>
+          </div>
+        </CollapsibleSection>
+
+        {/* ── 4. CLI & Backends ────────────────────────────────── */}
         <CollapsibleSection
           id="cli"
           title="CLI & Backends"

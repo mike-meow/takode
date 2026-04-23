@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { useStore } from "./store.js";
+import { useStore, getSessionSearchState } from "./store.js";
 import { connectSession, disconnectSession, sendVsCodeSelectionUpdate } from "./ws.js";
 import { api, checkHealth } from "./api.js";
 
@@ -11,6 +11,7 @@ import {
   messageIndexFromHash,
   scrollToMessageIndex,
 } from "./utils/routing.js";
+import { navigateTo } from "./utils/navigation.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { ChatView } from "./components/ChatView.js";
 import { TopBar } from "./components/TopBar.js";
@@ -35,6 +36,7 @@ import {
   maybeReadVsCodeSelectionContext,
 } from "./utils/vscode-context.js";
 import { ensureVsCodeEditorPreference } from "./utils/vscode-bridge.js";
+import { getMatchingShortcutAction, isShortcutEventTargetEditable, performShortcutAction } from "./shortcuts.js";
 
 type TakodeDebugWindow = Window &
   typeof globalThis & {
@@ -60,6 +62,7 @@ export default function App() {
     zoomLevel,
     currentSessionId,
     currentSessionConnectionStatus,
+    shortcutSettings,
     sidebarOpen,
     taskPanelOpen,
     activeTab,
@@ -73,6 +76,7 @@ export default function App() {
       zoomLevel: s.zoomLevel,
       currentSessionId: s.currentSessionId,
       currentSessionConnectionStatus: s.currentSessionId ? (s.connectionStatus.get(s.currentSessionId) ?? null) : null,
+      shortcutSettings: s.shortcutSettings,
       sidebarOpen: s.sidebarOpen,
       taskPanelOpen: s.taskPanelOpen,
       activeTab: s.activeTab,
@@ -196,6 +200,49 @@ export default function App() {
     const interval = setInterval(poll, 10_000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (isShortcutEventTargetEditable(event.target)) return;
+      const state = useStore.getState();
+      const actionId = getMatchingShortcutAction(state.shortcutSettings, event);
+      if (!actionId) return;
+
+      const currentSessionId = state.currentSessionId;
+      const currentSession =
+        (currentSessionId ? state.sessions.get(currentSessionId) : null) ??
+        (currentSessionId ? state.sdkSessions.find((session) => session.sessionId === currentSessionId) : null) ??
+        null;
+      const handled = performShortcutAction(actionId, {
+        route,
+        currentSessionId,
+        currentSessionCwd: currentSession?.cwd ?? null,
+        terminalCwd: state.terminalCwd,
+        activeTab: state.activeTab,
+        isSearchOpen: currentSessionId ? getSessionSearchState(state, currentSessionId).isOpen : false,
+        sessions: state.sdkSessions.map((session) => ({
+          sessionId: session.sessionId,
+          createdAt: session.createdAt,
+          archived: session.archived,
+          cronJobId: session.cronJobId ?? null,
+        })),
+        openSearch: state.openSessionSearch,
+        closeSearch: state.closeSessionSearch,
+        openNewSessionModal: () => state.openNewSessionModal(),
+        openTerminal: state.openTerminal,
+        setActiveTab: state.setActiveTab,
+        navigateTo,
+        navigateToSession,
+        navigateToMostRecentSession: () => navigateToMostRecentSession(),
+      });
+      if (!handled) return;
+      event.preventDefault();
+      event.stopPropagation();
+    }
+
+    document.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () => document.removeEventListener("keydown", handleKeyDown, { capture: true });
+  }, [route, shortcutSettings]);
 
   useEffect(() => {
     // Size the parent chain (html → body → #root) to the viewport so the

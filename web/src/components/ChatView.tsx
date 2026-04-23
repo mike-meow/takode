@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { useStore, getSessionSearchState } from "../store.js";
+import { useStore } from "../store.js";
 import { api } from "../api.js";
 import { MessageFeed } from "./MessageFeed.js";
 import { Composer } from "./Composer.js";
@@ -38,8 +38,6 @@ export function ChatView({ sessionId }: { sessionId: string }) {
     cliEverConnected,
     cliDisconnectReason,
     isArchived,
-    searchIsOpen,
-    openSearch,
   } = useStore(
     useShallow((s) => ({
       sessionPerms: s.pendingPermissions.get(sessionId),
@@ -50,32 +48,12 @@ export function ChatView({ sessionId }: { sessionId: string }) {
       cliEverConnected: s.cliEverConnected.get(sessionId) ?? false,
       cliDisconnectReason: s.cliDisconnectReason.get(sessionId) ?? null,
       isArchived: s.sdkSessions.find((sdk) => sdk.sessionId === sessionId)?.archived ?? false,
-      searchIsOpen: getSessionSearchState(s, sessionId).isOpen,
-      openSearch: s.openSessionSearch,
     })),
   );
 
   // Within-session search
   const searchInputRef = useRef<HTMLInputElement>(null);
   useSessionSearch(sessionId);
-
-  // Global Cmd+F / Ctrl+F handler
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      const isMod = e.metaKey || e.ctrlKey;
-      if (isMod && e.key === "f") {
-        e.preventDefault();
-        if (searchIsOpen) {
-          searchInputRef.current?.focus();
-          searchInputRef.current?.select();
-        } else {
-          openSearch(sessionId);
-        }
-      }
-    }
-    document.addEventListener("keydown", handleKeyDown, { capture: true });
-    return () => document.removeEventListener("keydown", handleKeyDown, { capture: true });
-  }, [sessionId, searchIsOpen, openSearch]);
 
   const perms = useMemo(() => (sessionPerms ? Array.from(sessionPerms.values()) : []), [sessionPerms]);
 

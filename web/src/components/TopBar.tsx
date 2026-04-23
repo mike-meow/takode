@@ -11,6 +11,7 @@ import { isDesktopShellLayout } from "../utils/layout.js";
 import { SessionInfoPopover } from "./SessionInfoPopover.js";
 import { coalesceSessionViewModel, type SessionViewModel } from "../utils/session-view-model.js";
 import { questLabel } from "../utils/quest-helpers.js";
+import { getShortcutTitle } from "../shortcuts.js";
 
 const ATTENTION_SESSION_KEY_SEPARATOR = "\u001f";
 
@@ -480,6 +481,8 @@ function SearchToggleButton({ sessionId }: { sessionId: string }) {
       closeSearch: s.closeSessionSearch,
     })),
   );
+  const shortcutSettings = useStore((s) => s.shortcutSettings);
+  const shortcutPlatform = typeof navigator === "undefined" ? undefined : navigator.platform;
 
   return (
     <button
@@ -487,7 +490,7 @@ function SearchToggleButton({ sessionId }: { sessionId: string }) {
       className={`flex items-center justify-center w-7 h-7 rounded-lg transition-colors cursor-pointer ${
         isOpen ? "text-cc-primary bg-cc-active" : "text-cc-muted hover:text-cc-fg hover:bg-cc-hover"
       }`}
-      title="Search messages (⌘F)"
+      title={getShortcutTitle("Search messages", shortcutSettings, "search_session", shortcutPlatform)}
     >
       <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
         <path d="M11.742 10.344a6.5 6.5 0 10-1.397 1.398h-.001l3.85 3.85a1 1 0 001.415-1.414l-3.85-3.85-.017.016zm-5.442.156a5 5 0 110-10 5 5 0 010 10z" />

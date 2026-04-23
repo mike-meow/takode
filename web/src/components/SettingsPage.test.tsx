@@ -8,6 +8,11 @@ interface MockStoreState {
   notificationSound: boolean;
   notificationDesktop: boolean;
   showUsageBars: boolean;
+  shortcutSettings: {
+    enabled: boolean;
+    preset: "standard" | "vscode-light" | "vim-light";
+    overrides: Record<string, string | null>;
+  };
   zoomLevel: number;
   currentSessionId: string | null;
   sdkSessions: Array<{ sessionId: string; createdAt: number; archived?: boolean; cronJobId?: string }>;
@@ -16,6 +21,10 @@ interface MockStoreState {
   toggleNotificationSound: ReturnType<typeof vi.fn>;
   setNotificationDesktop: ReturnType<typeof vi.fn>;
   toggleShowUsageBars: ReturnType<typeof vi.fn>;
+  setShortcutsEnabled: ReturnType<typeof vi.fn>;
+  setShortcutPreset: ReturnType<typeof vi.fn>;
+  setShortcutOverride: ReturnType<typeof vi.fn>;
+  resetShortcutOverrides: ReturnType<typeof vi.fn>;
   setZoomLevel: ReturnType<typeof vi.fn>;
   setServerRestarting: ReturnType<typeof vi.fn>;
 }
@@ -29,6 +38,11 @@ function createMockState(overrides: Partial<MockStoreState> = {}): MockStoreStat
     notificationSound: true,
     notificationDesktop: false,
     showUsageBars: false,
+    shortcutSettings: {
+      enabled: false,
+      preset: "standard",
+      overrides: {},
+    },
     zoomLevel: 1.0,
     currentSessionId: null,
     sdkSessions: [],
@@ -37,6 +51,10 @@ function createMockState(overrides: Partial<MockStoreState> = {}): MockStoreStat
     toggleNotificationSound: vi.fn(),
     setNotificationDesktop: vi.fn(),
     toggleShowUsageBars: vi.fn(),
+    setShortcutsEnabled: vi.fn(),
+    setShortcutPreset: vi.fn(),
+    setShortcutOverride: vi.fn(),
+    resetShortcutOverrides: vi.fn(),
     setZoomLevel: vi.fn(),
     setServerRestarting: vi.fn(),
     ...overrides,
@@ -153,6 +171,17 @@ describe("SettingsPage", () => {
     expect(mockApi.getSettings).toHaveBeenCalledTimes(1);
     // Wait for loading to complete — section headings are visible
     await screen.findByText("Notifications");
+  });
+
+  it("shows shortcuts disabled by default and exposes preset controls", async () => {
+    render(<SettingsPage />);
+
+    await screen.findByText("Notifications");
+    const preset = screen.getByLabelText("Preset");
+    const shortcutsSection = preset.closest("section") ?? preset.parentElement?.parentElement;
+    expect(preset).toHaveValue("standard");
+    expect(within(shortcutsSection as HTMLElement).getByText("Off")).toBeInTheDocument();
+    expect(within(shortcutsSection as HTMLElement).getByText("Search Current Session")).toBeInTheDocument();
   });
 
   it("does not start settings-page background work while inactive", () => {
