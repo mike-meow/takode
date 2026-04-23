@@ -481,14 +481,18 @@ export function createFilesystemRoutes(ctx: RouteContext) {
     try {
       // rg --files lists all non-ignored files, piped through head to cap at 5000.
       // Then we filter by case-insensitive substring match on the relative path.
-      // This is fast even on large repos: rg's file listing is ~10-50ms, filtering is trivial.
+      // Pass "." as explicit positional dir for compatibility with the companion
+      // rg shim, whose --files handler only reads the first positional arg as root.
       const { stdout } = await execPromise(
-        `"${rgPath}" --files --no-messages --hidden --glob '!.git' 2>/dev/null | head -5000`,
+        `"${rgPath}" --files . --no-messages --hidden --glob '!.git' 2>/dev/null | head -5000`,
         { cwd: searchRoot, timeout: 5000 },
       );
 
       const queryNorm = normalizeForSearch(query);
-      const files = stdout.split("\n").filter(Boolean);
+      const files = stdout
+        .split("\n")
+        .filter(Boolean)
+        .map((p) => (p.startsWith("./") ? p.slice(2) : p));
       const matches: Array<{ path: string; name: string; score: number }> = [];
 
       for (const relPath of files) {

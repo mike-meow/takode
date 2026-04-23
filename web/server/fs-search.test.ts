@@ -32,12 +32,15 @@ async function searchFiles(root: string, query: string): Promise<Array<{ relativ
   if (!query || query.length < 1) return [];
   const rgPath = await getRipgrepPath();
   const { stdout } = await execPromise(
-    `"${rgPath}" --files --no-messages --hidden --glob '!.git' 2>/dev/null | head -5000`,
+    `"${rgPath}" --files . --no-messages --hidden --glob '!.git' 2>/dev/null | head -5000`,
     { cwd: root, timeout: 5000 },
   );
 
   const queryLower = query.toLowerCase();
-  const files = stdout.split("\n").filter(Boolean);
+  const files = stdout
+    .split("\n")
+    .filter(Boolean)
+    .map((p) => (p.startsWith("./") ? p.slice(2) : p));
   const matches: Array<{ relativePath: string; fileName: string; score: number }> = [];
 
   for (const relPath of files) {

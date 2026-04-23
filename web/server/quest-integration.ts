@@ -84,8 +84,15 @@ fi
 
 if [ "$1" = "--files" ]; then
   shift
-  root="\${1:-.}"
-  find "$root" -type f -not -path '*/.git/*' | sed 's#^\\./##'
+  root="."
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --glob|-g) shift 2 ;;
+      -*) shift ;;
+      *) root="$1"; shift ;;
+    esac
+  done
+  find "$root" -type f -not -path '*/.git/*' -not -path '*/node_modules/*' | sed 's#^\\./##'
   exit 0
 fi
 
