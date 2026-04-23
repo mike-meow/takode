@@ -24448,3 +24448,251 @@ describe("notifyUser herded session routing", () => {
     expect(session.attentionReason).toBe("review");
   });
 });
+
+// ─── Search-data-only archived session restore ────────────────────────────────
+
+describe("search-data-only archived session restore", () => {
+  it("restoreFromDisk loads archived sessions with searchDataOnly=true and empty messageHistory", async () => {
+    // Persist an archived session with history and search excerpts
+    const sid = "archived-sdo-1";
+    store.saveSync({
+      id: sid,
+      state: {
+        session_id: sid,
+        model: "claude-sonnet-4-5-20250929",
+        cwd: "/test",
+        tools: [],
+        permissionMode: "default",
+        claude_code_version: "1.0",
+        mcp_servers: [],
+        agents: [],
+        slash_commands: [],
+        skills: [],
+        total_cost_usd: 0,
+        num_turns: 2,
+        context_used_percent: 10,
+        is_compacting: false,
+        git_branch: "main",
+        is_worktree: false,
+        is_containerized: false,
+        repo_root: "/test",
+        git_ahead: 0,
+        git_behind: 0,
+        total_lines_added: 0,
+        total_lines_removed: 0,
+      },
+      messageHistory: [
+        { type: "user_message", content: "hello world", timestamp: 1000, id: "m1" },
+        {
+          type: "assistant",
+          message: {
+            id: "a1",
+            type: "message",
+            role: "assistant",
+            model: "claude-sonnet-4-5-20250929",
+            content: [{ type: "text", text: "Hi there!" }],
+            stop_reason: "end_turn",
+            usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+          },
+          parent_tool_use_id: null,
+          timestamp: 1500,
+        },
+        { type: "result", data: { type: "result", subtype: "success", uuid: "r1" } },
+      ] as any,
+      pendingMessages: [],
+      pendingPermissions: [],
+      archived: true,
+      archivedAt: Date.now(),
+      taskHistory: [{ title: "Test task", action: "new", timestamp: 1000, triggerMessageId: "m1" }],
+      keywords: ["hello"],
+      _searchExcerpts: [
+        { type: "user_message", content: "hello world", timestamp: 1000, id: "m1" },
+        { type: "assistant", content: "Hi there!", timestamp: 1500, id: "a1" },
+      ],
+    } as any);
+    await store.flushAll();
+
+    // Restore into a fresh bridge
+    const restored = attachBoardFacade(new WsBridge());
+    restored.setStore(store);
+    await restored.restoreFromDisk();
+
+    const session = restored.getSession(sid)!;
+    expect(session).toBeDefined();
+    // Should be search-data-only: empty history but excerpts present
+    expect(session.searchDataOnly).toBe(true);
+    expect(session.messageHistory).toHaveLength(0);
+    expect(session.toolResults.size).toBe(0);
+    expect(session.searchExcerpts).toHaveLength(2);
+    expect(session.taskHistory).toHaveLength(1);
+    expect(session.keywords).toEqual(["hello"]);
+  });
+
+  it("lazy-loads full history on session_subscribe for search-data-only sessions", async () => {
+    // Persist an archived session with a completed turn
+    const sid = "archived-lazy-1";
+    store.saveSync({
+      id: sid,
+      state: {
+        session_id: sid,
+        model: "claude-sonnet-4-5-20250929",
+        cwd: "/test",
+        tools: [],
+        permissionMode: "default",
+        claude_code_version: "1.0",
+        mcp_servers: [],
+        agents: [],
+        slash_commands: [],
+        skills: [],
+        total_cost_usd: 0,
+        num_turns: 1,
+        context_used_percent: 5,
+        is_compacting: false,
+        git_branch: "main",
+        is_worktree: false,
+        is_containerized: false,
+        repo_root: "/test",
+        git_ahead: 0,
+        git_behind: 0,
+        total_lines_added: 0,
+        total_lines_removed: 0,
+      },
+      messageHistory: [
+        { type: "user_message", content: "test lazy load", timestamp: 1000, id: "m1" },
+        {
+          type: "assistant",
+          message: {
+            id: "a1",
+            type: "message",
+            role: "assistant",
+            model: "claude-sonnet-4-5-20250929",
+            content: [{ type: "text", text: "Lazy loaded response" }],
+            stop_reason: "end_turn",
+            usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+          },
+          parent_tool_use_id: null,
+          timestamp: 1500,
+        },
+        { type: "result", data: { type: "result", subtype: "success", uuid: "r1" } },
+      ] as any,
+      pendingMessages: [],
+      pendingPermissions: [],
+      archived: true,
+      archivedAt: Date.now(),
+      _searchExcerpts: [
+        { type: "user_message", content: "test lazy load", timestamp: 1000, id: "m1" },
+        { type: "assistant", content: "Lazy loaded response", timestamp: 1500, id: "a1" },
+      ],
+    } as any);
+    await store.flushAll();
+
+    // Restore (search-data-only)
+    const restored = attachBoardFacade(new WsBridge());
+    restored.setStore(store);
+    await restored.restoreFromDisk();
+
+    const session = restored.getSession(sid)!;
+    expect(session.searchDataOnly).toBe(true);
+    expect(session.messageHistory).toHaveLength(0);
+
+    // Connect browser and subscribe
+    const browser = makeBrowserSocket(sid);
+    restored.handleBrowserOpen(browser, sid);
+    browser.send.mockClear();
+    restored.handleBrowserMessage(browser, JSON.stringify({ type: "session_subscribe", last_seq: 0 }));
+    await flushAsync();
+
+    // Session should now have full history loaded
+    expect(session.searchDataOnly).toBe(false);
+    expect(session.messageHistory.length).toBeGreaterThanOrEqual(3);
+
+    // Browser should have received history_sync with the full messages
+    const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    const historySync = calls.find((c: any) => c.type === "history_sync");
+    expect(historySync).toBeDefined();
+    const allMessages = [...(historySync.frozen_delta || []), ...(historySync.hot_messages || [])];
+    expect(allMessages.length).toBeGreaterThanOrEqual(3);
+    expect(allMessages.some((m: any) => m.type === "user_message" && m.content === "test lazy load")).toBe(true);
+    expect(allMessages.some((m: any) => m.type === "assistant")).toBe(true);
+  });
+
+  it("search docs use searchExcerpts from restored search-data-only sessions", async () => {
+    // Verify that the bridge session has the right shape for search doc assembly
+    const sid = "archived-search-1";
+    store.saveSync({
+      id: sid,
+      state: {
+        session_id: sid,
+        model: "claude-sonnet-4-5-20250929",
+        cwd: "/test",
+        tools: [],
+        permissionMode: "default",
+        claude_code_version: "1.0",
+        mcp_servers: [],
+        agents: [],
+        slash_commands: [],
+        skills: [],
+        total_cost_usd: 0,
+        num_turns: 1,
+        context_used_percent: 5,
+        is_compacting: false,
+        git_branch: "feature-branch",
+        is_worktree: false,
+        is_containerized: false,
+        repo_root: "/test",
+        git_ahead: 0,
+        git_behind: 0,
+        total_lines_added: 0,
+        total_lines_removed: 0,
+      },
+      messageHistory: [
+        { type: "user_message", content: "unique searchable content xyz123", timestamp: 1000, id: "m1" },
+        { type: "result", data: { type: "result", subtype: "success", uuid: "r1" } },
+      ] as any,
+      pendingMessages: [],
+      pendingPermissions: [],
+      archived: true,
+      archivedAt: Date.now(),
+      _searchExcerpts: [
+        { type: "user_message", content: "unique searchable content xyz123", timestamp: 1000, id: "m1" },
+      ],
+      taskHistory: [{ title: "Search test task", action: "new", timestamp: 1000, triggerMessageId: "m1" }],
+      keywords: ["xyz123"],
+    } as any);
+    await store.flushAll();
+
+    // Restore
+    const restored = attachBoardFacade(new WsBridge());
+    restored.setStore(store);
+    await restored.restoreFromDisk();
+
+    const session = restored.getSession(sid)!;
+
+    // Simulate the search doc assembly that routes/sessions.ts does
+    const { searchSessionDocuments } = await import("./session-search.js");
+    const doc = {
+      sessionId: sid,
+      archived: true,
+      createdAt: Date.now(),
+      name: "",
+      taskHistory: session.taskHistory,
+      keywords: session.keywords,
+      gitBranch: session.state.git_branch,
+      cwd: session.state.cwd,
+      repoRoot: session.state.repo_root,
+      messageHistory: session.messageHistory, // empty for search-data-only
+      searchExcerpts: session.searchExcerpts, // should be populated
+    };
+
+    const result = searchSessionDocuments([doc], { query: "xyz123" });
+    expect(result.totalMatches).toBe(1);
+    // Should match via excerpts (user_message) since messageHistory is empty
+    expect(result.results[0].matchedField).toBe("keyword"); // keyword match scores higher (880) than excerpt (500)
+
+    // Verify it also works via excerpt when searching for content not in keywords
+    const result2 = searchSessionDocuments([doc], { query: "unique searchable" });
+    expect(result2.totalMatches).toBe(1);
+    expect(result2.results[0].matchedField).toBe("user_message");
+    expect(result2.results[0].messageMatch?.snippet).toContain("unique searchable");
+  });
+});
