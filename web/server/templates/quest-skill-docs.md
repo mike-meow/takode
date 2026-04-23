@@ -40,14 +40,15 @@ quest grep   <pattern> [--count N] [--json]                  Search quest title,
 quest show   <id> [--json]                                    Show quest detail
 quest history <id> [--json]                                   Show version history
 quest tags   [--json]                                         List all existing tags with counts
-quest create <title> [--desc "..."] [--tags "t1,t2"] [--image <path>] [--images "p1,p2"] [--json] Create a quest (auto-assigns ID)
+quest create [<title> | --title "..." | --title-file <path>|-] [--desc "..." | --desc-file <path>|-] [--tags "t1,t2"] [--image <path>] [--images "p1,p2"] [--json] Create a quest (auto-assigns ID)
 quest claim  <id> [--session <sid>] [--json]                  Claim for your session
 quest complete <id> [--items "c1,c2" | --items-file <path>|-] [--no-code] [--commit <sha>] [--commits "c1,c2"] [--json]  Submit for verification
-quest done   <id> [--notes "..."] [--cancelled] [--json]      Mark as done/cancelled
-quest transition <id> --status <s> [--desc "..."] [--json]    Change status
+quest done   <id> [--notes "..." | --notes-file <path>|-] [--cancelled] [--json]      Mark as done/cancelled
+quest cancel <id> [--notes "reason" | --notes-file <path>|-] [--json]                Cancel from any status
+quest transition <id> --status <s> [--desc "..." | --desc-file <path>|-] [--json]    Change status
 quest later  <id> [--json]                                    Move quest out of Verification Inbox
 quest inbox  <id> [--json]                                    Move quest back to Verification Inbox
-quest edit   <id> [--title "..."] [--desc "..."] [--tags "t1,t2"] [--json]     Edit in place (NEVER use to create)
+quest edit   <id> [--title "..." | --title-file <path>|-] [--desc "..." | --desc-file <path>|-] [--tags "t1,t2"] [--json]     Edit in place (NEVER use to create)
 quest check  <id> <index> [--json]                            Toggle verification item
 quest feedback <id> [--text "..." | --text-file <path>|-] [--author agent|human] [--image <path>] [--images "p1,p2"] [--json]  Add feedback entry
 quest address <id> <index> [--json]                          Toggle feedback addressed status
@@ -68,10 +69,14 @@ Unknown flags are rejected with a "Did you mean?" suggestion.
 
 ## Complete Flag Reference
 
-### quest create <title> [flags]
+### quest create [<title> | --title "..." | --title-file <path>|-] [flags]
 | Flag | Description |
 |------|-------------|
+| `<title>` | Positional quest title for short inline input |
+| `--title "..."` | Quest title as an explicit flag |
+| `--title-file <path>` | Read the title from a file, or use `-` to read from stdin |
 | `--desc "..."` | Quest description (markdown supported) |
+| `--desc-file <path>` | Read the description from a file, or use `-` to read from stdin |
 | `--tags "t1,t2"` | Comma-separated tags |
 | `--image <path>` | Attach an image (can repeat: --image a.png --image b.png) |
 | `--images "a.png,b.png"` | Attach multiple images (comma-separated) |
@@ -81,7 +86,9 @@ Unknown flags are rejected with a "Did you mean?" suggestion.
 | Flag | Description |
 |------|-------------|
 | `--title "..."` | New title |
+| `--title-file <path>` | Read the new title from a file, or use `-` to read from stdin |
 | `--desc "..."` | New description |
+| `--desc-file <path>` | Read the new description from a file, or use `-` to read from stdin |
 | `--tags "t1,t2"` | New tags (replaces all) |
 | `--json` | Output JSON |
 
@@ -109,6 +116,26 @@ Use `quest grep` when you need to search **inside** quest titles, descriptions, 
 |------|-------------|
 | `--session <id>` | Session ID to claim for (required if COMPANION_SESSION_ID not set) |
 | `--json` | Output JSON |
+
+**Shell quoting safety:** if quest titles or descriptions may contain backticks, `$(...)`, quotes, braces, copied CLI output, or other shell-sensitive content, prefer `--title-file` / `--desc-file` instead of inline shell quoting:
+
+```bash
+cat >/tmp/quest-title.txt <<'EOF'
+Fix copied `quest create` snippets
+EOF
+
+cat >/tmp/quest-description.md <<'EOF'
+Treat `$(echo nope)` and {"json":true} as literal text, not shell.
+EOF
+
+quest create --title-file /tmp/quest-title.txt --desc-file /tmp/quest-description.md --tags "questmaster,cli"
+
+printf '%s\n' 'Copied `$(snippet)` stays literal' | \
+  quest create "Quest title" --desc-file -
+
+quest edit q-12 --desc-file /tmp/quest-description.md
+quest transition q-12 --status in_progress --desc-file /tmp/quest-description.md
+```
 
 ### quest feedback <id> [--text "..." | --text-file <path>|-] [flags]
 | Flag | Description |
@@ -148,6 +175,7 @@ printf '%s\n' 'Port summary: commit abc123 ...' 'Treat `foo $(bar)` as literal t
 | Flag | Description |
 |------|-------------|
 | `--notes "..."` | Closure notes |
+| `--notes-file <path>` | Read closure notes from a file, or use `-` to read from stdin |
 | `--cancelled` | Mark as cancelled instead of done |
 | `--json` | Output JSON |
 
@@ -155,13 +183,29 @@ printf '%s\n' 'Port summary: commit abc123 ...' 'Treat `foo $(bar)` as literal t
 | Flag | Description |
 |------|-------------|
 | `--notes "..."` | Cancellation reason |
+| `--notes-file <path>` | Read the cancellation reason from a file, or use `-` to read from stdin |
 | `--json` | Output JSON |
+
+**Shell quoting safety:** if closure notes or cancellation reasons may contain backticks, `$(...)`, quotes, braces, copied CLI output, or other shell-sensitive content, prefer `--notes-file <path>` or `--notes-file -` instead of inline shell quoting:
+
+```bash
+cat >/tmp/quest-closeout.txt <<'EOF'
+Closed after verifying copied `quest done` snippets stay literal.
+Keep `$(echo nope)` and {"json":true} as plain text.
+EOF
+
+quest done q-12 --notes-file /tmp/quest-closeout.txt
+
+printf '%s\n' 'Superseded by q-13 with copied `$(note)` text' | \
+  quest cancel q-12 --notes-file -
+```
 
 ### quest transition <id> --status <s> [flags]
 | Flag | Description |
 |------|-------------|
 | `--status <s>` | Target status (REQUIRED) |
 | `--desc "..."` | Optional description update |
+| `--desc-file <path>` | Read the description update from a file, or use `-` to read from stdin |
 | `--session <id>` | Session ID |
 | `--json` | Output JSON |
 
@@ -173,6 +217,9 @@ These commands accept only `--json` for JSON output.
 ```bash
 # Create a quest with description and tags
 quest create "Fix mobile sidebar" --desc "Sidebar overflows on screens <400px" --tags "ui,bugfix,mobile"
+
+# Create a quest from files when the text includes shell-sensitive content
+quest create --title-file /tmp/quest-title.txt --desc-file /tmp/quest-description.md --tags "questmaster,cli"
 
 # List in-progress quests
 quest list --status in_progress
@@ -190,9 +237,11 @@ quest grep "sidebar|overflow"
 # Claim and start working on a quest
 quest claim q-12
 quest transition q-12 --status in_progress
+quest transition q-12 --status in_progress --desc-file /tmp/quest-description.md
 
 # Edit a quest's title and tags
 quest edit q-12 --title "Fix sidebar overflow" --tags "ui,bugfix"
+quest edit q-12 --desc-file /tmp/quest-description.md
 
 # Add feedback with an image attachment
 quest feedback q-12 --text "Fixed with flex-wrap, see screenshot" --image /tmp/screenshot.png
@@ -212,9 +261,11 @@ quest inbox q-12
 
 # Mark as done with notes
 quest done q-12 --notes "Fixed in commit abc123, tested on iOS Safari"
+quest done q-12 --notes-file /tmp/quest-closeout.txt
 
 # Cancel a quest
 quest cancel q-5 --notes "Superseded by q-12"
+quest cancel q-5 --notes-file /tmp/quest-closeout.txt
 ```
 
 ## When assigned a quest

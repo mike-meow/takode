@@ -91,13 +91,22 @@ describe("quest CLI help", () => {
     expect(result.stdout).toContain(
       'quest grep "foo|bar"      Search inside quest text/comments with contextual snippets',
     );
+    expect(result.stdout).toContain("quest create --title-file title.txt --desc-file body.md");
+    expect(result.stdout).toContain("quest edit q-1 --desc-file body.md");
     expect(result.stdout).toContain("quest feedback q-1 --text-file note.md");
     expect(result.stdout).toContain("quest complete q-1 --items-file items.txt");
+    expect(result.stdout).toContain("quest done q-1 --notes-file closeout.md");
 
     const lines = result.stdout.split("\n");
+    expect(lines).toContain(
+      `  printf '%s\\n' 'Copied \`$(snippet)\` stays literal' | quest create "Quest title" --desc-file -`,
+    );
     expect(lines).toContain("  printf '%s\\n' 'Line 1' '`$(nope)`' | quest feedback q-1 --text-file -");
     expect(lines).toContain(
       `  printf '%s\\n' 'Review comma-heavy item, "quotes", {braces}' | quest complete q-1 --items-file -`,
+    );
+    expect(lines).toContain(
+      `  printf '%s\\n' 'Superseded by q-2 with copied \`$(note)\` text' | quest cancel q-1 --notes-file -`,
     );
   });
 });
@@ -240,6 +249,404 @@ describe("quest CLI safer rich-text inputs", () => {
 
       expect(result.status).not.toBe(0);
       expect(result.stderr).toContain("Use either --text or --text-file, not both");
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("reads create title/description from --title-file and --desc-file literally", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "quest-create-rich-text-files-"));
+    const titlePath = join(tmp, "title.txt");
+    const descPath = join(tmp, "description.md");
+    const title = 'Quest title with `!#tag`, "$(echo nope)", and {braces}';
+    const description = [
+      "Description should preserve copied shell-like content literally.",
+      'Keep `quest create` and "$(echo nope)" as plain text.',
+      'Quotes, commas, and braces stay intact: {"safe":true,"ok":"yes"}',
+    ].join("\n");
+    writeFileSync(titlePath, title, "utf-8");
+    writeFileSync(descPath, description, "utf-8");
+
+    try {
+      const result = await runQuest(
+        ["create", "--title-file", titlePath, "--desc-file", descPath, "--json"],
+        {
+          ...process.env,
+          COMPANION_PORT: undefined,
+          COMPANION_SESSION_ID: undefined,
+          COMPANION_AUTH_TOKEN: undefined,
+          HOME: tmp,
+        },
+        tmp,
+      );
+
+      expect(result.status).toBe(0);
+      expect(result.stderr).toBe("");
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        title,
+        description,
+      });
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("reads create description from stdin via --desc-file -", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "quest-create-rich-text-stdin-"));
+    const description = [
+      "stdin description keeps copied snippets literal.",
+      'Treat `foo`, "$(bar)", and {json:true} as plain text.',
+    ].join("\n");
+
+    try {
+      const result = await runQuest(
+        ["create", "Rich text quest", "--desc-file", "-", "--json"],
+        {
+          ...process.env,
+          COMPANION_PORT: undefined,
+          COMPANION_SESSION_ID: undefined,
+          COMPANION_AUTH_TOKEN: undefined,
+          HOME: tmp,
+        },
+        tmp,
+        description,
+      );
+
+      expect(result.status).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        title: "Rich text quest",
+        description,
+      });
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("reads edit title/description from file inputs literally", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "quest-edit-rich-text-files-"));
+    const titlePath = join(tmp, "title.txt");
+    const descPath = join(tmp, "description.md");
+    const title = 'Edited `title` with "$(echo nope)" and {braces}';
+    const description = [
+      "Edited description keeps literal backticks and command text.",
+      'Keep `quest edit` and "$(echo nope)" as text, not shell.',
+    ].join("\n");
+    writeFileSync(titlePath, title, "utf-8");
+    writeFileSync(descPath, description, "utf-8");
+
+    try {
+      const created = await runQuest(
+        ["create", "Original title", "--json"],
+        {
+          ...process.env,
+          COMPANION_PORT: undefined,
+          COMPANION_SESSION_ID: undefined,
+          COMPANION_AUTH_TOKEN: undefined,
+          HOME: tmp,
+        },
+        tmp,
+      );
+      const quest = JSON.parse(created.stdout) as { questId: string };
+
+      const result = await runQuest(
+        ["edit", quest.questId, "--title-file", titlePath, "--desc-file", descPath, "--json"],
+        {
+          ...process.env,
+          COMPANION_PORT: undefined,
+          COMPANION_SESSION_ID: undefined,
+          COMPANION_AUTH_TOKEN: undefined,
+          HOME: tmp,
+        },
+        tmp,
+      );
+
+      expect(result.status).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        questId: quest.questId,
+        title,
+        description,
+      });
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("reads transition description from --desc-file literally", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "quest-transition-rich-text-file-"));
+    const descPath = join(tmp, "transition-description.md");
+    const description = [
+      "Transition description update should keep copied snippets literal.",
+      'Keep `quest transition` and "$(echo nope)" as text.',
+    ].join("\n");
+    writeFileSync(descPath, description, "utf-8");
+
+    try {
+      const created = await runQuest(
+        ["create", "Transition me", "--json"],
+        {
+          ...process.env,
+          COMPANION_PORT: undefined,
+          COMPANION_SESSION_ID: undefined,
+          COMPANION_AUTH_TOKEN: undefined,
+          HOME: tmp,
+        },
+        tmp,
+      );
+      const quest = JSON.parse(created.stdout) as { questId: string };
+
+      const result = await runQuest(
+        ["transition", quest.questId, "--status", "refined", "--desc-file", descPath, "--json"],
+        {
+          ...process.env,
+          COMPANION_PORT: undefined,
+          COMPANION_SESSION_ID: undefined,
+          COMPANION_AUTH_TOKEN: undefined,
+          HOME: tmp,
+        },
+        tmp,
+      );
+
+      expect(result.status).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        questId: quest.questId,
+        status: "refined",
+        description,
+      });
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects mixing create/edit inline and file rich-text flags", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "quest-create-edit-mixed-rich-text-"));
+    const descPath = join(tmp, "description.md");
+    const titlePath = join(tmp, "title.txt");
+    writeFileSync(descPath, "literal description", "utf-8");
+    writeFileSync(titlePath, "literal title", "utf-8");
+
+    try {
+      const createResult = await runQuest(
+        ["create", "Quest title", "--desc", "inline", "--desc-file", descPath],
+        {
+          ...process.env,
+          COMPANION_PORT: undefined,
+          COMPANION_SESSION_ID: undefined,
+          COMPANION_AUTH_TOKEN: undefined,
+          HOME: tmp,
+        },
+        tmp,
+      );
+
+      expect(createResult.status).not.toBe(0);
+      expect(createResult.stderr).toContain("Use either --desc or --desc-file, not both");
+
+      const created = await runQuest(
+        ["create", "Original title", "--json"],
+        {
+          ...process.env,
+          COMPANION_PORT: undefined,
+          COMPANION_SESSION_ID: undefined,
+          COMPANION_AUTH_TOKEN: undefined,
+          HOME: tmp,
+        },
+        tmp,
+      );
+      const quest = JSON.parse(created.stdout) as { questId: string };
+
+      const editResult = await runQuest(
+        ["edit", quest.questId, "--title", "inline", "--title-file", titlePath],
+        {
+          ...process.env,
+          COMPANION_PORT: undefined,
+          COMPANION_SESSION_ID: undefined,
+          COMPANION_AUTH_TOKEN: undefined,
+          HOME: tmp,
+        },
+        tmp,
+      );
+
+      expect(editResult.status).not.toBe(0);
+      expect(editResult.stderr).toContain("Use either --title or --title-file, not both");
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects reading multiple rich-text options from stdin in one command", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "quest-multiple-stdin-rich-text-"));
+
+    try {
+      const result = await runQuest(
+        ["create", "--title-file", "-", "--desc-file", "-", "--json"],
+        {
+          ...process.env,
+          COMPANION_PORT: undefined,
+          COMPANION_SESSION_ID: undefined,
+          COMPANION_AUTH_TOKEN: undefined,
+          HOME: tmp,
+        },
+        tmp,
+        "shared stdin payload",
+      );
+
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("Only one option can read from stdin per command");
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("reads done notes from --notes-file literally", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "quest-done-notes-file-"));
+    const notesPath = join(tmp, "closeout.txt");
+    const notes = [
+      "Closed after keeping copied shell-like text literal.",
+      'Keep `quest done`, "$(echo nope)", and {json:true} as text.',
+    ].join("\n");
+    writeFileSync(notesPath, notes, "utf-8");
+
+    try {
+      const created = await runQuest(
+        ["create", "Quest to close", "--json"],
+        {
+          ...process.env,
+          COMPANION_PORT: undefined,
+          COMPANION_SESSION_ID: undefined,
+          COMPANION_AUTH_TOKEN: undefined,
+          HOME: tmp,
+        },
+        tmp,
+      );
+      const quest = JSON.parse(created.stdout) as { questId: string };
+
+      const refined = await runQuest(
+        ["transition", quest.questId, "--status", "refined", "--desc", "Ready for closeout", "--json"],
+        {
+          ...process.env,
+          COMPANION_PORT: undefined,
+          COMPANION_SESSION_ID: undefined,
+          COMPANION_AUTH_TOKEN: undefined,
+          HOME: tmp,
+        },
+        tmp,
+      );
+      expect(refined.status).toBe(0);
+
+      const result = await runQuest(
+        ["done", quest.questId, "--notes-file", notesPath, "--json"],
+        {
+          ...process.env,
+          COMPANION_PORT: undefined,
+          COMPANION_SESSION_ID: undefined,
+          COMPANION_AUTH_TOKEN: undefined,
+          HOME: tmp,
+        },
+        tmp,
+      );
+
+      expect(result.status).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        questId: quest.questId,
+        status: "done",
+        notes,
+      });
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("reads cancel notes from stdin via --notes-file - literally", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "quest-cancel-notes-stdin-"));
+    const notes = [
+      "Superseded after preserving copied shell-like text literally.",
+      'Keep `quest cancel`, "$(echo nope)", and {json:true} as text.',
+    ].join("\n");
+
+    try {
+      const created = await runQuest(
+        ["create", "Quest to cancel", "--json"],
+        {
+          ...process.env,
+          COMPANION_PORT: undefined,
+          COMPANION_SESSION_ID: undefined,
+          COMPANION_AUTH_TOKEN: undefined,
+          HOME: tmp,
+        },
+        tmp,
+      );
+      const quest = JSON.parse(created.stdout) as { questId: string };
+
+      const result = await runQuest(
+        ["cancel", quest.questId, "--notes-file", "-", "--json"],
+        {
+          ...process.env,
+          COMPANION_PORT: undefined,
+          COMPANION_SESSION_ID: undefined,
+          COMPANION_AUTH_TOKEN: undefined,
+          HOME: tmp,
+        },
+        tmp,
+        notes,
+      );
+
+      expect(result.status).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        questId: quest.questId,
+        status: "done",
+        cancelled: true,
+        notes,
+      });
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects mixing inline notes and --notes-file", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "quest-notes-mixed-input-"));
+    const notesPath = join(tmp, "closeout.txt");
+    writeFileSync(notesPath, "literal notes", "utf-8");
+
+    try {
+      const created = await runQuest(
+        ["create", "Quest title", "--json"],
+        {
+          ...process.env,
+          COMPANION_PORT: undefined,
+          COMPANION_SESSION_ID: undefined,
+          COMPANION_AUTH_TOKEN: undefined,
+          HOME: tmp,
+        },
+        tmp,
+      );
+      const quest = JSON.parse(created.stdout) as { questId: string };
+
+      const doneResult = await runQuest(
+        ["done", quest.questId, "--notes", "inline", "--notes-file", notesPath],
+        {
+          ...process.env,
+          COMPANION_PORT: undefined,
+          COMPANION_SESSION_ID: undefined,
+          COMPANION_AUTH_TOKEN: undefined,
+          HOME: tmp,
+        },
+        tmp,
+      );
+      expect(doneResult.status).not.toBe(0);
+      expect(doneResult.stderr).toContain("Use either --notes or --notes-file, not both");
+
+      const cancelResult = await runQuest(
+        ["cancel", quest.questId, "--notes", "inline", "--notes-file", notesPath],
+        {
+          ...process.env,
+          COMPANION_PORT: undefined,
+          COMPANION_SESSION_ID: undefined,
+          COMPANION_AUTH_TOKEN: undefined,
+          HOME: tmp,
+        },
+        tmp,
+      );
+      expect(cancelResult.status).not.toBe(0);
+      expect(cancelResult.stderr).toContain("Use either --notes or --notes-file, not both");
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }

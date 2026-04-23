@@ -435,6 +435,7 @@ function parsePositiveIntegerFlag(name: string, fallback: number, label: string)
 }
 
 let stdinTextPromise: Promise<string> | null = null;
+let stdinFlagName: string | null = null;
 
 async function readStdinText(): Promise<string> {
   if (!stdinTextPromise) {
@@ -452,6 +453,12 @@ async function readStdinText(): Promise<string> {
 
 async function readOptionTextFile(pathOrDash: string, flagName: string): Promise<string> {
   if (pathOrDash === "-") {
+    if (stdinFlagName && stdinFlagName !== flagName) {
+      die(
+        `Only one option can read from stdin per command. Already using ${stdinFlagName}; cannot also use ${flagName}.`,
+      );
+    }
+    stdinFlagName = flagName;
     return readStdinText();
   }
 
@@ -463,12 +470,12 @@ async function readOptionTextFile(pathOrDash: string, flagName: string): Promise
   }
 }
 
-async function readRichTextOption(args: {
+async function readOptionalRichTextOption(args: {
   inlineFlag: string;
   fileFlag: string;
   label: string;
   allowEmpty?: boolean;
-}): Promise<string> {
+}): Promise<string | undefined> {
   const inlineValue = option(args.inlineFlag);
   const fileValue = option(args.fileFlag);
   const hasInlineFlag = flag(args.inlineFlag);
@@ -490,6 +497,21 @@ async function readRichTextOption(args: {
       : inlineValue !== undefined
         ? inlineValue
         : undefined;
+
+  if (value !== undefined && !args.allowEmpty && !value.trim()) {
+    die(`${args.label} is required`);
+  }
+
+  return value;
+}
+
+async function readRichTextOption(args: {
+  inlineFlag: string;
+  fileFlag: string;
+  label: string;
+  allowEmpty?: boolean;
+}): Promise<string> {
+  const value = await readOptionalRichTextOption(args);
 
   if (value === undefined) {
     die(
@@ -723,11 +745,29 @@ async function cmdHistory(): Promise<void> {
 }
 
 async function cmdCreate(): Promise<void> {
-  validateFlags(["title", "desc", "tags", "image", "images", "json"]);
-  const title = positional(0) || option("title");
-  if (!title) die('Usage: quest create <title> [--desc "..."] [--tags "t1,t2"] [--image <path>] [--images "p1,p2"]');
+  validateFlags(["title", "title-file", "desc", "desc-file", "tags", "image", "images", "json"]);
+  const positionalTitle = positional(0);
+  const title = await readOptionalRichTextOption({
+    inlineFlag: "title",
+    fileFlag: "title-file",
+    label: "Quest title",
+  });
+  if (positionalTitle !== undefined && title !== undefined) {
+    die("Use either a positional <title>, --title, or --title-file, not multiple title inputs");
+  }
+  const resolvedTitle = positionalTitle ?? title;
+  if (!resolvedTitle) {
+    die(
+      'Usage: quest create [<title> | --title "..." | --title-file <path>|-] ' +
+        '[--desc "..." | --desc-file <path>|-] [--tags "t1,t2"] [--image <path>] [--images "p1,p2"]',
+    );
+  }
 
-  const description = option("desc");
+  const description = await readOptionalRichTextOption({
+    inlineFlag: "desc",
+    fileFlag: "desc-file",
+    label: "Quest description",
+  });
   const tagsStr = option("tags");
   const tags = tagsStr
     ? tagsStr
@@ -753,7 +793,7 @@ async function cmdCreate(): Promise<void> {
         : undefined;
     const resolvedImages = uploadedImages ? await uploadedImages : undefined;
     const quest = await createQuest({
-      title,
+      title: resolvedTitle,
       description,
       tags,
       ...(resolvedImages?.length ? { images: resolvedImages } : {}),
@@ -953,11 +993,15 @@ function formatCompletionReminder(questId: string, options: { noCode: boolean })
 }
 
 async function cmdDone(): Promise<void> {
-  validateFlags(["notes", "cancelled", "json"]);
+  validateFlags(["notes", "notes-file", "cancelled", "json"]);
   const id = positional(0);
-  if (!id) die('Usage: quest done <questId> [--notes "..."] [--cancelled]');
+  if (!id) die('Usage: quest done <questId> [--notes "..." | --notes-file <path>|-] [--cancelled]');
 
-  const notes = option("notes");
+  const notes = await readOptionalRichTextOption({
+    inlineFlag: "notes",
+    fileFlag: "notes-file",
+    label: "Closure notes",
+  });
   const cancelled = flag("cancelled");
 
   try {
@@ -976,11 +1020,15 @@ async function cmdDone(): Promise<void> {
 }
 
 async function cmdCancel(): Promise<void> {
-  validateFlags(["notes", "json"]);
+  validateFlags(["notes", "notes-file", "json"]);
   const id = positional(0);
-  if (!id) die('Usage: quest cancel <id> [--notes "reason"] [--json]');
+  if (!id) die('Usage: quest cancel <id> [--notes "reason" | --notes-file <path>|-] [--json]');
 
-  const notes = option("notes");
+  const notes = await readOptionalRichTextOption({
+    inlineFlag: "notes",
+    fileFlag: "notes-file",
+    label: "Cancellation reason",
+  });
 
   try {
     const quest = await cancelQuest(id, notes);
@@ -997,14 +1045,18 @@ async function cmdCancel(): Promise<void> {
 }
 
 async function cmdTransition(): Promise<void> {
-  validateFlags(["status", "desc", "session", "commit", "commits", "json"]);
+  validateFlags(["status", "desc", "desc-file", "session", "commit", "commits", "json"]);
   const id = positional(0);
-  if (!id) die('Usage: quest transition <questId> --status <s> [--desc "..."]');
+  if (!id) die('Usage: quest transition <questId> --status <s> [--desc "..." | --desc-file <path>|-]');
 
   const status = option("status");
   if (!status) die("--status is required");
 
-  const description = option("desc");
+  const description = await readOptionalRichTextOption({
+    inlineFlag: "desc",
+    fileFlag: "desc-file",
+    label: "Quest description",
+  });
   const sessionId = option("session") || currentSessionId;
   const commitShas = parseCommitShasFromFlags();
   if (commitShas.length > 0 && status !== "needs_verification") {
@@ -1133,12 +1185,25 @@ async function cmdInbox(): Promise<void> {
 }
 
 async function cmdEdit(): Promise<void> {
-  validateFlags(["title", "desc", "tags", "json"]);
+  validateFlags(["title", "title-file", "desc", "desc-file", "tags", "json"]);
   const id = positional(0);
-  if (!id) die('Usage: quest edit <questId> [--title "..."] [--desc "..."] [--tags "t1,t2"]');
+  if (!id) {
+    die(
+      'Usage: quest edit <questId> [--title "..." | --title-file <path>|-] ' +
+        '[--desc "..." | --desc-file <path>|-] [--tags "t1,t2"]',
+    );
+  }
 
-  const title = option("title");
-  const description = option("desc");
+  const title = await readOptionalRichTextOption({
+    inlineFlag: "title",
+    fileFlag: "title-file",
+    label: "Quest title",
+  });
+  const description = await readOptionalRichTextOption({
+    inlineFlag: "desc",
+    fileFlag: "desc-file",
+    label: "Quest description",
+  });
   const tagsStr = option("tags");
   const tags = tagsStr
     ? tagsStr
@@ -1148,7 +1213,7 @@ async function cmdEdit(): Promise<void> {
     : undefined;
 
   if (title === undefined && description === undefined && tags === undefined) {
-    die("At least one of --title, --desc, or --tags is required");
+    die("At least one of --title/--title-file, --desc/--desc-file, or --tags is required");
   }
 
   try {
@@ -1437,17 +1502,21 @@ Commands:
   show   <id> [--json]                                   Show quest detail
   history <id> [--json]                                  Show version history
   tags   [--json]                                        List all existing tags with counts
-  create <title> [--desc "..."] [--tags "t1,t2"] [--image <path>] [--images "p1,p2"] [--json] Create a quest
+  create [<title> | --title "..." | --title-file <path>|-] [--desc "..." | --desc-file <path>|-] [--tags "t1,t2"] [--image <path>] [--images "p1,p2"] [--json]
+                                                         Create a quest
   claim  <id> [--session <sid>] [--json]                 Claim for session
   complete <id> [--items "c1,c2" | --items-file <path>|-] [--commit <sha>] [--commits "s1,s2"] [--json]
                                                          Submit for verification
-  done   <id> [--notes "..."] [--cancelled] [--json]      Mark as done/cancelled
-  cancel <id> [--notes "reason"] [--json]                Cancel from any status
-  transition <id> --status <s> [--desc "..."] [--commit <sha>] [--commits "s1,s2"] [--json]
+  done   <id> [--notes "..." | --notes-file <path>|-] [--cancelled] [--json]
+                                                         Mark as done/cancelled
+  cancel <id> [--notes "reason" | --notes-file <path>|-] [--json]
+                                                         Cancel from any status
+  transition <id> --status <s> [--desc "..." | --desc-file <path>|-] [--commit <sha>] [--commits "s1,s2"] [--json]
                                                          Change status
   later  <id> [--json]                                   Move verification quest out of inbox
   inbox  <id> [--json]                                   Move verification quest back to inbox
-  edit   <id> [--title "..."] [--desc "..."] [--json]    Edit in place
+  edit   <id> [--title "..." | --title-file <path>|-] [--desc "..." | --desc-file <path>|-] [--tags "t1,t2"] [--json]
+                                                         Edit in place
   check  <id> <index> [--json]                           Toggle verification item
   feedback <id> [--text "..." | --text-file <path>|-] [--author agent|human] [--session <sid>] [--image <path>] [--images "p1,p2"] [--json]
                                                          Add feedback entry
@@ -1473,10 +1542,15 @@ Search tips:
   quest grep "foo|bar"      Search inside quest text/comments with contextual snippets
 
 Safer rich-text input:
+  quest create --title-file title.txt --desc-file body.md
+  printf '%s\\n' 'Copied \`$(snippet)\` stays literal' | quest create "Quest title" --desc-file -
+  quest edit q-1 --desc-file body.md
   quest feedback q-1 --text-file note.md
   printf '%s\\n' 'Line 1' '\`$(nope)\`' | quest feedback q-1 --text-file -
   quest complete q-1 --items-file items.txt
-  printf '%s\\n' 'Review comma-heavy item, "quotes", {braces}' | quest complete q-1 --items-file -`);
+  printf '%s\\n' 'Review comma-heavy item, "quotes", {braces}' | quest complete q-1 --items-file -
+  quest done q-1 --notes-file closeout.md
+  printf '%s\\n' 'Superseded by q-2 with copied \`$(note)\` text' | quest cancel q-1 --notes-file -`);
 }
 
 // ─── Main ───────────────────────────────────────────────────────────────────
