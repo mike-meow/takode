@@ -2193,6 +2193,41 @@ describe("Composer slash menu", () => {
     expect(screen.getByText("command")).toBeTruthy();
     expect(screen.getByText("skill")).toBeTruthy();
   });
+
+  it("slash menu opens when / is typed after whitespace mid-sentence", () => {
+    // Validates inline slash trigger: q-579
+    setupMockStore({
+      session: {
+        slash_commands: ["help", "clear"],
+        skills: ["commit"],
+      },
+    });
+    const { container } = render(<Composer sessionId="s1" />);
+    const textarea = container.querySelector("textarea")!;
+
+    fireEvent.change(textarea, { target: { value: "hello /", selectionStart: "hello /".length } });
+
+    expect(screen.getByText("/help")).toBeTruthy();
+    expect(screen.getByText("/clear")).toBeTruthy();
+    expect(screen.getByText("/commit")).toBeTruthy();
+  });
+
+  it("selecting an inline slash command preserves surrounding text", () => {
+    // Validates that command insertion replaces only the /query portion: q-579
+    setupMockStore({
+      session: {
+        slash_commands: ["help", "clear"],
+        skills: ["commit"],
+      },
+    });
+    const { container } = render(<Composer sessionId="s1" />);
+    const textarea = container.querySelector("textarea")! as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "please run /cl", selectionStart: "please run /cl".length } });
+    fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
+
+    expect(textarea.value).toBe("please run /clear ");
+  });
 });
 
 // ─── Dollar mention menu ─────────────────────────────────────────────────────
