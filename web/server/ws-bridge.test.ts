@@ -22657,8 +22657,10 @@ describe("board stall warnings", () => {
     expect(herdCalls[0][1]).toContain("board_dispatchable");
     expect(herdCalls[0][1]).toContain("q-2");
     expect(herdCalls[0][1]).toContain("wait-for resolved");
-    expect(leaderSession.attentionReason).toBe("action");
-    expect(leaderSession.notifications.at(-1)?.summary).toContain("q-2 can be dispatched now");
+    expect(leaderSession.attentionReason).toBe("review");
+    expect(leaderSession.notifications.some((notif: any) => notif.summary.includes("q-2 can be dispatched now"))).toBe(
+      false,
+    );
 
     vi.advanceTimersByTime(60_000);
     await Promise.resolve();
@@ -22671,7 +22673,7 @@ describe("board stall warnings", () => {
     dispatcher.destroy();
   });
 
-  it("clears the dispatchable needs-input notification once the queued row is dispatched", async () => {
+  it("keeps dispatchable reminders out of the leader notification inbox once the queued row is dispatched", async () => {
     const { leaderId, dispatcher } = setupBoardStallHarness();
     const leaderSession = (bridge as any).sessions.get(leaderId);
 
@@ -22694,11 +22696,10 @@ describe("board stall warnings", () => {
     vi.advanceTimersByTime(31_000);
     await Promise.resolve();
 
-    const dispatchNotif = leaderSession.notifications.find((notif: any) =>
-      notif.summary.includes("q-2 can be dispatched now"),
+    expect(leaderSession.notifications.some((notif: any) => notif.summary.includes("q-2 can be dispatched now"))).toBe(
+      false,
     );
-    expect(dispatchNotif?.done).toBe(false);
-    expect(leaderSession.attentionReason).toBe("action");
+    expect(leaderSession.attentionReason).toBe("review");
 
     bridge.upsertBoardRow(leaderId, {
       questId: "q-2",
@@ -22707,14 +22708,15 @@ describe("board stall warnings", () => {
       status: "PLANNING",
     });
 
-    const updatedNotif = leaderSession.notifications.find((notif: any) => notif.id === dispatchNotif.id);
-    expect(updatedNotif?.done).toBe(true);
-    expect(leaderSession.attentionReason).toBeNull();
+    expect(leaderSession.notifications.some((notif: any) => notif.summary.includes("q-2 can be dispatched now"))).toBe(
+      false,
+    );
+    expect(leaderSession.attentionReason).toBe("review");
 
     dispatcher.destroy();
   });
 
-  it("still creates the leader notification when a resolved quest dependency has no source session to attribute", async () => {
+  it("does not create a leader notification when a resolved quest dependency has no source session to attribute", async () => {
     const { leaderId, dispatcher } = setupBoardStallHarness();
     const injectSpy = vi.spyOn(bridge, "injectUserMessage");
     const leaderSession = (bridge as any).sessions.get(leaderId);
@@ -22745,8 +22747,9 @@ describe("board stall warnings", () => {
     await Promise.resolve();
 
     expect(leaderSession.notifications.some((notif: any) => notif.summary.includes("q-3 can be dispatched now"))).toBe(
-      true,
+      false,
     );
+    expect(leaderSession.attentionReason).toBe("review");
     const herdCalls = injectSpy.mock.calls.filter(
       ([sessionId, content, source]) =>
         sessionId === leaderId && source?.sessionId === "herd-events" && String(content).includes("q-3"),
@@ -22757,7 +22760,7 @@ describe("board stall warnings", () => {
     dispatcher.destroy();
   });
 
-  it("retires a dispatchable notification when watchdog re-evaluation finds the row blocked again", async () => {
+  it("retains no leader notification when watchdog re-evaluation finds the row blocked again", async () => {
     const { leaderId, dispatcher, launcherSessions } = setupBoardStallHarness();
     const leaderSession = (bridge as any).sessions.get(leaderId);
     const workerCli = makeCliSocket("worker-board-stall");
@@ -22783,11 +22786,10 @@ describe("board stall warnings", () => {
     vi.advanceTimersByTime(31_000);
     await Promise.resolve();
 
-    const dispatchNotif = leaderSession.notifications.find((notif: any) =>
-      notif.summary.includes("q-4 can be dispatched now"),
+    expect(leaderSession.notifications.some((notif: any) => notif.summary.includes("q-4 can be dispatched now"))).toBe(
+      false,
     );
-    expect(dispatchNotif?.done).toBe(false);
-    expect(leaderSession.attentionReason).toBe("action");
+    expect(leaderSession.attentionReason).toBeNull();
 
     const workerSession = bridge.getSession("worker-board-stall")!;
     workerSession.isGenerating = true;
@@ -22796,8 +22798,9 @@ describe("board stall warnings", () => {
     vi.advanceTimersByTime(31_000);
     await Promise.resolve();
 
-    const updatedNotif = leaderSession.notifications.find((notif: any) => notif.id === dispatchNotif.id);
-    expect(updatedNotif?.done).toBe(true);
+    expect(leaderSession.notifications.some((notif: any) => notif.summary.includes("q-4 can be dispatched now"))).toBe(
+      false,
+    );
     expect(leaderSession.attentionReason).toBeNull();
 
     dispatcher.destroy();
