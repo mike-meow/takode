@@ -795,6 +795,49 @@ export function MessageFeed({
     scrollToBottom();
   }, [scrollToBottom]);
 
+  const handleScrollToTopClick = useCallback(() => {
+    containerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
+
+  const handleScrollToPreviousUserMessageClick = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const containerRect = el.getBoundingClientRect();
+    const turns = el.querySelectorAll("[data-user-turn]");
+    for (let i = turns.length - 1; i >= 0; i--) {
+      const turn = turns[i] as HTMLElement;
+      const turnTop = turn.getBoundingClientRect().top - containerRect.top;
+      if (turnTop < -5) {
+        turn.scrollIntoView({ block: "start", behavior: "smooth" });
+        return;
+      }
+    }
+  }, []);
+
+  const handleScrollToNextUserMessageClick = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const containerRect = el.getBoundingClientRect();
+    const turns = el.querySelectorAll("[data-user-turn]");
+    for (let i = 0; i < turns.length; i++) {
+      const turn = turns[i] as HTMLElement;
+      const turnTop = turn.getBoundingClientRect().top - containerRect.top;
+      if (turnTop > el.clientHeight * 0.3) {
+        turn.scrollIntoView({ block: "start", behavior: "smooth" });
+        return;
+      }
+    }
+    scrollToBottom();
+  }, [scrollToBottom]);
+
+  const navFabButtonClassName = isTouch
+    ? "h-10 w-10 rounded-full bg-cc-card border border-cc-border shadow-lg flex items-center justify-center text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-all cursor-pointer"
+    : "h-8 w-8 rounded-full bg-cc-card border border-cc-border shadow-lg flex items-center justify-center text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-all cursor-pointer";
+  const navFabStackClassName = isTouch
+    ? `gap-2 ${isScrolling ? "opacity-60" : "opacity-0 pointer-events-none"}`
+    : "gap-4";
+  const userTurnNavGroupClassName = isTouch ? "flex flex-col gap-2" : "flex flex-col gap-1.5";
+
   const resetVisibleSectionsToLatest = useCallback(
     (behavior: ScrollBehavior = "auto") => {
       if (historyWindow && hasNewerSections) {
@@ -1549,19 +1592,17 @@ export function MessageFeed({
           </div>
         )}
 
-        {/* Navigation FABs — desktop: top, prev/next, bottom; mobile: top/bottom only, auto-hide */}
+        {/* Navigation FABs — desktop: top, prev/next, bottom; mobile: same stack, auto-hide */}
         {showScrollButton && (
           <div
             data-testid="message-feed-nav-fabs"
-            className={`absolute bottom-3 right-3 z-10 flex flex-col transition-opacity duration-300 ${
-              isTouch ? `gap-1.5 ${isScrolling ? "opacity-60" : "opacity-0 pointer-events-none"}` : "gap-4"
-            }`}
+            className={`absolute bottom-3 right-3 z-10 flex flex-col transition-opacity duration-300 ${navFabStackClassName}`}
             style={isTouch ? { bottom: `${mobileNavBottomOffsetPx}px` } : undefined}
           >
             {/* Go to top */}
             <button
-              onClick={() => containerRef.current?.scrollTo({ top: 0, behavior: "smooth" })}
-              className="w-8 h-8 rounded-full bg-cc-card border border-cc-border shadow-lg flex items-center justify-center text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-all cursor-pointer"
+              onClick={handleScrollToTopClick}
+              className={navFabButtonClassName}
               title="Go to top"
               aria-label="Go to top"
             >
@@ -1570,64 +1611,34 @@ export function MessageFeed({
                 <path d="M4 12h8" strokeLinecap="round" />
               </svg>
             </button>
-            {/* Prev/next user message — desktop only */}
-            {!isTouch && (
-              <div className="flex flex-col gap-1.5">
-                <button
-                  onClick={() => {
-                    const el = containerRef.current;
-                    if (!el) return;
-                    const containerRect = el.getBoundingClientRect();
-                    const turns = el.querySelectorAll("[data-user-turn]");
-                    for (let i = turns.length - 1; i >= 0; i--) {
-                      const t = turns[i] as HTMLElement;
-                      const tTop = t.getBoundingClientRect().top - containerRect.top;
-                      if (tTop < -5) {
-                        t.scrollIntoView({ block: "start", behavior: "smooth" });
-                        return;
-                      }
-                    }
-                  }}
-                  className="w-8 h-8 rounded-full bg-cc-card border border-cc-border shadow-lg flex items-center justify-center text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-all cursor-pointer"
-                  title="Previous user message"
-                  aria-label="Previous user message"
-                >
-                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
-                    <path d="M4 7l4-4 4 4" strokeLinecap="round" strokeLinejoin="round" />
-                    <path d="M8 3v10" strokeLinecap="round" />
-                  </svg>
-                </button>
-                <button
-                  onClick={() => {
-                    const el = containerRef.current;
-                    if (!el) return;
-                    const containerRect = el.getBoundingClientRect();
-                    const turns = el.querySelectorAll("[data-user-turn]");
-                    for (let i = 0; i < turns.length; i++) {
-                      const t = turns[i] as HTMLElement;
-                      const tTop = t.getBoundingClientRect().top - containerRect.top;
-                      if (tTop > el.clientHeight * 0.3) {
-                        t.scrollIntoView({ block: "start", behavior: "smooth" });
-                        return;
-                      }
-                    }
-                    scrollToBottom();
-                  }}
-                  className="w-8 h-8 rounded-full bg-cc-card border border-cc-border shadow-lg flex items-center justify-center text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-all cursor-pointer"
-                  title="Next user message"
-                  aria-label="Next user message"
-                >
-                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
-                    <path d="M4 9l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
-                    <path d="M8 3v10" strokeLinecap="round" />
-                  </svg>
-                </button>
-              </div>
-            )}
+            <div className={userTurnNavGroupClassName}>
+              <button
+                onClick={handleScrollToPreviousUserMessageClick}
+                className={navFabButtonClassName}
+                title="Previous user message"
+                aria-label="Previous user message"
+              >
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
+                  <path d="M4 7l4-4 4 4" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M8 3v10" strokeLinecap="round" />
+                </svg>
+              </button>
+              <button
+                onClick={handleScrollToNextUserMessageClick}
+                className={navFabButtonClassName}
+                title="Next user message"
+                aria-label="Next user message"
+              >
+                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
+                  <path d="M4 9l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M8 3v10" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
             {/* Go to bottom */}
             <button
               onClick={handleScrollToBottomClick}
-              className="w-8 h-8 rounded-full bg-cc-card border border-cc-border shadow-lg flex items-center justify-center text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-all cursor-pointer"
+              className={navFabButtonClassName}
               title="Go to bottom"
               aria-label="Go to bottom"
             >

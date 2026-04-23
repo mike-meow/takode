@@ -1067,14 +1067,14 @@ export function PlaygroundInteractiveSections() {
           <Card label="Mobile nav clearance">
             <div className="p-3 space-y-2">
               <p className="text-[10px] text-cc-muted mb-2">
-                On touch layouts, the feed navigation arrows should float above the lower-right status chips instead of
-                colliding with them.
+                On touch layouts, the feed navigation stack should keep all four controls visible, use larger touch
+                targets, and float above the lower-right status chips instead of colliding with them.
               </p>
               <div className="relative h-32 rounded-lg border border-cc-border bg-cc-bg overflow-hidden">
-                <div className="absolute right-2 flex flex-col gap-1.5" style={{ bottom: "42px" }}>
+                <div className="absolute right-2 flex flex-col gap-2" style={{ bottom: "42px" }}>
                   <button
                     type="button"
-                    className="w-8 h-8 rounded-full bg-cc-card border border-cc-border shadow-lg flex items-center justify-center text-cc-muted"
+                    className="h-10 w-10 rounded-full bg-cc-card border border-cc-border shadow-lg flex items-center justify-center text-cc-muted"
                     aria-label="Playground go to top"
                   >
                     <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
@@ -1082,9 +1082,31 @@ export function PlaygroundInteractiveSections() {
                       <path d="M4 12h8" strokeLinecap="round" />
                     </svg>
                   </button>
+                  <div className="flex flex-col gap-2">
+                    <button
+                      type="button"
+                      className="h-10 w-10 rounded-full bg-cc-card border border-cc-border shadow-lg flex items-center justify-center text-cc-muted"
+                      aria-label="Playground previous user message"
+                    >
+                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
+                        <path d="M4 7l4-4 4 4" strokeLinecap="round" strokeLinejoin="round" />
+                        <path d="M8 3v10" strokeLinecap="round" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      className="h-10 w-10 rounded-full bg-cc-card border border-cc-border shadow-lg flex items-center justify-center text-cc-muted"
+                      aria-label="Playground next user message"
+                    >
+                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
+                        <path d="M4 9l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+                        <path d="M8 3v10" strokeLinecap="round" />
+                      </svg>
+                    </button>
+                  </div>
                   <button
                     type="button"
-                    className="w-8 h-8 rounded-full bg-cc-card border border-cc-border shadow-lg flex items-center justify-center text-cc-muted"
+                    className="h-10 w-10 rounded-full bg-cc-card border border-cc-border shadow-lg flex items-center justify-center text-cc-muted"
                     aria-label="Playground go to bottom"
                   >
                     <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="w-4 h-4">
@@ -1099,7 +1121,9 @@ export function PlaygroundInteractiveSections() {
                 </div>
               </div>
               <p className="text-[10px] text-cc-muted">
-                The nav stack now reserves vertical clearance above the measured chip row on mobile.
+                The mock mirrors the touch feed: previous/next user-message buttons are restored, all four buttons use
+                larger 40px targets with wider spacing, and the stack still reserves vertical clearance above the
+                measured chip row on mobile.
               </p>
             </div>
           </Card>
