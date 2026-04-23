@@ -426,6 +426,15 @@ function setViewportWidth(width: number) {
   window.dispatchEvent(new Event("resize"));
 }
 
+function expectNoOverflowHiddenAncestorWithin(node: HTMLElement, stopAt: HTMLElement) {
+  let current: HTMLElement | null = node.parentElement;
+  while (current && current !== stopAt) {
+    expect(current.className).not.toContain("overflow-hidden");
+    current = current.parentElement;
+  }
+  expect(current).toBe(stopAt);
+}
+
 function makeImageFile(name: string, type = "image/png") {
   return new File(["fake-image-bytes"], name, { type });
 }
@@ -587,6 +596,69 @@ describe("Composer basic rendering", () => {
 
     expect(screen.queryByText("+34")).toBeNull();
     expect(screen.queryByText("-8")).toBeNull();
+  });
+
+  it("renders the composer footer after the textarea and keeps session metadata there", () => {
+    setupMockStore({
+      session: {
+        backend_type: "codex",
+        permissionMode: "plan",
+        git_branch: "feature/composer-footer",
+        model: "gpt-5.4",
+        codex_reasoning_effort: "high",
+      },
+    });
+
+    const { container } = render(<Composer sessionId="s1" />);
+    const textarea = container.querySelector("textarea");
+    const footer = screen.getByTestId("composer-footer-toolbar");
+    const meta = screen.getByTestId("composer-footer-meta");
+    const sendButton = screen.getByTitle("Send message");
+    const modeToggle = screen.getByTitle("Plan mode: agent creates a plan before executing (Shift+Tab to toggle)");
+
+    expect(textarea).toBeTruthy();
+    expect(Boolean(textarea && textarea.compareDocumentPosition(footer) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+    expect(sendButton.closest('[data-testid="composer-footer-toolbar"]')).toBe(footer);
+    expect(modeToggle.closest('[data-testid="composer-footer-toolbar"]')).toBe(footer);
+    expect(within(meta).getByText("feature/composer-footer")).toBeTruthy();
+    expect(within(meta).getByText("gpt-5.4")).toBeTruthy();
+    expect(within(meta).getByText("high")).toBeTruthy();
+  });
+
+  it("keeps the moved footer popovers outside overflow-hidden ancestors", async () => {
+    setupMockStore({
+      session: {
+        git_branch: "main",
+        model: "claude-sonnet-4-5-20250929",
+        permissionMode: "acceptEdits",
+      },
+    });
+
+    render(<Composer sessionId="s1" />);
+
+    const footer = screen.getByTestId("composer-footer-toolbar");
+    await userEvent.click(screen.getByTitle("Permissions: asking before tool use (click to change)"));
+    expectNoOverflowHiddenAncestorWithin(screen.getByTestId("composer-permission-popover"), footer);
+
+    await userEvent.click(screen.getByTitle("Model: claude-sonnet-4-5-20250929 (click to change)"));
+    expectNoOverflowHiddenAncestorWithin(screen.getByTestId("composer-model-menu"), footer);
+  });
+
+  it("keeps the moved codex reasoning menu outside overflow-hidden ancestors", async () => {
+    setupMockStore({
+      session: {
+        backend_type: "codex",
+        git_branch: "feature/reasoning-menu",
+        model: "gpt-5.4",
+        permissionMode: "plan",
+      },
+    });
+
+    render(<Composer sessionId="s1" />);
+
+    const footer = screen.getByTestId("composer-footer-toolbar");
+    await userEvent.click(screen.getByTitle("Reasoning effort (relaunch required)"));
+    expectNoOverflowHiddenAncestorWithin(screen.getByTestId("composer-reasoning-menu"), footer);
   });
 
   it("does not switch to the collapsed composer on narrow desktop layouts", () => {

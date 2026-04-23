@@ -126,7 +126,8 @@ export function ComposerInputSurface({
   isRecording,
   recordingCursorBefore,
   recordingCursorAfter,
-  children,
+  topChildren,
+  bottomChildren,
 }: {
   imageSrcs: Array<{ src: string; name: string }>;
   lightboxSrc: string | null;
@@ -149,7 +150,8 @@ export function ComposerInputSurface({
   isRecording: boolean;
   recordingCursorBefore: string;
   recordingCursorAfter: string;
-  children: ReactNode;
+  topChildren?: ReactNode;
+  bottomChildren?: ReactNode;
 }) {
   return (
     <div className="max-w-3xl mx-auto">
@@ -217,7 +219,7 @@ export function ComposerInputSurface({
           </div>
         )}
 
-        {children}
+        {topChildren}
 
         <div className="relative">
           <textarea
@@ -245,6 +247,8 @@ export function ComposerInputSurface({
             </div>
           )}
         </div>
+
+        {bottomChildren}
       </div>
     </div>
   );
