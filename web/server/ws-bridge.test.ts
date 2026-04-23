@@ -21643,8 +21643,7 @@ describe("work board", () => {
     expect(leaderAMessages.some((message: any) => message?.type === "notification_update")).toBe(true);
     expect(
       leaderAMessages.some(
-        (message: any) =>
-          message?.type === "notification_anchored" && message?.messageId === "asst-leader-a",
+        (message: any) => message?.type === "notification_anchored" && message?.messageId === "asst-leader-a",
       ),
     ).toBe(true);
     expect(leaderBMessages.some((message: any) => message?.type === "notification_update")).toBe(false);
