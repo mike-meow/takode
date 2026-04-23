@@ -191,7 +191,11 @@ describe("permission response handling in browser routing", () => {
     );
 
     expect(session.messageHistory.at(-1)).toEqual(expect.objectContaining({ type: "permission_denied" }));
-    expect(deps.injectUserMessage).toHaveBeenCalledWith("s1", "Keep planning around the websocket error path", undefined);
+    expect(deps.injectUserMessage).toHaveBeenCalledWith(
+      "s1",
+      "Keep planning around the websocket error path",
+      undefined,
+    );
   });
 
   it("does not inject a follow-up user message for the default ExitPlanMode denial text", () => {
