@@ -524,6 +524,67 @@ describe("permission response handling in browser routing", () => {
     );
   });
 
+  // SDK ExitPlanMode approval: verifies that handleSdkPermissionResponse
+  // clears the bridge-level pendingPermissions, resolves the adapter promise,
+  // broadcasts the approval to browsers, and transitions into execution mode.
+  it("approves ExitPlanMode for claude-sdk sessions via the adapter path", () => {
+    const session = makeSession();
+    session.backendType = "claude-sdk";
+    session.state.askPermission = true;
+    const sdkAdapter = {
+      sendBrowserMessage: vi.fn(() => true),
+      isConnected: vi.fn(() => true),
+    };
+    session.claudeSdkAdapter = sdkAdapter as any;
+    session.pendingPermissions.set("req-sdk-plan", {
+      request_id: "req-sdk-plan",
+      tool_name: "ExitPlanMode",
+      input: { plan: "my plan" },
+      tool_use_id: "tool-sdk-plan",
+      timestamp: 1,
+    });
+    const deps = makeDeps();
+
+    routeAdapterBrowserMessage(
+      session,
+      {
+        type: "permission_response",
+        request_id: "req-sdk-plan",
+        behavior: "allow",
+        updated_input: { plan: "my plan" },
+        actorSessionId: "leader-10",
+      },
+      null,
+      deps,
+    );
+
+    // Bridge-level permission cleared
+    expect(session.pendingPermissions.size).toBe(0);
+    // Adapter received the permission_response
+    expect(sdkAdapter.sendBrowserMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "permission_response",
+        request_id: "req-sdk-plan",
+        behavior: "allow",
+      }),
+    );
+    // Approval broadcast to browsers
+    expect(deps.broadcastToBrowsers).toHaveBeenCalledWith(
+      session,
+      expect.objectContaining({
+        type: "permission_approved",
+        request_id: "req-sdk-plan",
+        tool_name: "ExitPlanMode",
+      }),
+    );
+    // Transitions into execution mode
+    expect(deps.handleSetPermissionMode).toHaveBeenCalledWith(session, "acceptEdits");
+    expect(deps.setGenerating).toHaveBeenCalledWith(session, true, "exit_plan_mode");
+    expect(deps.broadcastStatusChange).toHaveBeenCalledWith(session, "running");
+    // Persisted
+    expect(deps.persistSession).toHaveBeenCalledWith(session);
+  });
+
   it("immediately denies long sleep can_use_tool requests and injects the timer reminder", () => {
     const session = makeSession();
     const deps = makeDeps();

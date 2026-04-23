@@ -8983,6 +8983,53 @@ describe("Takode server-authoritative auth", () => {
     );
   });
 
+  // Verifies the takode answer route correctly routes an ExitPlanMode approval
+  // through routeBrowserMessage for claude-sdk sessions. This covers the bug
+  // where stale pendingPermissions entries from adapter disconnects caused
+  // takode answer to resolve the wrong request_id.
+  it("takode answer approves ExitPlanMode and routes the permission response", async () => {
+    setupTakodeSessions();
+    bridge.getSession.mockReturnValue({
+      pendingPermissions: new Map([
+        [
+          "req-exit-plan",
+          {
+            request_id: "req-exit-plan",
+            tool_name: "ExitPlanMode",
+            timestamp: 2000,
+            input: { plan: "Step 1: do X\nStep 2: do Y", allowedPrompts: [] },
+          },
+        ],
+      ]),
+      notifications: [],
+      messageHistory: [{ type: "permission_request", request: { request_id: "req-exit-plan" } }],
+    });
+
+    const res = await app.request("/api/sessions/worker-1/answer", {
+      method: "POST",
+      headers: authHeaders("orch-1", "tok-1"),
+      body: JSON.stringify({ response: "approve" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      ok: true,
+      kind: "permission",
+      tool_name: "ExitPlanMode",
+      action: "approved",
+    });
+    expect(bridge.routeExternalPermissionResponse).toHaveBeenCalledWith(
+      expect.objectContaining({ pendingPermissions: expect.any(Map) }),
+      {
+        type: "permission_response",
+        request_id: "req-exit-plan",
+        behavior: "allow",
+        updated_input: { plan: "Step 1: do X\nStep 2: do Y", allowedPrompts: [] },
+      },
+      "orch-1",
+    );
+  });
+
   it("blocks spoofed sender identity and accepts authenticated send", async () => {
     setupTakodeSessions();
     launcher.isAlive.mockReturnValue(true);

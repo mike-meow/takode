@@ -42,6 +42,7 @@ function makeSession(overrides: Record<string, unknown> = {}) {
     },
     claudeSdkAdapter: null,
     pendingMessages: [],
+    pendingPermissions: new Map(),
     messageHistory: [],
     cliInitReceived: false,
     cliResuming: false,
@@ -188,5 +189,30 @@ describe("claude-sdk-adapter-lifecycle-controller", () => {
         message: expect.stringContaining("Session stopped after 3 consecutive launch failures"),
       }),
     );
+  });
+
+  // Verifies that stale pendingPermissions are cleared when the SDK adapter
+  // disconnects, preventing takode answer from resolving the wrong request_id
+  // after a reconnect.
+  it("clears pending permissions and broadcasts cancellation on adapter disconnect", () => {
+    const session = makeSession();
+    session.pendingPermissions.set("req-stale", {
+      request_id: "req-stale",
+      tool_name: "ExitPlanMode",
+      input: { plan: "old plan" },
+      tool_use_id: "tool-1",
+      timestamp: 1000,
+    });
+    const deps = makeDeps(session);
+    const adapter = makeAdapterMock();
+    attachClaudeSdkAdapterLifecycle("s1", adapter, deps);
+
+    adapter.emitDisconnect();
+
+    expect(session.pendingPermissions.size).toBe(0);
+    expect(deps.broadcastToBrowsers).toHaveBeenCalledWith(session, {
+      type: "permission_cancelled",
+      request_id: "req-stale",
+    });
   });
 });

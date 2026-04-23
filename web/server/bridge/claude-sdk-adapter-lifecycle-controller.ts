@@ -208,6 +208,15 @@ export function attachClaudeSdkAdapterLifecycle(
     });
     deps.broadcastToBrowsers(session, { type: "status_change", status: "idle" });
 
+    // Clear stale pending permissions so they don't accumulate across adapter
+    // reconnects. Without this, takode answer picks the stale entry (whose
+    // request_id doesn't exist in the new adapter) and silently fails to
+    // unblock the worker.
+    for (const [reqId] of session.pendingPermissions) {
+      deps.broadcastToBrowsers(session, { type: "permission_cancelled", request_id: reqId });
+    }
+    session.pendingPermissions.clear();
+
     if (
       !idleKilled &&
       deps.requestCliRelaunch &&
