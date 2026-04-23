@@ -216,9 +216,7 @@ function getInterruptSourceFromActorSessionId(actorSessionId: string | undefined
   return isSystemSourceTag({ sessionId: actorSessionId }) ? "system" : "leader";
 }
 
-function findPendingExitPlanPermission(
-  session: AdapterBrowserRoutingSessionLike,
-): PermissionRequest | undefined {
+function findPendingExitPlanPermission(session: AdapterBrowserRoutingSessionLike): PermissionRequest | undefined {
   for (const perm of session.pendingPermissions.values()) {
     if (perm.tool_name === "ExitPlanMode") return perm;
   }
