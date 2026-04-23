@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within, act } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import type { SessionState, SdkSessionInfo } from "../types.js";
 
@@ -245,7 +245,11 @@ import { Sidebar } from "./Sidebar.js";
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.stubGlobal("alert", mockAlert);
+  Object.defineProperty(globalThis, "alert", {
+    configurable: true,
+    writable: true,
+    value: mockAlert,
+  });
   mockState = createMockState();
   window.location.hash = "";
   setTouchDevice(false);
@@ -273,7 +277,22 @@ function expectDocumentOrder(nodes: HTMLElement[]) {
   }
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 describe("Sidebar", { timeout: 10000 }, () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
   it("polling refreshes sdk sessions without calling connectAllSessions", async () => {
     const listed = [makeSdkSession("s1")];
     mockApi.listSessions.mockResolvedValueOnce(listed);
@@ -342,6 +361,104 @@ describe("Sidebar", { timeout: 10000 }, () => {
         }),
       ]);
     });
+  });
+
+  it("refreshes stale session info when the window regains focus", async () => {
+    let now = 1_000;
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+
+    mockApi.listSessions
+      .mockResolvedValueOnce([makeSdkSession("s1", { createdAt: 1_000 })])
+      .mockResolvedValueOnce([makeSdkSession("s2", { createdAt: 2_000 })]);
+
+    render(<Sidebar />);
+
+    await waitFor(() => {
+      expect(mockApi.listSessions).toHaveBeenCalledTimes(1);
+      expect(mockState.setSdkSessions).toHaveBeenCalledWith([expect.objectContaining({ sessionId: "s1" })]);
+    });
+
+    now += 3 * 60 * 1000 + 1;
+    window.dispatchEvent(new Event("focus"));
+
+    await waitFor(() => {
+      expect(mockApi.listSessions).toHaveBeenCalledTimes(2);
+      expect(mockState.setSdkSessions).toHaveBeenLastCalledWith([expect.objectContaining({ sessionId: "s2" })]);
+    });
+  });
+
+  it("does not refresh recent session info on focus before the stale window elapses", async () => {
+    let now = 5_000;
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+
+    mockApi.listSessions.mockResolvedValueOnce([makeSdkSession("s1", { createdAt: 1_000 })]);
+
+    render(<Sidebar />);
+
+    await waitFor(() => {
+      expect(mockApi.listSessions).toHaveBeenCalledTimes(1);
+      expect(mockState.setSdkSessions).toHaveBeenCalledWith([expect.objectContaining({ sessionId: "s1" })]);
+    });
+    await Promise.resolve();
+
+    now += 60_000;
+    window.dispatchEvent(new Event("focus"));
+    await Promise.resolve();
+
+    expect(mockApi.listSessions).toHaveBeenCalledTimes(1);
+  });
+
+  it("refreshes stale session info when the page becomes visible again", async () => {
+    let now = 10_000;
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+
+    mockApi.listSessions
+      .mockResolvedValueOnce([makeSdkSession("s1", { createdAt: 1_000 })])
+      .mockResolvedValueOnce([makeSdkSession("s3", { createdAt: 3_000 })]);
+
+    render(<Sidebar />);
+
+    await waitFor(() => {
+      expect(mockApi.listSessions).toHaveBeenCalledTimes(1);
+      expect(mockState.setSdkSessions).toHaveBeenCalledWith([expect.objectContaining({ sessionId: "s1" })]);
+    });
+
+    now += 3 * 60 * 1000 + 1;
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    await waitFor(() => {
+      expect(mockApi.listSessions).toHaveBeenCalledTimes(2);
+      expect(mockState.setSdkSessions).toHaveBeenLastCalledWith([expect.objectContaining({ sessionId: "s3" })]);
+    });
+  });
+
+  it("shows and clears a refresh indicator when session retrieval is slow", async () => {
+    vi.useFakeTimers();
+    const pendingList = deferred<SdkSessionInfo[]>();
+    mockApi.listSessions.mockImplementationOnce(() => pendingList.promise);
+
+    render(<Sidebar />);
+
+    expect(screen.queryByText("Refreshing sessions...")).not.toBeInTheDocument();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(400);
+    });
+
+    expect(screen.getByText("Refreshing sessions...")).toBeInTheDocument();
+
+    await act(async () => {
+      pendingList.resolve([makeSdkSession("slow-1", { model: "claude-opus-4-6" })]);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(mockState.setSdkSessions).toHaveBeenCalledWith([expect.objectContaining({ sessionId: "slow-1" })]);
+    expect(screen.queryByText("Refreshing sessions...")).not.toBeInTheDocument();
   });
 
   it("hydrates tree groups from server on mount", async () => {
