@@ -46,7 +46,8 @@ True zero-code quests have one explicit exception: after marking the row with `t
 - **A stale completion does not outrank fresh feedback.** After a rework reset, old-scope review ACCEPTs, port confirmations, or delayed worker turn completions are historical context only. Do not use them to advance the board.
 - **Every `QUEUED` row must keep an explicit `--wait-for` reason.** Do not leave a quest in `QUEUED` with an empty wait-for column.
 - **`--wait-for` column**: list of quest IDs (`q-N`), session numbers (`#N`), or `free-worker`. Quest deps resolve when the quest leaves the active board, session deps resolve when the session becomes idle, and `free-worker` resolves when herd worker-slot usage drops below capacity.
-- **Resolved wait-for refs stay visible until you dispatch the row.** A queued row can show `clear q-N`, `clear #N`, or `clear free worker` to tell you it is now dispatchable. When you assign a worker with `takode board set ... --worker N` and no new `--wait-for`, the stale queue dependency is cleared automatically.
+- **Resolved quest waits are normalized instead of lingering as stale blockers.** When a queued row's `q-N` dependency resolves, that quest ref is removed from the effective `--wait-for` state. If nothing else remains, the row automatically normalizes to `free-worker` so every queued row still has an explicit wait reason.
+- **Dispatchable queued rows show up as ready, not `clear ...`.** `takode board show` distinguishes rows that are still blocked (`wait q-N`, `wait #N`, `wait free worker`) from rows that are now dispatchable (`ready`). Free-worker rows also generate reminders once capacity opens up.
 - Rows are auto-removed when a quest transitions to `needs_verification` or `done`.
 - **Always use `takode board` commands.** Never manually render markdown board tables in messages -- the CLI is the source of truth.
 - The board is stored server-side per leader session and persists across server restarts.

@@ -21600,7 +21600,7 @@ describe("work board", () => {
     expect(row.waitFor).toEqual(["q-2"]);
   });
 
-  it("removeBoardRows keeps queued quest waitFor refs visible after the dependency completes", () => {
+  it("removeBoardRows removes resolved quest waits and falls back to free-worker when needed", () => {
     const browser = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browser, "s1");
 
@@ -21612,9 +21612,9 @@ describe("work board", () => {
     bridge.removeBoardRows("s1", ["q-2"]);
 
     const rows = bridge.getBoard("s1");
-    expect(rows.find((row) => row.questId === "q-1")?.waitFor).toEqual(["q-2", "#5"]);
-    expect(rows.find((row) => row.questId === "q-3")?.waitFor).toEqual(["q-2", "q-99"]);
-    expect(rows.find((row) => row.questId === "q-4")?.waitFor).toEqual(["q-2"]);
+    expect(rows.find((row) => row.questId === "q-1")?.waitFor).toEqual(["#5"]);
+    expect(rows.find((row) => row.questId === "q-3")?.waitFor).toEqual(["q-99"]);
+    expect(rows.find((row) => row.questId === "q-4")?.waitFor).toEqual(["free-worker"]);
   });
 
   it("removeBoardRowFromAll clears stale quest waitFor refs across active boards", () => {
@@ -21627,6 +21627,18 @@ describe("work board", () => {
     bridge.removeBoardRowFromAll("q-2");
 
     expect(bridge.getBoard("s1")[0].waitFor).toEqual(["#7"]);
+  });
+
+  it("removeBoardRowFromAll normalizes fully-resolved queued waits to free-worker", () => {
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    bridge.upsertBoardRow("s1", { questId: "q-1", waitFor: ["q-2"] });
+    bridge.upsertBoardRow("s1", { questId: "q-2", title: "Dependency quest" });
+
+    bridge.removeBoardRowFromAll("q-2");
+
+    expect(bridge.getBoard("s1")[0].waitFor).toEqual(["free-worker"]);
   });
 
   // ─── field clearing ──────────────────────────────────────────────────────
@@ -22153,7 +22165,7 @@ describe("work board", () => {
     expect(lastUpdate.completedBoard[0].questId).toBe("q-1");
   });
 
-  it("board_updated broadcast keeps resolved quest waitFor refs so queued rows stay explainable", () => {
+  it("board_updated broadcast removes resolved quest waits from queued rows", () => {
     const browser = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browser, "s1");
 
@@ -22176,7 +22188,7 @@ describe("work board", () => {
     expect(lastUpdate.board).toEqual([
       expect.objectContaining({
         questId: "q-1",
-        waitFor: ["q-2", "#9"],
+        waitFor: ["#9"],
       }),
     ]);
     expect(lastUpdate.completedBoard).toEqual([expect.objectContaining({ questId: "q-2" })]);
@@ -22626,7 +22638,7 @@ describe("board stall warnings", () => {
     dispatcher.destroy();
   });
 
-  it("emits a one-shot dispatchable nudge when a queued quest's wait-for quest is already complete", async () => {
+  it("emits a one-shot leader nudge when a completed quest normalizes a queued row to free-worker", async () => {
     const { leaderId, dispatcher } = setupBoardStallHarness();
     const injectSpy = vi.spyOn(bridge, "injectUserMessage");
     const leaderSession = (bridge as any).sessions.get(leaderId);
@@ -22653,21 +22665,17 @@ describe("board stall warnings", () => {
     const herdCalls = injectSpy.mock.calls.filter(
       ([sessionId, _content, source]) => sessionId === leaderId && source?.sessionId === "herd-events",
     );
-    expect(herdCalls).toHaveLength(1);
-    expect(herdCalls[0][1]).toContain("board_dispatchable");
-    expect(herdCalls[0][1]).toContain("q-2");
-    expect(herdCalls[0][1]).toContain("wait-for resolved");
-    expect(leaderSession.attentionReason).toBe("review");
-    expect(leaderSession.notifications.some((notif: any) => notif.summary.includes("q-2 can be dispatched now"))).toBe(
-      false,
-    );
+    expect(herdCalls).toHaveLength(0);
+    expect(leaderSession.board.get("q-2")?.waitFor).toEqual(["free-worker"]);
+    expect(leaderSession.attentionReason).toBe("action");
+    expect(leaderSession.notifications.at(-1)?.summary).toContain("worker slots are available");
 
     vi.advanceTimersByTime(60_000);
     await Promise.resolve();
     const repeated = injectSpy.mock.calls.filter(
       ([sessionId, _content, source]) => sessionId === leaderId && source?.sessionId === "herd-events",
     );
-    expect(repeated).toHaveLength(1);
+    expect(repeated).toHaveLength(0);
 
     injectSpy.mockRestore();
     dispatcher.destroy();
@@ -22806,7 +22814,7 @@ describe("board stall warnings", () => {
     dispatcher.destroy();
   });
 
-  it("does not create automatic nudges for free-worker rows even when board output would mark them dispatchable", async () => {
+  it("creates a leader nudge for free-worker rows once capacity becomes available", async () => {
     const { leaderId, dispatcher, launcherSessions } = setupBoardStallHarness();
     const injectSpy = vi.spyOn(bridge, "injectUserMessage");
     const leaderSession = (bridge as any).sessions.get(leaderId);
@@ -22871,7 +22879,7 @@ describe("board stall warnings", () => {
     await Promise.resolve();
 
     expect(leaderSession.notifications.some((notif: any) => notif.summary.includes("q-5 can be dispatched now"))).toBe(
-      false,
+      true,
     );
     const herdCalls = injectSpy.mock.calls.filter(
       ([sessionId, content, source]) =>

@@ -177,7 +177,10 @@ export function clearResolvedQuestWaitFor(session: SessionLike, resolvedQuestIds
   for (const row of session.board.values()) {
     if (!row.waitFor || row.waitFor.length === 0) continue;
     const nextWaitFor = row.waitFor.filter((dep: string) => !resolved.has(dep.toLowerCase()));
-    row.waitFor = nextWaitFor.length > 0 ? nextWaitFor : undefined;
+    const deduped = [...new Set<string>(nextWaitFor.map((dep: string) => dep.toLowerCase()))].map((dep) =>
+      dep === FREE_WORKER_WAIT_FOR_TOKEN ? FREE_WORKER_WAIT_FOR_TOKEN : dep,
+    );
+    row.waitFor = deduped.length > 0 ? deduped : [FREE_WORKER_WAIT_FOR_TOKEN];
     session.board.set(row.questId, row);
   }
 }
@@ -249,6 +252,12 @@ export function removeBoardRows(session: SessionLike, questIds: string[], deps: 
   for (const questId of questIds) {
     const completed = moveBoardRowToCompleted(session, questId);
     if (completed) completedRows.push(completed);
+  }
+  if (completedRows.length > 0) {
+    clearResolvedQuestWaitFor(
+      session,
+      completedRows.map((row) => row.questId),
+    );
   }
   const board = commitBoard(session, deps);
   if (completedRows.length > 0) {
@@ -651,14 +660,10 @@ function buildBoardDispatchableCandidate(
   const warning = buildQueuedBoardWarning(session, row, deps);
   if (!warning || warning.kind !== "dispatchable") return null;
   const waitFor = row.waitFor ?? [];
-  const actionableDeps = waitFor.filter((dep: string) => {
-    const kind = getWaitForRefKind(dep);
-    return kind === "quest" || kind === "session";
-  });
-  if (actionableDeps.length === 0) return null;
+  if (waitFor.length === 0) return null;
 
   return {
-    signature: `${row.questId}|dispatchable|${actionableDeps
+    signature: `${row.questId}|dispatchable|${waitFor
       .map((dep) => dep.toLowerCase())
       .sort()
       .join(",")}`,

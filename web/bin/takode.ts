@@ -3149,6 +3149,7 @@ function printBoardText(
     allBoardRows?: BoardRow[];
     resolvedSessionDeps?: Set<string>;
     rowSessionStatuses?: Record<string, BoardRowSessionStatus>;
+    queueWarnings?: BoardQueueWarning[];
     workerSlotUsage?: { used: number; limit: number };
   },
 ): void {
@@ -3158,8 +3159,11 @@ function printBoardText(
   }
 
   // Build a set of active quest IDs on the board (for resolving wait-for status)
-  const { allBoardRows, resolvedSessionDeps, rowSessionStatuses, workerSlotUsage } = opts ?? {};
+  const { allBoardRows, resolvedSessionDeps, rowSessionStatuses, queueWarnings, workerSlotUsage } = opts ?? {};
   const activeQuestIds = new Set((allBoardRows || board).map((r) => r.questId));
+  const dispatchableQuestIds = new Set(
+    (queueWarnings ?? []).filter((warning) => warning.kind === "dispatchable").map((warning) => warning.questId),
+  );
 
   console.log("");
   const qCol = 8;
@@ -3193,10 +3197,10 @@ function printBoardText(
       return true;
     });
     let waitForStr: string;
-    if (blockedDeps.length > 0) {
+    if (dispatchableQuestIds.has(row.questId)) {
+      waitForStr = "ready";
+    } else if (blockedDeps.length > 0) {
       waitForStr = `wait ${blockedDeps.map((dep) => formatWaitForRefLabel(dep)).join(", ")}`;
-    } else if (allDeps.length > 0) {
-      waitForStr = `clear ${allDeps.map((dep) => formatWaitForRefLabel(dep)).join(", ")}`;
     } else {
       waitForStr = "--";
     }
@@ -3204,7 +3208,9 @@ function printBoardText(
 
     // Next action hint: if blocked, show "blocked"; otherwise show state hint
     let nextAction: string;
-    if (blockedDeps.length > 0) {
+    if (dispatchableQuestIds.has(row.questId)) {
+      nextAction = "dispatch now";
+    } else if (blockedDeps.length > 0) {
       nextAction = `wait for ${blockedDeps.map((dep) => formatWaitForRefLabel(dep)).join(", ")}`;
     } else {
       nextAction = QUEST_JOURNEY_HINTS[row.status || ""] || "--";
@@ -3252,11 +3258,11 @@ function outputBoard(
     return;
   }
 
-  printBoardText(board, { allBoardRows: board, resolvedSessionDeps, rowSessionStatuses, workerSlotUsage });
+  printBoardText(board, { allBoardRows: board, resolvedSessionDeps, rowSessionStatuses, queueWarnings, workerSlotUsage });
   // Print completed items table when --all flag includes them
   if (completedBoard && completedBoard.length > 0) {
     console.log("── Completed ──────────────────────────────────────────");
-    printBoardText(completedBoard, { rowSessionStatuses, workerSlotUsage });
+    printBoardText(completedBoard, { rowSessionStatuses, queueWarnings, workerSlotUsage });
   }
   // Always show a footer count when completed items exist
   if (completedCount && completedCount > 0 && !completedBoard) {

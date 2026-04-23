@@ -3429,6 +3429,14 @@ describe("takode board output modes", () => {
                 updatedAt: 2,
               },
             ],
+            queueWarnings: [
+              {
+                questId: "q-12",
+                kind: "dispatchable",
+                summary: "q-12 can be dispatched now: wait-for resolved (q-9).",
+                action: "Dispatch it now or replace QUEUED with the next active board stage.",
+              },
+            ],
             rowSessionStatuses: {
               "q-12": {
                 worker: { sessionId: "worker-1", sessionNum: 5, status: "idle" },
@@ -3461,7 +3469,8 @@ describe("takode board output modes", () => {
       expect(result.stdout).toContain("ACTION");
       expect(result.stdout).toContain("q-12");
       expect(result.stdout).toContain("#5 idle / no reviewer");
-      expect(result.stdout).toContain("clear q-9");
+      expect(result.stdout).toContain("ready");
+      expect(result.stdout).toContain("dispatch now");
       expect(result.stdout).not.toContain("__takode_board__");
       expect(result.stdout).not.toContain('"rowSessionStatuses"');
     } finally {
@@ -3572,8 +3581,8 @@ describe("takode board output modes", () => {
       });
 
       expect(result.status).toBe(0);
-      expect(result.stdout).toContain("clear free work");
-      expect(result.stdout).toContain("dispatch to a worker");
+      expect(result.stdout).toContain("ready");
+      expect(result.stdout).toContain("dispatch now");
       expect(result.stdout).toContain("q-88 can be dispatched now");
       expect(result.stdout).toContain("Next: Dispatch it now or replace QUEUED");
     } finally {

@@ -1248,7 +1248,9 @@ export function createTakodeRoutes(ctx: RouteContext) {
       const invalid = parsed.filter((ref: string) => !isValidWaitForRef(ref));
       if (invalid.length > 0) {
         return c.json(
-          { error: `Invalid wait-for value(s): ${invalid.join(", ")} -- use q-N for quests or #N for sessions` },
+          {
+            error: `Invalid wait-for value(s): ${invalid.join(", ")} -- use q-N for quests, #N for sessions, or ${FREE_WORKER_WAIT_FOR_TOKEN}`,
+          },
           400,
         );
       }
