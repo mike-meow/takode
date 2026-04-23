@@ -1567,10 +1567,26 @@ export function addTaskEntry(
     const last = session.taskHistory[session.taskHistory.length - 1];
     if (last) last.title = entry.title;
   } else {
+    const last = session.taskHistory[session.taskHistory.length - 1];
+    if (isConsecutiveDuplicateTaskEntry(last, entry)) return;
     session.taskHistory.push(entry);
   }
   deps.broadcastTaskHistory?.(session);
   deps.persistSession(session);
+}
+
+function isConsecutiveDuplicateTaskEntry(
+  previous: SessionTaskEntry | undefined,
+  next: SessionTaskEntry,
+): boolean {
+  if (!previous) return false;
+  return (
+    previous.action === next.action &&
+    previous.title === next.title &&
+    previous.triggerMessageId === next.triggerMessageId &&
+    previous.source === next.source &&
+    previous.questId === next.questId
+  );
 }
 
 export function updateQuestTaskEntries(

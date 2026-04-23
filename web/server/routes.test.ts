@@ -7342,6 +7342,66 @@ describe("POST /api/quests/:questId/claim", () => {
     );
     expect(bridge.persistSessionById).toHaveBeenCalledWith("session-2");
   });
+
+  it("does not duplicate quest task history on repeated same-session claims", async () => {
+    // Regression: a same-session re-claim is idempotent at the quest-store layer
+    // and must not append another identical quest pill to session task history.
+    vi.spyOn(questStore, "claimQuest").mockResolvedValue({
+      id: "q-1-v3",
+      questId: "q-1",
+      title: "Quest",
+      status: "in_progress",
+      sessionId: "session-2",
+      createdAt: Date.now(),
+      claimedAt: Date.now(),
+      description: "Ready",
+    } as any);
+
+    launcher.getSession.mockReturnValue({
+      sessionId: "session-2",
+      state: "running",
+      cwd: "/test",
+      archived: false,
+    } as any);
+
+    const trackedSession = {
+      id: "session-2",
+      state: {},
+      browserSockets: new Set(),
+      taskHistory: [],
+      messageHistory: [{ type: "user_message", id: "u-1", content: "claim", timestamp: Date.now() }],
+    } as any;
+    bridge.getSession.mockReturnValue(trackedSession);
+
+    const first = await app.request("/api/quests/q-1/claim", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: "session-2" }),
+    });
+    expect(first.status).toBe(200);
+
+    const second = await app.request("/api/quests/q-1/claim", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: "session-2" }),
+    });
+    expect(second.status).toBe(200);
+
+    expect(trackedSession.taskHistory).toEqual([
+      expect.objectContaining({
+        title: "Quest",
+        source: "quest",
+        questId: "q-1",
+        triggerMessageId: "u-1",
+      }),
+    ]);
+    expect(
+      bridge.broadcastToSession.mock.calls.filter(
+        ([sid, msg]: [string, { type?: string; tasks?: unknown[] }]) =>
+          sid === "session-2" && msg.type === "session_task_history" && Array.isArray(msg.tasks) && msg.tasks.length === 1,
+      ),
+    ).toHaveLength(1);
+  });
 });
 
 describe("POST /api/quests/:questId/feedback", () => {
