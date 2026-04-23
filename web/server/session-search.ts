@@ -54,15 +54,26 @@ function clampInt(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-function buildSnippet(content: string, q: string, maxLen = 120): string {
+function buildSnippet(content: string, qWords: string[], maxLen = 120): string {
   const text = content.replace(/\s+/g, " ").trim();
   if (!text) return "";
   if (text.length <= maxLen) return text;
 
-  const idx = text.toLowerCase().indexOf(q);
+  // Find the position of the first matching word to center the snippet around it
+  const lower = text.toLowerCase();
+  let idx = -1;
+  let matchLen = 1;
+  for (const w of qWords) {
+    const i = lower.indexOf(w);
+    if (i >= 0) {
+      idx = i;
+      matchLen = w.length;
+      break;
+    }
+  }
   if (idx < 0) return text.slice(0, maxLen).trimEnd();
 
-  const contextRadius = Math.floor((maxLen - q.length) / 2);
+  const contextRadius = Math.floor((maxLen - matchLen) / 2);
   const start = Math.max(0, idx - contextRadius);
   const end = Math.min(text.length, start + maxLen);
   return text.slice(start, end).trim();
@@ -81,7 +92,7 @@ function pushIfBetter(current: SessionSearchResult | null, next: SessionSearchRe
 
 function messageMatchCandidate(
   doc: SessionSearchDocument,
-  q: string,
+  qWords: string[],
   matches: (text: string) => boolean,
   maxMessagesToScan: number,
 ): SessionSearchResult | null {
@@ -105,9 +116,9 @@ function messageMatchCandidate(
         sessionId: doc.sessionId,
         score: 500,
         matchedField: "user_message",
-        matchContext: `message: ${buildSnippet(content, q)}`,
+        matchContext: `message: ${buildSnippet(content, qWords)}`,
         matchedAt: timestamp,
-        messageMatch: { id: msg.id, timestamp, snippet: buildSnippet(content, q) },
+        messageMatch: { id: msg.id, timestamp, snippet: buildSnippet(content, qWords) },
       };
     }
 
@@ -120,9 +131,9 @@ function messageMatchCandidate(
         sessionId: doc.sessionId,
         score: 450,
         matchedField: "compact_marker",
-        matchContext: `compaction: ${buildSnippet(content, q)}`,
+        matchContext: `compaction: ${buildSnippet(content, qWords)}`,
         matchedAt: timestamp,
-        messageMatch: { id: msg.id, timestamp, snippet: buildSnippet(content, q) },
+        messageMatch: { id: msg.id, timestamp, snippet: buildSnippet(content, qWords) },
       };
     }
   }
@@ -219,7 +230,7 @@ export function searchSessionDocuments(
       });
     }
 
-    const msgCandidate = messageMatchCandidate(doc, q, matches_, messageLimitPerSession);
+    const msgCandidate = messageMatchCandidate(doc, qWords, matches_, messageLimitPerSession);
     if (msgCandidate) {
       best = pushIfBetter(best, msgCandidate);
     }

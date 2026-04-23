@@ -11,7 +11,7 @@ import {
 } from "../utils/questmaster-view-state.js";
 import type { QuestmasterCollapsedGroup } from "../utils/questmaster-view-state.js";
 import { getHighlightParts } from "../utils/highlight.js";
-import { multiWordMatch, normalizeForSearch } from "../../shared/search-utils.js";
+import { multiWordMatch } from "../../shared/search-utils.js";
 import { QUEST_STATUS_THEME } from "../utils/quest-status-theme.js";
 import { timeAgo, verificationProgress, getQuestOwnerSessionId, CopyableQuestId } from "../utils/quest-helpers.js";
 import {
@@ -621,7 +621,7 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
   // Layer 1: text search (case-insensitive on quest ID + title + description)
   // Negated tags like `-#mobile` are parsed separately so free-text matching
   // and highlighting stay focused on the positive portion of the query.
-  const searchNormalized = normalizeForSearch(searchText);
+  const searchNormalized = searchText.trim();
   const afterSearch = searchNormalized
     ? quests.filter((q) => {
         if (multiWordMatch(q.questId, searchText)) return true;
