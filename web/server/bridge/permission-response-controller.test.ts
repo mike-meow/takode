@@ -3,6 +3,7 @@ import {
   handleCodexPermissionRequest,
   handleControlRequest,
   handlePermissionResponse,
+  routeBrowserMessage,
   handleSdkPermissionRequest,
   routeAdapterBrowserMessage,
   type AdapterBrowserRoutingDeps,
@@ -165,6 +166,112 @@ describe("permission response handling in browser routing", () => {
       { tool_name: "ExitPlanMode", outcome: "denied" },
       "actor-1",
     );
+  });
+
+  it("auto-rejects pending ExitPlanMode before /compact interception returns early", async () => {
+    const session = makeSession();
+    session.pendingPermissions.set("req-compact", {
+      request_id: "req-compact",
+      tool_name: "ExitPlanMode",
+      input: { plan: "## Plan\n\n1. Compact later" },
+      tool_use_id: "tool-compact",
+      timestamp: 1,
+    });
+    const deps = makeDeps();
+
+    await routeBrowserMessage(
+      session as any,
+      {
+        type: "user_message",
+        content: "/compact",
+      },
+      undefined,
+      deps,
+    );
+
+    expect(session.pendingPermissions.size).toBe(0);
+    expect(session.messageHistory.slice(-2).map((entry) => entry.type)).toEqual(["permission_denied", "user_message"]);
+    expect(deps.handleInterruptFallback).toHaveBeenCalledWith(session, "user");
+    expect(deps.broadcastToBrowsers).toHaveBeenNthCalledWith(
+      1,
+      session,
+      expect.objectContaining({
+        type: "permission_denied",
+        request_id: "req-compact",
+      }),
+    );
+    expect(deps.broadcastToBrowsers).toHaveBeenNthCalledWith(
+      2,
+      session,
+      expect.objectContaining({
+        type: "user_message",
+        content: "/compact",
+      }),
+    );
+    expect(deps.broadcastStatusChange).toHaveBeenCalledWith(session, "compacting");
+    expect(deps.requestCliRelaunch).toHaveBeenCalledWith("s1");
+  });
+
+  it("auto-rejects pending ExitPlanMode before delivering a fresh leader message", async () => {
+    const session = makeSession();
+    session.pendingPermissions.set("req-leader-message", {
+      request_id: "req-leader-message",
+      tool_name: "ExitPlanMode",
+      input: { plan: "## Plan\n\n1. Implement later" },
+      tool_use_id: "tool-leader-message",
+      timestamp: 1,
+    });
+    const deps = makeDeps();
+
+    await routeBrowserMessage(
+      session as any,
+      {
+        type: "user_message",
+        content: "Implement now",
+        agentSource: { sessionId: "leader-7", sessionLabel: "#7 Leader" },
+      },
+      undefined,
+      deps,
+    );
+
+    expect(session.pendingPermissions.size).toBe(0);
+    expect(session.messageHistory.slice(-2).map((entry) => entry.type)).toEqual(["permission_denied", "user_message"]);
+    expect(deps.handleInterruptFallback).toHaveBeenCalledWith(session, "leader");
+    expect(deps.emitTakodeEvent).toHaveBeenCalledWith(
+      "s1",
+      "permission_resolved",
+      { tool_name: "ExitPlanMode", outcome: "denied" },
+      "leader-7",
+    );
+
+    const sendCalls = (deps.sendToCLI as any).mock.calls.map(([targetSession, payload]: [unknown, string]) => [
+      targetSession,
+      JSON.parse(payload),
+    ]);
+    expect(sendCalls).toHaveLength(2);
+    expect(sendCalls[0]).toEqual([
+      session,
+      expect.objectContaining({
+        type: "control_response",
+        response: expect.objectContaining({
+          request_id: "req-leader-message",
+          response: expect.objectContaining({
+            behavior: "deny",
+            message: "Plan rejected — leader sent a new message",
+          }),
+        }),
+      }),
+    ]);
+    expect(sendCalls[1]).toEqual([
+      session,
+      expect.objectContaining({
+        type: "user",
+        message: expect.objectContaining({
+          role: "user",
+          content: expect.stringContaining("Implement now"),
+        }),
+      }),
+    ]);
   });
 
   it("clears Codex permission notifications and action attention before denial side effects", () => {
