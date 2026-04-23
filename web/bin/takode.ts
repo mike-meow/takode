@@ -3258,7 +3258,13 @@ function outputBoard(
     return;
   }
 
-  printBoardText(board, { allBoardRows: board, resolvedSessionDeps, rowSessionStatuses, queueWarnings, workerSlotUsage });
+  printBoardText(board, {
+    allBoardRows: board,
+    resolvedSessionDeps,
+    rowSessionStatuses,
+    queueWarnings,
+    workerSlotUsage,
+  });
   // Print completed items table when --all flag includes them
   if (completedBoard && completedBoard.length > 0) {
     console.log("── Completed ──────────────────────────────────────────");
