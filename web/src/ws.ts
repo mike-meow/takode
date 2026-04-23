@@ -23,6 +23,7 @@ const transport = createWsTransport({
     const store = useStore.getState();
     if (store.pendingScrollToMessageIndex.get(sessionId) != null) return null;
     if (store.scrollToTurnId.get(sessionId)) return null;
+    if (store.pendingScrollToMessageId.get(sessionId)) return null;
     return {
       sectionTurnCount: HISTORY_WINDOW_SECTION_TURN_COUNT,
       visibleSectionCount: HISTORY_WINDOW_VISIBLE_SECTION_COUNT,
