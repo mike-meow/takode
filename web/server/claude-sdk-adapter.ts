@@ -564,19 +564,14 @@ export class ClaudeSdkAdapter
     switch (msgType) {
       case "user_message": {
         const content = (msg as any).content;
-        const images = (msg as any).images as { media_type: string; data: string }[] | undefined;
         const vscodeSelection = (msg as any).vscodeSelection as VsCodeSelectionMetadata | undefined;
         const selectionText = vscodeSelection ? formatVsCodeSelectionPrompt(vscodeSelection) : null;
         if (!content && !selectionText) return true;
 
         // /compact interception is handled by ws-bridge.routeBrowserMessage
         // before timestamp tagging. The adapter just forwards it to the CLI.
-
-        if (images?.length) {
-          console.warn(
-            `[claude-sdk-adapter] Ignoring unexpected image payloads for session ${this.sessionId}; expected text-only attachment path annotations`,
-          );
-        }
+        // Raw image payloads are rejected by routeBrowserMessage's ingress
+        // guard before reaching this adapter -- no image handling needed here.
 
         if (selectionText) {
           // No images but VSCode selection present: send as structured message
