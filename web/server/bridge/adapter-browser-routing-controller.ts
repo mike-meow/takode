@@ -990,7 +990,7 @@ export function handleSetModel(
   }
   deps.broadcastToBrowsers(session, {
     type: "session_update",
-    session: { model },
+    session: { model, claude_token_details: session.state.claude_token_details },
   });
   deps.persistSession(session);
 }

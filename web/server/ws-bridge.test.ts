@@ -6005,6 +6005,48 @@ describe("Browser message routing", () => {
     expect(sent.request.mode).toBe("bypassPermissions");
   });
 
+  it("set_model: updates claude_token_details.modelContextWindow for [1m] variant", () => {
+    const session = bridge.getSession("s1")!;
+    session.state.claude_token_details = {
+      inputTokens: 100,
+      outputTokens: 50,
+      cachedInputTokens: 10,
+      modelContextWindow: 200_000,
+    };
+
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({ type: "set_model", model: "claude-opus-4-6[1m]" }),
+    );
+
+    expect(session.state.model).toBe("claude-opus-4-6[1m]");
+    expect(session.state.claude_token_details!.modelContextWindow).toBe(1_000_000);
+    // Existing token counts preserved
+    expect(session.state.claude_token_details!.inputTokens).toBe(100);
+
+    // Broadcast includes updated claude_token_details
+    const sent = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    const update = sent.find((m: any) => m.type === "session_update" && m.session?.model);
+    expect(update.session.claude_token_details.modelContextWindow).toBe(1_000_000);
+  });
+
+  it("set_model: creates claude_token_details when switching to [1m] without prior details", () => {
+    const session = bridge.getSession("s1")!;
+    session.state.claude_token_details = undefined;
+
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({ type: "set_model", model: "claude-opus-4-6[1m]" }),
+    );
+
+    expect(session.state.claude_token_details).toEqual({
+      inputTokens: 0,
+      outputTokens: 0,
+      cachedInputTokens: 0,
+      modelContextWindow: 1_000_000,
+    });
+  });
+
   it("set_model: deduplicates repeated client_msg_id", () => {
     const payload = {
       type: "set_model",
