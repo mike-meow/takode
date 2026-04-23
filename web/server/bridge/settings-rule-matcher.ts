@@ -240,11 +240,24 @@ export function matchesToolRule(toolName: string, input: Record<string, unknown>
 
 // ─── Security Guards ────────────────────────────────────────────────────────
 
-/** Reject commands with shell constructs that could inject arbitrary code. */
+/**
+ * Reject commands with shell constructs that could inject arbitrary code.
+ *
+ * Safe heredoc patterns like `$(cat <<'EOF' ... EOF)` and `$(cat <<EOF ... EOF)`
+ * are whitelisted — they're just multi-line string literals, not arbitrary
+ * command substitution.
+ */
 export function hasDangerousShellConstructs(command: string): boolean {
-  if (/\$\(/.test(command)) return true;
-  if (/`/.test(command)) return true;
-  if (/[<>]\(/.test(command)) return true;
+  // Strip safe heredoc constructs before scanning: $(cat <<'DELIM' ... DELIM)
+  // and $(cat <<DELIM ... DELIM). These are commonly used to pass multi-line
+  // strings to CLI commands (e.g. takode send, git commit -m).
+  const withoutHeredocs = command.replace(
+    /\$\(cat\s+<<-?\s*'?([A-Za-z_]\w*)'?\s*\n[\s\S]*?\n\s*\1\s*\)/g,
+    "<<HEREDOC_PLACEHOLDER>>",
+  );
+  if (/\$\(/.test(withoutHeredocs)) return true;
+  if (/`/.test(withoutHeredocs)) return true;
+  if (/[<>]\(/.test(withoutHeredocs)) return true;
   return false;
 }
 

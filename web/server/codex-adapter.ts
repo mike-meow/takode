@@ -892,6 +892,7 @@ export class CodexAdapter
   // Track request types that need different response formats
   private pendingUserInputQuestionIds = new Map<string, string[]>(); // request_id -> ordered Codex question IDs
   private pendingReviewDecisions = new Set<string>(); // request_ids that need ReviewDecision format
+  private pendingElicitations = new Set<string>(); // request_ids from mcpServer/elicitation/request
   private pendingDynamicToolCalls = new Map<
     string,
     {
@@ -1698,6 +1699,14 @@ export class CodexAdapter
       return;
     }
 
+    // MCP elicitation requests need ElicitResult with action field
+    if (this.pendingElicitations.has(msg.request_id)) {
+      this.pendingElicitations.delete(msg.request_id);
+      const action = msg.behavior === "allow" ? "accept" : "decline";
+      await this.transport.respond(jsonRpcId, { action });
+      return;
+    }
+
     // Standard item/*/requestApproval — uses accept/decline
     const decision = msg.behavior === "allow" ? "accept" : "decline";
     await this.transport.respond(jsonRpcId, { decision });
@@ -2161,6 +2170,9 @@ export class CodexAdapter
         case "execCommandApproval":
           this.handleExecCommandApproval(id, params);
           break;
+        case "mcpServer/elicitation/request":
+          this.handleMcpElicitationRequest(id, params);
+          break;
         case "account/chatgptAuthTokens/refresh":
           console.warn("[codex-adapter] Auth token refresh not supported");
           this.transport.respond(id, { error: "not supported" });
@@ -2243,6 +2255,44 @@ export class CodexAdapter
       input: args,
       description: (params.reason as string) || `MCP tool call: ${server}/${tool}`,
       tool_use_id: (params.itemId as string) || requestId,
+      timestamp: Date.now(),
+    };
+
+    this.emit({ type: "permission_request", request: perm });
+  }
+
+  /**
+   * Handle MCP server elicitation requests (mcpServer/elicitation/request).
+   *
+   * MCP servers (e.g. Slack) use the MCP elicitation protocol to request user
+   * approval for tool calls. Codex wraps these as JSON-RPC requests and expects
+   * an ElicitResult response with `{ action: "accept" | "decline" | "cancel" }`.
+   *
+   * We map these to our existing permission request UI. The `_meta.tool_params`
+   * contains the actual MCP tool arguments, and `_meta.tool_description` has
+   * the tool's description string.
+   */
+  private handleMcpElicitationRequest(jsonRpcId: number, params: Record<string, unknown>): void {
+    const requestId = `codex-elicit-${randomUUID()}`;
+    this.pendingApprovals.set(requestId, jsonRpcId);
+    this.pendingElicitations.add(requestId);
+
+    const serverName = (params.serverName as string) || "unknown";
+    const message = (params.message as string) || "MCP server elicitation request";
+    const meta = (params._meta as Record<string, unknown>) || {};
+    const toolDescription = (meta.tool_description as string) || "";
+    const toolParams = (meta.tool_params as Record<string, unknown>) || {};
+
+    // Extract the tool name from the message if possible (format: 'Allow the X MCP server to run tool "Y"?')
+    const toolMatch = message.match(/run tool "([^"]+)"/);
+    const toolName = toolMatch ? toolMatch[1] : "elicitation";
+
+    const perm: PermissionRequest = {
+      request_id: requestId,
+      tool_name: `mcp:${serverName}:${toolName}`,
+      input: toolParams,
+      description: toolDescription ? `${message}\n\n${toolDescription}` : message,
+      tool_use_id: requestId,
       timestamp: Date.now(),
     };
 
