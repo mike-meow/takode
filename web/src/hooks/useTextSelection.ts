@@ -75,16 +75,22 @@ export function useTextSelection(containerRef: RefObject<HTMLElement | null>): T
   // Whether the current interaction started with touch (affects menu position)
   const isTouchInteractionRef = useRef(false);
 
-  const clear = useCallback(() => {
-    setState(EMPTY_STATE);
+  const suppressSelectionChanges = useCallback((callback: () => void) => {
     suppressRef.current = true;
-    window.getSelection()?.removeAllRanges();
+    callback();
     requestAnimationFrame(() => {
       setTimeout(() => {
         suppressRef.current = false;
       }, 0);
     });
   }, []);
+
+  const clear = useCallback(() => {
+    setState(EMPTY_STATE);
+    suppressSelectionChanges(() => {
+      window.getSelection()?.removeAllRanges();
+    });
+  }, [suppressSelectionChanges]);
 
   const container = containerRef.current;
 
@@ -123,12 +129,22 @@ export function useTextSelection(containerRef: RefObject<HTMLElement | null>): T
         return;
       }
 
-      setState({
+      const nextState = {
         isActive: true,
         plainText: sel.toString(),
         range: range.cloneRange(),
         position: computeMenuPosition(rect, isTouchInteractionRef.current),
-      });
+      };
+
+      setState(nextState);
+
+      if (isTouchInteractionRef.current) {
+        // iOS keeps the native callout visible while the DOM selection remains active.
+        // Clear the browser selection after caching the range so our own menu isn't blocked.
+        suppressSelectionChanges(() => {
+          sel.removeAllRanges();
+        });
+      }
     }
 
     function scheduleEvaluation() {
@@ -192,7 +208,7 @@ export function useTextSelection(containerRef: RefObject<HTMLElement | null>): T
       cancelAnimationFrame(rafRef.current);
       if (touchDelayRef.current) clearTimeout(touchDelayRef.current);
     };
-  }, [container]);
+  }, [container, suppressSelectionChanges]);
 
   return { ...state, clear };
 }
