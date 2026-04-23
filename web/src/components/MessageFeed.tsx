@@ -68,6 +68,7 @@ import { useCollapsePolicy } from "../hooks/use-collapse-policy.js";
 import { useTextSelection } from "../hooks/useTextSelection.js";
 import { SelectionContextMenu } from "./SelectionContextMenu.js";
 import { getHistoryWindowTurnCount } from "../../shared/history-window.js";
+import { collectAnchoredNotificationMessageIds } from "../utils/anchored-notifications.js";
 import {
   isUserBoundaryEntry,
   useFeedModel,
@@ -211,6 +212,7 @@ export function MessageFeed({
   const toolResults = useStore((s) => s.toolResults.get(sessionId));
   const toolStartTimestamps = useStore((s) => s.toolStartTimestamps.get(sessionId));
   const backgroundAgentNotifs = useStore((s) => s.backgroundAgentNotifs.get(sessionId));
+  const sessionNotifications = useStore((s) => s.sessionNotifications.get(sessionId));
   const currentSessionStatus = useStore((s) => s.sessionStatus.get(sessionId) ?? null);
   const parentStreamingByToolUseId = useStore((s) => s.streamingByParentToolUseId.get(sessionId));
   const isLeaderSession = useStore((s) =>
@@ -259,10 +261,15 @@ export function MessageFeed({
     () => (isCodexSession ? collectCodexTerminalEntries(messages, toolResults, toolProgress, toolStartTimestamps) : []),
     [isCodexSession, messages, toolProgress, toolResults, toolStartTimestamps],
   );
+  const anchoredNotificationMessageIds = useMemo(
+    () => collectAnchoredNotificationMessageIds(sessionNotifications),
+    [sessionNotifications],
+  );
   const { turns } = useFeedModel(messages, {
     leaderMode: isLeaderSession,
     frozenCount,
     frozenRevision,
+    anchoredNotificationMessageIds,
   });
   const activeLiveSubagentEntries = useMemo(
     () =>

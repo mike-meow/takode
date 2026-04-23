@@ -404,6 +404,42 @@ describe("ToolBlock", () => {
     expect(screen.getByRole("button", { name: "Mark handled" }).hasAttribute("disabled")).toBe(true);
   });
 
+  it("uses the anchored store summary for a lagged takode notify tool marker", () => {
+    // q-568: if the inbox notification is already anchored to this message
+    // before `msg.notification` lands, ToolBlock should still surface the rich
+    // summary instead of a generic "Ready for review" placeholder.
+    const previousNotifications = useStore.getState().sessionNotifications;
+    const sessionNotifications = new Map(previousNotifications);
+    sessionNotifications.set("review-session", [
+      {
+        id: "n-review-lagged",
+        category: "review",
+        timestamp: Date.now(),
+        messageId: "asst-review-lagged",
+        summary: "q-568 single rich chip",
+        done: false,
+      },
+    ]);
+    useStore.setState({ sessionNotifications });
+
+    try {
+      render(
+        <ToolBlock
+          name="Bash"
+          input={{ command: 'TAKODE_API_PORT=3455 takode notify review "q-568 single rich chip"' }}
+          toolUseId="tool-notify-lagged"
+          sessionId="review-session"
+          parentMessageId="asst-review-lagged"
+        />,
+      );
+
+      expect(screen.getByText("q-568 single rich chip")).toBeTruthy();
+      expect(screen.queryByText("Ready for review")).toBeNull();
+    } finally {
+      useStore.setState({ sessionNotifications: previousNotifications });
+    }
+  });
+
   it("renders a lightweight raw affordance for takode board tool blocks", async () => {
     const boardOutput = [
       JSON.stringify(

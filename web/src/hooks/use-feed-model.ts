@@ -57,8 +57,10 @@ function filterHiddenToolUseBlocks(msg: ChatMessage): ChatMessage | null {
  * (assistant message whose contentBlocks are ALL tool_use of the same name).
  * Returns null if it has text/thinking or mixed tool types.
  */
-function getToolOnlyName(msg: ChatMessage): string | null {
+function getToolOnlyName(msg: ChatMessage, anchoredNotificationMessageIds?: ReadonlySet<string>): string | null {
   if (msg.role !== "assistant") return null;
+  if (msg.notification) return null;
+  if (anchoredNotificationMessageIds?.has(msg.id)) return null;
   // Some SDK payloads carry assistant text only in `content` while contentBlocks
   // contain tool_use entries. Treat those as mixed messages, not tool-only.
   if (msg.content.trim()) return null;
@@ -107,13 +109,13 @@ function getTaskIdsFromEntry(entry: FeedEntry): string[] {
 export const FILE_TOOL_NAMES = new Set(["Edit", "Write", "Read"]);
 
 /** Group consecutive same-tool messages */
-function groupToolMessages(messages: ChatMessage[]): FeedEntry[] {
+function groupToolMessages(messages: ChatMessage[], anchoredNotificationMessageIds?: ReadonlySet<string>): FeedEntry[] {
   const entries: FeedEntry[] = [];
 
   for (const originalMsg of messages) {
     const msg = filterHiddenToolUseBlocks(originalMsg);
     if (!msg) continue;
-    const toolName = getToolOnlyName(msg);
+    const toolName = getToolOnlyName(msg, anchoredNotificationMessageIds);
 
     if (toolName) {
       const last = entries[entries.length - 1];
@@ -143,8 +145,9 @@ function buildEntries(
   messages: ChatMessage[],
   taskInfo: Map<string, TaskInfo>,
   childrenByParent: Map<string, ChatMessage[]>,
+  anchoredNotificationMessageIds?: ReadonlySet<string>,
 ): FeedEntry[] {
-  const grouped = groupToolMessages(messages);
+  const grouped = groupToolMessages(messages, anchoredNotificationMessageIds);
 
   const result: FeedEntry[] = [];
   for (const entry of grouped) {
@@ -161,7 +164,10 @@ function buildEntries(
       for (const taskId of taskIds) {
         const info = taskInfo.get(taskId) || { description: "Subagent", agentType: "", input: {} };
         const children = childrenByParent.get(taskId);
-        const childEntries = children && children.length > 0 ? buildEntries(children, taskInfo, childrenByParent) : [];
+        const childEntries =
+          children && children.length > 0
+            ? buildEntries(children, taskInfo, childrenByParent, anchoredNotificationMessageIds)
+            : [];
         result.push({
           kind: "subagent",
           taskToolUseId: taskId,
@@ -189,7 +195,10 @@ function buildEntries(
     for (const taskId of taskIds) {
       const info = taskInfo.get(taskId) || { description: "Subagent", agentType: "", input: {} };
       const children = childrenByParent.get(taskId);
-      const childEntries = children && children.length > 0 ? buildEntries(children, taskInfo, childrenByParent) : [];
+      const childEntries =
+        children && children.length > 0
+          ? buildEntries(children, taskInfo, childrenByParent, anchoredNotificationMessageIds)
+          : [];
       result.push({
         kind: "subagent",
         taskToolUseId: taskId,
@@ -232,7 +241,14 @@ function batchSubagents(entries: FeedEntry[]): FeedEntry[] {
   return result;
 }
 
-export function groupMessages(messages: ChatMessage[]): FeedEntry[] {
+export function groupMessages(
+  messages: ChatMessage[],
+  anchoredNotificationMessageIds?: ReadonlySet<string> | readonly string[],
+): FeedEntry[] {
+  const anchoredIds =
+    anchoredNotificationMessageIds instanceof Set
+      ? anchoredNotificationMessageIds
+      : new Set(anchoredNotificationMessageIds ?? []);
   // Phase 1: Find all Task tool_use IDs across all messages
   const taskInfo = new Map<string, TaskInfo>();
   for (const msg of messages) {
@@ -275,12 +291,12 @@ export function groupMessages(messages: ChatMessage[]): FeedEntry[] {
 
   // If no Task tool_uses found (including synthetic), skip the overhead
   if (taskInfo.size === 0) {
-    return groupToolMessages(messages);
+    return groupToolMessages(messages, anchoredIds);
   }
 
   // Phase 3: Build grouped entries with subagent nesting.
   // Orphaned subagent groups (no parent entry in topLevel) are appended at the end.
-  const entries = buildEntries(topLevel, taskInfo, childrenByParent);
+  const entries = buildEntries(topLevel, taskInfo, childrenByParent, anchoredIds);
 
   // Emit any orphaned subagent groups whose parent Task wasn't in any top-level entry.
   // Skip orphans with synthetic taskInfo (empty input) — these appear when the parent
@@ -297,7 +313,7 @@ export function groupMessages(messages: ChatMessage[]): FeedEntry[] {
     if (!info) continue;
     // Skip synthetic orphans (empty input = parent Task was never in message history)
     if (Object.keys(info.input).length === 0) continue;
-    const childEntries = buildEntries(children, taskInfo, childrenByParent);
+    const childEntries = buildEntries(children, taskInfo, childrenByParent, anchoredIds);
     entries.push({
       kind: "subagent",
       taskToolUseId: taskId,
@@ -526,8 +542,22 @@ function isLeaderBoundaryEntry(entry: FeedEntry): boolean {
   return isUserBoundaryEntry(entry);
 }
 
+function entryHasAnchoredNotification(entry: FeedEntry, anchoredNotificationMessageIds?: ReadonlySet<string>): boolean {
+  return (
+    entry.kind === "message" &&
+    entry.msg.role === "assistant" &&
+    (entry.msg.notification != null || anchoredNotificationMessageIds?.has(entry.msg.id) === true)
+  );
+}
+
 /** Build a Turn from accumulated entries */
-function makeTurn(userEntry: FeedEntry | null, entries: FeedEntry[], turnIndex: number, _leaderMode = false): Turn {
+function makeTurn(
+  userEntry: FeedEntry | null,
+  entries: FeedEntry[],
+  turnIndex: number,
+  _leaderMode = false,
+  anchoredNotificationMessageIds?: ReadonlySet<string>,
+): Turn {
   // Separate system messages (always visible) from collapsible agent activity
   const agentEntries: FeedEntry[] = [];
   const systemEntries: FeedEntry[] = [];
@@ -548,7 +578,7 @@ function makeTurn(userEntry: FeedEntry | null, entries: FeedEntry[], turnIndex: 
   const notificationEntries: FeedEntry[] = [];
   for (let i = agentEntries.length - 1; i >= 0; i--) {
     const e = agentEntries[i];
-    if (e.kind === "message" && e.msg.notification) {
+    if (entryHasAnchoredNotification(e, anchoredNotificationMessageIds)) {
       notificationEntries.unshift(agentEntries.splice(i, 1)[0]);
     }
   }
@@ -611,7 +641,12 @@ function makeTurn(userEntry: FeedEntry | null, entries: FeedEntry[], turnIndex: 
  *  Leader mode splits only on real user boundaries. Herd events, timers, and
  *  notification-style injected updates remain inside the current agent turn
  *  until an explicit human or agent-authored user message starts a new one. */
-export function groupIntoTurns(entries: FeedEntry[], leaderMode = false, startTurnIndex = 0): Turn[] {
+export function groupIntoTurns(
+  entries: FeedEntry[],
+  leaderMode = false,
+  startTurnIndex = 0,
+  anchoredNotificationMessageIds?: ReadonlySet<string>,
+): Turn[] {
   const turns: Turn[] = [];
   let currentUser: FeedEntry | null = null;
   let currentEntries: FeedEntry[] = [];
@@ -621,7 +656,15 @@ export function groupIntoTurns(entries: FeedEntry[], leaderMode = false, startTu
     if (isBoundary) {
       // Flush previous turn
       if (currentUser !== null || currentEntries.length > 0) {
-        turns.push(makeTurn(currentUser, currentEntries, startTurnIndex + turns.length, leaderMode));
+        turns.push(
+          makeTurn(
+            currentUser,
+            currentEntries,
+            startTurnIndex + turns.length,
+            leaderMode,
+            anchoredNotificationMessageIds,
+          ),
+        );
       }
       currentUser = entry;
       currentEntries = [];
@@ -632,15 +675,26 @@ export function groupIntoTurns(entries: FeedEntry[], leaderMode = false, startTu
 
   // Flush final turn
   if (currentUser !== null || currentEntries.length > 0) {
-    turns.push(makeTurn(currentUser, currentEntries, startTurnIndex + turns.length, leaderMode));
+    turns.push(
+      makeTurn(currentUser, currentEntries, startTurnIndex + turns.length, leaderMode, anchoredNotificationMessageIds),
+    );
   }
 
   return turns;
 }
 
-export function buildFeedModel(messages: ChatMessage[], leaderMode = false, startTurnIndex = 0): FeedModel {
-  const entries = groupMessages(messages);
-  const turns = groupIntoTurns(entries, leaderMode, startTurnIndex);
+export function buildFeedModel(
+  messages: ChatMessage[],
+  leaderMode = false,
+  startTurnIndex = 0,
+  anchoredNotificationMessageIds?: ReadonlySet<string> | readonly string[],
+): FeedModel {
+  const anchoredIds =
+    anchoredNotificationMessageIds instanceof Set
+      ? anchoredNotificationMessageIds
+      : new Set(anchoredNotificationMessageIds ?? []);
+  const entries = groupMessages(messages, anchoredIds);
+  const turns = groupIntoTurns(entries, leaderMode, startTurnIndex, anchoredIds);
   return { entries, turns };
 }
 
@@ -649,7 +703,12 @@ function shouldMergeFirstActiveTurnIntoLastFrozenTurn(baseTurn: Turn, nextTurn: 
   return true;
 }
 
-function concatFeedModels(base: FeedModel, next: FeedModel, leaderMode = false): FeedModel {
+function concatFeedModels(
+  base: FeedModel,
+  next: FeedModel,
+  leaderMode = false,
+  anchoredNotificationMessageIds?: ReadonlySet<string> | readonly string[],
+): FeedModel {
   if (base.entries.length === 0) return next;
   if (next.entries.length === 0) return base;
 
@@ -673,6 +732,9 @@ function concatFeedModels(base: FeedModel, next: FeedModel, leaderMode = false):
       [...lastBase.allEntries, ...firstNext.allEntries],
       base.turns.length - 1,
       leaderMode,
+      anchoredNotificationMessageIds instanceof Set
+        ? anchoredNotificationMessageIds
+        : new Set(anchoredNotificationMessageIds ?? []),
     );
     mergedTurns = [...base.turns.slice(0, -1), merged, ...next.turns.slice(1)];
   } else {
@@ -695,15 +757,23 @@ function haveSameMessageRefs(a: ChatMessage[], b: ChatMessage[]): boolean {
 
 export function useFeedModel(
   messages: ChatMessage[],
-  config?: { leaderMode?: boolean; frozenCount?: number; frozenRevision?: number },
+  config?: {
+    leaderMode?: boolean;
+    frozenCount?: number;
+    frozenRevision?: number;
+    anchoredNotificationMessageIds?: readonly string[];
+  },
 ): FeedModel {
   const leaderMode = config?.leaderMode ?? false;
   const frozenCount = Math.max(0, Math.min(config?.frozenCount ?? 0, messages.length));
   const frozenRevision = config?.frozenRevision ?? 0;
+  const anchoredNotificationMessageIds = config?.anchoredNotificationMessageIds ?? [];
+  const anchoredNotificationSignature = anchoredNotificationMessageIds.join("\0");
   const cacheRef = useRef<{
     leaderMode: boolean;
     frozenCount: number;
     frozenRevision: number;
+    anchoredNotificationSignature: string;
     frozenMessages: ChatMessage[];
     frozenModel: FeedModel;
   } | null>(null);
@@ -719,6 +789,7 @@ export function useFeedModel(
       cached.leaderMode === leaderMode &&
       cached.frozenCount === frozenCount &&
       cached.frozenRevision === frozenRevision &&
+      cached.anchoredNotificationSignature === anchoredNotificationSignature &&
       haveSameMessageRefs(cached.frozenMessages, frozenMessages)
     ) {
       frozenModel = cached.frozenModel;
@@ -726,25 +797,44 @@ export function useFeedModel(
       cached &&
       cached.leaderMode === leaderMode &&
       cached.frozenRevision === frozenRevision &&
+      cached.anchoredNotificationSignature === anchoredNotificationSignature &&
       frozenCount >= cached.frozenCount &&
       haveSameMessageRefs(cached.frozenMessages, frozenMessages.slice(0, cached.frozenCount))
     ) {
       const newlyFrozen = frozenMessages.slice(cached.frozenCount);
-      const deltaModel = buildFeedModel(newlyFrozen, leaderMode, cached.frozenModel.turns.length);
-      frozenModel = concatFeedModels(cached.frozenModel, deltaModel, leaderMode);
+      const deltaModel = buildFeedModel(
+        newlyFrozen,
+        leaderMode,
+        cached.frozenModel.turns.length,
+        anchoredNotificationMessageIds,
+      );
+      frozenModel = concatFeedModels(cached.frozenModel, deltaModel, leaderMode, anchoredNotificationMessageIds);
     } else {
-      frozenModel = buildFeedModel(frozenMessages, leaderMode);
+      frozenModel = buildFeedModel(frozenMessages, leaderMode, 0, anchoredNotificationMessageIds);
     }
 
     cacheRef.current = {
       leaderMode,
       frozenCount,
       frozenRevision,
+      anchoredNotificationSignature,
       frozenMessages,
       frozenModel,
     };
 
-    const activeModel = buildFeedModel(activeMessages, leaderMode, frozenModel.turns.length);
-    return concatFeedModels(frozenModel, activeModel, leaderMode);
-  }, [messages, leaderMode, frozenCount, frozenRevision]);
+    const activeModel = buildFeedModel(
+      activeMessages,
+      leaderMode,
+      frozenModel.turns.length,
+      anchoredNotificationMessageIds,
+    );
+    return concatFeedModels(frozenModel, activeModel, leaderMode, anchoredNotificationMessageIds);
+  }, [
+    messages,
+    leaderMode,
+    frozenCount,
+    frozenRevision,
+    anchoredNotificationMessageIds,
+    anchoredNotificationSignature,
+  ]);
 }

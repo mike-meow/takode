@@ -11,6 +11,7 @@ import { CopyFormatButton } from "./CopyFormatButton.js";
 import { BoardBlock, type BoardRowData } from "./BoardBlock.js";
 import { useStore } from "../store.js";
 import { api } from "../api.js";
+import { getSingleAnchoredNotification } from "../utils/anchored-notifications.js";
 import { getChangePatch, parseEditToolInput, parseWriteToolInput } from "../utils/tool-rendering.js";
 import type { BoardQueueWarning } from "../../shared/quest-journey.js";
 import {
@@ -308,6 +309,14 @@ const ToolBlockInner = memo(function ToolBlockInner({
     return s.sessions.get(sessionId)?.cwd ?? s.sdkSessions.find((sdk) => sdk.sessionId === sessionId)?.cwd ?? null;
   });
 
+  // takode notify: render inline notification chip instead of terminal block.
+  const notifyMatch =
+    !disableInlineSpecialCases && name === "Bash" ? parseTakodeNotifyCommand(String(input.command || "")) : null;
+  const anchoredNotificationSummary = useStore((s) => {
+    if (!notifyMatch || !sessionId || !parentMessageId) return undefined;
+    return getSingleAnchoredNotification(s.sessionNotifications?.get(sessionId), parentMessageId)?.summary;
+  });
+
   // takode board: render board card instead of terminal block.
   // Tool result previews are truncated to 300 chars by the server, which breaks
   // JSON parsing for boards with several rows. We fetch the full result if needed.
@@ -329,11 +338,15 @@ const ToolBlockInner = memo(function ToolBlockInner({
     );
   }
 
-  // takode notify: render inline notification chip instead of terminal block.
-  const notifyMatch =
-    !disableInlineSpecialCases && name === "Bash" ? parseTakodeNotifyCommand(String(input.command || "")) : null;
   if (notifyMatch && !suppressNotificationMarker) {
-    return <NotificationMarker category={notifyMatch.category} sessionId={sessionId} messageId={parentMessageId} />;
+    return (
+      <NotificationMarker
+        category={notifyMatch.category}
+        summary={anchoredNotificationSummary}
+        sessionId={sessionId}
+        messageId={parentMessageId}
+      />
+    );
   }
 
   return (

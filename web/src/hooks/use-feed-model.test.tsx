@@ -371,6 +371,39 @@ describe("sub-conclusions in collapsed turns", () => {
     expect(turn.subConclusions).toHaveLength(0);
     expect(turn.responseEntry).toBeNull();
   });
+
+  it("keeps a tool-only assistant message out of tool grouping when the store already has an anchored notification", () => {
+    // q-568: during the lag window, the inbox notification can already be
+    // anchored to the message before `msg.notification` lands on the assistant
+    // payload. The feed model must preserve the assistant message so the richer
+    // notification UI can render, rather than flattening it into a tool group.
+    const messages: ChatMessage[] = [
+      makeMessage({ id: "u1", role: "user", content: "Tell me when the fix is ready.", timestamp: 1 }),
+      makeMessage({
+        id: "a1",
+        role: "assistant",
+        content: "",
+        timestamp: 2,
+        contentBlocks: [
+          {
+            type: "tool_use",
+            id: "tu-review",
+            name: "Bash",
+            input: { command: 'TAKODE_API_PORT=3455 takode notify review "q-568 ready"' },
+          },
+        ],
+      }),
+    ];
+
+    const model = buildFeedModel(messages, false, 0, ["a1"]);
+
+    expect(model.entries).toHaveLength(2);
+    expect(model.entries[1]?.kind).toBe("message");
+    expect((model.entries[1] as { kind: "message"; msg: ChatMessage }).msg.id).toBe("a1");
+    expect(model.turns[0]?.notificationEntries).toHaveLength(1);
+    expect((model.turns[0]?.notificationEntries[0] as { kind: "message"; msg: ChatMessage }).msg.id).toBe("a1");
+    expect(model.turns[0]?.agentEntries).toHaveLength(0);
+  });
 });
 
 describe("summarizeHerdEvents", () => {
