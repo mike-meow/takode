@@ -700,6 +700,8 @@ Refresh git branch info for a session after checkout, rebase, or other branch ch
 `;
 
 const NOTIFY_HELP = `Usage: takode notify <category> <summary> [--json]
+       takode notify list [--json]
+       takode notify resolve <notification-id> [--json]
 
 Categories:
   needs-input  User decision or information required
@@ -3089,9 +3091,74 @@ async function handleSetBase(base: string, args: string[]): Promise<void> {
 }
 
 async function handleNotify(base: string, args: string[]): Promise<void> {
-  const category = args[0];
+  const subcommand = args[0];
+  const selfId = getCallerSessionId();
+
+  if (subcommand === "list") {
+    const flags = parseFlags(args.slice(1));
+    const jsonMode = flags.json === true;
+    const result = (await apiGet(base, `/sessions/${encodeURIComponent(selfId)}/notifications/needs-input/self`)) as {
+      notifications: Array<{
+        notificationId: number;
+        rawNotificationId: string;
+        summary?: string;
+        timestamp: number;
+        messageId: string | null;
+      }>;
+      resolvedCount: number;
+    };
+    if (jsonMode) {
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+    if (result.notifications.length === 0) {
+      console.log(`No unresolved same-session needs-input notifications. Resolved: ${result.resolvedCount}.`);
+      return;
+    }
+    console.log(
+      `Unresolved same-session needs-input notifications: ${result.notifications.length}. Resolved: ${result.resolvedCount}.`,
+    );
+    for (const notification of result.notifications) {
+      const summary = notification.summary?.trim() || "(no summary)";
+      console.log(`  ${notification.notificationId}. ${formatInlineText(summary)}`);
+    }
+    return;
+  }
+
+  if (subcommand === "resolve") {
+    const notificationArg = args.slice(1).find((arg) => !arg.startsWith("--"));
+    if (!notificationArg) err("Usage: takode notify resolve <notification-id> [--json]");
+    const notificationId = Number.parseInt(notificationArg, 10);
+    if (!Number.isInteger(notificationId) || notificationId <= 0) {
+      err("Usage: takode notify resolve <notification-id> [--json]");
+    }
+    const flags = parseFlags(args.slice(1));
+    const jsonMode = flags.json === true;
+    const result = (await apiPost(
+      base,
+      `/sessions/${encodeURIComponent(selfId)}/notifications/needs-input/${notificationId}/resolve`,
+      {},
+    )) as {
+      ok: boolean;
+      notificationId: number;
+      rawNotificationId: string;
+      changed: boolean;
+    };
+    if (jsonMode) {
+      console.log(JSON.stringify(result, null, 2));
+      return;
+    }
+    if (result.changed) {
+      console.log(`Resolved needs-input notification ${result.notificationId}.`);
+    } else {
+      console.log(`Needs-input notification ${result.notificationId} was already resolved.`);
+    }
+    return;
+  }
+
+  const category = subcommand;
   if (!category || (category !== "needs-input" && category !== "review")) {
-    err("Usage: takode notify <category> <summary>\nCategories: needs-input, review");
+    err(`${NOTIFY_HELP.trim()}\n`);
   }
   const remaining = args.slice(1).filter((a) => !a.startsWith("--"));
   const summary = remaining.length > 0 ? remaining.join(" ") : undefined;
@@ -3100,19 +3167,24 @@ async function handleNotify(base: string, args: string[]): Promise<void> {
   }
   const flags = parseFlags(args.slice(1));
   const jsonMode = flags.json === true;
-  const selfId = getCallerSessionId();
   const payload: Record<string, unknown> = { category };
   if (summary) payload.summary = summary;
   const result = (await apiPost(base, `/sessions/${encodeURIComponent(selfId)}/notify`, payload)) as {
     ok: boolean;
     category: string;
     anchoredMessageId: string | null;
+    notificationId: number | null;
+    rawNotificationId: string;
   };
   if (jsonMode) {
     console.log(JSON.stringify(result, null, 2));
     return;
   }
-  console.log(`Notification sent (${category})`);
+  const notificationLabel =
+    typeof result.notificationId === "number"
+      ? String(result.notificationId)
+      : formatInlineText(result.rawNotificationId);
+  console.log(`Notification sent (${category}, id ${notificationLabel})`);
 }
 
 // ─── Board ─────────────────────────────────────────────────────────────────

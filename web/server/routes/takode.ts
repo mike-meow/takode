@@ -257,6 +257,42 @@ export function createTakodeRoutes(ctx: RouteContext) {
     return undefined;
   };
 
+  const parseNotificationNumericId = (notificationId: string): number | null => {
+    const match = /^n-(\d+)$/.exec(notificationId);
+    return match ? Number.parseInt(match[1], 10) : null;
+  };
+
+  const buildSelfNeedsInputNotifications = (session: BridgeSession) => {
+    const unresolved: Array<{
+      notificationId: number;
+      rawNotificationId: string;
+      summary?: string;
+      timestamp: number;
+      messageId: string | null;
+    }> = [];
+    let resolvedCount = 0;
+
+    for (const notification of session.notifications ?? []) {
+      if (notification.category !== "needs-input") continue;
+      const numericId = parseNotificationNumericId(notification.id);
+      if (numericId === null) continue;
+      if (notification.done) {
+        resolvedCount += 1;
+        continue;
+      }
+      unresolved.push({
+        notificationId: numericId,
+        rawNotificationId: notification.id,
+        summary: notification.summary,
+        timestamp: notification.timestamp,
+        messageId: notification.messageId,
+      });
+    }
+
+    unresolved.sort((a, b) => a.notificationId - b.notificationId);
+    return { notifications: unresolved, resolvedCount };
+  };
+
   const toBoardParticipantStatus = (
     session: Pick<EnrichedSession, "sessionId" | "sessionNum" | "name" | "archived" | "state"> & {
       cliConnected?: boolean;
@@ -1130,7 +1166,59 @@ export function createTakodeRoutes(ctx: RouteContext) {
     const session = wsBridge.getSession(id);
     if (!session) return c.json({ error: "Session not found" }, 404);
     const result = notifyUserController(session, category, summary, notificationRouteDeps);
-    return c.json({ ok: true, category, anchoredMessageId: result.anchoredMessageId });
+    return c.json({
+      ok: true,
+      category,
+      anchoredMessageId: result.anchoredMessageId,
+      notificationId: parseNotificationNumericId(result.notificationId),
+      rawNotificationId: result.notificationId,
+    });
+  });
+
+  api.get("/sessions/:id/notifications/needs-input/self", (c) => {
+    const auth = authenticateTakodeCaller(c);
+    if ("response" in auth) return auth.response;
+
+    const id = resolveId(c.req.param("id"));
+    if (!id) return c.json({ error: "Session not found" }, 404);
+    if (id !== auth.callerId) {
+      return c.json({ error: "Can only inspect notifications for your own session" }, 403);
+    }
+
+    const session = wsBridge.getSession(id);
+    if (!session) return c.json({ error: "Session not found" }, 404);
+    return c.json(buildSelfNeedsInputNotifications(session));
+  });
+
+  api.post("/sessions/:id/notifications/needs-input/:notificationId/resolve", async (c) => {
+    const auth = authenticateTakodeCaller(c);
+    if ("response" in auth) return auth.response;
+
+    const id = resolveId(c.req.param("id"));
+    if (!id) return c.json({ error: "Session not found" }, 404);
+    if (id !== auth.callerId) {
+      return c.json({ error: "Can only resolve notifications for your own session" }, 403);
+    }
+
+    const numericId = Number.parseInt(c.req.param("notificationId"), 10);
+    if (!Number.isInteger(numericId) || numericId <= 0) {
+      return c.json({ error: "notificationId must be a positive integer" }, 400);
+    }
+
+    const session = wsBridge.getSession(id);
+    if (!session) return c.json({ error: "Session not found" }, 404);
+
+    const rawNotificationId = `n-${numericId}`;
+    const notification = session.notifications.find(
+      (entry) => entry.id === rawNotificationId && entry.category === "needs-input",
+    );
+    if (!notification) return c.json({ error: "Notification not found" }, 404);
+    if (notification.done) {
+      return c.json({ ok: true, notificationId: numericId, rawNotificationId, changed: false });
+    }
+
+    markNotificationDoneController(session, rawNotificationId, true, notificationPersistDeps);
+    return c.json({ ok: true, notificationId: numericId, rawNotificationId, changed: true });
   });
 
   // ─── Notification Inbox ─────────────────────────────────────────────

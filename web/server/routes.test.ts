@@ -8503,6 +8503,12 @@ describe("Takode server-authoritative auth", () => {
     });
 
     expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      ok: true,
+      category: "needs-input",
+      notificationId: 1,
+      rawNotificationId: "n-1",
+    });
     expect(bridge._sessions["orch-1"].notifications).toMatchObject([
       { category: "needs-input", summary: "Need decision on auth approach", done: false },
     ]);
@@ -8557,6 +8563,87 @@ describe("Takode server-authoritative auth", () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json).toEqual(mockNotifs);
+  });
+
+  it("lists only unresolved same-session needs-input notifications with resolved count", async () => {
+    setupTakodeSessions();
+    bridge._sessions["orch-1"].notifications = [
+      { id: "n-1", category: "needs-input", summary: "Still open", timestamp: 1000, messageId: "m-1", done: false },
+      { id: "n-2", category: "needs-input", summary: "Already handled", timestamp: 1001, messageId: "m-2", done: true },
+      { id: "n-3", category: "review", summary: "Ignore review", timestamp: 1002, messageId: "m-3", done: false },
+    ];
+
+    const res = await app.request("/api/sessions/orch-1/notifications/needs-input/self", {
+      headers: authHeaders("orch-1", "tok-1"),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      notifications: [
+        {
+          notificationId: 1,
+          rawNotificationId: "n-1",
+          summary: "Still open",
+          timestamp: 1000,
+          messageId: "m-1",
+        },
+      ],
+      resolvedCount: 1,
+    });
+  });
+
+  it("rejects inspecting another session's self notifications", async () => {
+    setupTakodeSessions();
+
+    const res = await app.request("/api/sessions/worker-1/notifications/needs-input/self", {
+      headers: authHeaders("orch-1", "tok-1"),
+    });
+
+    expect(res.status).toBe(403);
+  });
+
+  it("resolves a same-session needs-input notification by numeric id", async () => {
+    setupTakodeSessions();
+    bridge._sessions["orch-1"].notifications = [
+      { id: "n-4", category: "needs-input", summary: "Resolve me", timestamp: 1000, messageId: null, done: false },
+    ];
+
+    const res = await app.request("/api/sessions/orch-1/notifications/needs-input/4/resolve", {
+      method: "POST",
+      headers: authHeaders("orch-1", "tok-1"),
+      body: JSON.stringify({}),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      ok: true,
+      notificationId: 4,
+      rawNotificationId: "n-4",
+      changed: true,
+    });
+    expect(bridge._sessions["orch-1"].notifications[0].done).toBe(true);
+  });
+
+  it("treats resolving an already-resolved notification as a no-op", async () => {
+    setupTakodeSessions();
+    bridge._sessions["orch-1"].notifications = [
+      { id: "n-5", category: "needs-input", summary: "Already done", timestamp: 1000, messageId: null, done: true },
+    ];
+
+    const res = await app.request("/api/sessions/orch-1/notifications/needs-input/5/resolve", {
+      method: "POST",
+      headers: authHeaders("orch-1", "tok-1"),
+      body: JSON.stringify({}),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      ok: true,
+      notificationId: 5,
+      rawNotificationId: "n-5",
+      changed: false,
+    });
+    expect(bridge._sessions["orch-1"].notifications[0].done).toBe(true);
   });
 
   it("marks notification as done via POST", async () => {

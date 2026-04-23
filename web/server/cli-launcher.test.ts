@@ -2732,10 +2732,18 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("takode notify");
     expect(guardrails).toContain("needs-input");
     expect(guardrails).toContain("review");
+    expect(guardrails).toContain("takode notify list");
+    expect(guardrails).toContain("takode notify resolve <notification-id>");
+    expect(guardrails).toContain("After the user answers a same-session `takode notify needs-input` prompt");
+    expect(guardrails).toContain("Use this only for notifications created by your current session");
     expect(guardrails).toContain("Do not rely on deprecated leader reply suffixes");
     expect(guardrails).toContain("use normal assistant text plus `takode notify` instead");
     expect(guardrails).toContain("Every time you ask the user a question");
     expect(guardrails).toContain("also call `takode notify needs-input`");
+    expect(guardrails).toContain("takode notify list");
+    expect(guardrails).toContain("takode notify resolve <notification-id>");
+    expect(guardrails).toContain("After the user answers a same-session `takode notify needs-input` prompt");
+    expect(guardrails).toContain("Use this only for notifications created by your current session");
     expect(guardrails).toContain("so the user never misses the leader's question");
     expect(guardrails).toContain("Fresh human feedback outranks stale completions");
     expect(guardrails).toContain("Do **not** call `takode notify review` for quest completion");

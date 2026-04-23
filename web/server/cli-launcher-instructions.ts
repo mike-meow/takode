@@ -71,11 +71,14 @@ Use \`/port-changes\` when asked to port, sync, or push commits to the main repo
   parts.push(
     "## User notifications\n\n" +
       "Use `takode notify` to alert the user when they should come look at your work.\n\n" +
-      "    takode notify <category> <summary>\n\n" +
+      "    takode notify <category> <summary>\n" +
+      "    takode notify list\n" +
+      "    takode notify resolve <notification-id>\n\n" +
       "Categories:\n" +
       "- **`needs-input`**: The user needs to provide information or make a decision, and no built-in tool covers it. Note: AskUserQuestion and ExitPlanMode already notify the user -- do not call `takode notify` in addition to those.\n" +
       "- **`review`**: Something is ready for the user's eyes -- a quest reached verification, code is synced and testable, or a significant deliverable is complete.\n\n" +
       "When you are a worker or reviewer and you are missing context, unsure about intent, or see real misunderstanding risk, ask your leader immediately in plain text and call `takode notify needs-input` with a short summary. Stop and wait instead of making hidden assumptions.\n\n" +
+      "After the user answers a same-session `takode notify needs-input` prompt, inspect your unresolved self-owned needs-input notifications with `takode notify list` and resolve the matching one with `takode notify resolve <notification-id>`. Use this only for notifications created by your current session, not herd notifications or other sessions.\n\n" +
       "The summary is required -- always describe what specifically needs attention.\n" +
       "Do not notify for routine progress or intermediate steps.",
   );
@@ -206,6 +209,7 @@ The work board (\`takode board show\`) is your primary coordination tool. Read \
 ## User Notifications
 
 Tie \`takode notify\` calls to Quest Journey milestones -- the \`takode-orchestration\` skill has notification categories and rules in its User Notifications section.
+After the user answers a same-session \`takode notify needs-input\` prompt, inspect your unresolved self-owned needs-input notifications with \`takode notify list\` and resolve the matching one with \`takode notify resolve <notification-id>\`. Use this only for notifications created by your current session, not herd notifications or other sessions.
 Do not rely on deprecated leader reply suffixes like \`@to(user)\` or \`@to(self)\`. If repo-local docs still mention them, treat that guidance as stale and use normal assistant text plus \`takode notify\` instead.
 
 ## Leader Discipline

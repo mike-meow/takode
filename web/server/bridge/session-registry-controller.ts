@@ -871,8 +871,11 @@ export function notifyUser(
     summary,
   } as const;
 
+  const nextNotificationCounter = Number.isInteger(session.notificationCounter) ? session.notificationCounter + 1 : 1;
+  session.notificationCounter = nextNotificationCounter;
+
   const notif: SessionNotification = {
-    id: `n-${++session.notificationCounter}`,
+    id: `n-${nextNotificationCounter}`,
     category,
     summary,
     timestamp: Date.now(),
