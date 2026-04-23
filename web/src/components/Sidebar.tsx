@@ -337,7 +337,15 @@ export function Sidebar() {
     const suffix = import.meta.env.DEV ? "[DEV] Takode" : "Takode";
     const base = serverName ? `${serverName} — ${suffix}` : suffix;
     document.title = totalAttention > 0 ? `(${totalAttention}) ${base}` : base;
-  }, [serverName, sessionAttention, sdkSessions, sessionStatus, cliConnected, cliDisconnectReason, getSidebarPermissionCount]);
+  }, [
+    serverName,
+    sessionAttention,
+    sdkSessions,
+    sessionStatus,
+    cliConnected,
+    cliDisconnectReason,
+    getSidebarPermissionCount,
+  ]);
 
   // Focus server name input when entering edit mode
   useEffect(() => {

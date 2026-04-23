@@ -806,7 +806,9 @@ export class WsBridge {
     }
   }
 
-  private broadcastSessionActivityUpdateGlobally(msg: Extract<BrowserIncomingMessage, { type: "session_activity_update" }>): void {
+  private broadcastSessionActivityUpdateGlobally(
+    msg: Extract<BrowserIncomingMessage, { type: "session_activity_update" }>,
+  ): void {
     for (const session of this.sessions.values()) {
       for (const ws of session.browserSockets) {
         sendToBrowserController(ws as any, msg);
@@ -2692,10 +2694,7 @@ export class WsBridge {
       msg.type !== "permission_cancelled" &&
       msg.type !== "permissions_cleared" &&
       msg.type !== "status_change" &&
-      !(
-        msg.type === "session_update" &&
-        ("attentionReason" in msg.session || "lastReadAt" in msg.session)
-      )
+      !(msg.type === "session_update" && ("attentionReason" in msg.session || "lastReadAt" in msg.session))
     ) {
       return;
     }
