@@ -865,13 +865,11 @@ export function notifyUser(
         })();
 
   const anchoredMessageId = anchoredAssistant?.message.id ?? null;
-  if (anchoredAssistant) {
-    (anchoredAssistant as Record<string, unknown>).notification = {
-      category,
-      timestamp: Date.now(),
-      summary,
-    };
-  }
+  const anchoredNotification = {
+    category,
+    timestamp: Date.now(),
+    summary,
+  } as const;
 
   const notif: SessionNotification = {
     id: `n-${++session.notificationCounter}`,
@@ -896,6 +894,10 @@ export function notifyUser(
     return { ok: true, anchoredMessageId, notificationId: notif.id };
   }
 
+  if (anchoredAssistant) {
+    (anchoredAssistant as Record<string, unknown>).notification = anchoredNotification;
+  }
+
   deps.broadcastToBrowsers?.(session, {
     type: "notification_update",
     notifications: session.notifications,
@@ -912,7 +914,7 @@ export function notifyUser(
     deps.broadcastToBrowsers?.(session, {
       type: "notification_anchored",
       messageId: anchoredMessageId,
-      notification: { category, timestamp: Date.now(), summary },
+      notification: anchoredNotification,
     } as BrowserIncomingMessage);
   }
 
