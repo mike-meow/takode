@@ -6014,10 +6014,7 @@ describe("Browser message routing", () => {
       modelContextWindow: 200_000,
     };
 
-    bridge.handleBrowserMessage(
-      browser,
-      JSON.stringify({ type: "set_model", model: "claude-opus-4-6[1m]" }),
-    );
+    bridge.handleBrowserMessage(browser, JSON.stringify({ type: "set_model", model: "claude-opus-4-6[1m]" }));
 
     expect(session.state.model).toBe("claude-opus-4-6[1m]");
     expect(session.state.claude_token_details!.modelContextWindow).toBe(1_000_000);
@@ -6034,10 +6031,7 @@ describe("Browser message routing", () => {
     const session = bridge.getSession("s1")!;
     session.state.claude_token_details = undefined;
 
-    bridge.handleBrowserMessage(
-      browser,
-      JSON.stringify({ type: "set_model", model: "claude-opus-4-6[1m]" }),
-    );
+    bridge.handleBrowserMessage(browser, JSON.stringify({ type: "set_model", model: "claude-opus-4-6[1m]" }));
 
     expect(session.state.claude_token_details).toEqual({
       inputTokens: 0,
