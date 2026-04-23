@@ -4033,5 +4033,4 @@ describe("MessageFeed - collapsed turns", () => {
     // The internal assistant message should be hidden (in agentEntries, collapsed)
     expect(screen.queryByText("Running tests and building...")).toBeNull();
   });
-
-});
+  });
