@@ -80,6 +80,11 @@ interface MockStoreState {
   pendingPermissions: Map<string, Map<string, unknown>>;
   sessionAttention: Map<string, "action" | "error" | "review" | null>;
   diffFileStats: Map<string, Map<string, { additions: number; deletions: number }>>;
+  shortcutSettings: {
+    enabled: boolean;
+    preset: "standard" | "vscode-light" | "vim-light";
+    overrides: Record<string, string | null>;
+  };
   sessionInfoOpenSessionId: string | null;
   reorderMode: boolean;
   setReorderMode: ReturnType<typeof vi.fn>;
@@ -176,6 +181,7 @@ function createMockState(overrides: Partial<MockStoreState> = {}): MockStoreStat
     pendingPermissions: new Map(),
     sessionAttention: new Map(),
     diffFileStats: new Map(),
+    shortcutSettings: { enabled: false, preset: "standard", overrides: {} },
     sessionInfoOpenSessionId: null,
     reorderMode: false,
     setReorderMode: vi.fn(),

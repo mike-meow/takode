@@ -7,6 +7,7 @@ import {
   getMatchingShortcutAction,
   getShortcutHint,
   performShortcutAction,
+  shouldBlurVimEscape,
 } from "./shortcuts.js";
 
 describe("shortcuts", () => {
@@ -21,18 +22,20 @@ describe("shortcuts", () => {
       { key: "`", metaKey: false, ctrlKey: true, altKey: false, shiftKey: false },
     );
 
-    expect(action).toBe("toggle_terminal");
+    expect(action).toBe("open_terminal");
     expect(formatShortcut("Ctrl+`", "MacIntel")).toBe("Ctrl+`");
   });
 
-  it("opens terminal and returns from terminal with the same action", () => {
+  it("opens terminal without using the same action as terminal back", () => {
     const openTerminal = vi.fn();
     const navigateTo = vi.fn();
     const navigateToSession = vi.fn();
     const navigateToMostRecentSession = vi.fn().mockReturnValue(true);
     const setActiveTab = vi.fn();
+    const focusGlobalSearch = vi.fn();
+    const toggleSidebar = vi.fn();
 
-    const opened = performShortcutAction("toggle_terminal", {
+    const opened = performShortcutAction("open_terminal", {
       route: { page: "session", sessionId: "s1" },
       currentSessionId: "s1",
       currentSessionCwd: "/repo",
@@ -40,10 +43,12 @@ describe("shortcuts", () => {
       activeTab: "chat",
       isSearchOpen: false,
       sessions: [{ sessionId: "s1", createdAt: 1 }],
+      focusGlobalSearch,
       openSearch: vi.fn(),
       closeSearch: vi.fn(),
       openNewSessionModal: vi.fn(),
       openTerminal,
+      toggleSidebar,
       setActiveTab,
       navigateTo,
       navigateToSession,
@@ -51,30 +56,8 @@ describe("shortcuts", () => {
     });
 
     expect(opened).toBe(true);
-    expect(openTerminal).toHaveBeenCalledWith("/repo");
+    expect(openTerminal).toHaveBeenCalledWith("/repo", "s1");
     expect(navigateTo).toHaveBeenCalledWith("/terminal");
-
-    const returned = performShortcutAction("toggle_terminal", {
-      route: { page: "terminal" },
-      currentSessionId: "s1",
-      currentSessionCwd: "/repo",
-      terminalCwd: "/repo",
-      activeTab: "chat",
-      isSearchOpen: false,
-      sessions: [{ sessionId: "s1", createdAt: 1 }],
-      openSearch: vi.fn(),
-      closeSearch: vi.fn(),
-      openNewSessionModal: vi.fn(),
-      openTerminal,
-      setActiveTab,
-      navigateTo,
-      navigateToSession,
-      navigateToMostRecentSession,
-    });
-
-    expect(returned).toBe(true);
-    expect(navigateToSession).toHaveBeenCalledWith("s1");
-    expect(setActiveTab).toHaveBeenCalledWith("chat");
   });
 
   it("wraps between active sessions", () => {
@@ -92,10 +75,12 @@ describe("shortcuts", () => {
         { sessionId: "s2", createdAt: 2 },
         { sessionId: "s3", createdAt: 1, archived: true },
       ],
+      focusGlobalSearch: vi.fn(),
       openSearch: vi.fn(),
       closeSearch: vi.fn(),
       openNewSessionModal: vi.fn(),
       openTerminal: vi.fn(),
+      toggleSidebar: vi.fn(),
       setActiveTab: vi.fn(),
       navigateTo: vi.fn(),
       navigateToSession,
@@ -118,5 +103,64 @@ describe("shortcuts", () => {
 
     expect(previousAction).toBe("previous_session");
     expect(nextAction).toBe("next_session");
+  });
+
+  it("runs the global search and sidebar toggle actions", () => {
+    const focusGlobalSearch = vi.fn();
+    const toggleSidebar = vi.fn();
+
+    const searchHandled = performShortcutAction("global_search", {
+      route: { page: "session", sessionId: "s1" },
+      currentSessionId: "s1",
+      currentSessionCwd: "/repo",
+      terminalCwd: null,
+      activeTab: "chat",
+      isSearchOpen: false,
+      sessions: [{ sessionId: "s1", createdAt: 1 }],
+      focusGlobalSearch,
+      openSearch: vi.fn(),
+      closeSearch: vi.fn(),
+      openNewSessionModal: vi.fn(),
+      openTerminal: vi.fn(),
+      toggleSidebar,
+      setActiveTab: vi.fn(),
+      navigateTo: vi.fn(),
+      navigateToSession: vi.fn(),
+      navigateToMostRecentSession: vi.fn().mockReturnValue(true),
+    });
+    const sidebarHandled = performShortcutAction("toggle_sidebar", {
+      route: { page: "session", sessionId: "s1" },
+      currentSessionId: "s1",
+      currentSessionCwd: "/repo",
+      terminalCwd: null,
+      activeTab: "chat",
+      isSearchOpen: false,
+      sessions: [{ sessionId: "s1", createdAt: 1 }],
+      focusGlobalSearch,
+      openSearch: vi.fn(),
+      closeSearch: vi.fn(),
+      openNewSessionModal: vi.fn(),
+      openTerminal: vi.fn(),
+      toggleSidebar,
+      setActiveTab: vi.fn(),
+      navigateTo: vi.fn(),
+      navigateToSession: vi.fn(),
+      navigateToMostRecentSession: vi.fn().mockReturnValue(true),
+    });
+
+    expect(searchHandled).toBe(true);
+    expect(sidebarHandled).toBe(true);
+    expect(focusGlobalSearch).toHaveBeenCalledTimes(1);
+    expect(toggleSidebar).toHaveBeenCalledTimes(1);
+  });
+
+  it("only blurs editable targets on Escape in vim mode", () => {
+    const input = document.createElement("input");
+    expect(shouldBlurVimEscape({ enabled: true, preset: "vim-light", overrides: {} }, { key: "Escape" }, input)).toBe(
+      true,
+    );
+    expect(shouldBlurVimEscape({ enabled: true, preset: "standard", overrides: {} }, { key: "Escape" }, input)).toBe(
+      false,
+    );
   });
 });

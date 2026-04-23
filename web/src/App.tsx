@@ -30,13 +30,19 @@ import { QuestmasterPage } from "./components/QuestmasterPage.js";
 import { QuestDetailPanel } from "./components/QuestDetailPanel.js";
 import { isPendingId } from "./utils/pending-creation.js";
 import { isDesktopShellLayout, isDesktopTaskPanelLayout } from "./utils/layout.js";
+import { getLastSessionCreationContext } from "./utils/new-session-defaults.js";
 import {
   announceVsCodeReady,
   type VsCodeSelectionContextPayload,
   maybeReadVsCodeSelectionContext,
 } from "./utils/vscode-context.js";
 import { ensureVsCodeEditorPreference } from "./utils/vscode-bridge.js";
-import { getMatchingShortcutAction, isShortcutEventTargetEditable, performShortcutAction } from "./shortcuts.js";
+import {
+  getMatchingShortcutAction,
+  isShortcutEventTargetEditable,
+  performShortcutAction,
+  shouldBlurVimEscape,
+} from "./shortcuts.js";
 
 type TakodeDebugWindow = Window &
   typeof globalThis & {
@@ -203,8 +209,15 @@ export default function App() {
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      if (isShortcutEventTargetEditable(event.target)) return;
       const state = useStore.getState();
+      const editableTarget = isShortcutEventTargetEditable(event.target);
+      if (shouldBlurVimEscape(state.shortcutSettings, event, event.target)) {
+        (event.target as HTMLElement | null)?.blur?.();
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      if (editableTarget) return;
       const actionId = getMatchingShortcutAction(state.shortcutSettings, event);
       if (!actionId) return;
 
@@ -226,11 +239,20 @@ export default function App() {
           archived: session.archived,
           cronJobId: session.cronJobId ?? null,
         })),
+        focusGlobalSearch: () => {
+          state.setSidebarOpen(true);
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              window.dispatchEvent(new CustomEvent("takode:focus-global-search"));
+            });
+          });
+        },
         openSearch: state.openSessionSearch,
         closeSearch: state.closeSessionSearch,
-        openNewSessionModal: () => state.openNewSessionModal(),
+        openNewSessionModal: () => state.openNewSessionModal(getLastSessionCreationContext() ?? undefined),
         openTerminal: state.openTerminal,
         setActiveTab: state.setActiveTab,
+        toggleSidebar: () => state.setSidebarOpen(!state.sidebarOpen),
         navigateTo,
         navigateToSession,
         navigateToMostRecentSession: () => navigateToMostRecentSession(),

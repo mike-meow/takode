@@ -745,13 +745,15 @@ interface AppState {
   // Terminal state
   terminalOpen: boolean;
   terminalCwd: string | null;
+  terminalSessionId: string | null;
   terminalId: string | null;
 
   // Terminal actions
   setTerminalOpen: (open: boolean) => void;
   setTerminalCwd: (cwd: string | null) => void;
+  setTerminalSessionId: (sessionId: string | null) => void;
   setTerminalId: (id: string | null) => void;
-  openTerminal: (cwd: string) => void;
+  openTerminal: (cwd: string, sessionId?: string | null) => void;
   closeTerminal: () => void;
 
   reset: () => void;
@@ -1036,6 +1038,7 @@ export const useStore = create<AppState>((set) => ({
   collapsibleTurnIds: new Map(),
   terminalOpen: false,
   terminalCwd: null,
+  terminalSessionId: null,
   terminalId: null,
 
   addPendingSession: (session) =>
@@ -2559,9 +2562,10 @@ export const useStore = create<AppState>((set) => ({
 
   setTerminalOpen: (open) => set({ terminalOpen: open }),
   setTerminalCwd: (cwd) => set({ terminalCwd: cwd }),
+  setTerminalSessionId: (sessionId) => set({ terminalSessionId: sessionId }),
   setTerminalId: (id) => set({ terminalId: id }),
-  openTerminal: (cwd) => set({ terminalOpen: true, terminalCwd: cwd }),
-  closeTerminal: () => set({ terminalOpen: false, terminalCwd: null, terminalId: null }),
+  openTerminal: (cwd, sessionId) => set({ terminalOpen: true, terminalCwd: cwd, terminalSessionId: sessionId ?? null }),
+  closeTerminal: () => set({ terminalOpen: false, terminalCwd: null, terminalSessionId: null, terminalId: null }),
 
   reset: () => {
     resetQuestRefreshStateForTests();
@@ -2635,6 +2639,7 @@ export const useStore = create<AppState>((set) => ({
       quests: [],
       terminalOpen: false,
       terminalCwd: null,
+      terminalSessionId: null,
       terminalId: null,
     });
   },

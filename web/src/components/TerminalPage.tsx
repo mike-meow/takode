@@ -5,7 +5,17 @@ import { TerminalView } from "./TerminalView.js";
 
 export function TerminalPage() {
   const terminalCwd = useStore((s) => s.terminalCwd);
+  const terminalSessionId = useStore((s) => s.terminalSessionId);
+  const currentSessionId = useStore((s) => s.currentSessionId);
+  const sessions = useStore((s) => s.sessions);
+  const sdkSessions = useStore((s) => s.sdkSessions);
   const [showTerminalPicker, setShowTerminalPicker] = useState(false);
+  const effectiveSessionId = terminalSessionId ?? currentSessionId;
+  const effectiveSessionCwd =
+    (effectiveSessionId ? sessions.get(effectiveSessionId)?.cwd : null) ??
+    sdkSessions.find((session) => session.sessionId === effectiveSessionId)?.cwd ??
+    null;
+  const effectiveCwd = terminalCwd ?? effectiveSessionCwd;
 
   return (
     <div className="h-full bg-cc-bg overflow-y-auto">
@@ -22,13 +32,13 @@ export function TerminalPage() {
             onClick={() => setShowTerminalPicker(true)}
             className="px-3 py-2 rounded-lg text-sm font-medium bg-cc-primary hover:bg-cc-primary-hover text-white transition-colors cursor-pointer whitespace-nowrap"
           >
-            {terminalCwd ? "Change Folder" : "Choose Folder"}
+            {effectiveCwd ? "Change Folder" : "Choose Folder"}
           </button>
         </div>
 
         <div className="flex-1 min-h-[420px]">
-          {terminalCwd ? (
-            <TerminalView cwd={terminalCwd} embedded />
+          {effectiveCwd ? (
+            <TerminalView cwd={effectiveCwd} sessionId={effectiveSessionId ?? undefined} embedded />
           ) : (
             <div className="h-full bg-cc-card border border-cc-border rounded-xl p-6 sm:p-8 flex items-center justify-center text-center">
               <div className="max-w-md">
@@ -44,9 +54,9 @@ export function TerminalPage() {
 
       {showTerminalPicker && (
         <FolderPicker
-          initialPath={terminalCwd || ""}
+          initialPath={effectiveCwd || ""}
           onSelect={(path) => {
-            useStore.getState().openTerminal(path);
+            useStore.getState().openTerminal(path, effectiveSessionId);
             window.location.hash = "#/terminal";
             setShowTerminalPicker(false);
           }}

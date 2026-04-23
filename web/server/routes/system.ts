@@ -733,20 +733,22 @@ export function createSystemRoutes(ctx: RouteContext) {
   // ─── Terminal ──────────────────────────────────────────────────────
 
   api.get("/terminal", (c) => {
-    const info = terminalManager.getInfo();
+    const sessionId = c.req.query("sessionId");
+    const info = terminalManager.getInfo(sessionId);
     if (!info) return c.json({ active: false });
     return c.json({ active: true, terminalId: info.id, cwd: info.cwd });
   });
 
   api.post("/terminal/spawn", async (c) => {
-    const body = await c.req.json<{ cwd: string; cols?: number; rows?: number }>();
+    const body = await c.req.json<{ cwd: string; cols?: number; rows?: number; sessionId?: string }>();
     if (!body.cwd) return c.json({ error: "cwd is required" }, 400);
-    const terminalId = terminalManager.spawn(body.cwd, body.cols, body.rows);
+    const terminalId = terminalManager.spawn(body.sessionId, body.cwd, body.cols, body.rows);
     return c.json({ terminalId });
   });
 
-  api.post("/terminal/kill", (c) => {
-    terminalManager.kill();
+  api.post("/terminal/kill", async (c) => {
+    const body: { sessionId?: string } = await c.req.json<{ sessionId?: string }>().catch(() => ({}));
+    terminalManager.kill(body.sessionId);
     return c.json({ ok: true });
   });
 

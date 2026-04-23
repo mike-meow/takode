@@ -1925,6 +1925,18 @@ export function Playground() {
             <button
               type="button"
               title={getShortcutTitle(
+                "Global search",
+                { enabled: true, preset: "standard", overrides: {} },
+                "global_search",
+                "MacIntel",
+              )}
+              className="px-3 py-2 rounded-lg bg-cc-hover text-sm text-cc-fg"
+            >
+              Global Search
+            </button>
+            <button
+              type="button"
+              title={getShortcutTitle(
                 "Search messages",
                 { enabled: true, preset: "standard", overrides: {} },
                 "search_session",
@@ -1949,9 +1961,21 @@ export function Playground() {
             <button
               type="button"
               title={getShortcutTitle(
+                "Toggle sidebar",
+                { enabled: true, preset: "standard", overrides: {} },
+                "toggle_sidebar",
+                "MacIntel",
+              )}
+              className="px-3 py-2 rounded-lg bg-cc-hover text-sm text-cc-fg"
+            >
+              Sidebar
+            </button>
+            <button
+              type="button"
+              title={getShortcutTitle(
                 "Terminal",
                 { enabled: true, preset: "standard", overrides: {} },
-                "toggle_terminal",
+                "open_terminal",
                 "MacIntel",
               )}
               className="px-3 py-2 rounded-lg bg-cc-hover text-sm text-cc-fg"

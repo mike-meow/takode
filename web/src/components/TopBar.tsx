@@ -137,6 +137,7 @@ export function TopBar() {
     currentSessionId,
     zoomLevel,
     sidebarOpen,
+    shortcutSettings,
     setSidebarOpen,
     setSessionInfoOpenSessionId,
     activeTab,
@@ -148,6 +149,7 @@ export function TopBar() {
       currentSessionId: s.currentSessionId,
       zoomLevel: s.zoomLevel,
       sidebarOpen: s.sidebarOpen,
+      shortcutSettings: s.shortcutSettings,
       setSidebarOpen: s.setSidebarOpen,
       setSessionInfoOpenSessionId: s.setSessionInfoOpenSessionId,
       activeTab: s.activeTab,
@@ -177,6 +179,7 @@ export function TopBar() {
     () => splitAttentionSessionIdsKey(attentionSessionIdsKey),
     [attentionSessionIdsKey],
   );
+  const shortcutPlatform = typeof navigator === "undefined" ? undefined : navigator.platform;
 
   useEffect(() => {
     const openSessionId = infoOpen && isSessionView ? currentSessionId : null;
@@ -296,6 +299,7 @@ export function TopBar() {
         <button
           onClick={() => setSidebarOpen(!sidebarOpen)}
           className="flex items-center justify-center w-7 h-7 rounded-lg text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
+          title={getShortcutTitle("Toggle sidebar", shortcutSettings, "toggle_sidebar", shortcutPlatform)}
         >
           <svg viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
             <path

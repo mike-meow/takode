@@ -17,6 +17,7 @@ export interface NewSessionDefaults {
   model: string;
   mode: string;
   askPermission: boolean;
+  sessionRole: "worker" | "leader";
   envSlug: string;
   cwd: string;
   useWorktree: boolean;
@@ -24,9 +25,16 @@ export interface NewSessionDefaults {
   codexReasoningEffort: string;
 }
 
+export interface LastSessionCreationContext {
+  cwd: string;
+  treeGroupId?: string;
+  newSessionDefaultsKey?: string;
+}
+
 type StoredGroupDefaults = Partial<NewSessionDefaults> & { updatedAt?: number };
 
 const GROUP_DEFAULTS_KEY = "cc-new-session-groups";
+const LAST_SESSION_CREATION_CONTEXT_KEY = "cc-last-session-creation-context";
 const MAX_GROUP_DEFAULTS = 50;
 const TREE_GROUP_DEFAULTS_PREFIX = "tree-group:";
 
@@ -85,11 +93,25 @@ function buildDefaults(candidate: Partial<NewSessionDefaults>): NewSessionDefaul
     model: normalizeModel(backend, candidate.model),
     mode,
     askPermission,
+    sessionRole: candidate.sessionRole === "leader" ? "leader" : "worker",
     envSlug: candidate.envSlug ?? "",
     cwd: candidate.cwd?.trim() ?? "",
     useWorktree: candidate.useWorktree ?? true,
     codexInternetAccess: candidate.codexInternetAccess ?? false,
     codexReasoningEffort: candidate.codexReasoningEffort ?? "",
+  };
+}
+
+function normalizeLastSessionCreationContext(
+  candidate: Partial<LastSessionCreationContext> | null | undefined,
+): LastSessionCreationContext | null {
+  if (!candidate) return null;
+  const cwd = candidate.cwd?.trim() ?? "";
+  if (!cwd) return null;
+  return {
+    cwd,
+    treeGroupId: candidate.treeGroupId?.trim() || undefined,
+    newSessionDefaultsKey: candidate.newSessionDefaultsKey?.trim() || undefined,
   };
 }
 
@@ -106,6 +128,7 @@ export function getGlobalNewSessionDefaults(): NewSessionDefaults {
     model: scopedGetItem(`cc-model-${backend}`) ?? undefined,
     mode: scopedGetItem("cc-mode") ?? undefined,
     askPermission: askPermissionRaw ?? undefined,
+    sessionRole: "worker",
     envSlug: scopedGetItem("cc-selected-env") || "",
     useWorktree: (() => {
       const stored = scopedGetItem("cc-worktree");
@@ -152,4 +175,20 @@ export function saveGroupNewSessionDefaults(groupKey: string, defaults: NewSessi
   }
 
   scopedSetItem(GROUP_DEFAULTS_KEY, JSON.stringify(next));
+}
+
+export function getLastSessionCreationContext(): LastSessionCreationContext | null {
+  try {
+    const raw = scopedGetItem(LAST_SESSION_CREATION_CONTEXT_KEY);
+    if (!raw) return null;
+    return normalizeLastSessionCreationContext(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+}
+
+export function saveLastSessionCreationContext(context: LastSessionCreationContext): void {
+  const normalized = normalizeLastSessionCreationContext(context);
+  if (!normalized) return;
+  scopedSetItem(LAST_SESSION_CREATION_CONTEXT_KEY, JSON.stringify(normalized));
 }

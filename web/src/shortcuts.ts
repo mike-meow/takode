@@ -1,8 +1,10 @@
 import type { Route } from "./utils/routing.js";
 
 export type ShortcutActionId =
+  | "global_search"
   | "search_session"
-  | "toggle_terminal"
+  | "toggle_sidebar"
+  | "open_terminal"
   | "previous_session"
   | "next_session"
   | "new_session";
@@ -50,11 +52,13 @@ export interface ShortcutRuntime {
   activeTab: "chat" | "diff";
   isSearchOpen: boolean;
   sessions: ShortcutSessionSummary[];
+  focusGlobalSearch: () => void;
   openSearch: (sessionId: string) => void;
   closeSearch: (sessionId: string) => void;
   openNewSessionModal: () => void;
-  openTerminal: (cwd: string) => void;
+  openTerminal: (cwd: string, sessionId?: string | null) => void;
   setActiveTab: (tab: "chat" | "diff") => void;
+  toggleSidebar: () => void;
   navigateTo: (path: string) => void;
   navigateToSession: (sessionId: string) => void;
   navigateToMostRecentSession: () => boolean;
@@ -63,8 +67,10 @@ export interface ShortcutRuntime {
 type ShortcutBindingMap = Record<ShortcutActionId, ShortcutBinding | null>;
 
 const ACTION_ORDER: ShortcutActionId[] = [
+  "global_search",
   "search_session",
-  "toggle_terminal",
+  "toggle_sidebar",
+  "open_terminal",
   "previous_session",
   "next_session",
   "new_session",
@@ -78,14 +84,24 @@ export const DEFAULT_SHORTCUT_SETTINGS: ShortcutSettings = {
 
 export const SHORTCUT_ACTIONS: ShortcutActionDefinition[] = [
   {
+    id: "global_search",
+    label: "Global Search",
+    description: "Focus the sidebar session search.",
+  },
+  {
     id: "search_session",
     label: "Search Current Session",
     description: "Open message search for the active chat session.",
   },
   {
-    id: "toggle_terminal",
-    label: "Open or Return From Terminal",
-    description: "Open the terminal page, or return to chat when already there.",
+    id: "toggle_sidebar",
+    label: "Toggle Sidebar",
+    description: "Show or hide the sidebar.",
+  },
+  {
+    id: "open_terminal",
+    label: "Open Terminal",
+    description: "Open the terminal page for the active session directory.",
   },
   {
     id: "previous_session",
@@ -124,22 +140,28 @@ export const SHORTCUT_PRESET_OPTIONS: ShortcutPresetOption[] = [
 
 const PRESET_BINDINGS: Record<ShortcutPresetId, ShortcutBindingMap> = {
   standard: {
+    global_search: "Mod+Shift+F",
     search_session: "Mod+F",
-    toggle_terminal: "Mod+Shift+T",
+    toggle_sidebar: "Mod+B",
+    open_terminal: "Mod+Shift+T",
     previous_session: "Mod+Shift+[",
     next_session: "Mod+Shift+]",
     new_session: "Mod+N",
   },
   "vscode-light": {
+    global_search: "Mod+Shift+F",
     search_session: "Mod+F",
-    toggle_terminal: "Ctrl+`",
+    toggle_sidebar: "Mod+B",
+    open_terminal: "Ctrl+`",
     previous_session: "Ctrl+PageUp",
     next_session: "Ctrl+PageDown",
     new_session: "Mod+N",
   },
   "vim-light": {
+    global_search: "Alt+Shift+F",
     search_session: "Alt+/",
-    toggle_terminal: "Alt+T",
+    toggle_sidebar: "Alt+B",
+    open_terminal: "Alt+T",
     previous_session: "Alt+H",
     next_session: "Alt+L",
     new_session: "Alt+N",
@@ -359,6 +381,15 @@ export function isShortcutEventTargetEditable(target: EventTarget | null): boole
   return tagName === "input" || tagName === "textarea" || tagName === "select";
 }
 
+export function shouldBlurVimEscape(
+  settings: ShortcutSettings | null | undefined,
+  event: Pick<KeyboardEvent, "key">,
+  target: EventTarget | null,
+): boolean {
+  const resolved = settings ?? DEFAULT_SHORTCUT_SETTINGS;
+  return resolved.enabled && resolved.preset === "vim-light" && event.key === "Escape" && isShortcutEventTargetEditable(target);
+}
+
 export function matchesShortcutEvent(
   binding: ShortcutBinding,
   event: Pick<KeyboardEvent, "key" | "altKey" | "ctrlKey" | "metaKey" | "shiftKey"> & { code?: string },
@@ -426,6 +457,9 @@ function getPrimaryShortcutSessionId(runtime: ShortcutRuntime): string | null {
 
 export function performShortcutAction(actionId: ShortcutActionId, runtime: ShortcutRuntime): boolean {
   switch (actionId) {
+    case "global_search":
+      runtime.focusGlobalSearch();
+      return true;
     case "search_session": {
       const sessionId = getPrimaryShortcutSessionId(runtime);
       if (!sessionId) return false;
@@ -436,18 +470,15 @@ export function performShortcutAction(actionId: ShortcutActionId, runtime: Short
       if (!runtime.isSearchOpen) runtime.openSearch(sessionId);
       return true;
     }
-    case "toggle_terminal": {
-      if (runtime.route.page === "terminal") {
-        if (runtime.currentSessionId) {
-          runtime.navigateToSession(runtime.currentSessionId);
-          runtime.setActiveTab("chat");
-          return true;
-        }
-        return runtime.navigateToMostRecentSession();
-      }
+    case "toggle_sidebar":
+      runtime.toggleSidebar();
+      return true;
+    case "open_terminal": {
       const cwd = runtime.currentSessionCwd ?? runtime.terminalCwd;
-      if (cwd) runtime.openTerminal(cwd);
-      runtime.navigateTo("/terminal");
+      if (cwd) runtime.openTerminal(cwd, runtime.currentSessionId);
+      if (runtime.route.page !== "terminal") {
+        runtime.navigateTo("/terminal");
+      }
       return true;
     }
     case "previous_session":

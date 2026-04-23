@@ -401,6 +401,17 @@ export function Sidebar() {
     }
   }
 
+  useEffect(() => {
+    function handleFocusGlobalSearch() {
+      requestAnimationFrame(() => {
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      });
+    }
+    window.addEventListener("takode:focus-global-search", handleFocusGlobalSearch);
+    return () => window.removeEventListener("takode:focus-global-search", handleFocusGlobalSearch);
+  }, []);
+
   /** Tree view variant: assigns new session to the tree group after creation. */
   function handleCreateSessionInTreeGroup(treeGroupId: string) {
     const normalizedTreeGroupId = treeGroupId.trim();
@@ -988,6 +999,7 @@ export function Sidebar() {
                   }
                 }}
                 placeholder="Search..."
+                title={getShortcutTitle("Global search", shortcutSettings, "global_search", shortcutPlatform)}
                 className="w-full pl-6 pr-6 py-1.5 text-[11px] bg-cc-input-bg border border-cc-border rounded-md text-cc-fg placeholder-cc-muted outline-none focus:border-cc-primary/60 transition-colors"
               />
               {searchQuery && (
@@ -1245,22 +1257,24 @@ export function Sidebar() {
         <div className="flex items-center justify-around">
           <button
             title={getShortcutTitle(
-              isTerminalPage ? "Return to chat" : "Terminal",
+              "Terminal",
               shortcutSettings,
-              "toggle_terminal",
+              "open_terminal",
               shortcutPlatform,
             )}
             onClick={() => {
-              if (isTerminalPage) {
-                const sessionId = useStore.getState().currentSessionId;
-                if (sessionId) {
-                  navigateToSession(sessionId);
-                } else {
-                  navigateToMostRecentSession();
+              if (!isTerminalPage) {
+                const state = useStore.getState();
+                const sessionId = state.currentSessionId;
+                const sessionCwd =
+                  (sessionId ? state.sessions.get(sessionId)?.cwd : null) ??
+                  state.sdkSessions.find((sdk) => sdk.sessionId === sessionId)?.cwd ??
+                  null;
+                if (sessionCwd) {
+                  state.openTerminal(sessionCwd, sessionId);
                 }
-              } else {
-                window.location.hash = "#/terminal";
               }
+              window.location.hash = "#/terminal";
               if (!isDesktopLayout) {
                 useStore.getState().setSidebarOpen(false);
               }

@@ -4,6 +4,10 @@ import "@testing-library/jest-dom";
 
 interface MockStoreState {
   terminalCwd: string | null;
+  terminalSessionId: string | null;
+  currentSessionId: string | null;
+  sessions?: Map<string, { cwd?: string }>;
+  sdkSessions?: Array<{ sessionId: string; cwd?: string }>;
   openTerminal: ReturnType<typeof vi.fn>;
 }
 
@@ -12,6 +16,10 @@ let mockState: MockStoreState;
 function createMockState(overrides: Partial<MockStoreState> = {}): MockStoreState {
   return {
     terminalCwd: null,
+    terminalSessionId: null,
+    currentSessionId: null,
+    sessions: new Map(),
+    sdkSessions: [],
     openTerminal: vi.fn(),
     ...overrides,
   };
@@ -57,13 +65,22 @@ describe("TerminalPage", () => {
     expect(screen.getByRole("button", { name: "Change Folder" })).toBeInTheDocument();
   });
 
+  it("falls back to the active session cwd when terminal cwd is unset", () => {
+    mockState = createMockState({
+      currentSessionId: "s1",
+      sessions: new Map([["s1", { cwd: "/tmp/worktree-session" }]]),
+    });
+    render(<TerminalPage />);
+    expect(screen.getByTestId("terminal-view")).toHaveTextContent("/tmp/worktree-session");
+  });
+
   it("opens picker and starts terminal with selected folder", () => {
     render(<TerminalPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "Choose Folder" }));
     fireEvent.click(screen.getByText("Pick folder"));
 
-    expect(mockState.openTerminal).toHaveBeenCalledWith("/tmp/terminal-project");
+    expect(mockState.openTerminal).toHaveBeenCalledWith("/tmp/terminal-project", null);
     expect(window.location.hash).toBe("#/terminal");
   });
 });
