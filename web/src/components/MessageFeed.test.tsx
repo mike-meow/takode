@@ -2260,7 +2260,7 @@ describe("MessageFeed - floating status pill", () => {
     expect(screen.getByText(/2\.5k/)).toBeTruthy();
   });
 
-  it("lifts the mobile nav buttons above the floating notification chip stack", () => {
+  it("shows all four mobile nav buttons with touch spacing and lifts them above the floating notification chip stack", () => {
     const sid = "test-feed-mobile-nav-clearance";
     mediaState.touchDevice = true;
     setStoreMessages(sid, [makeMessage({ role: "assistant", content: "Scroll target" })]);
@@ -2294,9 +2294,24 @@ describe("MessageFeed - floating status pill", () => {
 
     render(<MessageFeed sessionId={sid} />);
 
-    expect(screen.getByLabelText("Go to top")).toBeTruthy();
+    const navFabs = screen.getByTestId("message-feed-nav-fabs");
+    const topButton = within(navFabs).getByLabelText("Go to top");
+    const previousButton = within(navFabs).getByLabelText("Previous user message");
+    const nextButton = within(navFabs).getByLabelText("Next user message");
+    const bottomButton = within(navFabs).getByLabelText("Go to bottom");
+
+    expect(topButton).toBeTruthy();
+    expect(previousButton).toBeTruthy();
+    expect(nextButton).toBeTruthy();
+    expect(bottomButton).toBeTruthy();
     expect(screen.getByRole("button", { name: "Notification inbox: 1 review notification" })).toBeTruthy();
-    expect(screen.getByTestId("message-feed-nav-fabs").style.bottom).toBe("42px");
+    expect(navFabs.style.bottom).toBe("42px");
+    expect(navFabs.className).toContain("gap-2");
+    expect(topButton.className).toContain("h-10");
+    expect(topButton.className).toContain("w-10");
+    expect(previousButton.className).toContain("h-10");
+    expect(nextButton.className).toContain("w-10");
+    expect(bottomButton.className).toContain("h-10");
 
     getBoundingClientRectSpy.mockRestore();
   });
