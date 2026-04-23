@@ -887,6 +887,24 @@ describe("feedback", () => {
     expect(fb![0].text).toBe("Fix this");
   });
 
+  it("carries forward feedback on needs_verification → refined transition", async () => {
+    await setupVerificationQuest();
+    const entries = [
+      { author: "human" as const, text: "Please reopen this for rework", ts: Date.now() },
+      { author: "agent" as const, text: "Investigating the regression path", ts: Date.now() + 1 },
+    ];
+    await questStore.patchQuest("q-1", { feedback: entries });
+
+    const result = await questStore.transitionQuest("q-1", {
+      status: "refined",
+      description: "Updated scope for another rework cycle",
+    });
+
+    expect(result).not.toBeNull();
+    expect(result!.status).toBe("refined");
+    expect(result?.feedback).toEqual(entries);
+  });
+
   it("carries forward feedback on in_progress → needs_verification transition", async () => {
     await setupVerificationQuest();
     const entry = { author: "human" as const, text: "Fix this", ts: Date.now() };

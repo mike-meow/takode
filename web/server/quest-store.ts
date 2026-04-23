@@ -118,7 +118,7 @@ function shouldMarkVerificationInboxUnreadFromFeedbackPatch(
   nextFeedback: QuestFeedbackEntry[] | undefined,
 ): boolean {
   if (current.status !== "needs_verification") return false;
-  const previous = "feedback" in current ? ((current as { feedback?: QuestFeedbackEntry[] }).feedback ?? []) : [];
+  const previous = current.feedback ?? [];
   if (previous.length === 0 && (!nextFeedback || nextFeedback.length === 0)) return false;
 
   const maxLength = Math.max(previous.length, nextFeedback?.length ?? 0);
@@ -489,8 +489,8 @@ export async function transitionQuest(questId: string, input: QuestTransitionInp
   const newVersion = current.version + 1;
   const newId = nextVersionId(questId, current.version);
 
-  // Extract feedback thread from current version (may exist on needs_verification/done/in_progress)
-  const currentFeedback = "feedback" in current ? (current as { feedback?: QuestFeedbackEntry[] }).feedback : undefined;
+  // Feedback is versioned quest history and should survive every status transition.
+  const currentFeedback = current.feedback;
   const currentActiveSessionId = getActiveSessionId(current);
   const currentPreviousOwners = getPreviousOwnerSessionIds(current);
   const previousOwners = [...currentPreviousOwners];
@@ -506,6 +506,7 @@ export async function transitionQuest(questId: string, input: QuestTransitionInp
     ...(current.parentId ? { parentId: current.parentId } : {}),
     ...(current.images?.length ? { images: current.images } : {}),
     ...(previousOwners.length ? { previousOwnerSessionIds: previousOwners } : {}),
+    ...(currentFeedback?.length ? { feedback: currentFeedback } : {}),
   };
   if (input.commitShas !== undefined && targetStatus !== "needs_verification") {
     throw new Error("commitShas can only be set when transitioning to needs_verification");
@@ -572,7 +573,6 @@ export async function transitionQuest(questId: string, input: QuestTransitionInp
         sessionId,
         claimedAt: now,
         ...(nextPreviousOwners.length ? { previousOwnerSessionIds: nextPreviousOwners } : {}),
-        ...(currentFeedback?.length ? { feedback: currentFeedback } : {}),
       } as QuestInProgress;
       break;
     }
@@ -610,7 +610,6 @@ export async function transitionQuest(questId: string, input: QuestTransitionInp
         verificationInboxUnread: true,
         ...(nextPreviousOwners.length ? { previousOwnerSessionIds: nextPreviousOwners } : {}),
         ...(inputCommitShas?.length ? { commitShas: inputCommitShas } : {}),
-        ...(currentFeedback?.length ? { feedback: currentFeedback } : {}),
       } as QuestNeedsVerification;
       break;
     }
@@ -639,7 +638,6 @@ export async function transitionQuest(questId: string, input: QuestTransitionInp
         completedAt: now,
         ...(input.notes ? { notes: input.notes } : {}),
         ...(input.cancelled ? { cancelled: true } : {}),
-        ...(currentFeedback?.length ? { feedback: currentFeedback } : {}),
       } as QuestDone;
       break;
     }
@@ -762,7 +760,7 @@ export async function cancelQuest(questId: string, notes?: string): Promise<Ques
     previousOwners.push(currentActiveSessionId);
   }
 
-  const cancelFeedback = "feedback" in current ? (current as { feedback?: QuestFeedbackEntry[] }).feedback : undefined;
+  const cancelFeedback = current.feedback;
   const quest: QuestDone = {
     id: newId,
     questId,

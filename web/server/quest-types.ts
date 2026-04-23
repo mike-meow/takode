@@ -79,6 +79,8 @@ interface QuestBase {
   previousOwnerSessionIds?: string[];
   /** Ordered synced commit SHAs associated with this quest's verification handoff. */
   commitShas?: string[];
+  /** Threaded feedback conversation that must survive quest version transitions. */
+  feedback?: QuestFeedbackEntry[];
 }
 
 // ─── Progressive stage types (each extends the previous) ─────────────────────
@@ -109,8 +111,6 @@ export type QuestNeedsVerification = Omit<QuestInProgress, "status"> & {
   verificationItems: QuestVerificationItem[];
   /** True when this verification quest is in the review inbox and needs a fresh human read. */
   verificationInboxUnread?: boolean;
-  /** Threaded feedback conversation between human reviewer and agent */
-  feedback?: QuestFeedbackEntry[];
 };
 
 /** Done: all verification complete (or cancelled) */
