@@ -341,7 +341,9 @@ function extractAssistantReadText(
         const resultText = extractSubagentReadText([block], toolResultPreviews, getToolResult);
         parts.push(resultText || stringifyToolUse(block));
       } else {
-        parts.push(stringifyToolUse(block));
+        const toolLine = stringifyToolUse(block);
+        const resultLine = resolveToolResult(block.id, getToolResult, toolResultPreviews);
+        parts.push(resultLine ? `${toolLine}\n${resultLine}` : toolLine);
       }
       continue;
     }
@@ -350,6 +352,26 @@ function extractAssistantReadText(
     }
   }
   return parts.join("\n\n");
+}
+
+/** Look up the result for a tool_use block: full result first, then preview fallback. */
+function resolveToolResult(
+  toolUseId: string,
+  getToolResult?: (toolUseId: string) => { content: string; is_error: boolean } | null,
+  toolResultPreviews?: Map<string, ToolResultPreview>,
+): string | null {
+  const full = getToolResult?.(toolUseId);
+  if (full) {
+    const prefix = full.is_error ? "[Tool Error]" : "[Tool Result]";
+    return `${prefix} ${full.content}`;
+  }
+  const preview = toolResultPreviews?.get(toolUseId);
+  if (preview) {
+    const prefix = preview.is_error ? "[Tool Error]" : "[Tool Result]";
+    const suffix = preview.is_truncated ? ` [truncated, ${preview.total_size} bytes total]` : "";
+    return `${prefix} ${preview.content}${suffix}`;
+  }
+  return null;
 }
 
 function deriveTurnResultPreview(

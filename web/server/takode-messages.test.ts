@@ -727,6 +727,71 @@ describe("buildReadResponse", () => {
     expect(result.content).not.toContain("agentId:");
   });
 
+  it("pairs non-subagent tool calls with their full results via getToolResult", () => {
+    const history: BrowserIncomingMessage[] = [
+      assistantMsg("Let me check.", 1000, [
+        { name: "Bash", input: { command: "ls -la" } },
+        { name: "Read", input: { file_path: "/tmp/foo.txt" } },
+      ]),
+    ];
+
+    const result = buildReadResponse(history, 0, {
+      getToolResult: (toolUseId) => {
+        if (toolUseId === "tu-Bash") return { content: "file1.ts\nfile2.ts", is_error: false };
+        if (toolUseId === "tu-Read") return { content: "hello world", is_error: false };
+        return null;
+      },
+    })!;
+
+    expect(result.content).toContain("[Tool: Bash]");
+    expect(result.content).toContain("[Tool Result] file1.ts\nfile2.ts");
+    expect(result.content).toContain("[Tool: Read]");
+    expect(result.content).toContain("[Tool Result] hello world");
+  });
+
+  it("pairs tool calls with truncated preview when full result unavailable", () => {
+    const history: BrowserIncomingMessage[] = [
+      assistantMsg("Reading file.", 1000, [{ name: "Read", input: { file_path: "/tmp/big.txt" } }]),
+      toolResultPreview("tu-Read", "last 300 chars..."),
+    ];
+    // Patch the preview to be truncated
+    const previews = (history[1] as any).previews;
+    previews[0].is_truncated = true;
+    previews[0].total_size = 45000;
+
+    const result = buildReadResponse(history, 0)!;
+
+    expect(result.content).toContain("[Tool: Read]");
+    expect(result.content).toContain("[Tool Result] last 300 chars...");
+    expect(result.content).toContain("[truncated, 45000 bytes total]");
+  });
+
+  it("shows tool error prefix for failed tool results", () => {
+    const history: BrowserIncomingMessage[] = [
+      assistantMsg("Running command.", 1000, [{ name: "Bash", input: { command: "bad-cmd" } }]),
+    ];
+
+    const result = buildReadResponse(history, 0, {
+      getToolResult: (toolUseId) =>
+        toolUseId === "tu-Bash" ? { content: "command not found: bad-cmd", is_error: true } : null,
+    })!;
+
+    expect(result.content).toContain("[Tool Error] command not found: bad-cmd");
+  });
+
+  it("renders tool call without result when no result is available", () => {
+    const history: BrowserIncomingMessage[] = [
+      assistantMsg("Checking.", 1000, [{ name: "Bash", input: { command: "echo hi" } }]),
+    ];
+
+    const result = buildReadResponse(history, 0)!;
+
+    expect(result.content).toContain("[Tool: Bash]");
+    // No result line should appear
+    expect(result.content).not.toContain("[Tool Result]");
+    expect(result.content).not.toContain("[Tool Error]");
+  });
+
   it("returns tool_result_preview content when reading a preview message directly", () => {
     // tool_result_preview messages are not peekable (filtered from peek/scan),
     // but they are accessible via read by index and should show actual content
