@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo } from "react";
+import { useEffect, useRef, useMemo, useState } from "react";
 import { useStore } from "../store.js";
 import {
   GitHubPRSection,
@@ -7,9 +7,10 @@ import {
   HerdDiagnosticsSection,
   SystemPromptCollapsible,
 } from "./TaskPanel.js";
-import { formatModel } from "../utils/backends.js";
+import { formatModel, getModelsForBackend, CODEX_REASONING_EFFORTS } from "../utils/backends.js";
 import { coalesceSessionViewModel } from "../utils/session-view-model.js";
 import { navigateTo } from "../utils/navigation.js";
+import { sendToSession } from "../ws.js";
 import { SessionNumChip } from "./SessionNumChip.js";
 import { SessionPathSummary } from "./SessionPathSummary.js";
 import { SessionPayloadStats } from "./SessionPayloadStats.js";
@@ -81,6 +82,27 @@ export function SessionInfoPopover({ sessionId, onClose }: { sessionId: string; 
     container.scrollTop = container.scrollHeight;
   }, [sessionId, taskHistory]);
 
+  const isConnected = useStore((s) => s.connectionStatus.get(sessionId) === "connected");
+  const codexReasoningEffort = session?.codex_reasoning_effort || "";
+  const [showModelDropdown, setShowModelDropdown] = useState(false);
+  const [showReasoningDropdown, setShowReasoningDropdown] = useState(false);
+  const modelDropdownRef = useRef<HTMLDivElement>(null);
+  const reasoningDropdownRef = useRef<HTMLDivElement>(null);
+  const modelOptions = useMemo(() => getModelsForBackend(backendType as "claude" | "codex"), [backendType]);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (modelDropdownRef.current && !modelDropdownRef.current.contains(e.target as Node)) {
+        setShowModelDropdown(false);
+      }
+      if (reasoningDropdownRef.current && !reasoningDropdownRef.current.contains(e.target as Node)) {
+        setShowReasoningDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
   const backendLabel = backendType === "codex" ? "Codex" : "Claude";
   const hasGit = gitBranch || gitAhead > 0 || gitBehind > 0 || linesAdded > 0 || linesRemoved > 0;
   const hasStats =
@@ -129,10 +151,88 @@ export function SessionInfoPopover({ sessionId, onClose }: { sessionId: string; 
             {model && (
               <>
                 <span className="text-cc-muted/40 text-[10px]">&middot;</span>
-                <span className="text-[11px] text-cc-muted">{formatModel(model)}</span>
+                <div className="relative" ref={modelDropdownRef}>
+                  <button
+                    onClick={() => setShowModelDropdown(!showModelDropdown)}
+                    disabled={!isConnected}
+                    className={`flex items-center gap-0.5 text-[11px] transition-colors select-none ${
+                      !isConnected
+                        ? "cursor-not-allowed opacity-30 text-cc-muted"
+                        : "cursor-pointer text-cc-muted hover:text-cc-fg"
+                    }`}
+                    title={`Model: ${model} (click to change)`}
+                  >
+                    <span>{formatModel(model)}</span>
+                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-2.5 h-2.5 shrink-0 opacity-50">
+                      <path d="M4 6l4 4 4-4" />
+                    </svg>
+                  </button>
+                  {showModelDropdown && (
+                    <div className="absolute left-0 top-full z-10 mt-1 max-h-64 w-52 overflow-y-auto rounded-[10px] border border-cc-border bg-cc-card py-1 shadow-lg">
+                      {modelOptions.map((m) => (
+                        <button
+                          key={m.value}
+                          onClick={() => {
+                            sendToSession(sessionId, { type: "set_model", model: m.value });
+                            setShowModelDropdown(false);
+                          }}
+                          className={`w-full cursor-pointer px-3 py-2 text-left text-xs transition-colors hover:bg-cc-hover ${
+                            m.value === model ? "font-medium text-cc-primary" : "text-cc-fg"
+                          }`}
+                        >
+                          <span className="mr-1.5">{m.icon}</span>
+                          {m.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </>
             )}
           </div>
+          {isCodexSession && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] text-cc-muted/60">Reasoning</span>
+              <div className="relative" ref={reasoningDropdownRef}>
+                <button
+                  onClick={() => setShowReasoningDropdown(!showReasoningDropdown)}
+                  disabled={!isConnected}
+                  className={`flex items-center gap-0.5 text-[11px] transition-colors select-none ${
+                    !isConnected
+                      ? "cursor-not-allowed opacity-30 text-cc-muted"
+                      : "cursor-pointer text-cc-muted hover:text-cc-fg"
+                  }`}
+                  title="Reasoning effort (relaunch required)"
+                >
+                  <span>
+                    {CODEX_REASONING_EFFORTS.find((x) => x.value === codexReasoningEffort)?.label.toLowerCase() ||
+                      "default"}
+                  </span>
+                  <svg viewBox="0 0 16 16" fill="currentColor" className="w-2.5 h-2.5 shrink-0 opacity-50">
+                    <path d="M4 6l4 4 4-4" />
+                  </svg>
+                </button>
+                {showReasoningDropdown && (
+                  <div className="absolute left-0 top-full z-10 mt-1 w-40 overflow-hidden rounded-[10px] border border-cc-border bg-cc-card py-1 shadow-lg">
+                    {CODEX_REASONING_EFFORTS.map((effort) => (
+                      <button
+                        key={effort.value || "default"}
+                        onClick={() => {
+                          sendToSession(sessionId, { type: "set_codex_reasoning_effort", effort: effort.value });
+                          setShowReasoningDropdown(false);
+                        }}
+                        className={`w-full cursor-pointer px-3 py-2 text-left text-xs transition-colors hover:bg-cc-hover ${
+                          effort.value === codexReasoningEffort ? "font-medium text-cc-primary" : "text-cc-fg"
+                        }`}
+                      >
+                        {effort.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           {cwd && (
             <SessionPathSummary
               cwd={cwd}

@@ -41,6 +41,7 @@ interface MockStoreState {
   }>;
   sessionTaskHistory: Map<string, Array<{ title: string; source?: "quest"; questId?: string }>>;
   sessionNames: Map<string, string>;
+  connectionStatus: Map<string, string>;
 }
 
 let storeState: MockStoreState;
@@ -71,6 +72,7 @@ function resetStore(taskHistory: Array<{ title: string; source?: "quest"; questI
     sdkSessions: [{ sessionId: "s1", cwd: "/repo", backendType: "codex" }],
     sessionTaskHistory: new Map([["s1", taskHistory]]),
     sessionNames: new Map(),
+    connectionStatus: new Map([["s1", "connected"]]),
   };
 }
 
@@ -84,6 +86,10 @@ vi.mock("./TaskPanel.js", () => ({
   ClaudeMdCollapsible: () => null,
   HerdDiagnosticsSection: () => null,
   SystemPromptCollapsible: () => null,
+}));
+
+vi.mock("../ws.js", () => ({
+  sendToSession: vi.fn(),
 }));
 
 import { SessionInfoPopover } from "./SessionInfoPopover.js";

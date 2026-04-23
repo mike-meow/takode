@@ -245,9 +245,9 @@ export function ComposerMetaToolbar({
             )}
             {sessionView.model && (
               <>
-                {sessionView.gitBranch && <span className="shrink-0 text-cc-muted/40">&middot;</span>}
+                {sessionView.gitBranch && <span className="hidden sm:inline shrink-0 text-cc-muted/40">&middot;</span>}
                 {!isCodex ? (
-                  <div className="relative min-w-0" ref={modelDropdownRef}>
+                  <div className="relative min-w-0 hidden sm:block" ref={modelDropdownRef}>
                     <button
                       onClick={() => setShowModelDropdown(!showModelDropdown)}
                       disabled={!isConnected}
@@ -286,7 +286,7 @@ export function ComposerMetaToolbar({
                   </div>
                 ) : (
                   <>
-                    <div className="relative min-w-0" ref={modelDropdownRef}>
+                    <div className="relative min-w-0 hidden sm:block" ref={modelDropdownRef}>
                       <button
                         onClick={() => setShowModelDropdown(!showModelDropdown)}
                         disabled={!isConnected}
@@ -323,8 +323,8 @@ export function ComposerMetaToolbar({
                         </div>
                       )}
                     </div>
-                    <span className="shrink-0 text-cc-muted/40">&middot;</span>
-                    <div className="relative shrink-0" ref={codexReasoningDropdownRef}>
+                    <span className="hidden sm:inline shrink-0 text-cc-muted/40">&middot;</span>
+                    <div className="relative shrink-0 hidden sm:block" ref={codexReasoningDropdownRef}>
                       <button
                         onClick={() => setShowCodexReasoningDropdown(!showCodexReasoningDropdown)}
                         disabled={!isConnected}
