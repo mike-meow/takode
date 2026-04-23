@@ -806,7 +806,7 @@ export class WsBridge {
   /** Push a message to all connected browsers across ALL sessions. */
   broadcastGlobal(msg: BrowserIncomingMessage): void {
     for (const session of this.sessions.values()) {
-      this.broadcastToBrowsers(session, msg);
+      this.broadcastToBrowsers(session, msg, { skipBuffer: true });
     }
   }
 

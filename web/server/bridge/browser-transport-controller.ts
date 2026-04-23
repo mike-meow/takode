@@ -919,7 +919,8 @@ function shouldBufferForReplay(msg: BrowserIncomingMessage): msg is ReplayableBr
     msg.type !== "event_replay" &&
     msg.type !== "leader_group_idle" &&
     msg.type !== "session_quest_claimed" &&
-    msg.type !== "session_name_update"
+    msg.type !== "session_name_update" &&
+    msg.type !== "tree_groups_update"
   );
 }
 
