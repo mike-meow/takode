@@ -216,6 +216,52 @@ function getInterruptSourceFromActorSessionId(actorSessionId: string | undefined
   return isSystemSourceTag({ sessionId: actorSessionId }) ? "system" : "leader";
 }
 
+function findPendingExitPlanPermission(
+  session: AdapterBrowserRoutingSessionLike,
+): PermissionRequest | undefined {
+  for (const perm of session.pendingPermissions.values()) {
+    if (perm.tool_name === "ExitPlanMode") return perm;
+  }
+  return undefined;
+}
+
+function getPendingPlanRejectionMessage(msg: BrowserUserMessage): string {
+  if (msg.agentSource?.sessionId && !isSystemSourceTag(msg.agentSource)) {
+    return "Plan rejected — leader sent a new message";
+  }
+  return "Plan rejected — user sent a new message";
+}
+
+function maybeAutoRejectPendingPlanForUserMessage(
+  session: AdapterBrowserRoutingSessionLike,
+  msg: BrowserUserMessage,
+  deps: AdapterBrowserRoutingDeps,
+): void {
+  const pending = findPendingExitPlanPermission(session);
+  if (!pending) return;
+  if (msg.agentSource?.sessionId === "herd-events") return;
+  if (isSystemSourceTag(msg.agentSource)) return;
+
+  const actorSessionId = msg.agentSource?.sessionId;
+  const denial: PermissionResponseMessage = {
+    type: "permission_response",
+    request_id: pending.request_id,
+    behavior: "deny",
+    message: getPendingPlanRejectionMessage(msg),
+    ...(actorSessionId ? { actorSessionId } : {}),
+  };
+
+  if (session.backendType === "claude-sdk") {
+    handleSdkPermissionResponse(session, denial, deps);
+    return;
+  }
+  if (session.backendType === "codex") {
+    handleCodexPermissionResponse(session, denial, deps);
+    return;
+  }
+  handlePermissionResponse(session, denial, deps, actorSessionId);
+}
+
 function localDateKey(ts: number): string {
   const d = new Date(ts);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -439,6 +485,10 @@ export async function routeBrowserMessage(
   if (msg.type === "user_message" && msg.images?.length && !deps.storeImage) {
     deps.notifyImageSendFailure(session, new Error("image store unavailable"));
     return;
+  }
+
+  if (msg.type === "user_message") {
+    maybeAutoRejectPendingPlanForUserMessage(session, msg, deps);
   }
 
   if (
