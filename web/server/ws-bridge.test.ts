@@ -13625,7 +13625,13 @@ describe("injectUserMessage triggers relaunch for exited sessions (q-15)", () =>
       }),
       listSessions: vi.fn(() => [
         { sessionId: sid, sessionNum: 1, isOrchestrator: true, backendType: "codex" },
-        { sessionId: "worker-live", sessionNum: 22, herdedBy: sid, backendType: "claude", lastActivityAt: now - 5 * 60_000 },
+        {
+          sessionId: "worker-live",
+          sessionNum: 22,
+          herdedBy: sid,
+          backendType: "claude",
+          lastActivityAt: now - 5 * 60_000,
+        },
       ]),
       resolveSessionId: vi.fn((ref: string) => (ref === "22" ? "worker-live" : undefined)),
     } as any);
