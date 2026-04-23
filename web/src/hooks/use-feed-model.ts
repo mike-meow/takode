@@ -476,7 +476,7 @@ export function summarizeHerdEvents(herdEntries: FeedEntry[]): string {
  *  Only the immediately preceding assistant message qualifies -- intervening tool results,
  *  system messages, or other non-assistant entries break the sequence.
  *  Consecutive herd events are grouped into a single summary. */
-function extractSubConclusions(entries: FeedEntry[], responseEntry: FeedEntry | null): SubConclusion[] {
+function extractSubConclusions(entries: FeedEntry[], excludedMessageIds: Set<string>): SubConclusion[] {
   const subConclusions: SubConclusion[] = [];
   let lastAssistantEntry: FeedEntry | null = null;
 
@@ -485,7 +485,10 @@ function extractSubConclusions(entries: FeedEntry[], responseEntry: FeedEntry | 
     const entry = entries[i];
 
     if (entry.kind === "message" && entry.msg.role === "assistant" && entry.msg.content?.trim()) {
-      lastAssistantEntry = entry;
+      // Messages already promoted into another collapsed-visible slot (for
+      // example notificationEntries or responseEntry) must not also become a
+      // sub-conclusion, or the same assistant message renders twice.
+      lastAssistantEntry = excludedMessageIds.has(entry.msg.id) ? null : entry;
       i++;
       continue;
     }
@@ -498,8 +501,7 @@ function extractSubConclusions(entries: FeedEntry[], responseEntry: FeedEntry | 
         i++;
       }
 
-      // Don't add as sub-conclusion if it's the same entry that will be responseEntry
-      if (lastAssistantEntry !== responseEntry) {
+      if (lastAssistantEntry) {
         subConclusions.push({
           entry: lastAssistantEntry,
           herdSummary: summarizeHerdEvents(herdBatch),
@@ -564,9 +566,17 @@ function makeTurn(userEntry: FeedEntry | null, entries: FeedEntry[], turnIndex: 
     }
   }
 
+  const collapsedVisibleMessageIds = new Set<string>();
+  for (const entry of notificationEntries) {
+    if (entry.kind === "message") collapsedVisibleMessageIds.add(entry.msg.id);
+  }
+  if (responseEntry?.kind === "message") {
+    collapsedVisibleMessageIds.add(responseEntry.msg.id);
+  }
+
   // Extract sub-conclusions: assistant messages immediately before herd event injections.
   // These represent intermediate conclusions worth showing in collapsed view.
-  const subConclusions = extractSubConclusions(entries, responseEntry);
+  const subConclusions = extractSubConclusions(entries, collapsedVisibleMessageIds);
 
   // Stable ID: prefer user message ID, fall back to first agent entry ID, then synthetic
   const id = userEntry
