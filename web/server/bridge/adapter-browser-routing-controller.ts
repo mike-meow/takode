@@ -223,7 +223,9 @@ function findPendingExitPlanPermission(session: AdapterBrowserRoutingSessionLike
   return undefined;
 }
 
-function findPendingAskUserQuestionPermission(session: AdapterBrowserRoutingSessionLike): PermissionRequest | undefined {
+function findPendingAskUserQuestionPermission(
+  session: AdapterBrowserRoutingSessionLike,
+): PermissionRequest | undefined {
   for (const perm of session.pendingPermissions.values()) {
     if (perm.tool_name === "AskUserQuestion") return perm;
   }
