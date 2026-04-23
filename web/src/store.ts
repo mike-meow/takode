@@ -26,6 +26,8 @@ import {
   computeSessionSearchMatches,
   DEFAULT_SEARCH_STATE,
   getSessionSearchState,
+  sessionSearchMessageMatchesCategory,
+  sessionSearchTextMatches,
   type SearchMatch,
   type SessionSearchCategory,
   type SessionSearchState,
@@ -62,7 +64,13 @@ export function isDarkTheme(theme: ColorTheme): boolean {
 
 import { scopedGetItem, scopedSetItem, scopedRemoveItem } from "./utils/scoped-storage.js";
 
-export { reconcileQuestList, getSessionSearchState, computeSessionSearchMatches };
+export {
+  reconcileQuestList,
+  getSessionSearchState,
+  computeSessionSearchMatches,
+  sessionSearchMessageMatchesCategory,
+  sessionSearchTextMatches,
+};
 export type { SearchMatch, SessionSearchCategory, SessionSearchState };
 export type { PendingSession };
 
@@ -1362,7 +1370,8 @@ export const useStore = create<AppState>((set, get) => ({
       const sessionSearch = new Map(s.sessionSearch);
       const prev = sessionSearch.get(sessionId) ?? DEFAULT_SEARCH_STATE;
       const messages = s.messages.get(sessionId) ?? [];
-      const matches = computeSessionSearchMatches(messages, prev.query, prev.mode, category);
+      const leaderSessionId = s.sdkSessions.find((sdk) => sdk.sessionId === sessionId)?.herdedBy;
+      const matches = computeSessionSearchMatches(messages, prev.query, prev.mode, category, leaderSessionId);
       sessionSearch.set(sessionId, {
         ...prev,
         category,

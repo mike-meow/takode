@@ -1614,8 +1614,9 @@ export function PlaygroundStateSections() {
               </p>
               <p>
                 <span className="font-medium text-cc-fg">Category filters:</span> Inline segmented pills for `All`,
-                `User`, `Assistant`, and `System` keep the bar compact while narrowing matches and highlights by message
-                role
+                `User`, `Assistant`, and `Events` keep the bar compact while narrowing matches by semantic category:
+                human or leader-authored user messages stay in `User`, while timers, herd updates, and system messages
+                move to `Events`
               </p>
             </div>
           </Card>
@@ -1627,8 +1628,8 @@ export function PlaygroundStateSections() {
                 </svg>
                 <div className="min-w-0 flex-1 text-sm text-cc-muted">Search messages...</div>
                 <div className="flex items-center gap-1 rounded-lg border border-cc-border/70 bg-cc-bg/70 p-0.5">
-                  {["All", "User", "Assistant", "System"].map((label) => {
-                    const isActive = label === "Assistant";
+                  {["All", "User", "Assistant", "Events"].map((label) => {
+                    const isActive = label === "Events";
                     return (
                       <button
                         key={label}
@@ -1648,7 +1649,7 @@ export function PlaygroundStateSections() {
                 >
                   Aa
                 </button>
-                <span className="text-[11px] text-cc-muted whitespace-nowrap tabular-nums shrink-0">2 of 4</span>
+                <span className="text-[11px] text-cc-muted whitespace-nowrap tabular-nums shrink-0">2 of 3</span>
               </div>
             </div>
           </Card>

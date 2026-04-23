@@ -45,7 +45,14 @@ describe("SearchBar", () => {
           [
             { id: "m1", role: "user", content: "hello from user", timestamp: 1 },
             { id: "m2", role: "assistant", content: "hello from assistant", timestamp: 2 },
-            { id: "m3", role: "system", content: "hello from system", timestamp: 3 },
+            {
+              id: "m3",
+              role: "user",
+              content: "hello from timer",
+              timestamp: 3,
+              agentSource: { sessionId: "timer:t1" },
+            },
+            { id: "m4", role: "system", content: "hello from system", timestamp: 4 },
           ],
         ],
       ]),
@@ -63,7 +70,7 @@ describe("SearchBar", () => {
     expect(screen.getByRole("button", { name: "All" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("button", { name: "User" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Assistant" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "System" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Events" })).toBeInTheDocument();
   });
 
   it("updates the active category when a filter pill is clicked", () => {
@@ -90,5 +97,16 @@ describe("SearchBar", () => {
     fireEvent.keyDown(screen.getByPlaceholderText("Search messages..."), { key: "Enter" });
 
     expect(requestScrollToMessage).toHaveBeenLastCalledWith(SESSION_ID, "m2");
+  });
+
+  it("treats timer-style injected user messages as events when that filter is selected", () => {
+    render(<SearchBar sessionId={SESSION_ID} inputRef={createRef<HTMLInputElement>()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Events" }));
+
+    const nextState = useStore.getState().sessionSearch.get(SESSION_ID);
+    expect(nextState?.category).toBe("event");
+    expect(nextState?.matches).toEqual([{ messageId: "m3" }, { messageId: "m4" }]);
+    expect(screen.getByText("1 of 2")).toBeInTheDocument();
   });
 });

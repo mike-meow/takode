@@ -24,7 +24,7 @@ export function SearchBar({
     { value: "all", label: "All" },
     { value: "user", label: "User" },
     { value: "assistant", label: "Assistant" },
-    { value: "system", label: "System" },
+    { value: "event", label: "Events" },
   ] as const;
 
   // Auto-focus when opened

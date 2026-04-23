@@ -52,8 +52,10 @@ describe("computeMatches", () => {
     { id: "m1", role: "user" as const, content: "Hello world" },
     { id: "m2", role: "assistant" as const, content: "Goodbye world" },
     { id: "m3", role: "assistant" as const, content: "Hello again" },
-    { id: "m4", role: "system" as const, content: "" },
-    { id: "m5", role: "system" as const, content: "Nothing relevant here" },
+    { id: "m4", role: "user" as const, content: "Hello from leader", agentSource: { sessionId: "leader-1" } },
+    { id: "m5", role: "user" as const, content: "Hello from timer", agentSource: { sessionId: "timer:t1" } },
+    { id: "m6", role: "system" as const, content: "Hello system event" },
+    { id: "m7", role: "user" as const, content: "Hello from generic agent", agentSource: { sessionId: "agent-1" } },
   ];
 
   it("returns empty for empty query", () => {
@@ -63,7 +65,14 @@ describe("computeMatches", () => {
 
   it("finds all matching messages in strict mode", () => {
     const result = _computeMatches(messages, "hello", "strict");
-    expect(result).toEqual([{ messageId: "m1" }, { messageId: "m3" }]);
+    expect(result).toEqual([
+      { messageId: "m1" },
+      { messageId: "m3" },
+      { messageId: "m4" },
+      { messageId: "m5" },
+      { messageId: "m6" },
+      { messageId: "m7" },
+    ]);
   });
 
   it("finds all matching messages in fuzzy mode", () => {
@@ -78,32 +87,59 @@ describe("computeMatches", () => {
   });
 
   it("respects the selected message category", () => {
-    // Filtered session search should only return matches from the active
-    // message role rather than highlighting every role with the same query.
-    const assistantOnly = _computeMatches(messages, "hello", "strict", "assistant");
+    // Filtered session search should respect semantic categories rather than
+    // raw roles, so system-style injected pseudo-user messages move to Events.
+    const assistantOnly = _computeMatches(messages, "hello", "strict", "assistant", "leader-1");
     expect(assistantOnly).toEqual([{ messageId: "m3" }]);
 
-    const userOnly = _computeMatches(messages, "hello", "strict", "user");
-    expect(userOnly).toEqual([{ messageId: "m1" }]);
+    const userOnly = _computeMatches(messages, "hello", "strict", "user", "leader-1");
+    expect(userOnly).toEqual([{ messageId: "m1" }, { messageId: "m4" }]);
+
+    const eventOnly = _computeMatches(messages, "hello", "strict", "event", "leader-1");
+    expect(eventOnly).toEqual([{ messageId: "m5" }, { messageId: "m6" }, { messageId: "m7" }]);
   });
 
   it("skips messages with empty content", () => {
     const result = _computeMatches(messages, "hello", "strict");
-    // m4 has empty content, should not appear
-    expect(result.find((m) => m.messageId === "m4")).toBeUndefined();
+    expect(result.find((m) => m.messageId === "missing")).toBeUndefined();
   });
 });
 
 describe("messageMatchesCategory", () => {
   it("accepts every role when the all filter is active", () => {
-    expect(_messageMatchesCategory("user", "all")).toBe(true);
-    expect(_messageMatchesCategory("assistant", "all")).toBe(true);
-    expect(_messageMatchesCategory("system", "all")).toBe(true);
+    expect(_messageMatchesCategory({ role: "user" }, "all")).toBe(true);
+    expect(_messageMatchesCategory({ role: "assistant" }, "all")).toBe(true);
+    expect(_messageMatchesCategory({ role: "system" }, "all")).toBe(true);
   });
 
-  it("only accepts the selected role for specific filters", () => {
-    expect(_messageMatchesCategory("assistant", "assistant")).toBe(true);
-    expect(_messageMatchesCategory("user", "assistant")).toBe(false);
-    expect(_messageMatchesCategory("system", "assistant")).toBe(false);
+  it("treats leader-authored user injections as user messages", () => {
+    expect(_messageMatchesCategory({ role: "user", agentSource: { sessionId: "leader-1" } }, "user", "leader-1")).toBe(
+      true,
+    );
+    expect(_messageMatchesCategory({ role: "user", agentSource: { sessionId: "leader-1" } }, "event", "leader-1")).toBe(
+      false,
+    );
+  });
+
+  it("routes timer, cron, herd, generic agent, and system messages to the event category", () => {
+    expect(_messageMatchesCategory({ role: "user", agentSource: { sessionId: "timer:t1" } }, "event", "leader-1")).toBe(
+      true,
+    );
+    expect(
+      _messageMatchesCategory({ role: "user", agentSource: { sessionId: "cron:nightly" } }, "event", "leader-1"),
+    ).toBe(true);
+    expect(
+      _messageMatchesCategory({ role: "user", agentSource: { sessionId: "herd-events" } }, "event", "leader-1"),
+    ).toBe(true);
+    expect(_messageMatchesCategory({ role: "user", agentSource: { sessionId: "agent-1" } }, "event", "leader-1")).toBe(
+      true,
+    );
+    expect(_messageMatchesCategory({ role: "system" }, "event", "leader-1")).toBe(true);
+  });
+
+  it("keeps assistant messages in the assistant category only", () => {
+    expect(_messageMatchesCategory({ role: "assistant" }, "assistant")).toBe(true);
+    expect(_messageMatchesCategory({ role: "assistant" }, "user")).toBe(false);
+    expect(_messageMatchesCategory({ role: "assistant" }, "event")).toBe(false);
   });
 });
