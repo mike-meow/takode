@@ -1472,7 +1472,9 @@ describe("takode spawn", () => {
 
       if (method === "GET" && url === "/api/sessions/leader-file") {
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({ sessionId: "leader-file", sessionNum: 13, name: "File Leader", backendType: "claude" }));
+        res.end(
+          JSON.stringify({ sessionId: "leader-file", sessionNum: 13, name: "File Leader", backendType: "claude" }),
+        );
         return;
       }
 
