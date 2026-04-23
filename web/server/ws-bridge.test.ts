@@ -47,6 +47,7 @@ import {
 import { trafficStats } from "./traffic-stats.js";
 import {
   applyInitialSessionState as applyInitialSessionStateController,
+  addTaskEntry as addTaskEntryController,
   clearAttentionAndMarkRead as clearAttentionAndMarkReadController,
   getHerdDiagnostics as getHerdDiagnosticsController,
   markNotificationDone as markNotificationDoneController,
@@ -893,6 +894,93 @@ describe("Session management", () => {
     const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
     const questEvents = calls.filter((c: any) => c.type === "session_quest_claimed");
     expect(questEvents).toHaveLength(1);
+  });
+
+  it("addTaskEntry: skips consecutive duplicate new entries", () => {
+    // Consecutive duplicate quest-history inserts should collapse so repeated
+    // claim notifications do not rebroadcast or persist an unchanged timeline.
+    const session = {
+      taskHistory: [
+        {
+          title: "Quest",
+          action: "new",
+          timestamp: 1,
+          triggerMessageId: "u-1",
+          source: "quest",
+          questId: "q-1",
+        },
+      ],
+    } as any;
+    const broadcastTaskHistory = vi.fn();
+    const persistSession = vi.fn();
+
+    addTaskEntryController(
+      session,
+      {
+        title: "Quest",
+        action: "new",
+        timestamp: 2,
+        triggerMessageId: "u-1",
+        source: "quest",
+        questId: "q-1",
+      },
+      { broadcastTaskHistory, persistSession },
+    );
+
+    expect(session.taskHistory).toHaveLength(1);
+    expect(broadcastTaskHistory).not.toHaveBeenCalled();
+    expect(persistSession).not.toHaveBeenCalled();
+  });
+
+  it("addTaskEntry: keeps identical new entries when they are not consecutive", () => {
+    // Boundary case: identical entries are still valid after intervening work,
+    // so the dedupe must only apply to back-to-back duplicates.
+    const session = {
+      taskHistory: [
+        {
+          title: "Quest",
+          action: "new",
+          timestamp: 1,
+          triggerMessageId: "u-1",
+          source: "quest",
+          questId: "q-1",
+        },
+        {
+          title: "Other task",
+          action: "new",
+          timestamp: 2,
+          triggerMessageId: "u-2",
+        },
+      ],
+    } as any;
+    const broadcastTaskHistory = vi.fn();
+    const persistSession = vi.fn();
+
+    addTaskEntryController(
+      session,
+      {
+        title: "Quest",
+        action: "new",
+        timestamp: 3,
+        triggerMessageId: "u-1",
+        source: "quest",
+        questId: "q-1",
+      },
+      { broadcastTaskHistory, persistSession },
+    );
+
+    expect(session.taskHistory).toHaveLength(3);
+    expect(session.taskHistory[2]).toEqual(
+      expect.objectContaining({
+        title: "Quest",
+        action: "new",
+        triggerMessageId: "u-1",
+        source: "quest",
+        questId: "q-1",
+      }),
+    );
+    expect(broadcastTaskHistory).toHaveBeenCalledOnce();
+    expect(persistSession).toHaveBeenCalledOnce();
   });
 
   it("session_quest_claimed is not buffered for event replay (prevents stale chips on reconnect)", () => {
