@@ -17,7 +17,7 @@ vi.mock("./bridge/settings-rule-matcher.js", async (importOriginal) => {
 
 import { WsBridge, type SocketData } from "./ws-bridge.js";
 import { SessionStore } from "./session-store.js";
-import { HerdEventDispatcher, isSessionIdleRuntime } from "./herd-event-dispatcher.js";
+import { HerdEventDispatcher, isSessionIdleRuntime, renderHerdEventBatch } from "./herd-event-dispatcher.js";
 import {
   advanceBoardRow as advanceBoardRowController,
   advanceBoardRowNoGroom as advanceBoardRowNoGroomController,
@@ -13534,6 +13534,178 @@ describe("injectUserMessage triggers relaunch for exited sessions (q-15)", () =>
     expect(relaunchCb).not.toHaveBeenCalled();
   });
 
+  it("drops stale board_stalled herd batches at injectUserMessage before they reach the conversation", () => {
+    const sid = "s-inject-stale-board-stall";
+    bridge.setLauncher({
+      touchActivity: vi.fn(),
+      touchUserMessage: vi.fn(),
+      getSession: vi.fn((id: string) =>
+        id === sid
+          ? { sessionId: sid, sessionNum: 1, isOrchestrator: true, backendType: "claude", state: "connected" }
+          : undefined,
+      ),
+      listSessions: vi.fn(() => [{ sessionId: sid, sessionNum: 1, isOrchestrator: true, backendType: "claude" }]),
+      resolveSessionId: vi.fn(() => undefined),
+    } as any);
+
+    const browser = makeBrowserSocket(sid);
+    bridge.handleBrowserOpen(browser, sid);
+    const cliWs = makeCliSocket(sid);
+    bridge.handleCLIOpen(cliWs, sid);
+    bridge.handleCLIMessage(cliWs, makeInitMsg({ session_id: "cli-s-inject-stale-board-stall" }));
+
+    bridge.upsertBoardRow(sid, {
+      questId: "q-1",
+      title: "Investigate delayed stall drop",
+      status: "PORTING",
+      updatedAt: Date.now(),
+    });
+
+    const delivery = bridge.injectUserMessage(
+      sid,
+      "1 event from 1 session\n\n#12 | board_stalled | q-1 Investigate delayed stall drop | IMPLEMENTING | worker disconnected | stalled 4m",
+      {
+        sessionId: "herd-events",
+        sessionLabel: "Herd Events",
+      },
+      {
+        events: [
+          {
+            id: 1,
+            event: "board_stalled",
+            sessionId: "worker-board-stall-codex",
+            sessionNum: 12,
+            sessionName: "worker-board-stall-codex",
+            ts: Date.now(),
+            data: {
+              questId: "q-1",
+              title: "Investigate delayed stall drop",
+              stage: "IMPLEMENTING",
+              signature: "q-1|IMPLEMENTING|disconnected",
+              workerStatus: "disconnected",
+              reviewerStatus: "missing",
+              stalledForMs: 240_000,
+              reason: "worker disconnected",
+              action: "inspect worker; resume or re-dispatch before review",
+            },
+          } as any,
+        ],
+        renderedLines: [
+          "#12 | board_stalled | q-1 Investigate delayed stall drop | IMPLEMENTING | worker disconnected | stalled 4m",
+        ],
+      },
+    );
+    expect(delivery).toBe("dropped");
+    expect(browser.send).not.toHaveBeenCalledWith(
+      expect.stringContaining("board_stalled | q-1 Investigate delayed stall drop"),
+    );
+  });
+
+  it("reformats partially stale board_stalled herd batches with the standard batch wrapper", async () => {
+    const sid = "s-inject-partial-stale-board-stall";
+    const now = Date.now();
+    bridge.setLauncher({
+      touchActivity: vi.fn(),
+      touchUserMessage: vi.fn(),
+      getSession: vi.fn((id: string) => {
+        if (id === sid) {
+          return { sessionId: sid, sessionNum: 1, isOrchestrator: true, backendType: "codex", state: "starting" };
+        }
+        if (id === "worker-live") {
+          return {
+            sessionId: "worker-live",
+            sessionNum: 22,
+            herdedBy: sid,
+            backendType: "claude",
+            state: "connected",
+            lastActivityAt: now - 5 * 60_000,
+          };
+        }
+        return undefined;
+      }),
+      listSessions: vi.fn(() => [
+        { sessionId: sid, sessionNum: 1, isOrchestrator: true, backendType: "codex" },
+        { sessionId: "worker-live", sessionNum: 22, herdedBy: sid, backendType: "claude", lastActivityAt: now - 5 * 60_000 },
+      ]),
+      resolveSessionId: vi.fn((ref: string) => (ref === "22" ? "worker-live" : undefined)),
+    } as any);
+
+    const session = bridge.getOrCreateSession(sid);
+    bridge.upsertBoardRow(sid, {
+      questId: "q-1",
+      title: "Stale stall row",
+      status: "PORTING",
+      updatedAt: now,
+    });
+    bridge.upsertBoardRow(sid, {
+      questId: "q-2",
+      title: "Live stall row",
+      worker: "worker-live",
+      workerNum: 22,
+      status: "IMPLEMENTING",
+      updatedAt: now - 5 * 60_000,
+    });
+
+    const staleEvent = {
+      id: 1,
+      event: "board_stalled",
+      sessionId: "worker-stale",
+      sessionNum: 12,
+      sessionName: "worker-stale",
+      ts: now,
+      data: {
+        questId: "q-1",
+        title: "Stale stall row",
+        stage: "IMPLEMENTING",
+        signature: "q-1|IMPLEMENTING|disconnected",
+        workerStatus: "disconnected",
+        reviewerStatus: "missing",
+        stalledForMs: 240_000,
+        reason: "worker disconnected",
+        action: "inspect worker; resume or re-dispatch before review",
+      },
+    } as any;
+    const liveEvent = {
+      id: 2,
+      event: "board_stalled",
+      sessionId: "worker-live",
+      sessionNum: 22,
+      sessionName: "worker-live",
+      ts: now,
+      data: {
+        questId: "q-2",
+        title: "Live stall row",
+        stage: "IMPLEMENTING",
+        signature: "q-2|IMPLEMENTING|disconnected",
+        workerStatus: "disconnected",
+        reviewerStatus: "missing",
+        stalledForMs: 240_000,
+        reason: "worker disconnected",
+        action: "inspect worker; resume or re-dispatch before review",
+      },
+    } as any;
+    const expectedRendered = renderHerdEventBatch([liveEvent]);
+
+    const delivery = bridge.injectUserMessage(
+      sid,
+      "2 events from 1 session\n\n#12 stale\n#22 live",
+      {
+        sessionId: "herd-events",
+        sessionLabel: "Herd Events",
+      },
+      {
+        events: [staleEvent, liveEvent],
+        renderedLines: ["#12 stale", expectedRendered.renderedLines[0]],
+      },
+    );
+    await Promise.resolve();
+
+    expect(delivery).toBe("queued");
+    expect(session.pendingCodexInputs).toHaveLength(1);
+    expect(session.pendingCodexInputs[0]?.content).toBe(expectedRendered.content);
+    expect(session.pendingCodexInputs[0]?.content).toContain("1 event from 1 session\n\n");
+  });
+
   it("requests Codex auto-recovery only once when injectUserMessage targets an adapter-missing connected session", async () => {
     const sid = "s-inject-codex-missing-adapter";
     const relaunchCb = vi.fn();
@@ -22540,7 +22712,14 @@ describe("board stall warnings", () => {
     vi.useRealTimers();
   });
 
-  function setupBoardStallHarness(opts?: { reviewer?: boolean; workerHasTimer?: boolean; blocked?: boolean }) {
+  function setupBoardStallHarness(opts?: {
+    reviewer?: boolean;
+    reviewStage?: "SKEPTIC_REVIEWING" | "GROOM_REVIEWING";
+    workerHasTimer?: boolean;
+    blocked?: boolean;
+    workerLiveState?: "idle" | "running";
+    reviewerLiveState?: "idle" | "running";
+  }) {
     const leaderId = "orch-board-stall";
     const workerId = "worker-board-stall";
     const reviewerId = "reviewer-board-stall";
@@ -22563,7 +22742,7 @@ describe("board stall warnings", () => {
           sessionId: workerId,
           sessionNum: 2,
           herdedBy: leaderId,
-          backendType: "codex",
+          backendType: "claude",
           cwd: "/repo",
           lastActivityAt: now - 5 * 60_000,
         },
@@ -22575,7 +22754,7 @@ describe("board stall warnings", () => {
         sessionNum: 3,
         reviewerOf: 2,
         herdedBy: leaderId,
-        backendType: "codex",
+        backendType: "claude",
         cwd: "/repo",
         lastActivityAt: now - 5 * 60_000,
       });
@@ -22615,12 +22794,22 @@ describe("board stall warnings", () => {
 
     bridge.getOrCreateSession(workerId);
     if (opts?.reviewer) bridge.getOrCreateSession(reviewerId);
+    const connectLiveParticipant = (sessionId: string, liveState: "idle" | "running" | undefined) => {
+      if (!liveState) return;
+      const cli = makeCliSocket(sessionId);
+      bridge.handleCLIOpen(cli, sessionId);
+      bridge.handleCLIMessage(cli, makeInitMsg({ session_id: `cli-${sessionId}` }));
+      const session = bridge.getSession(sessionId)!;
+      session.isGenerating = liveState === "running";
+    };
+    connectLiveParticipant(workerId, opts?.workerLiveState);
+    connectLiveParticipant(reviewerId, opts?.reviewerLiveState);
     bridge.upsertBoardRow(leaderId, {
       questId: "q-1",
       title: "Investigate stall warning",
       worker: workerId,
       workerNum: 2,
-      status: opts?.reviewer ? "SKEPTIC_REVIEWING" : "IMPLEMENTING",
+      status: opts?.reviewer ? (opts.reviewStage ?? "SKEPTIC_REVIEWING") : "IMPLEMENTING",
       ...(opts?.blocked ? { waitFor: ["#9"] } : {}),
       updatedAt: now - 5 * 60_000,
     });
@@ -22718,6 +22907,23 @@ describe("board stall warnings", () => {
 
   it("suppresses stalled-row warnings when the worker has an active timer", async () => {
     const { leaderId, dispatcher } = setupBoardStallHarness({ workerHasTimer: true });
+    const injectSpy = vi.spyOn(bridge, "injectUserMessage");
+
+    bridge.startStuckSessionWatchdog();
+    vi.advanceTimersByTime(181_000);
+    await Promise.resolve();
+
+    const herdCalls = injectSpy.mock.calls.filter(
+      ([sessionId, _content, source]) => sessionId === leaderId && source?.sessionId === "herd-events",
+    );
+    expect(herdCalls).toHaveLength(0);
+
+    injectSpy.mockRestore();
+    dispatcher.destroy();
+  });
+
+  it("does not warn when an implementing worker is still connected and generating", async () => {
+    const { leaderId, dispatcher } = setupBoardStallHarness({ workerLiveState: "running" });
     const injectSpy = vi.spyOn(bridge, "injectUserMessage");
 
     bridge.startStuckSessionWatchdog();
@@ -23152,6 +23358,29 @@ describe("board stall warnings", () => {
     expect(herdCalls).toHaveLength(1);
     expect(herdCalls[0][1]).toContain("reviewer disconnected");
     expect(herdCalls[0][1]).toContain("re-dispatch skeptic review");
+
+    injectSpy.mockRestore();
+    dispatcher.destroy();
+  });
+
+  it("classifies a live groom reviewer as idle instead of disconnected", async () => {
+    const { leaderId, dispatcher } = setupBoardStallHarness({
+      reviewer: true,
+      reviewStage: "GROOM_REVIEWING",
+      reviewerLiveState: "idle",
+    });
+    const injectSpy = vi.spyOn(bridge, "injectUserMessage");
+
+    bridge.startStuckSessionWatchdog();
+    vi.advanceTimersByTime(181_000);
+    await Promise.resolve();
+
+    const herdCalls = injectSpy.mock.calls.filter(
+      ([sessionId, _content, source]) => sessionId === leaderId && source?.sessionId === "herd-events",
+    );
+    expect(herdCalls).toHaveLength(1);
+    expect(herdCalls[0][1]).toContain("reviewer idle");
+    expect(herdCalls[0][1]).not.toContain("reviewer disconnected");
 
     injectSpy.mockRestore();
     dispatcher.destroy();

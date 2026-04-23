@@ -114,6 +114,7 @@ export function createTakodeRoutes(ctx: RouteContext) {
   };
   const boardWatchdogDeps = {
     getLauncherSessionInfo: (sessionId: string) => launcher.getSession(sessionId),
+    getSession: (sessionId: string) => wsBridge.getSession(sessionId),
     listSessions: () => launcher.listSessions(),
     resolveSessionId: (ref: string) => launcher.resolveSessionId(ref) ?? undefined,
     timerCount: (sessionId: string) => timerManager?.listTimers(sessionId).length ?? 0,

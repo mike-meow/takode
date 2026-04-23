@@ -6,6 +6,7 @@ import {
 } from "../../shared/quest-journey.js";
 import { HERD_WORKER_SLOT_LIMIT } from "../../shared/takode-constants.js";
 import type { BoardRow, TakodeEvent, TakodeHerdBatchSnapshot } from "../session-types.js";
+import { formatRenderedHerdEventBatch } from "../herd-event-dispatcher.js";
 
 type SessionLike = any;
 
@@ -36,6 +37,7 @@ interface BoardDispatchableCandidate {
 
 export interface BoardWatchdogDeps {
   getLauncherSessionInfo: (sessionId: string) => any;
+  getSession: (sessionId: string) => SessionLike | undefined;
   listSessions: () => any[];
   resolveSessionId: (ref: string) => string | undefined;
   timerCount: (sessionId: string) => number;
@@ -560,7 +562,7 @@ export function pruneStaleBoardStalledHerdBatch(
   return {
     changed: true,
     batch: { events: keptEvents, renderedLines: keptRenderedLines },
-    content: keptRenderedLines.join("\n"),
+    content: formatRenderedHerdEventBatch(keptEvents, keptRenderedLines),
   };
 }
 
@@ -792,7 +794,7 @@ function getBoardParticipantRuntime(
     return { status: "missing", lastActivityAt: launcherInfo.lastActivityAt ?? 0, hasActiveTimer: false };
   }
 
-  const session = sessionId === currentSession.id ? currentSession : undefined;
+  const session = sessionId === currentSession.id ? currentSession : deps.getSession(sessionId);
   const hasActiveTimer = deps.timerCount(sessionId) > 0;
   if (!session || !deps.backendConnected(session)) {
     return {
@@ -801,7 +803,7 @@ function getBoardParticipantRuntime(
       hasActiveTimer,
     };
   }
-  if (session.isGenerating || session.pendingPermissions.size > 0) {
+  if (session.isGenerating || (session.pendingPermissions?.size ?? 0) > 0) {
     return { status: "running", lastActivityAt: launcherInfo?.lastActivityAt ?? 0, hasActiveTimer };
   }
   return { status: "idle", lastActivityAt: launcherInfo?.lastActivityAt ?? 0, hasActiveTimer };

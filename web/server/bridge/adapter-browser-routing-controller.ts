@@ -196,7 +196,7 @@ export interface AdapterBrowserRoutingDeps {
     sessionId: string,
     content: string,
     agentSource?: { sessionId: string; sessionLabel?: string },
-  ) => "sent" | "queued" | "no_session";
+  ) => "sent" | "queued" | "dropped" | "no_session";
   handleSetModel: (session: AdapterBrowserRoutingSessionLike, model: string) => void;
   handleCodexSetModel: (session: AdapterBrowserRoutingSessionLike, model: string) => void;
   handleSetPermissionMode: (session: AdapterBrowserRoutingSessionLike, mode: string) => void;

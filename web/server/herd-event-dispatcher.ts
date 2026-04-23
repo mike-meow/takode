@@ -117,7 +117,7 @@ export interface WsBridgeHandle {
     content: string,
     agentSource?: { sessionId: string; sessionLabel?: string },
     takodeHerdBatch?: TakodeHerdBatchSnapshot,
-  ): "sent" | "queued" | "no_session";
+  ): "sent" | "queued" | "dropped" | "no_session";
   isSessionIdle?(sessionId: string): boolean;
   /** Test-only escape hatch while production callers move to the shared idle helper. */
   wakeIdleKilledSession?(sessionId: string): boolean;
@@ -561,6 +561,11 @@ export class HerdEventDispatcher {
       snapshotHerdBatch(events, renderedBatch.renderedLines),
     );
     if (delivery !== "sent") {
+      if (delivery === "dropped") {
+        this.pruneStaleBoardStallEntries(orchId, inbox);
+        this.maybeRetireInbox(orchId, inbox);
+        return 0;
+      }
       if (delivery === "queued") {
         this.scheduleRetry(orchId);
       }
@@ -649,6 +654,11 @@ export class HerdEventDispatcher {
       snapshotHerdBatch(events, renderedBatch.renderedLines),
     );
     if (delivery !== "sent") {
+      if (delivery === "dropped") {
+        this.pruneStaleBoardStallEntries(orchId, inbox);
+        this.maybeRetireInbox(orchId, inbox);
+        return;
+      }
       if (delivery === "queued") {
         this.scheduleRetry(orchId);
       }

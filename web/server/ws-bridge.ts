@@ -1736,14 +1736,32 @@ export class WsBridge {
     content: string,
     agentSource?: { sessionId: string; sessionLabel?: string },
     takodeHerdBatch?: TakodeHerdBatchSnapshot,
-  ): "sent" | "queued" | "no_session" {
+  ): "sent" | "queued" | "dropped" | "no_session" {
     const session = this.sessions.get(sessionId);
     if (!session) {
       console.error(`[ws-bridge] Cannot inject message: session ${sessionId} not found`);
       return "no_session";
     }
+    let deliveryContent = content;
+    let deliveryBatch = takodeHerdBatch;
+    if (agentSource?.sessionId === "herd-events" && deliveryBatch) {
+      const pruned = this.pruneStaleBoardStalledHerdBatch(session, deliveryBatch);
+      if (pruned.changed) {
+        if (!pruned.content || !pruned.batch) {
+          return "dropped";
+        }
+        deliveryContent = pruned.content;
+        deliveryBatch = pruned.batch;
+      }
+    }
     this.syncBackendTypeFromLauncher(session, "inject_user_message");
-    return injectUserMessageController(session, content, agentSource, takodeHerdBatch, this.getBrowserTransportDeps());
+    return injectUserMessageController(
+      session,
+      deliveryContent,
+      agentSource,
+      deliveryBatch,
+      this.getBrowserTransportDeps(),
+    );
   }
 
   private isLiveBoardStalledEvent(session: Session, event: TakodeEvent): boolean {
@@ -2197,6 +2215,7 @@ export class WsBridge {
     const notificationDeps = this.getSessionNotificationDeps();
     return {
       getLauncherSessionInfo: (sessionId: string) => this.launcher?.getSession?.(sessionId),
+      getSession: (sessionId: string) => this.sessions.get(sessionId),
       listSessions: () => this.launcher?.listSessions?.() ?? [],
       resolveSessionId: (ref: string) => this.launcher?.resolveSessionId?.(ref) ?? undefined,
       timerCount: (sessionId: string) => this.timerManager?.listTimers(sessionId).length ?? 0,
