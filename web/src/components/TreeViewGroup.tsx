@@ -219,9 +219,14 @@ export function TreeViewGroup({
     isDraggable,
     onMobileReorderHandleActiveChange,
   };
+  const getTreePermissionCount = (session: SessionItemType) => {
+    const livePermissions = pendingPermissions.get(session.id);
+    if (livePermissions) return countUserPermissions(livePermissions);
+    return session.permCount;
+  };
 
   function renderSessionItem(s: SessionItemType, opts?: { compact?: boolean; reviewerSession?: SessionItemType }) {
-    const permCount = countUserPermissions(pendingPermissions.get(s.id));
+    const permCount = getTreePermissionCount(s);
     const attention = sessionAttention?.get(s.id) ?? null;
     return (
       <SessionItem
@@ -249,7 +254,7 @@ export function TreeViewGroup({
     let permission = 0;
     let unread = 0;
     const countSession = (s: SessionItemType) => {
-      const sPermCount = countUserPermissions(pendingPermissions.get(s.id));
+      const sPermCount = getTreePermissionCount(s);
       const sAttention = sessionAttention?.get(s.id) ?? null;
       const status = deriveSessionStatus({
         archived: s.archived,

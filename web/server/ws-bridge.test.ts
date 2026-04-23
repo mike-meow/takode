@@ -4984,6 +4984,81 @@ describe("Browser message routing", () => {
     }
   });
 
+  it("broadcasts session_activity_update globally when an inactive session clears a pending plan", () => {
+    bridge.getOrCreateSession("worker-1");
+    const leaderBrowser = makeBrowserSocket("leader-1");
+    bridge.handleBrowserOpen(leaderBrowser, "leader-1");
+    leaderBrowser.send.mockClear();
+
+    const worker = bridge.getSession("worker-1")!;
+    worker.pendingPermissions.set("plan-1", {
+      request_id: "plan-1",
+      tool_name: "ExitPlanMode",
+      input: { plan: "## Plan\n\n1. Fix the stale chip" },
+      tool_use_id: "tool-plan-1",
+      timestamp: Date.now(),
+    });
+
+    bridge.broadcastToSession("worker-1", {
+      type: "permission_request",
+      request: worker.pendingPermissions.get("plan-1"),
+    } as any);
+
+    worker.pendingPermissions.delete("plan-1");
+    bridge.broadcastToSession("worker-1", {
+      type: "permission_approved",
+      id: "approval-plan-1",
+      request_id: "plan-1",
+      tool_name: "ExitPlanMode",
+      tool_use_id: "tool-plan-1",
+      summary: "Plan approved",
+      timestamp: Date.now(),
+    } as any);
+    bridge.broadcastToSession("worker-1", {
+      type: "status_change",
+      status: "running",
+    } as any);
+
+    const globalUpdates = leaderBrowser.send.mock.calls
+      .map(([raw]: [string]) => JSON.parse(raw))
+      .filter((msg: any) => msg.type === "session_activity_update" && msg.session_id === "worker-1");
+
+    expect(globalUpdates).toContainEqual(
+      expect.objectContaining({
+        type: "session_activity_update",
+        session_id: "worker-1",
+        session: expect.objectContaining({
+          attentionReason: null,
+          pendingPermissionCount: 1,
+          pendingPermissionSummary: "pending plan",
+        }),
+      }),
+    );
+    expect(globalUpdates).toContainEqual(
+      expect.objectContaining({
+        type: "session_activity_update",
+        session_id: "worker-1",
+        session: expect.objectContaining({
+          attentionReason: null,
+          pendingPermissionCount: 0,
+          pendingPermissionSummary: null,
+        }),
+      }),
+    );
+    expect(globalUpdates).toContainEqual(
+      expect.objectContaining({
+        type: "session_activity_update",
+        session_id: "worker-1",
+        session: expect.objectContaining({
+          attentionReason: null,
+          pendingPermissionCount: 0,
+          pendingPermissionSummary: null,
+          status: "running",
+        }),
+      }),
+    );
+  });
+
   it("vscode_selection_update: ignores stale updates and keeps inspectable clears", () => {
     bridge.handleBrowserMessage(
       browser,

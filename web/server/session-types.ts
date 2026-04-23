@@ -632,6 +632,17 @@ export type BrowserIncomingMessageBase =
   | { type: "notification_update"; notifications: SessionNotification[] }
   | { type: "timer_update"; timers: import("./timer-types.js").SessionTimer[] }
   | {
+      type: "session_activity_update";
+      session_id: string;
+      session: {
+        status?: "compacting" | "reverting" | "idle" | "running" | null;
+        attentionReason?: "action" | "error" | "review" | null;
+        lastReadAt?: number;
+        pendingPermissionCount?: number;
+        pendingPermissionSummary?: string | null;
+      };
+    }
+  | {
       type: "tree_groups_update";
       treeGroups: import("./tree-group-store.js").TreeGroup[];
       treeAssignments: Record<string, string>;

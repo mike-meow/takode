@@ -147,6 +147,7 @@ import {
   reconcileCodexQuestToolResult as reconcileCodexQuestToolResultController,
   restorePersistedSessions as restorePersistedSessionsController,
   removeSession as removeSessionController,
+  getSessionActivitySnapshot as getSessionActivitySnapshotController,
   setBackendState as setBackendStateController,
   setAttention as setAttentionController,
   trackCodexQuestCommands as trackCodexQuestCommandsController,
@@ -805,8 +806,24 @@ export class WsBridge {
     }
   }
 
+  private broadcastSessionActivityUpdateGlobally(msg: Extract<BrowserIncomingMessage, { type: "session_activity_update" }>): void {
+    for (const session of this.sessions.values()) {
+      for (const ws of session.browserSockets) {
+        sendToBrowserController(ws as any, msg);
+      }
+    }
+  }
+
   /** Re-check group-idle state for any leader affected by this session's activity change. */
   private onSessionActivityStateChanged(sessionId: string, reason: string): void {
+    const session = this.sessions.get(sessionId);
+    if (session) {
+      this.broadcastSessionActivityUpdateGlobally({
+        type: "session_activity_update",
+        session_id: sessionId,
+        session: getSessionActivitySnapshotController(session),
+      });
+    }
     this.herdEventDispatcher?.onSessionActivityStateChanged?.(sessionId, reason);
   }
 
@@ -2667,7 +2684,34 @@ export class WsBridge {
     return isHistoryBackedEventController(msg);
   }
 
+  private maybeBroadcastGlobalSessionActivityUpdate(session: Session, msg: BrowserIncomingMessage): void {
+    if (
+      msg.type !== "permission_request" &&
+      msg.type !== "permission_approved" &&
+      msg.type !== "permission_denied" &&
+      msg.type !== "permission_cancelled" &&
+      msg.type !== "permissions_cleared" &&
+      msg.type !== "status_change" &&
+      !(
+        msg.type === "session_update" &&
+        ("attentionReason" in msg.session || "lastReadAt" in msg.session)
+      )
+    ) {
+      return;
+    }
+
+    this.broadcastSessionActivityUpdateGlobally({
+      type: "session_activity_update",
+      session_id: session.id,
+      session: {
+        ...getSessionActivitySnapshotController(session),
+        ...(msg.type === "status_change" ? { status: msg.status } : {}),
+      },
+    });
+  }
+
   private broadcastToBrowsers(session: Session, msg: BrowserIncomingMessage, options?: { skipBuffer?: boolean }) {
+    this.maybeBroadcastGlobalSessionActivityUpdate(session, msg);
     broadcastToBrowsersController(session, msg, this.getBrowserTransportDeps(), options);
   }
 }

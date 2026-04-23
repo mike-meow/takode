@@ -25,6 +25,7 @@ import type { RouteContext, OptionalAuthResult } from "./context.js";
 import {
   applyInitialSessionState as applyInitialSessionStateController,
   clearAttentionAndMarkRead as clearAttentionAndMarkReadController,
+  countPendingUserPermissions,
   markSessionUnread as markSessionUnreadController,
   summarizePendingPermissions,
 } from "../bridge/session-registry-controller.js";
@@ -1117,6 +1118,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
             ? {
                 lastReadAt: currentBridgeSession.lastReadAt,
                 attentionReason: currentBridgeSession.attentionReason,
+                pendingPermissionCount: countPendingUserPermissions(currentBridgeSession),
                 pendingPermissionSummary: summarizePendingPermissions(currentBridgeSession),
               }
             : null;

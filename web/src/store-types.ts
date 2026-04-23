@@ -177,6 +177,7 @@ export interface AppState {
   setCurrentSession: (id: string | null) => void;
   addSession: (session: SessionState) => void;
   updateSession: (sessionId: string, updates: Partial<SessionState>) => void;
+  updateSdkSession: (sessionId: string, updates: Partial<SdkSessionInfo>) => void;
   removeSession: (sessionId: string) => void;
   setSdkSessions: (sessions: SdkSessionInfo[]) => void;
   appendMessage: (sessionId: string, msg: ChatMessage) => void;

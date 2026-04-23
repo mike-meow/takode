@@ -210,6 +210,10 @@ export interface SdkSessionInfo {
   attentionReason?: "action" | "error" | "review" | null;
   /** Epoch ms when user last viewed this session */
   lastReadAt?: number;
+  /** Number of pending permission requests needing human attention. */
+  pendingPermissionCount?: number;
+  /** Human-readable summary of pending permission state (e.g. "pending plan"). */
+  pendingPermissionSummary?: string | null;
   /** Task history from the session auto-namer */
   taskHistory?: SessionTaskEntry[];
   /** Accumulated search keywords from the session auto-namer */

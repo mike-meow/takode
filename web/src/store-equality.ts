@@ -127,6 +127,8 @@ function sdkSessionInfoEqual(a: SdkSessionInfo, b: SdkSessionInfo): boolean {
     a.sessionNum === b.sessionNum &&
     a.attentionReason === b.attentionReason &&
     a.lastReadAt === b.lastReadAt &&
+    a.pendingPermissionCount === b.pendingPermissionCount &&
+    a.pendingPermissionSummary === b.pendingPermissionSummary &&
     a.lastActivityAt === b.lastActivityAt &&
     a.lastUserMessageAt === b.lastUserMessageAt &&
     a.contextUsedPercent === b.contextUsedPercent &&

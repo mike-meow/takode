@@ -1136,6 +1136,25 @@ describe("Sidebar", { timeout: 10000 }, () => {
     expect(screen.getByText("2")).toBeInTheDocument();
   });
 
+  it("uses the server-authored pending permission count for inactive sessions without a live permission map", () => {
+    const session = makeSession("s1");
+    const sdk = makeSdkSession("s1", {
+      pendingPermissionCount: 1,
+      pendingPermissionSummary: "pending plan",
+    });
+    mockState = createMockState({
+      sessions: new Map([["s1", session]]),
+      sdkSessions: [sdk],
+      cliConnected: new Map([["s1", true]]),
+    });
+
+    render(<Sidebar />);
+    const permissionBadge = screen
+      .getAllByText("1")
+      .find((node) => node.classList.contains("bg-cc-warning") && node.classList.contains("px-1"))!;
+    expect(permissionBadge).toBeInTheDocument();
+  });
+
   it("session keeps git stats but hides git branch text when bridgeState is unavailable", () => {
     // No bridgeState — only sdkInfo (REST API) data available.
     // Line stats come from server via sdkInfo (single source of truth).

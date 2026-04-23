@@ -194,6 +194,14 @@ export function Sidebar() {
   const isScheduledPage = route.page === "scheduled";
   const isQuestmasterPage = route.page === "questmaster";
   const isDesktopLayout = isDesktopShellLayout(zoomLevel);
+  const getSidebarPermissionCount = useCallback(
+    (sessionId: string, fallbackCount?: number | null) => {
+      const livePermissions = pendingPermissions.get(sessionId);
+      if (livePermissions) return countUserPermissions(livePermissions);
+      return fallbackCount ?? 0;
+    },
+    [pendingPermissions],
+  );
 
   // Poll for SDK sessions on mount
   useEffect(() => {
@@ -317,7 +325,7 @@ export function Sidebar() {
     for (const sdk of sdkSessions) {
       if (sdk.archived) continue;
       const vs = deriveSessionStatus({
-        permCount: countUserPermissions(pendingPermissions.get(sdk.sessionId)),
+        permCount: getSidebarPermissionCount(sdk.sessionId, sdk.pendingPermissionCount),
         isConnected: cliConnected.get(sdk.sessionId) ?? sdk.cliConnected ?? false,
         sdkState: sdk.state ?? null,
         status: sessionStatus.get(sdk.sessionId) ?? null,
@@ -329,7 +337,7 @@ export function Sidebar() {
     const suffix = import.meta.env.DEV ? "[DEV] Takode" : "Takode";
     const base = serverName ? `${serverName} — ${suffix}` : suffix;
     document.title = totalAttention > 0 ? `(${totalAttention}) ${base}` : base;
-  }, [serverName, sessionAttention, pendingPermissions, sdkSessions, sessionStatus, cliConnected, cliDisconnectReason]);
+  }, [serverName, sessionAttention, sdkSessions, sessionStatus, cliConnected, cliDisconnectReason, getSidebarPermissionCount]);
 
   // Focus server name input when entering edit mode
   useEffect(() => {
@@ -658,7 +666,7 @@ export function Sidebar() {
         archivedAt: sdkInfo?.archivedAt,
         backendType: bridgeState?.backend_type || sdkInfo?.backendType || "claude",
         repoRoot: bridgeState?.repo_root || sdkInfo?.repoRoot || "",
-        permCount: countUserPermissions(pendingPermissions.get(id)),
+        permCount: getSidebarPermissionCount(id, sdkInfo?.pendingPermissionCount),
         pendingTimerCount: sdkInfo?.pendingTimerCount ?? 0,
         cronJobId: bridgeState?.cronJobId || sdkInfo?.cronJobId,
         cronJobName: bridgeState?.cronJobName || sdkInfo?.cronJobName,
@@ -1055,7 +1063,7 @@ export function Sidebar() {
                   isArchived={s.archived}
                   sessionName={sessionNames.get(s.id)}
                   sessionPreview={sessionPreviews.get(s.id)}
-                  permCount={countUserPermissions(pendingPermissions.get(s.id))}
+                  permCount={getSidebarPermissionCount(s.id, s.permCount)}
                   isRecentlyRenamed={recentlyRenamed.has(s.id)}
                   herdGroupBadgeTheme={herdGroupBadgeThemes.get(s.id)}
                   herdHoverHighlight={herdHoverHighlights.get(s.id)}
@@ -1180,7 +1188,7 @@ export function Sidebar() {
                         session={s}
                         isActive={currentSessionId === s.id}
                         sessionName={sessionNames.get(s.id)}
-                        permCount={countUserPermissions(pendingPermissions.get(s.id))}
+                        permCount={getSidebarPermissionCount(s.id, s.permCount)}
                         isRecentlyRenamed={recentlyRenamed.has(s.id)}
                         herdGroupBadgeTheme={herdGroupBadgeThemes.get(s.id)}
                         herdHoverHighlight={herdHoverHighlights.get(s.id)}
@@ -1219,7 +1227,7 @@ export function Sidebar() {
                           isArchived
                           sessionName={sessionNames.get(s.id)}
                           sessionPreview={sessionPreviews.get(s.id)}
-                          permCount={countUserPermissions(pendingPermissions.get(s.id))}
+                          permCount={getSidebarPermissionCount(s.id, s.permCount)}
                           isRecentlyRenamed={recentlyRenamed.has(s.id)}
                           herdGroupBadgeTheme={herdGroupBadgeThemes.get(s.id)}
                           herdHoverHighlight={herdHoverHighlights.get(s.id)}

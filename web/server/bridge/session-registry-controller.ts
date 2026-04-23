@@ -1248,6 +1248,28 @@ export function summarizePendingPermissions(session: SessionLike): string | null
   return `${session.pendingPermissions.size} pending permissions`;
 }
 
+export function countPendingUserPermissions(session: SessionLike): number {
+  let count = 0;
+  for (const perm of session.pendingPermissions.values()) {
+    if (!perm?.evaluating && !perm?.autoApproved) count++;
+  }
+  return count;
+}
+
+export function getSessionActivitySnapshot(session: SessionLike): {
+  attentionReason: AttentionReason | null;
+  lastReadAt?: number;
+  pendingPermissionCount: number;
+  pendingPermissionSummary: string | null;
+} {
+  return {
+    attentionReason: (session.attentionReason as AttentionReason | null) ?? null,
+    ...(typeof session.lastReadAt === "number" ? { lastReadAt: session.lastReadAt } : {}),
+    pendingPermissionCount: countPendingUserPermissions(session),
+    pendingPermissionSummary: summarizePendingPermissions(session),
+  };
+}
+
 export function getSessionAttentionStateWithSummary(
   sessions: Map<string, SessionLike>,
   sessionId: string,

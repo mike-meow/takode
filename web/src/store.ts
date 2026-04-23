@@ -423,6 +423,15 @@ export const useStore = create<AppState>((set, get) => ({
       return { sessions };
     }),
 
+  updateSdkSession: (sessionId, updates) =>
+    set((s) => {
+      const index = s.sdkSessions.findIndex((sdk) => sdk.sessionId === sessionId);
+      if (index === -1) return s;
+      const sdkSessions = s.sdkSessions.slice();
+      sdkSessions[index] = { ...sdkSessions[index]!, ...updates };
+      return { sdkSessions };
+    }),
+
   removeSession: (sessionId) =>
     set((s) => {
       const sessions = new Map(s.sessions);

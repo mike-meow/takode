@@ -477,6 +477,36 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
       break;
     }
 
+    case "session_activity_update": {
+      const targetSessionId = data.session_id;
+      if (!targetSessionId) break;
+      const update = data.session ?? {};
+      store.updateSdkSession(targetSessionId, {
+        ...(update.attentionReason !== undefined ? { attentionReason: update.attentionReason } : {}),
+        ...(update.lastReadAt !== undefined ? { lastReadAt: update.lastReadAt } : {}),
+        ...(update.pendingPermissionCount !== undefined
+          ? { pendingPermissionCount: update.pendingPermissionCount }
+          : {}),
+        ...(update.pendingPermissionSummary !== undefined
+          ? { pendingPermissionSummary: update.pendingPermissionSummary }
+          : {}),
+      });
+      if (update.status !== undefined) {
+        store.setSessionStatus(targetSessionId, update.status === "compacting" ? "compacting" : update.status);
+      }
+      if (update.attentionReason !== undefined) {
+        const isViewing = useStore.getState().currentSessionId === targetSessionId;
+        if (isViewing && update.attentionReason) {
+          api.markSessionRead?.(targetSessionId).catch(() => {});
+        } else {
+          const sessionAttention = new Map(useStore.getState().sessionAttention);
+          sessionAttention.set(targetSessionId, update.attentionReason ?? null);
+          useStore.setState({ sessionAttention });
+        }
+      }
+      break;
+    }
+
     case "codex_pending_inputs": {
       store.setPendingCodexInputs(sessionId, data.inputs);
       break;

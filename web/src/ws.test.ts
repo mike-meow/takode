@@ -589,6 +589,52 @@ describe("handleMessage: session_update", () => {
   });
 });
 
+describe("handleMessage: session_activity_update", () => {
+  it("updates inactive session sidebar state from another session socket", () => {
+    wsModule.connectSession("leader");
+    fireMessage({ type: "session_init", session: makeSession("leader") });
+    useStore.getState().setCurrentSession("leader");
+    useStore.getState().setSdkSessions([
+      { sessionId: "leader", state: "connected", cwd: "/home/user", createdAt: 1, archived: false },
+      { sessionId: "worker", state: "connected", cwd: "/home/user", createdAt: 2, archived: false },
+    ]);
+
+    fireMessage({
+      type: "session_activity_update",
+      session_id: "worker",
+      session: {
+        pendingPermissionCount: 1,
+        pendingPermissionSummary: "pending plan",
+        attentionReason: "action",
+        status: "running",
+      },
+    });
+
+    const worker = useStore.getState().sdkSessions.find((session) => session.sessionId === "worker")!;
+    expect(worker.pendingPermissionCount).toBe(1);
+    expect(worker.pendingPermissionSummary).toBe("pending plan");
+    expect(useStore.getState().sessionAttention.get("worker")).toBe("action");
+    expect(useStore.getState().sessionStatus.get("worker")).toBe("running");
+
+    fireMessage({
+      type: "session_activity_update",
+      session_id: "worker",
+      session: {
+        pendingPermissionCount: 0,
+        pendingPermissionSummary: null,
+        attentionReason: null,
+        status: "idle",
+      },
+    });
+
+    const updatedWorker = useStore.getState().sdkSessions.find((session) => session.sessionId === "worker")!;
+    expect(updatedWorker.pendingPermissionCount).toBe(0);
+    expect(updatedWorker.pendingPermissionSummary).toBeNull();
+    expect(useStore.getState().sessionAttention.get("worker")).toBeNull();
+    expect(useStore.getState().sessionStatus.get("worker")).toBe("idle");
+  });
+});
+
 // ===========================================================================
 // handleMessage: vscode_selection_state
 // ===========================================================================
