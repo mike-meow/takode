@@ -341,6 +341,36 @@ describe("sub-conclusions in collapsed turns", () => {
     // a2 is the immediately preceding assistant, not a1
     expect((turn.subConclusions[0].entry as { msg: ChatMessage }).msg.id).toBe("a2");
   });
+
+  it("does not duplicate a notification-bearing assistant message as a sub-conclusion", () => {
+    // q-524: a notification-bearing assistant message can remain visible in the
+    // collapsed turn, but it must not also be promoted into subConclusions when
+    // a herd event follows it.
+    const messages: ChatMessage[] = [
+      makeMessage({ id: "u1", role: "user", content: "what changed?", timestamp: 1 }),
+      makeMessage({
+        id: "a1",
+        role: "assistant",
+        content: "q-514 is complete and q-521 is unblocked.",
+        timestamp: 2,
+        notification: {
+          category: "review",
+          summary: "q-521 can be dispatched now",
+          timestamp: 2,
+        },
+      }),
+      makeHerdEvent("h1", "#514 | wait_for_resolved | ✓ q-521 unblocked", 3),
+      makeMessage({ id: "u2", role: "user", content: "next", timestamp: 4 }),
+    ];
+
+    const model = buildFeedModel(messages, true);
+    const turn = model.turns[0];
+
+    expect(turn.notificationEntries).toHaveLength(1);
+    expect((turn.notificationEntries[0] as { kind: "message"; msg: ChatMessage }).msg.id).toBe("a1");
+    expect(turn.subConclusions).toHaveLength(0);
+    expect(turn.responseEntry).toBeNull();
+  });
 });
 
 describe("summarizeHerdEvents", () => {
