@@ -120,6 +120,19 @@ export function createLogsRoutes(ctx: RouteContext) {
         }
         unsubscribe();
       };
+      const waitForAbort = () =>
+        new Promise<void>((resolve) => {
+          if (abortSignal.aborted) {
+            teardown();
+            resolve();
+            return;
+          }
+          const onAbort = () => {
+            teardown();
+            resolve();
+          };
+          abortSignal.addEventListener("abort", onAbort, { once: true });
+        });
 
       try {
         let buffering = true;
@@ -174,13 +187,7 @@ export function createLogsRoutes(ctx: RouteContext) {
             });
         }, 15_000);
 
-        await new Promise<void>((resolve) => {
-          const onAbort = () => {
-            teardown();
-            resolve();
-          };
-          abortSignal.addEventListener("abort", onAbort, { once: true });
-        });
+        await waitForAbort();
       } finally {
         teardown();
       }
