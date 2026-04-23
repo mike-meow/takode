@@ -17,22 +17,32 @@ import { BoardTable, orderBoardRows } from "./BoardTable.js";
 import type { BoardRowData } from "./BoardTable.js";
 import { scopedGetItem, scopedSetItem } from "../utils/scoped-storage.js";
 
+export interface BoardSummarySegment {
+  text: string;
+  className: string;
+}
+
 /**
  * Build a compact status summary for the collapsed board bar.
- * Groups rows by status and returns a comma-separated count string,
- * e.g. "2 Implementing, 1 Skeptic Review".
- * Rows with no status are grouped as "unknown".
+ * Returns colored segments for rendering, e.g. [{text:"2 Executing Plan", className:"text-green-400"}, ...].
  */
-export function boardSummary(board: BoardRowData[], completedCount: number): string {
-  if (board.length === 0 && completedCount === 0) return "Empty";
-  const counts = new Map<string, number>();
+export function boardSummary(board: BoardRowData[], completedCount: number): BoardSummarySegment[] {
+  if (board.length === 0 && completedCount === 0) return [{ text: "Empty", className: "text-cc-muted" }];
+  const counts = new Map<string, { count: number; className: string }>();
   for (const row of orderBoardRows(board)) {
-    const label = row.status ? (getQuestJourneyPresentation(row.status)?.label ?? row.status) : "unknown";
-    counts.set(label, (counts.get(label) ?? 0) + 1);
+    const pres = row.status ? getQuestJourneyPresentation(row.status) : null;
+    const label = pres?.label ?? row.status ?? "unknown";
+    const className = pres?.textClassName ?? "text-cc-fg/80";
+    const entry = counts.get(label);
+    if (entry) entry.count++;
+    else counts.set(label, { count: 1, className });
   }
-  const parts = [...counts.entries()].map(([s, n]) => `${n} ${s}`);
-  if (completedCount > 0) parts.push(`${completedCount} done`);
-  return parts.join(", ");
+  const segments: BoardSummarySegment[] = [...counts.entries()].map(([label, { count, className }]) => ({
+    text: `${count} ${label}`,
+    className,
+  }));
+  if (completedCount > 0) segments.push({ text: `${completedCount} done`, className: "text-cc-muted" });
+  return segments;
 }
 
 function workBoardExpandedKey(sessionId: string): string {
@@ -130,9 +140,14 @@ export function WorkBoardBar({ sessionId }: { sessionId: string }) {
           <path d="M4 4h2v5H4zM7 4h2v7H7zM10 4h2v3h-2z" />
         </svg>
 
-        {/* Summary text */}
-        <span className="text-[11px] text-cc-fg/80 truncate flex-1 text-left">
-          {boardSummary(board ?? [], completedCount)}
+        {/* Summary text — each status segment gets its own color */}
+        <span className="text-[11px] truncate flex-1 text-left">
+          {boardSummary(board ?? [], completedCount).map((seg, i, arr) => (
+            <span key={i}>
+              <span className={seg.className}>{seg.text}</span>
+              {i < arr.length - 1 && <span className="text-cc-fg/40">, </span>}
+            </span>
+          ))}
         </span>
 
         {/* Item count */}

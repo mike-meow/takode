@@ -10,18 +10,18 @@ import { scopedKey } from "../utils/scoped-storage.js";
 
 describe("boardSummary", () => {
   it("returns 'Empty' for an empty board", () => {
-    expect(boardSummary([], 0)).toBe("Empty");
+    expect(boardSummary([], 0)).toEqual([{ text: "Empty", className: "text-cc-muted" }]);
   });
 
-  it("summarises a single status", () => {
+  it("summarises a single status with correct color", () => {
     const board: BoardRowData[] = [
       { questId: "q-1", status: "IMPLEMENTING", updatedAt: 1 },
       { questId: "q-2", status: "IMPLEMENTING", updatedAt: 2 },
     ];
-    expect(boardSummary(board, 0)).toBe("2 Executing Plan");
+    expect(boardSummary(board, 0)).toEqual([{ text: "2 Executing Plan", className: "text-green-400" }]);
   });
 
-  it("summarises multiple statuses", () => {
+  it("summarises multiple statuses with distinct colors", () => {
     const board: BoardRowData[] = [
       { questId: "q-1", status: "PORTING", updatedAt: 1 },
       { questId: "q-2", status: "SKEPTIC_REVIEWING", updatedAt: 2 },
@@ -29,7 +29,11 @@ describe("boardSummary", () => {
       { questId: "q-4", status: "IMPLEMENTING", updatedAt: 4 },
     ];
     const result = boardSummary(board, 0);
-    expect(result).toBe("1 Porting, 1 Addressing Skeptic, 2 Executing Plan");
+    expect(result).toEqual([
+      { text: "1 Porting", className: "text-blue-400" },
+      { text: "1 Addressing Skeptic", className: "text-violet-500" },
+      { text: "2 Executing Plan", className: "text-green-400" },
+    ]);
   });
 
   it("groups rows with missing status as 'unknown'", () => {
@@ -39,17 +43,23 @@ describe("boardSummary", () => {
       { questId: "q-3", status: "QUEUED", updatedAt: 3 },
     ];
     const result = boardSummary(board, 0);
-    expect(result).toBe("1 Queued, 2 unknown");
+    expect(result).toEqual([
+      { text: "1 Queued", className: "text-cc-muted" },
+      { text: "2 unknown", className: "text-cc-fg/80" },
+    ]);
   });
 
-  it("includes completed count in summary", () => {
+  it("includes completed count as muted segment", () => {
     const board: BoardRowData[] = [{ questId: "q-1", status: "IMPLEMENTING", updatedAt: 1 }];
-    expect(boardSummary(board, 3)).toBe("1 Executing Plan, 3 done");
+    expect(boardSummary(board, 3)).toEqual([
+      { text: "1 Executing Plan", className: "text-green-400" },
+      { text: "3 done", className: "text-cc-muted" },
+    ]);
   });
 
   it("falls back to the raw status label for unknown states", () => {
     const board: BoardRowData[] = [{ questId: "q-1", status: "CUSTOM_STATUS", updatedAt: 1 }];
-    expect(boardSummary(board, 0)).toBe("1 CUSTOM_STATUS");
+    expect(boardSummary(board, 0)).toEqual([{ text: "1 CUSTOM_STATUS", className: "text-cc-fg/80" }]);
   });
 });
 
@@ -134,8 +144,9 @@ describe("WorkBoardBar", () => {
       sessionBoards: new Map([["s1", BOARD_DATA]]),
     });
     const { getByText } = render(<WorkBoardBar sessionId="s1" />);
-    // Summary text should show status counts
-    expect(getByText("1 Executing Plan, 1 Queued")).toBeInTheDocument();
+    // Each status segment renders separately with its color class
+    expect(getByText("1 Executing Plan")).toBeInTheDocument();
+    expect(getByText("1 Queued")).toBeInTheDocument();
     // Item count should show total
     expect(getByText("2 items")).toBeInTheDocument();
   });
