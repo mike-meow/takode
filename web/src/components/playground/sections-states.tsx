@@ -932,11 +932,15 @@ export function PlaygroundStateSections() {
             <PlaygroundToolGroup
               toolName="Bash"
               items={[
-                { id: "bash-group-1", name: "Bash", input: { command: "test -f /home/jiayiwei/.config/app.json" } },
+                {
+                  id: "bash-group-1",
+                  name: "Bash",
+                  input: { command: "test -f /home/demo/.config/takode/settings.json" },
+                },
                 {
                   id: "bash-group-2",
                   name: "Bash",
-                  input: { command: "sed -n '1,80p' /home/jiayiwei/.config/app.json" },
+                  input: { command: "sed -n '1,80p' /home/demo/.config/takode/settings.json" },
                 },
               ]}
             />
@@ -1194,7 +1198,7 @@ export function PlaygroundStateSections() {
                   id: "timer-message-demo",
                   role: "user",
                   content:
-                    "[⏰ Timer t2] Monitor RTG datagen\n\nCheck squeue for RTG jobs, inspect flush progress, report shard-level status, and relaunch stalled shards when needed.",
+                    "[⏰ Timer t2] Review release checklist\n\nConfirm staging smoke tests are green, summarize open follow-ups, and post the next handoff note if anything is still blocked.",
                   timestamp: Date.now(),
                   agentSource: { sessionId: "timer:t2", sessionLabel: "Timer t2" },
                 }}
@@ -1208,7 +1212,7 @@ export function PlaygroundStateSections() {
                 message={{
                   id: "timer-message-cancelled-demo",
                   role: "user",
-                  content: "[⏰ Timer t2 cancelled] Monitor RTG datagen",
+                  content: "[⏰ Timer t2 cancelled] Review release checklist",
                   timestamp: Date.now(),
                   agentSource: { sessionId: "timer:t2", sessionLabel: "Timer t2" },
                 }}

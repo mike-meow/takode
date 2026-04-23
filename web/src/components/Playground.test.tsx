@@ -90,6 +90,17 @@ describe("Playground", () => {
     expect(notificationInboxButton.getAttribute("aria-current")).toBe("true");
   });
 
+  it("renders sanitized demo-only playground examples", () => {
+    render(<Playground />);
+
+    expect(screen.getByText(/Example Asset Mapping/)).toBeTruthy();
+    expect(screen.getByText(/Marketing hero set/)).toBeTruthy();
+    expect(screen.getAllByText(/Review release checklist/)).toHaveLength(2);
+    expect(screen.queryByText(/\/mnt\/vast/i)).toBeNull();
+    expect(screen.queryByText(/jiayiwei/i)).toBeNull();
+    expect(screen.queryByText(/single_turn_mix/i)).toBeNull();
+  });
+
   it("seeds demo session state on mount and restores prior values on unmount", () => {
     const previousSession = { session_id: MOCK_SESSION_ID, cwd: "/tmp/original-session" } as any;
     const previousMessages = [{ id: "original-message", role: "user", content: "original", timestamp: 1 }] as any;
