@@ -57,6 +57,12 @@ type MockStoreState = {
   setQuests: (quests: QuestmasterTask[]) => void;
   questOverlayId: string | null;
   questOverlaySearchHighlight: string | null;
+  questmasterSearchQuery: string;
+  questmasterSelectedTags: string[];
+  questmasterViewMode: "cards" | "compact" | null;
+  setQuestmasterSearchQuery: ReturnType<typeof vi.fn>;
+  setQuestmasterSelectedTags: ReturnType<typeof vi.fn>;
+  setQuestmasterViewMode: ReturnType<typeof vi.fn>;
   openQuestOverlay: ReturnType<typeof vi.fn>;
   closeQuestOverlay: ReturnType<typeof vi.fn>;
   replaceQuest: ReturnType<typeof vi.fn>;
@@ -116,6 +122,18 @@ function resetState(overrides: Partial<MockStoreState> = {}) {
     },
     questOverlayId: null,
     questOverlaySearchHighlight: null,
+    questmasterSearchQuery: "",
+    questmasterSelectedTags: [] as string[],
+    questmasterViewMode: null as "cards" | "compact" | null,
+    setQuestmasterSearchQuery: vi.fn((query: string) => {
+      mockState.questmasterSearchQuery = query;
+    }),
+    setQuestmasterSelectedTags: vi.fn((tags: string[]) => {
+      mockState.questmasterSelectedTags = tags;
+    }),
+    setQuestmasterViewMode: vi.fn((mode: "cards" | "compact") => {
+      mockState.questmasterViewMode = mode;
+    }),
     openQuestOverlay: vi.fn((questId: string, searchHighlight?: string) => {
       mockState.questOverlayId = questId;
       mockState.questOverlaySearchHighlight = searchHighlight ?? null;

@@ -146,6 +146,12 @@ export interface AppState {
   } | null;
   questOverlayId: string | null;
   questOverlaySearchHighlight: string | null;
+  questmasterSearchQuery: string;
+  questmasterSelectedTags: string[];
+  questmasterViewMode: import("./api.js").QuestmasterViewMode | null;
+  setQuestmasterSearchQuery: (query: string) => void;
+  setQuestmasterSelectedTags: (tags: string[]) => void;
+  setQuestmasterViewMode: (mode: import("./api.js").QuestmasterViewMode) => void;
   activeTab: "chat" | "diff";
   diffPanelSelectedFile: Map<string, string>;
   vscodeSelectionContext: VsCodeSelectionState | null;

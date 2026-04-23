@@ -149,18 +149,47 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
   const setQuests = useStore((s) => s.setQuests);
   const questOverlayId = useStore((s) => s.questOverlayId);
 
+  // View mode: use store value when available (survives navigation), fall back to "cards"
+  const storeViewMode = useStore((s) => s.questmasterViewMode);
+  const setStoreViewMode = useStore((s) => s.setQuestmasterViewMode);
+  const [viewMode, setViewModeLocal] = useState<QuestmasterViewMode>(storeViewMode ?? "cards");
+  // Sync store -> local when store value changes (e.g. server fetch populates it)
+  useEffect(() => {
+    if (storeViewMode !== null) setViewModeLocal(storeViewMode);
+  }, [storeViewMode]);
+  const setViewMode = useCallback(
+    (mode: QuestmasterViewMode) => {
+      setViewModeLocal(mode);
+      setStoreViewMode(mode);
+    },
+    [setStoreViewMode],
+  );
+
   const [filter, setFilter] = useState<Set<QuestStatus>>(() => {
     const persisted = initialViewState?.statusFilter;
     return persisted ? new Set(persisted) : new Set(ALL_STATUSES);
   });
   const allSelected = filter.size === ALL_STATUSES.length;
-  const [viewMode, setViewMode] = useState<QuestmasterViewMode>("cards");
   const [viewModeSaving, setViewModeSaving] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
 
-  // Search & tag filter state
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
+  // Search & tag filter state -- local state initialized from store, synced back on unmount.
+  // Local state ensures React re-renders on every keystroke; store persists across navigation.
+  const [searchQuery, setSearchQueryLocal] = useState(() => useStore.getState().questmasterSearchQuery ?? "");
+  const [selectedTags, setSelectedTagsLocal] = useState<Set<string>>(
+    () => new Set(useStore.getState().questmasterSelectedTags ?? []),
+  );
+  const setSearchQuery = useCallback((val: string) => {
+    setSearchQueryLocal(val);
+    useStore.getState().setQuestmasterSearchQuery(val);
+  }, []);
+  const setSelectedTags = useCallback((update: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+    setSelectedTagsLocal((prev) => {
+      const next = typeof update === "function" ? update(prev) : update;
+      useStore.getState().setQuestmasterSelectedTags(Array.from(next));
+      return next;
+    });
+  }, []);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Status dropdown state
