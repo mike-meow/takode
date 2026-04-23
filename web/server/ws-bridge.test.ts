@@ -21565,6 +21565,92 @@ describe("work board", () => {
     expect(notifUpdates).toHaveLength(1);
   });
 
+  it("removeBoardRows keeps review notifications scoped to the completed leader session", () => {
+    // q-510: leader-scoped review notifications must never leak into another
+    // leader's inbox or chat stream, even when both leaders are connected.
+    const leaderABrowser = makeBrowserSocket("leader-a");
+    const leaderBBrowser = makeBrowserSocket("leader-b");
+    bridge.handleBrowserOpen(leaderABrowser, "leader-a");
+    bridge.handleBrowserOpen(leaderBBrowser, "leader-b");
+
+    const leaderASession = (bridge as any).sessions.get("leader-a");
+    const leaderBSession = (bridge as any).sessions.get("leader-b");
+    leaderASession.messageHistory.push({
+      type: "assistant",
+      message: { id: "asst-leader-a", content: [{ type: "text", text: "Quest finished in leader A" }] },
+      timestamp: Date.now(),
+    });
+    leaderBSession.messageHistory.push({
+      type: "assistant",
+      message: { id: "asst-leader-b", content: [{ type: "text", text: "Unrelated leader B work" }] },
+      timestamp: Date.now(),
+    });
+
+    bridge.upsertBoardRow("leader-a", { questId: "q-510", title: "Fix cross-leader notification leak" });
+    bridge.upsertBoardRow("leader-b", { questId: "q-999", title: "Other leader quest" });
+    leaderABrowser.send.mockClear();
+    leaderBBrowser.send.mockClear();
+
+    bridge.removeBoardRows("leader-a", ["q-510"]);
+
+    expect(leaderASession.notifications).toHaveLength(1);
+    expect(leaderASession.notifications[0]).toEqual(
+      expect.objectContaining({
+        category: "review",
+        summary: "q-510 ready for review: Fix cross-leader notification leak",
+        messageId: "asst-leader-a",
+      }),
+    );
+    expect(leaderBSession.notifications).toHaveLength(0);
+    const leaderAHistoryAssistant = leaderASession.messageHistory.find(
+      (message: any) => message?.type === "assistant" && message?.message?.id === "asst-leader-a",
+    );
+    const leaderBHistoryAssistant = leaderBSession.messageHistory.find(
+      (message: any) => message?.type === "assistant" && message?.message?.id === "asst-leader-b",
+    );
+    expect((leaderAHistoryAssistant as any)?.notification).toEqual(
+      expect.objectContaining({
+        category: "review",
+        summary: "q-510 ready for review: Fix cross-leader notification leak",
+      }),
+    );
+    expect((leaderBHistoryAssistant as any)?.notification).toBeUndefined();
+    expect(
+      leaderBSession.messageHistory.some(
+        (message: any) => message?.type === "assistant" && (message as any).notification != null,
+      ),
+    ).toBe(false);
+
+    const leaderAMessages = leaderABrowser.send.mock.calls
+      .map((call: any[]) => {
+        try {
+          return JSON.parse(call[0]);
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+    const leaderBMessages = leaderBBrowser.send.mock.calls
+      .map((call: any[]) => {
+        try {
+          return JSON.parse(call[0]);
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+
+    expect(leaderAMessages.some((message: any) => message?.type === "notification_update")).toBe(true);
+    expect(
+      leaderAMessages.some(
+        (message: any) =>
+          message?.type === "notification_anchored" && message?.messageId === "asst-leader-a",
+      ),
+    ).toBe(true);
+    expect(leaderBMessages.some((message: any) => message?.type === "notification_update")).toBe(false);
+    expect(leaderBMessages.some((message: any) => message?.type === "notification_anchored")).toBe(false);
+  });
+
   it("removeBoardRows sends one aggregated review notification for multiple completed rows", () => {
     // Batch completion should produce a single review notification so the same
     // anchored assistant message does not get conflicting notification stamps.
@@ -23613,6 +23699,9 @@ describe("notifyUser herded session routing", () => {
     // Notification should be persisted to inbox
     expect(session.notifications).toHaveLength(1);
     expect(session.notifications[0].category).toBe("review");
+    // Herded workers should route review state through the owning leader rather
+    // than stamping a direct in-message notification marker onto worker history.
+    expect((session.messageHistory[0] as any).notification).toBeUndefined();
 
     // But attention should NOT be set (no user-facing badge)
     expect(session.attentionReason).toBeNull();
@@ -23684,6 +23773,7 @@ describe("notifyUser herded session routing", () => {
     expect(needsInputEvents[0].data.notificationId).toBe("n-1");
     expect(needsInputEvents[0].data.messageId).toBe("asst-1");
     expect(needsInputEvents[0].data.msg_index).toBe(0);
+    expect((session.messageHistory[0] as any).notification).toBeUndefined();
 
     // Attention should NOT be set for herded session
     expect(session.attentionReason).toBeNull();
