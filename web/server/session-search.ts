@@ -1,5 +1,5 @@
 import type { BrowserIncomingMessage, SessionTaskEntry } from "./session-types.js";
-import { normalizeForSearch } from "../shared/search-utils.js";
+import { multiWordMatch, normalizeForSearch } from "../shared/search-utils.js";
 
 export type SessionSearchMatchedField =
   | "name"
@@ -82,6 +82,7 @@ function pushIfBetter(current: SessionSearchResult | null, next: SessionSearchRe
 function messageMatchCandidate(
   doc: SessionSearchDocument,
   q: string,
+  matches: (text: string) => boolean,
   maxMessagesToScan: number,
 ): SessionSearchResult | null {
   const history = doc.messageHistory;
@@ -97,7 +98,7 @@ function messageMatchCandidate(
     if (msg.type === "user_message") {
       const content = (msg.content || "").trim();
       if (!content) continue;
-      if (!normalizeForSearch(content).includes(q)) continue;
+      if (!matches(content)) continue;
 
       const timestamp = typeof msg.timestamp === "number" ? msg.timestamp : (doc.lastActivityAt ?? doc.createdAt);
       return {
@@ -112,7 +113,7 @@ function messageMatchCandidate(
 
     if (msg.type === "compact_marker") {
       const content = (msg.summary || "[Context compacted]").trim();
-      if (!normalizeForSearch(content).includes(q)) continue;
+      if (!matches(content)) continue;
 
       const timestamp = typeof msg.timestamp === "number" ? msg.timestamp : (doc.lastActivityAt ?? doc.createdAt);
       return {
@@ -134,6 +135,11 @@ export function searchSessionDocuments(
 ): SearchSessionDocumentsOutput {
   const q = normalizeForSearch(options.query);
   if (!q) return { totalMatches: 0, results: [] };
+  const qWords = q.split(/\s+/).filter(Boolean);
+  const matches_ = (text: string) => {
+    const n = normalizeForSearch(text);
+    return qWords.every((w) => n.includes(w));
+  };
 
   const includeArchived = options.includeArchived !== false;
   const limit = clampInt(Math.floor(options.limit ?? 50), 1, 200);
@@ -148,7 +154,7 @@ export function searchSessionDocuments(
     let best: SessionSearchResult | null = null;
 
     const name = (doc.name || "").trim();
-    if (name && normalizeForSearch(name).includes(q)) {
+    if (name && matches_(name)) {
       best = pushIfBetter(best, {
         sessionId: doc.sessionId,
         score: 1000,
@@ -158,7 +164,7 @@ export function searchSessionDocuments(
       });
     }
 
-    const task = (doc.taskHistory || []).find((t) => normalizeForSearch(t.title).includes(q));
+    const task = (doc.taskHistory || []).find((t) => matches_(t.title));
     if (task) {
       best = pushIfBetter(best, {
         sessionId: doc.sessionId,
@@ -169,7 +175,7 @@ export function searchSessionDocuments(
       });
     }
 
-    const kw = (doc.keywords || []).find((k) => normalizeForSearch(k).includes(q));
+    const kw = (doc.keywords || []).find((k) => matches_(k));
     if (kw) {
       best = pushIfBetter(best, {
         sessionId: doc.sessionId,
@@ -181,7 +187,7 @@ export function searchSessionDocuments(
     }
 
     const branch = (doc.gitBranch || "").trim();
-    if (branch && normalizeForSearch(branch).includes(q)) {
+    if (branch && matches_(branch)) {
       best = pushIfBetter(best, {
         sessionId: doc.sessionId,
         score: 840,
@@ -192,7 +198,7 @@ export function searchSessionDocuments(
     }
 
     const cwd = (doc.cwd || "").trim();
-    if (cwd && normalizeForSearch(cwd).includes(q)) {
+    if (cwd && matches_(cwd)) {
       best = pushIfBetter(best, {
         sessionId: doc.sessionId,
         score: 810,
@@ -203,7 +209,7 @@ export function searchSessionDocuments(
     }
 
     const repoRoot = (doc.repoRoot || "").trim();
-    if (repoRoot && normalizeForSearch(repoRoot).includes(q)) {
+    if (repoRoot && matches_(repoRoot)) {
       best = pushIfBetter(best, {
         sessionId: doc.sessionId,
         score: 800,
@@ -213,7 +219,7 @@ export function searchSessionDocuments(
       });
     }
 
-    const msgCandidate = messageMatchCandidate(doc, q, messageLimitPerSession);
+    const msgCandidate = messageMatchCandidate(doc, q, matches_, messageLimitPerSession);
     if (msgCandidate) {
       best = pushIfBetter(best, msgCandidate);
     }

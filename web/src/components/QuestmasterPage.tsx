@@ -11,7 +11,7 @@ import {
 } from "../utils/questmaster-view-state.js";
 import type { QuestmasterCollapsedGroup } from "../utils/questmaster-view-state.js";
 import { getHighlightParts } from "../utils/highlight.js";
-import { normalizeForSearch } from "../../shared/search-utils.js";
+import { multiWordMatch, normalizeForSearch } from "../../shared/search-utils.js";
 import { QUEST_STATUS_THEME } from "../utils/quest-status-theme.js";
 import { timeAgo, verificationProgress, getQuestOwnerSessionId, CopyableQuestId } from "../utils/quest-helpers.js";
 import {
@@ -624,9 +624,9 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
   const searchNormalized = normalizeForSearch(searchText);
   const afterSearch = searchNormalized
     ? quests.filter((q) => {
-        if (normalizeForSearch(q.questId).includes(searchNormalized)) return true;
-        if (normalizeForSearch(q.title).includes(searchNormalized)) return true;
-        if (q.description && normalizeForSearch(q.description).includes(searchNormalized)) return true;
+        if (multiWordMatch(q.questId, searchText)) return true;
+        if (multiWordMatch(q.title, searchText)) return true;
+        if (q.description && multiWordMatch(q.description, searchText)) return true;
         return false;
       })
     : quests;

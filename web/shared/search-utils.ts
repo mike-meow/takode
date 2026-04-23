@@ -24,3 +24,11 @@ export function expandCamelCase(text: string): string {
 export function normalizeForSearch(text: string): string {
   return expandCamelCase(text).toLowerCase().trim();
 }
+
+/** Returns true if every word in `query` appears somewhere in `text` (after normalization). */
+export function multiWordMatch(text: string, query: string): boolean {
+  const normalized = normalizeForSearch(text);
+  const words = normalizeForSearch(query).split(/\s+/).filter(Boolean);
+  if (words.length === 0) return false;
+  return words.every((w) => normalized.includes(w));
+}

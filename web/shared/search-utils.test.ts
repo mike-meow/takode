@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { expandCamelCase, normalizeForSearch } from "./search-utils.js";
+import { expandCamelCase, normalizeForSearch, multiWordMatch } from "./search-utils.js";
 
 describe("expandCamelCase", () => {
   it("splits basic CamelCase", () => {
@@ -62,5 +62,38 @@ describe("normalizeForSearch", () => {
 
   it("handles empty string", () => {
     expect(normalizeForSearch("")).toBe("");
+  });
+});
+
+describe("multiWordMatch", () => {
+  it("matches a single word", () => {
+    expect(multiWordMatch("Run dev-server E2E sanity", "run")).toBe(true);
+  });
+
+  it("matches multiple non-consecutive words", () => {
+    // The core use case: "run dev" should match even though the words aren't adjacent
+    expect(multiWordMatch("Run current-main dev-server E2E sanity before prod restart", "run dev")).toBe(true);
+  });
+
+  it("matches regardless of word order in query", () => {
+    expect(multiWordMatch("Run current-main dev-server", "dev run")).toBe(true);
+  });
+
+  it("returns false when not all words match", () => {
+    expect(multiWordMatch("Run current-main dev-server", "run banana")).toBe(false);
+  });
+
+  it("returns false for empty query", () => {
+    expect(multiWordMatch("some text", "")).toBe(false);
+    expect(multiWordMatch("some text", "   ")).toBe(false);
+  });
+
+  it("is case-insensitive", () => {
+    expect(multiWordMatch("Design a Production Logging System", "production logging")).toBe(true);
+  });
+
+  it("handles CamelCase expansion", () => {
+    // "plan mode" should match "ExitPlanMode" via CamelCase expansion
+    expect(multiWordMatch("ExitPlanMode", "plan mode")).toBe(true);
   });
 });

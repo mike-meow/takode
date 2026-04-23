@@ -164,4 +164,27 @@ describe("searchSessionDocuments", () => {
     expect(out.results[0].matchedField).toBe("user_message");
     expect(out.results[1].matchedField).toBe("compact_marker");
   });
+
+  it("matches multi-word queries with non-consecutive words", () => {
+    // "run dev" should match a session named "Run current-main dev-server E2E sanity"
+    // even though "run" and "dev" aren't adjacent
+    const docs: SessionSearchDocument[] = [
+      {
+        sessionId: "s-match",
+        archived: false,
+        createdAt: 100,
+        name: "Run current-main dev-server E2E sanity before prod restart",
+      },
+      {
+        sessionId: "s-nomatch",
+        archived: false,
+        createdAt: 200,
+        name: "Deploy production hotfix",
+      },
+    ];
+
+    const out = searchSessionDocuments(docs, { query: "run dev" });
+    expect(out.totalMatches).toBe(1);
+    expect(out.results[0].sessionId).toBe("s-match");
+  });
 });
