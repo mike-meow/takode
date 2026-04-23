@@ -1604,6 +1604,14 @@ export class CliLauncher {
       if (archived && info.herdedBy) {
         const leaderId = info.herdedBy;
         info.herdedBy = undefined;
+        // Also detach any reviewers attached to this worker (mirrors unherdSession)
+        if (info.sessionNum !== undefined) {
+          for (const reviewer of this.sessions.values()) {
+            if (!reviewer.archived && reviewer.reviewerOf === info.sessionNum && reviewer.herdedBy === leaderId) {
+              reviewer.herdedBy = undefined;
+            }
+          }
+        }
         this.onHerdChange?.({ type: "membership_changed", leaderId });
       }
       this.persistState();

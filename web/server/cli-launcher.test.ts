@@ -3157,6 +3157,23 @@ describe("cat herding", () => {
     expect(herdChange).toHaveBeenCalledWith({ type: "membership_changed", leaderId: "orch-1" });
   });
 
+  it("setArchived on a worker also detaches its attached reviewer from the herd", async () => {
+    // Mirrors unherdSession's reviewer cleanup: archiving a herded worker
+    // must also clear herdedBy on any reviewer attached via reviewerOf.
+    await setupSessions("orch-1", "worker-1", "reviewer-1");
+    const worker = herdLauncher.getSession("worker-1")!;
+    const reviewer = herdLauncher.getSession("reviewer-1")!;
+    worker.sessionNum = 42;
+    herdLauncher.herdSessions("orch-1", ["worker-1"]);
+    reviewer.reviewerOf = 42;
+    reviewer.herdedBy = "orch-1";
+
+    herdLauncher.setArchived("worker-1", true);
+
+    expect(reviewer.herdedBy).toBeUndefined();
+    expect(herdLauncher.getHerdedSessions("orch-1")).toEqual([]);
+  });
+
   it("archived orchestrator is ineligible for herd bootstrap after restart", async () => {
     // Simulates stale persisted state: an archived orchestrator whose worker
     // still has herdedBy set (e.g. server crashed before cleanup completed).
