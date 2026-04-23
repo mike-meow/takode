@@ -1129,16 +1129,6 @@ export function Sidebar() {
           </div>
         )}
 
-        {showSessionRefreshStatus && (
-          <div
-            className="mx-2 mb-2 px-2.5 py-2 rounded-lg border border-cc-border bg-cc-hover/50 flex items-center gap-2 text-[11px] text-cc-muted"
-            aria-live="polite"
-          >
-            <YarnBallSpinner className="w-3.5 h-3.5 text-cc-primary shrink-0" />
-            <span>Refreshing sessions...</span>
-          </div>
-        )}
-
         {filteredSessions !== null ? (
           /* Search results: flat list across all sessions */
           filteredSessions.length === 0 ? (
@@ -1334,6 +1324,16 @@ export function Sidebar() {
               </div>
             )}
           </>
+        )}
+
+        {showSessionRefreshStatus && (
+          <div
+            className="mx-2 mt-2 px-2.5 py-2 rounded-lg border border-cc-border bg-cc-hover/50 flex items-center gap-2 text-[11px] text-cc-muted"
+            aria-live="polite"
+          >
+            <YarnBallSpinner className="w-3.5 h-3.5 text-cc-primary shrink-0" />
+            <span>Refreshing sessions...</span>
+          </div>
         )}
       </div>
 
