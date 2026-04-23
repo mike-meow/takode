@@ -63,27 +63,34 @@ export function PlaygroundInteractiveSections() {
                   className="w-full px-4 pt-3 pb-1 text-sm bg-transparent resize-none text-cc-fg font-sans-ui"
                   style={{ minHeight: "36px" }}
                 />
-                <div className="flex items-center justify-between px-2.5 pb-2.5">
-                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[12px] font-medium text-cc-muted">
-                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-                      <path
-                        d="M2.5 4l4 4-4 4"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        fill="none"
-                      />
-                      <path
-                        d="M8.5 4l4 4-4 4"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        fill="none"
-                      />
-                    </svg>
-                    <span>code</span>
+                <div className="flex items-center justify-between gap-2 px-2.5 pb-2.5 pt-1">
+                  <div className="flex min-w-0 items-center gap-2 overflow-hidden text-[11px] text-cc-muted">
+                    <div className="flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-[12px] font-medium">
+                      <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                        <path
+                          d="M2.5 4l4 4-4 4"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
+                        <path
+                          d="M8.5 4l4 4-4 4"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
+                      </svg>
+                      <span>Agent</span>
+                    </div>
+                    <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+                      <span className="truncate font-mono-code">jiayi</span>
+                      <span className="shrink-0 text-cc-muted/40">&middot;</span>
+                      <span className="truncate font-mono-code">sonnet-4.5</span>
+                    </div>
                   </div>
                   <div className="flex items-center gap-1">
                     <div className="flex items-center justify-center w-8 h-8 rounded-lg text-cc-muted">
@@ -125,27 +132,34 @@ export function PlaygroundInteractiveSections() {
                   className="w-full px-4 pt-3 pb-1 text-sm bg-transparent resize-none text-cc-fg font-sans-ui"
                   style={{ minHeight: "36px" }}
                 />
-                <div className="flex items-center justify-between px-2.5 pb-2.5">
-                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[12px] font-medium text-cc-muted">
-                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-                      <path
-                        d="M2.5 4l4 4-4 4"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        fill="none"
-                      />
-                      <path
-                        d="M8.5 4l4 4-4 4"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        fill="none"
-                      />
-                    </svg>
-                    <span>code</span>
+                <div className="flex items-center justify-between gap-2 px-2.5 pb-2.5 pt-1">
+                  <div className="flex min-w-0 items-center gap-2 overflow-hidden text-[11px] text-cc-muted">
+                    <div className="flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-[12px] font-medium">
+                      <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
+                        <path
+                          d="M2.5 4l4 4-4 4"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
+                        <path
+                          d="M8.5 4l4 4-4 4"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
+                      </svg>
+                      <span>Agent</span>
+                    </div>
+                    <div className="flex min-w-0 items-center gap-2 overflow-hidden">
+                      <span className="truncate font-mono-code">jiayi</span>
+                      <span className="shrink-0 text-cc-muted/40">&middot;</span>
+                      <span className="truncate font-mono-code">sonnet-4.5</span>
+                    </div>
                   </div>
                   <div className="flex items-center gap-1">
                     <div className="flex items-center justify-center w-8 h-8 rounded-lg text-cc-muted">
