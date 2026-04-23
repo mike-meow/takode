@@ -22,10 +22,12 @@ interface MockStoreState {
   setServerName: ReturnType<typeof vi.fn>;
   requestScrollToMessage: ReturnType<typeof vi.fn>;
   setExpandAllInTurn: ReturnType<typeof vi.fn>;
+  setPendingScrollToMessageId: ReturnType<typeof vi.fn>;
   markSessionViewed: ReturnType<typeof vi.fn>;
   closeNewSessionModal: ReturnType<typeof vi.fn>;
   setSidebarOpen: ReturnType<typeof vi.fn>;
   sessions: Map<string, { backend_type?: string }>;
+  messages: Map<string, unknown[]>;
 }
 
 let mockState: MockStoreState;
