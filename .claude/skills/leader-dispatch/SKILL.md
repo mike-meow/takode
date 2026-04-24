@@ -160,7 +160,7 @@ If the worker needs additional context (related sessions, rejected approaches, u
 **Make every follow-up message stage-explicit.**
 - **Initial dispatch**: planning only. The worker returns a plan and stops.
 - **Plan approval**: say "implement now, then stop and report back." Do not imply review, porting, or quest transitions are authorized.
-- **Review or rework follow-up**: say exactly what the worker should do now, then tell them to report back and wait. Do not imply porting is authorized.
+- **Review or rework follow-up**: say exactly what the worker should do now, then tell them to report back and wait. Tell the worker to refresh the existing quest summary/comment, consolidating feedback-addressing details into that same comment when clear instead of adding near-duplicate quest comments. Do not imply porting is authorized.
 - **If review follow-up needs more code changes**: tell the worker to commit the current worktree state first, then make the fixes in a separate follow-up commit so the reviewer can inspect a clean diff of only the new work.
 - **Porting**: send a separate, explicit `/port-changes` instruction only after reviewer ACCEPT. Require the worker's report-back to include a dedicated `Synced SHAs: sha1,sha2` line with the ordered synced SHAs from the main repo and the status of required post-port verification. For refactor quests, that gate is `cd web && bun run typecheck`, `cd web && bun run test`, and `cd web && bun run format:check`. `format:check` is the current lint/format-equivalent gate in this repo; there is no separate `lint` script right now. If a full run is infeasible, the worker must document the exception explicitly. If the required post-port verification run fails, dispatch a suitable worker to fix `main` immediately rather than waiting.
 - **Investigation/design/no-code quests**: say what artifact to produce, then tell the worker to stop and report back. Do not assume the worker should self-complete or self-transition the quest.
@@ -168,15 +168,15 @@ If the worker needs additional context (related sessions, rejected approaches, u
 **Use explicit phrasing when steering between stages.** Good defaults:
 
 ```
-Implement the approved plan, then stop and report back. Do not run /reviewer-groom, /self-groom, /port-changes, or change the quest status yourself.
+Implement the approved plan, add or refresh the consolidated quest summary comment, then stop and report back. If this also addresses human feedback, explain that in the same comment when it remains clear. Do not run /reviewer-groom, /self-groom, /port-changes, or change the quest status yourself.
 ```
 
 ```
-Address the reviewer findings, then stop and report back. Do not port yet.
+Address the reviewer findings, add or refresh the consolidated quest summary comment, then stop and report back. Do not port yet.
 ```
 
 ```
-Address the reviewer-groom findings. If you need more code changes, first commit the current worktree state, then make the fixes in a separate follow-up commit. Then stop and report back. Do not port yet.
+Address the reviewer-groom findings. If you need more code changes, first commit the current worktree state, then make the fixes in a separate follow-up commit. Add or refresh the consolidated quest summary comment, then stop and report back. Do not port yet.
 ```
 
 ```

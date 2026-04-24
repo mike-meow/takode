@@ -66,10 +66,13 @@ describe("ensureQuestmasterIntegration", () => {
 
     const skill = String(codexSkillWrite?.[1] ?? "");
     expect(skill).toContain("quest address <id> <index> [--json]");
-    // Validates the pre-submission checklist includes feedback-addressing and summary requirements
+    // Validates the pre-submission checklist includes feedback-addressing, summary, and consolidation requirements.
     expect(skill).toContain("Address all human feedback");
     expect(skill).toContain("Both steps are required");
-    expect(skill).toContain("Add a summary comment");
+    expect(skill).toContain("Add or refresh a summary comment");
+    expect(skill).toContain("Prefer one consolidated feedback entry");
+    expect(skill).toContain("This summary may also be the explanation for addressed human feedback");
+    expect(skill).toContain("Avoid leaving multiple duplicated or overly similar worker comments");
     expect(skill).toContain("required worker deliverable");
     expect(skill).toContain("first commit the current worktree state");
     expect(skill).toContain("separate commit so the reviewer can inspect only the new diff");

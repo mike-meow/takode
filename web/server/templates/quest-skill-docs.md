@@ -284,7 +284,7 @@ When the user asks you to work on a quest — whether via the Companion "Assign"
    - Immediately re-run `quest show q-N` and verify the final title/description/tags are clean.
    - Title rule: concise, **less than 10 words**. Move details to description.
    - Reuse existing tags. Only create new tags when no existing tag fits.
-4. **Work**: Implement the changes. Use TodoWrite for sub-step tracking if needed. If you need additional code changes after a reviewer or human review pass, first commit the current worktree state, then make the follow-up fixes in a separate commit so the reviewer can inspect only the new diff. **If there is human feedback**, address each entry, then mark it: `quest address q-N <index>` and reply with what you did: `quest feedback q-N --text "Addressed: ..."` for short replies, or `quest feedback q-N --text-file -` / `--text-file <path>` when your response includes copied logs or shell-like text. Run `quest show q-N` to confirm entries show `addressed`.
+4. **Work**: Implement the changes. Use TodoWrite for sub-step tracking if needed. If you need additional code changes after a reviewer or human review pass, first commit the current worktree state, then make the follow-up fixes in a separate commit so the reviewer can inspect only the new diff. **If there is human feedback**, address each entry, explain what you did in an agent feedback entry, then mark it with `quest address q-N <index>`. Prefer one consolidated feedback entry when the same update can both summarize the work and explain how human feedback was addressed, for example `quest feedback q-N --text "Summary: fixed the layout issue and addressed feedback #0 by adding flex-wrap"` for short replies, or `quest feedback q-N --text-file -` / `--text-file <path>` when your response includes copied logs or shell-like text. Add separate feedback entries only when the updates are materially different or separation makes the quest easier to read. Run `quest show q-N` to confirm entries show `addressed`.
 5. **Self-check**: Before submitting, verify everything you can yourself. For refactor quests, the current full pre-commit-equivalent automated gate is `cd web && bun run typecheck`, `cd web && bun run test`, and `cd web && bun run format:check`. `format:check` is the current lint/format-equivalent gate in this repo; there is no separate `lint` script right now. If a full run is infeasible, document the exception explicitly in your summary or handoff before submitting. Do not include self-verifiable items in the verification checklist. **Verify all human feedback entries are marked addressed** — run `quest show q-N` and check.
 6. **Submit**: `quest complete q-N --items "..."` for simple inline lists, or `quest complete q-N --items-file <path>` / `--items-file -` for comma-heavy or copied verification text. Only list items that truly require human verification (UI appearance, UX feel, edge cases needing judgment). Keep items concise — one short sentence each, scannable at a glance.
    - **Worktree sessions:** If you're working in a git worktree, do **not** run `quest complete` or move the quest to `needs_verification` until your changes are synced to the main repo checkout and pushed. The human verifies from the main repo, not your worktree.
@@ -354,18 +354,23 @@ idea → refined → in_progress → needs_verification → done
 **Pre-submission checklist (all three required -- the skeptic reviewer will verify each one and CHALLENGE if any are missing):**
 
 1. **Address all human feedback.** For each human feedback entry on the quest:
-   - Post an explicit reply explaining HOW you addressed it: `quest feedback q-N --text "Addressed: fixed mobile layout with flex-wrap"` for short replies, or `quest feedback q-N --text-file -` when quoting logs or shell-like text
+   - Add or refresh an explicit agent feedback entry explaining HOW you addressed it: `quest feedback q-N --text "Summary: fixed mobile layout with flex-wrap; addressed feedback #0 by preserving the compact breakpoint"` for short replies, or `quest feedback q-N --text-file -` when quoting logs or shell-like text
+   - Prefer one consolidated feedback entry when the same update can both summarize the work and address one or more human feedback entries
+   - Add separate feedback entries only when they are materially different or necessary for readability
    - Mark the entry as addressed: `quest address q-N <index>` (run `quest show q-N` after to confirm it shows `addressed`)
-   - Both steps are required -- a reply without marking, or marking without explaining, is incomplete
+   - Both steps are required -- an explanation without marking, or marking without explaining, is incomplete
    - Do not claim feedback was addressed unless both happened
 
-2. **Add a summary comment.** Before submitting, add a final feedback entry summarizing the work:
+2. **Add or refresh a summary comment.** Before submitting, keep a final feedback entry summarizing the work:
    - `quest feedback q-N --text "Summary: <what was done>"`
    - Briefly describe the changes made and why
    - This should be the one substantive quest-level prose summary by default
+   - This summary may also be the explanation for addressed human feedback when it clearly names what feedback was handled and how
    - Re-running the same summary-style feedback (`Summary:` or `Refreshed summary:`) updates the latest agent summary comment instead of appending another near-duplicate summary entry
+   - Before adding a new agent feedback entry, check whether the latest summary or worker update can be refreshed instead
    - If the work was ported normally, rely on structured metadata (`commitShas` via `quest complete ... --commit/--commits ...`) for routine port information instead of adding a second long prose port comment
    - Only add a second port-specific comment when the porting itself was exceptional and materially worth noting
+   - Avoid leaving multiple duplicated or overly similar worker comments on the quest
    - The goal: someone reading only the quest (not the session conversation) should understand what happened
    - Treat this as a required worker deliverable before you report back that the quest is ready
 
@@ -390,7 +395,7 @@ When you verify a quest (either your own or another agent's), you **MUST** check
 1. Run `quest show q-N` to see the verification checklist
 2. For each item you can confirm is working, run `quest check q-N <index>` (0-based index)
 3. Run `quest show q-N` again to confirm the item is now checked (`[x]`)
-4. Add feedback explaining what you verified and how: `quest feedback q-N --text "Verified item 0: ..."`
+4. Add feedback explaining what you verified and how: `quest feedback q-N --text "Verified item 0: ..."`; combine related verified items into one concise comment when that is clearer than several near-duplicate entries
 
 **Never leave verification items unchecked if you have evidence they pass.** Attaching feedback alone is not enough — you must also check off the corresponding items.
 

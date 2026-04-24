@@ -59,6 +59,8 @@ You are checking the quality of the resulting code:
 
 Later, you may be asked to review the worker's follow-up changes and decide whether they addressed your required findings.
 
+When the scope includes quest rework or human feedback, also check quest comment hygiene. The worker should keep one substantive quest summary/comment current by default, and should consolidate feedback-addressing details into that comment when clear. Do not require separate summary and addressed-feedback comments unless the updates are materially different or separate comments make the quest easier to read.
+
 ## Required Review Workflow
 
 This workflow is mandatory.
@@ -414,6 +416,7 @@ Re-check the worker's response against the same checklist mindset:
 - each prior `Recommended` must now pass or be explicitly justified
 - unresolved `Suggestions` are only blocking if they expose a deeper required issue
 - any newly introduced relevant review aspect must also be checked instead of being silently ignored
+- for quest feedback follow-up, the quest should not accumulate multiple duplicated or overly similar worker comments; require consolidation if readability regressed
 
 For a follow-up review, return exactly one of:
 
