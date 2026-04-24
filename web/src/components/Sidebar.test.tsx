@@ -8,6 +8,10 @@ import type { SessionState, SdkSessionInfo } from "../types.js";
 const mockConnectSession = vi.fn();
 const mockConnectAllSessions = vi.fn();
 const mockDisconnectSession = vi.fn();
+const scrollTargetSessionIds: string[] = [];
+const mockScrollIntoView = vi.fn(function (this: Element) {
+  scrollTargetSessionIds.push((this as HTMLElement).dataset.sessionId ?? "");
+});
 
 vi.mock("../ws.js", () => ({
   connectSession: (...args: unknown[]) => mockConnectSession(...args),
@@ -258,6 +262,8 @@ import { Sidebar } from "./Sidebar.js";
 beforeEach(() => {
   vi.clearAllMocks();
   vi.stubGlobal("alert", mockAlert);
+  scrollTargetSessionIds.length = 0;
+  Element.prototype.scrollIntoView = mockScrollIntoView;
   mockState = createMockState();
   window.location.hash = "";
   setTouchDevice(false);
@@ -534,12 +540,15 @@ describe("Sidebar", { timeout: 10000 }, () => {
     expect(alphaRow.closest("button")).toHaveAttribute("data-search-selected", "true");
     expect(betaRow.closest("button")).not.toHaveAttribute("data-search-selected", "true");
     expect(mockState.setSearchPreviewSessionId).toHaveBeenCalledWith("s1");
+    expect(mockScrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+    expect(scrollTargetSessionIds).toContain("s1");
     expect(mockState.markSessionViewed).not.toHaveBeenCalled();
     expect(window.location.hash).toBe("");
 
     fireEvent.keyDown(input, { key: "ArrowDown" });
     expect(betaRow.closest("button")).toHaveAttribute("data-search-selected", "true");
     expect(mockState.setSearchPreviewSessionId).toHaveBeenLastCalledWith("s2");
+    expect(scrollTargetSessionIds.at(-1)).toBe("s2");
     expect(mockState.markSessionViewed).not.toHaveBeenCalled();
     expect(window.location.hash).toBe("");
 
@@ -797,6 +806,30 @@ describe("Sidebar", { timeout: 10000 }, () => {
     // Find the session button element
     const sessionButton = screen.getByText("claude-sonnet-4-5-20250929").closest("button");
     expect(sessionButton).toHaveClass("bg-cc-active");
+  });
+
+  it("auto-scrolls the sidebar to keep the active session row visible", () => {
+    const session1 = makeSession("s1", { model: "Session One" });
+    const session2 = makeSession("s2", { model: "Session Two" });
+    const sdk1 = makeSdkSession("s1", { model: "Session One", createdAt: 2 });
+    const sdk2 = makeSdkSession("s2", { model: "Session Two", createdAt: 1 });
+    mockState = createMockState({
+      sessions: new Map([
+        ["s1", session1],
+        ["s2", session2],
+      ]),
+      sdkSessions: [sdk1, sdk2],
+      currentSessionId: "s2",
+      treeGroups: [{ id: "default", name: "Default" }],
+      treeNodeOrder: new Map([["default", ["s1", "s2"]]]),
+    });
+
+    render(<Sidebar />);
+
+    const activeButton = screen.getByText("Session Two").closest("button");
+    expect(activeButton).toHaveAttribute("data-active-session", "true");
+    expect(mockScrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+    expect(scrollTargetSessionIds).toContain("s2");
   });
 
   it("clicking a session navigates to the session hash", () => {

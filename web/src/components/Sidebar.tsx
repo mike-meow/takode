@@ -183,6 +183,7 @@ export function Sidebar() {
   const [isSearching, setIsSearching] = useState(false);
   const [activeSearchResultIndex, setActiveSearchResultIndex] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const sessionScrollerRef = useRef<HTMLDivElement>(null);
   const route = parseHash(hash);
   const isSettingsPage = route.page === "settings";
   const isTerminalPage = route.page === "terminal";
@@ -829,6 +830,22 @@ export function Sidebar() {
     handlePreviewSearchSession(selected.session.id);
   }, [activeSearchResultIndex, filteredSessions]);
 
+  const highlightedSidebarSessionId = filteredSessions?.[activeSearchResultIndex]?.session.id ?? currentSessionId;
+  const highlightedSidebarSelector = filteredSessions
+    ? "button[data-search-selected='true']"
+    : highlightedSidebarSessionId
+      ? `button[data-session-id='${highlightedSidebarSessionId}'][data-active-session='true']`
+      : null;
+
+  useEffect(() => {
+    if (!highlightedSidebarSessionId || !highlightedSidebarSelector) return;
+    const scroller = sessionScrollerRef.current;
+    if (!scroller) return;
+    const highlightedRow = scroller.querySelector<HTMLElement>(highlightedSidebarSelector);
+    if (!highlightedRow) return;
+    highlightedRow.scrollIntoView({ block: "nearest" });
+  }, [highlightedSidebarSessionId, highlightedSidebarSelector]);
+
   // Show sort/reorder controls when the session list is visible and has multiple sessions.
   const showSortControls = !searchFocused && !searchQuery && !filteredSessions && activeSessions.length > 1;
 
@@ -935,6 +952,7 @@ export function Sidebar() {
 
       {/* Session list */}
       <div
+        ref={sessionScrollerRef}
         data-testid="sidebar-session-scroller"
         className={`flex-1 px-2 pb-2 overflow-x-hidden ${
           mobileReorderHandleActive ? "overflow-y-hidden overscroll-none" : "overflow-y-auto"

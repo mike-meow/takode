@@ -486,6 +486,8 @@ export function SessionItem({
       )}
       <button
         ref={buttonRef}
+        data-session-id={s.id}
+        data-active-session={isActive ? "true" : undefined}
         aria-selected={isSearchSelected ? "true" : undefined}
         data-search-selected={isSearchSelected ? "true" : undefined}
         onClick={handleSelect}
