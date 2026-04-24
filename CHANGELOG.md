@@ -1,20 +1,43 @@
 # Takode Changelog
 
-## 2026-04-24
+## 2026-04-23
 
 ### Added
 
 - **Codex status command support** -- Codex sessions now support `/status` turns without leaving stale active-turn state behind
 - **Interactive session model controls** -- Session info now includes model and reasoning-effort selectors, with worker sessions inheriting leader model choices
-- **Message and navigation improvements** -- Stable message links, route-safe playground navigation, and better multi-word session search make it easier to find and share context
-- **Questmaster workflow polish** -- Quest search, view mode, commit metadata, feedback, and summary guidance are preserved more consistently across navigation and status transitions
+- **Session search improvements** -- Multi-word search, assistant text response search, and search-data-only archived restore make older context easier to find
+- **Takode read pairing** -- Tool call results are paired with their inputs in `takode read` for clearer cross-session inspection
 
 ### Fixed
 
 - **Codex safety and MCP handling** -- Restored safe heredoc auto-approval patterns, MCP elicitation approvals, Codex config model defaults, and committed user-message IDs
 - **Permission approval routing** -- Plan approvals, sensitive auto-approval bypasses, oversized staged-file checks, and stale pending permission state now behave more reliably
 - **VS Code context sync** -- Editor selection context now survives restarts, forwarded URLs, closed panels, background updates, and mobile composer layout constraints
-- **Herd and notification reliability** -- Archived sessions are skipped during restart bootstrap, reviewer sessions detach cleanly, notification chips are scoped correctly, and stale stall injections are reduced
+- **Herd and reconnect reliability** -- Archived sessions are skipped during restart bootstrap, reviewer sessions detach cleanly, and stale pending permissions are cleared across reconnect paths
+- **Questmaster workflow reliability** -- Quest search state, commit metadata, rich-text inputs, and summary guidance are preserved more consistently across navigation and status transitions
+
+## 2026-04-22
+
+### Added
+
+- **Stable message links** -- Chat messages can be copied as stable links for easier handoff and review
+- **Self-managed notifications** -- Sessions can resolve their own Takode notifications, reducing stale attention signals
+- **Playground section navigation** -- Playground examples now support route-safe section navigation
+
+### Fixed
+
+- **Attachment send reliability** -- Uploaded attachments are not resent, image attachments are preprocessed before send, and Codex draft image state is restored
+- **Herd and notification cleanup** -- Delivered needs-input notifications resolve correctly, herded notification chips stay scoped to their owning leader, and stale board stall injections are reduced
+- **Quest and CLI rich text safety** -- Quest feedback, spawn inputs, and copied CLI text preserve shell-sensitive content literally
+- **Board and plan flow reliability** -- Dispatch reminders, resolved wait conditions, pending plan rejection, and plan rejection rendering behave more consistently
+- **Dev and wrapper startup** -- Dev-start services stay alive after bootstrap, global CLI wrappers are simpler, and server ownership of wrappers is isolated
+- **Mobile and composer polish** -- Mobile user-turn controls, footer layout, selection-menu behavior, and voice transcription responsiveness were improved
+
+### Changed
+
+- **Refactor verification guardrail** -- Refactor work now documents the full typecheck, test, and format verification gate
+- **Architecture documentation** -- Server architecture notes were updated to match the post-refactor code structure
 
 ## 2026-04-21
 
@@ -24,6 +47,10 @@
 - **Voice mode persistence** -- Voice mode preference persists across sessions without hydration races
 - **Image upload ordering** -- Attachments are now uploaded before the message is sent
 - **Stale Codex recovery state** -- Cleared stale queued recovery state that could block Codex turn delivery
+
+### Changed
+
+- **Module boundary refactors** -- Oversized server, bridge, composer, message feed, and store modules were split into focused files without changing user-facing behavior
 
 ## 2026-04-20
 
