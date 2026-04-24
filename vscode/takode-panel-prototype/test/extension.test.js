@@ -24,7 +24,7 @@ function createEditor(filePath) {
   };
 }
 
-function loadExtensionHarness() {
+function loadExtensionHarness(options = {}) {
   const handlers = {
     commands: new Map(),
     panelDispose: [],
@@ -34,7 +34,28 @@ function loadExtensionHarness() {
   const pollCommandsCalls = [];
   const postMessageCalls = [];
   const createdPanels = [];
+  let selectionSyncOptions = null;
   const activeEditor = createEditor("/workspace/project/web/src/App.tsx");
+  const originalFetch = global.fetch;
+  const fetchCalls = [];
+
+  if (options.useRealSelectionSync) {
+    global.fetch = async (url, requestOptions = {}) => {
+      fetchCalls.push({ url: String(url), options: requestOptions });
+      if (requestOptions.method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ commands: [] }),
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true }),
+      };
+    };
+  }
 
   const selectionSync = {
     publishSelection: async (...args) => {
@@ -53,7 +74,16 @@ function loadExtensionHarness() {
   const vscodeMock = {
     env: {
       sessionId: "",
-      asExternalUri: async (uri) => uri,
+      asExternalUri: async (uri) => {
+        const raw = uri?.toString?.() || String(uri);
+        if (raw === "http://localhost:3456/") {
+          return { toString: () => "https://forwarded.example/takode/" };
+        }
+        if (raw === "http://localhost:5174/") {
+          return { toString: () => "https://forwarded.example/takode-dev/" };
+        }
+        return uri;
+      },
       openExternal: async () => {},
     },
     workspace: {
@@ -188,8 +218,14 @@ function loadExtensionHarness() {
       };
     }
     if (request === "./selection-sync") {
+      if (options.useRealSelectionSync) {
+        return originalLoad(request, parent, isMain);
+      }
       return {
-        createSelectionSyncManager: () => selectionSync,
+        createSelectionSyncManager: (options) => {
+          selectionSyncOptions = options;
+          return selectionSync;
+        },
       };
     }
     return originalLoad(request, parent, isMain);
@@ -203,6 +239,7 @@ function loadExtensionHarness() {
     Module._load = originalLoad;
     global.setInterval = originalSetInterval;
     global.clearInterval = originalClearInterval;
+    global.fetch = originalFetch;
     delete require.cache[extensionPath];
   }
 
@@ -214,6 +251,8 @@ function loadExtensionHarness() {
     pollCommandsCalls,
     postMessageCalls,
     createdPanels,
+    fetchCalls,
+    getSelectionSyncOptions: () => selectionSyncOptions,
     restore,
     activeEditor,
   };
@@ -255,6 +294,45 @@ test("background selection sync publishes even when the Takode panel has never b
       endLine: 42,
       lineCount: 1,
     });
+  } finally {
+    harness.restore();
+  }
+});
+
+test("background selection sync includes forwarded VS Code URLs for panel-free publishing", async () => {
+  const harness = loadExtensionHarness();
+  try {
+    const context = { subscriptions: [] };
+    harness.extension.activate(context);
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const selectionSyncOptions = harness.getSelectionSyncOptions();
+    assert.ok(selectionSyncOptions);
+    assert.deepEqual(selectionSyncOptions.getBaseUrls(), [
+      "http://localhost:3456/",
+      "http://localhost:5174/",
+      "https://forwarded.example/takode/",
+      "https://forwarded.example/takode-dev/",
+    ]);
+  } finally {
+    harness.restore();
+  }
+});
+
+test("background selection sync POSTs to forwarded endpoints after URL resolution without opening the panel", async () => {
+  const harness = loadExtensionHarness({ useRealSelectionSync: true });
+  try {
+    const context = { subscriptions: [] };
+    harness.extension.activate(context);
+    await new Promise((resolve) => setImmediate(resolve));
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const postUrls = harness.fetchCalls
+      .filter((call) => call.options?.method === "POST")
+      .map((call) => call.url);
+
+    assert.ok(postUrls.includes("https://forwarded.example/takode/api/vscode/selection"));
+    assert.ok(postUrls.includes("https://forwarded.example/takode/api/vscode/windows"));
   } finally {
     harness.restore();
   }

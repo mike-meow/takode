@@ -26,6 +26,7 @@ let lastSelectionPayload = null;
 let outputChannel;
 let lastWindowActivityAt = Date.now();
 const SELECTION_SYNC_HEARTBEAT_MS = 10_000;
+let resolvedSelectionSyncBaseUrls = [];
 
 function getBackgroundSelectionContext(editor = vscode.window.activeTextEditor) {
   return editor ? getSelectionContext(editor) : null;
@@ -39,6 +40,54 @@ function getSelectionSourceInfo() {
     sourceType: "vscode-window",
     sourceLabel: vscode.workspace.name || undefined,
   };
+}
+
+function getConfiguredSelectionSyncBaseUrls() {
+  return Object.values(PANEL_SPECS).map((spec) => getConfiguredBaseUrl(spec.kind));
+}
+
+function dedupeBaseUrls(urls) {
+  const out = [];
+  const seen = new Set();
+  for (const value of urls || []) {
+    if (typeof value !== "string" || !value) {
+      continue;
+    }
+    if (seen.has(value)) {
+      continue;
+    }
+    seen.add(value);
+    out.push(value);
+  }
+  return out;
+}
+
+function getSelectionSyncBaseUrls() {
+  return dedupeBaseUrls([
+    ...getConfiguredSelectionSyncBaseUrls(),
+    ...resolvedSelectionSyncBaseUrls,
+  ]);
+}
+
+async function refreshSelectionSyncBaseUrls() {
+  const configuredBaseUrls = getConfiguredSelectionSyncBaseUrls();
+  const resolvedBaseUrls = await Promise.all(configuredBaseUrls.map(async (baseUrl) => {
+    try {
+      return (await vscode.env.asExternalUri(vscode.Uri.parse(baseUrl))).toString();
+    } catch (error) {
+      const text = error instanceof Error ? error.message : String(error);
+      logDebug("resolve selection sync base URL failed", { baseUrl, error: text });
+      return null;
+    }
+  }));
+  resolvedSelectionSyncBaseUrls = dedupeBaseUrls(
+    resolvedBaseUrls.filter((value) => typeof value === "string" && value),
+  );
+  logDebug("selection sync base URLs refreshed", {
+    configuredBaseUrls,
+    resolvedBaseUrls: resolvedSelectionSyncBaseUrls,
+  });
+  return getSelectionSyncBaseUrls();
 }
 
 function getWorkspaceRoots() {
@@ -301,11 +350,15 @@ function activate(context) {
 
   const selectionSync = createSelectionSyncManager({
     fetchImpl: fetch,
-    getBaseUrls: () => Object.values(PANEL_SPECS).map((spec) => getConfiguredBaseUrl(spec.kind)),
+    getBaseUrls: getSelectionSyncBaseUrls,
     getSourceInfo: getSelectionSourceInfo,
     getWorkspaceRoots,
     openFile: openFileInPanelEditor,
     logDebug,
+  });
+  void refreshSelectionSyncBaseUrls().then(() => {
+    void selectionSync.publishSelection(getBackgroundSelectionContext(), { force: true });
+    void selectionSync.publishWindow({ force: true, lastActivityAt: lastWindowActivityAt });
   });
 
   const showPanel = (kind) => {
@@ -409,6 +462,10 @@ function activate(context) {
         return;
       }
 
+      void refreshSelectionSyncBaseUrls().then(() => {
+        void selectionSync.publishSelection(getBackgroundSelectionContext(), { force: true });
+        void selectionSync.publishWindow({ force: true, lastActivityAt: lastWindowActivityAt });
+      });
       for (const [kind, panel] of panelsByKind.entries()) {
         const baseUrl = getConfiguredBaseUrl(kind);
         applyWebviewOptions(panel, baseUrl);
@@ -476,4 +533,6 @@ module.exports = {
   SELECTION_SYNC_HEARTBEAT_MS,
   getBackgroundSelectionContext,
   getSelectionSourceInfo,
+  getSelectionSyncBaseUrls,
+  refreshSelectionSyncBaseUrls,
 };
