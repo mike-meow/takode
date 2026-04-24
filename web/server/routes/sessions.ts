@@ -48,6 +48,7 @@ import {
 import { registerSessionsArchiveRoutes } from "./sessions-archive-routes.js";
 import { withProgressHeartbeat } from "./progress-heartbeat.js";
 import { deriveAttachmentPaths, formatAttachmentPathAnnotation } from "../attachment-paths.js";
+import { createArchivedWorktreeCleanupQueue } from "./worktree-cleanup.js";
 
 export function createSessionsRoutes(ctx: RouteContext) {
   const api = new Hono();
@@ -69,7 +70,6 @@ export function createSessionsRoutes(ctx: RouteContext) {
     resolveInitialModeState,
   } = ctx;
   // ─── Worktree cleanup helper ────────────────────────────────────
-  type WorktreeCleanupStatus = "pending" | "done" | "failed";
   type WorktreeCleanupResult = { cleaned?: boolean; dirty?: boolean; path?: string; reason?: string } | undefined;
   const pendingWorktreeCleanups = new Map<string, Promise<void>>();
   const sessionAttentionDeps = {
@@ -107,18 +107,6 @@ export function createSessionsRoutes(ctx: RouteContext) {
       return;
     }
     bridgeAny.applyInitialSessionState?.(sessionId, options);
-  };
-
-  const setWorktreeCleanupState = (
-    sessionId: string,
-    updates: {
-      status?: WorktreeCleanupStatus;
-      error?: string;
-      startedAt?: number;
-      finishedAt?: number;
-    },
-  ) => {
-    launcher.setWorktreeCleanupState(sessionId, updates);
   };
 
   async function cleanupWorktree(
@@ -163,60 +151,11 @@ export function createSessionsRoutes(ctx: RouteContext) {
     return { cleaned: result.removed, path: mapping.worktreePath, reason: result.reason };
   }
 
-  const queueArchivedWorktreeCleanup = (
-    sessionId: string,
-    options?: { archiveBranch?: boolean },
-  ): { status: WorktreeCleanupStatus; path?: string } | undefined => {
-    const mapping = worktreeTracker.getBySession(sessionId);
-    if (!mapping) return undefined;
-
-    if (pendingWorktreeCleanups.has(sessionId)) {
-      return { status: "pending", path: mapping.worktreePath };
-    }
-
-    const startedAt = Date.now();
-    setWorktreeCleanupState(sessionId, {
-      status: "pending",
-      error: undefined,
-      startedAt,
-      finishedAt: undefined,
-    });
-
-    const task = (async () => {
-      try {
-        const result = await cleanupWorktree(sessionId, true, options);
-        const finishedAt = Date.now();
-        const cleanupStatus: WorktreeCleanupStatus = result?.reason ? "failed" : "done";
-        setWorktreeCleanupState(sessionId, {
-          status: cleanupStatus,
-          error: result?.reason,
-          startedAt,
-          finishedAt,
-        });
-        if (result?.path) {
-          console.log(
-            `[routes] Archived worktree cleanup ${cleanupStatus} for ${sessionId}: ${result.path}${result.reason ? ` (${result.reason})` : ""}`,
-          );
-        }
-      } catch (e) {
-        const finishedAt = Date.now();
-        const error = e instanceof Error ? e.message : String(e);
-        setWorktreeCleanupState(sessionId, {
-          status: "failed",
-          error,
-          startedAt,
-          finishedAt,
-        });
-        console.error(`[routes] Archived worktree cleanup failed for ${sessionId}:`, e);
-      } finally {
-        pendingWorktreeCleanups.delete(sessionId);
-      }
-    })();
-
-    pendingWorktreeCleanups.set(sessionId, task);
-    void task;
-    return { status: "pending", path: mapping.worktreePath };
-  };
+  const queueArchivedWorktreeCleanup = createArchivedWorktreeCleanupQueue({
+    launcher,
+    pendingWorktreeCleanups,
+    worktreeTracker,
+  });
 
   // ─── SDK Sessions (--sdk-url) ─────────────────────────────────────
   type CreationProgressStatus = "in_progress" | "done" | "error";
