@@ -14,7 +14,6 @@ import type { CreationStepId, TakodeSessionArchivedEventData } from "../session-
 import { hasContainerClaudeAuth } from "../claude-container-auth.js";
 import { hasContainerCodexAuth } from "../codex-container-auth.js";
 import { getSettings, getClaudeUserDefaultModel } from "../settings-manager.js";
-import { getDefaultModelForBackend } from "../../shared/backend-defaults.js";
 import { searchSessionDocuments, type SessionSearchDocument } from "../session-search.js";
 import { ensureAssistantWorkspace, ASSISTANT_DIR } from "../assistant-workspace.js";
 import { trafficStats } from "../traffic-stats.js";
@@ -22,6 +21,7 @@ import { generateUniqueSessionName } from "../../src/utils/names.js";
 import { GIT_CMD_TIMEOUT } from "../constants.js";
 import type { HerdSessionsResponse } from "../../shared/herd-types.js";
 import type { RouteContext, OptionalAuthResult } from "./context.js";
+import { resolveSessionCreateModel } from "./session-create-model.js";
 import {
   applyInitialSessionState as applyInitialSessionStateController,
   clearAttentionAndMarkRead as clearAttentionAndMarkReadController,
@@ -688,12 +688,13 @@ export function createSessionsRoutes(ctx: RouteContext) {
 
     const askPermissionRequested = body.askPermission !== false;
     const initialModeState = resolveInitialModeState(backend, body.permissionMode, askPermissionRequested);
-    const requestedModel = typeof body.model === "string" ? body.model.trim() : "";
-    // For Claude "Default", pass the user's ~/.claude/settings.json model explicitly.
-    const model =
-      requestedModel ||
-      (backend === "codex" ? getDefaultModelForBackend("codex") : undefined) ||
-      (backend === "claude" || backend === "claude-sdk" ? (await getClaudeUserDefaultModel()) || undefined : undefined);
+    const model = await resolveSessionCreateModel({
+      backend,
+      createdBy: body.createdBy,
+      getClaudeUserDefaultModel,
+      launcher,
+      requestedModel: body.model,
+    });
     const codexReasoningEffort =
       backend === "codex" && typeof body.codexReasoningEffort === "string"
         ? body.codexReasoningEffort.trim() || undefined

@@ -1239,15 +1239,8 @@ describe("takode spawn", () => {
 
       if (method === "GET" && url === "/api/sessions/leader-1") {
         res.writeHead(200, { "content-type": "application/json" });
-        // Leader is a codex session -- spawn should inherit backend and current model.
-        res.end(
-          JSON.stringify({
-            sessionId: "leader-1",
-            permissionMode: "plan",
-            backendType: "codex",
-            model: "gpt-5.5",
-          }),
-        );
+        // Leader is a codex session -- spawn should inherit this backend
+        res.end(JSON.stringify({ sessionId: "leader-1", permissionMode: "plan", backendType: "codex" }));
         return;
       }
       if (method === "POST" && url === "/api/sessions/create") {
@@ -1286,7 +1279,6 @@ describe("takode spawn", () => {
       cwd: process.cwd(),
       useWorktree: true,
       createdBy: "leader-1",
-      model: "gpt-5.5",
       codexReasoningEffort: "high",
     });
     expect(result.stdout).toContain('#21 "Worker One"');
@@ -1457,90 +1449,6 @@ describe("takode spawn", () => {
     expect(parsed.leaderPermissionMode).toBe("bypassPermissions");
     expect(parsed.inheritedAskPermission).toBe(false);
     expect(parsed.sessions.map((s) => s.sessionNum)).toEqual([31, 32]);
-  });
-
-  it("preserves an explicit --model override instead of inheriting the leader model", async () => {
-    const createBodies: JsonObject[] = [];
-
-    const server = createServer(async (req, res) => {
-      const method = req.method || "";
-      const url = req.url || "";
-
-      if (method === "GET" && url === "/api/takode/me") {
-        res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({ sessionId: "leader-override", isOrchestrator: true }));
-        return;
-      }
-
-      if (method === "GET" && url === "/api/sessions/leader-override") {
-        res.writeHead(200, { "content-type": "application/json" });
-        res.end(
-          JSON.stringify({
-            sessionId: "leader-override",
-            permissionMode: "plan",
-            backendType: "codex",
-            model: "gpt-5.5",
-          }),
-        );
-        return;
-      }
-
-      if (method === "POST" && url === "/api/sessions/create") {
-        createBodies.push(await readJson(req));
-        res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({ sessionId: "worker-override" }));
-        return;
-      }
-
-      if (method === "GET" && url === "/api/sessions/worker-override/info") {
-        res.writeHead(200, { "content-type": "application/json" });
-        res.end(
-          JSON.stringify({
-            sessionId: "worker-override",
-            sessionNum: 41,
-            name: "Worker Override",
-            state: "running",
-            backendType: "codex",
-            model: "gpt-5.4",
-            cwd: "/tmp/worker-override",
-            createdAt: Date.now(),
-            cliConnected: true,
-            isGenerating: false,
-            askPermission: true,
-            isWorktree: true,
-            codexReasoningEffort: "high",
-            codexInternetAccess: false,
-          }),
-        );
-        return;
-      }
-
-      res.writeHead(404, { "content-type": "application/json" });
-      res.end(JSON.stringify({ error: "not found" }));
-    });
-
-    server.listen(0);
-    await once(server, "listening");
-    const port = (server.address() as AddressInfo).port;
-
-    const result = await runTakode(["spawn", "--port", String(port), "--model", "gpt-5.4"], {
-      ...process.env,
-      COMPANION_SESSION_ID: "leader-override",
-      COMPANION_AUTH_TOKEN: "auth-override",
-    });
-
-    server.close();
-
-    expect(result.status).toBe(0);
-    expect(createBodies).toHaveLength(1);
-    expect(createBodies[0]).toEqual({
-      backend: "codex",
-      cwd: process.cwd(),
-      useWorktree: true,
-      createdBy: "leader-override",
-      model: "gpt-5.4",
-      codexReasoningEffort: "high",
-    });
   });
 
   it("reads multiline shell-sensitive initial messages from --message-file without mangling them", async () => {

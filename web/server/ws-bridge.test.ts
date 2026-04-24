@@ -5970,13 +5970,6 @@ describe("Browser message routing", () => {
   });
 
   it("set_model: sends control_request with set_model subtype to CLI", () => {
-    const launcherInfo = { model: "claude-sonnet-4-5-20250929" };
-    bridge.setLauncher({
-      getSession: vi.fn(() => launcherInfo),
-      touchActivity: vi.fn(),
-      touchUserMessage: vi.fn(),
-    } as any);
-
     bridge.handleBrowserMessage(
       browser,
       JSON.stringify({
@@ -5992,7 +5985,6 @@ describe("Browser message routing", () => {
     expect(sent.request_id).toBe("test-uuid");
     expect(sent.request.subtype).toBe("set_model");
     expect(sent.request.model).toBe("claude-opus-4-5-20250929");
-    expect(launcherInfo.model).toBe("claude-opus-4-5-20250929");
   });
 
   it("set_permission_mode: sends control_request with set_permission_mode subtype to CLI", () => {

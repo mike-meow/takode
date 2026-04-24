@@ -46,7 +46,7 @@ async function runTakode(
 }
 
 describe("takode spawn model payloads", () => {
-  it("continues forwarding the leader model across backend overrides when --model is omitted", async () => {
+  it("keeps the spawn create payload model-free when --model is omitted", async () => {
     const createBodies: JsonObject[] = [];
 
     const server = createServer(async (req, res) => {
@@ -66,7 +66,7 @@ describe("takode spawn model payloads", () => {
             sessionId: "leader-cross-backend",
             permissionMode: "plan",
             backendType: "codex",
-            model: "gpt-5.5",
+            model: "ignored-at-cli-layer",
           }),
         );
         return;
@@ -118,15 +118,92 @@ describe("takode spawn model payloads", () => {
 
     expect(result.status).toBe(0);
     expect(createBodies).toHaveLength(1);
-    // This locks in the current reviewed behavior: takode spawn treats the
-    // leader's active model as authoritative even when the backend is
-    // overridden, unless the caller passes an explicit --model.
     expect(createBodies[0]).toEqual({
       backend: "claude",
       cwd: process.cwd(),
       useWorktree: true,
       createdBy: "leader-cross-backend",
-      model: "gpt-5.5",
+    });
+  });
+
+  it("still forwards an explicit --model override", async () => {
+    const createBodies: JsonObject[] = [];
+
+    const server = createServer(async (req, res) => {
+      const method = req.method || "";
+      const url = req.url || "";
+
+      if (method === "GET" && url === "/api/takode/me") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ sessionId: "leader-explicit-model", isOrchestrator: true }));
+        return;
+      }
+
+      if (method === "GET" && url === "/api/sessions/leader-explicit-model") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            sessionId: "leader-explicit-model",
+            permissionMode: "plan",
+            backendType: "codex",
+            model: "gpt-5.5",
+          }),
+        );
+        return;
+      }
+
+      if (method === "POST" && url === "/api/sessions/create") {
+        createBodies.push(await readJson(req));
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ sessionId: "worker-explicit-model" }));
+        return;
+      }
+
+      if (method === "GET" && url === "/api/sessions/worker-explicit-model/info") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            sessionId: "worker-explicit-model",
+            sessionNum: 52,
+            name: "Worker Explicit Model",
+            state: "running",
+            backendType: "claude",
+            model: "claude-opus-4-5-20250929",
+            cwd: "/tmp/worker-explicit-model",
+            createdAt: Date.now(),
+            cliConnected: true,
+            isGenerating: false,
+            askPermission: true,
+            isWorktree: true,
+          }),
+        );
+        return;
+      }
+
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    });
+
+    server.listen(0);
+    await once(server, "listening");
+    const port = (server.address() as AddressInfo).port;
+
+    const result = await runTakode(["spawn", "--port", String(port), "--backend", "claude", "--model", "custom"], {
+      ...process.env,
+      COMPANION_SESSION_ID: "leader-explicit-model",
+      COMPANION_AUTH_TOKEN: "auth-explicit-model",
+    });
+
+    server.close();
+
+    expect(result.status).toBe(0);
+    expect(createBodies).toHaveLength(1);
+    expect(createBodies[0]).toEqual({
+      backend: "claude",
+      cwd: process.cwd(),
+      useWorktree: true,
+      createdBy: "leader-explicit-model",
+      model: "custom",
     });
   });
 });

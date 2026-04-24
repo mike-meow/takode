@@ -2378,7 +2378,6 @@ async function handleSpawn(base: string, args: string[]): Promise<void> {
     sessionId: string;
     sessionNum?: number | null;
     name?: string | null;
-    model?: string | null;
     permissionMode?: string;
     backendType?: string;
   };
@@ -2406,9 +2405,7 @@ async function handleSpawn(base: string, args: string[]): Promise<void> {
       fileFlag: "message-file",
       label: "Initial message",
     })) ?? "";
-  const explicitModel = resolveStringFlag(flags, "model", "model");
-  const inheritedLeaderModel = typeof leader.model === "string" ? leader.model.trim() : "";
-  const model = explicitModel || inheritedLeaderModel || undefined;
+  const model = resolveStringFlag(flags, "model", "model");
   const askOverride = resolveBooleanToggleFlag(flags, "ask", "no-ask");
   const internetOverride = resolveBooleanToggleFlag(flags, "internet", "no-internet");
   const reasoningEffort = resolveReasoningEffort(flags);
