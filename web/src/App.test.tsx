@@ -75,7 +75,7 @@ interface MockStoreState {
   closeSessionSearch: ReturnType<typeof vi.fn>;
   openNewSessionModal: ReturnType<typeof vi.fn>;
   openTerminal: ReturnType<typeof vi.fn>;
-  sessions: Map<string, { backend_type?: string }>;
+  sessions: Map<string, { backend_type?: string; cwd?: string }>;
 }
 
 let mockState: MockStoreState;
@@ -413,6 +413,87 @@ describe("App hidden panels", () => {
     );
 
     expect(window.location.hash).toBe("#/session/s2");
+    input.remove();
+  });
+
+  it("triggers terminal open even when focus is inside the session input", () => {
+    resetStore({
+      shortcutSettings: { enabled: true, preset: "standard", overrides: {} },
+      currentSessionId: "s1",
+      sessions: new Map([["s1", { backend_type: "claude", cwd: "/repo/s1" }]]),
+      sdkSessions: [{ sessionId: "s1", createdAt: 1, archived: false, cwd: "/repo/s1", backendType: "claude" }],
+    });
+    window.location.hash = "#/session/s1";
+    render(<App />);
+
+    const input = document.createElement("textarea");
+    document.body.appendChild(input);
+    input.focus();
+    input.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "T",
+        ctrlKey: true,
+        shiftKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+
+    expect(mockState.openTerminal).toHaveBeenCalledWith("/repo/s1", "s1");
+    expect(window.location.hash).toBe("#/terminal");
+    input.remove();
+  });
+
+  it("triggers terminal return even when focus is inside the terminal input", () => {
+    resetStore({
+      shortcutSettings: { enabled: true, preset: "standard", overrides: {} },
+      currentSessionId: "s1",
+      terminalCwd: "/repo/s1",
+      sessions: new Map([["s1", { backend_type: "claude", cwd: "/repo/s1" }]]),
+      sdkSessions: [{ sessionId: "s1", createdAt: 1, archived: false, cwd: "/repo/s1", backendType: "claude" }],
+    });
+    window.location.hash = "#/terminal";
+    render(<App />);
+
+    const input = document.createElement("textarea");
+    document.body.appendChild(input);
+    input.focus();
+    input.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "T",
+        ctrlKey: true,
+        shiftKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+
+    expect(window.location.hash).toBe("#/session/s1");
+    expect(mockState.setActiveTab).toHaveBeenCalledWith("chat");
+    input.remove();
+  });
+
+  it("keeps non-global shortcuts blocked while focus is inside an input", () => {
+    resetStore({
+      shortcutSettings: { enabled: true, preset: "standard", overrides: {} },
+      currentSessionId: "s1",
+    });
+    window.location.hash = "#/session/s1";
+    render(<App />);
+
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    input.focus();
+    input.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "f",
+        ctrlKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+
+    expect(mockState.openSessionSearch).not.toHaveBeenCalled();
     input.remove();
   });
 

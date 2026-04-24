@@ -84,7 +84,12 @@ const ACTION_ORDER: ShortcutActionId[] = [
   "new_session",
 ];
 
-const APP_GLOBAL_SHORTCUT_ACTIONS = new Set<ShortcutActionId>(["global_search", "previous_session", "next_session"]);
+const APP_GLOBAL_SHORTCUT_ACTIONS = new Set<ShortcutActionId>([
+  "global_search",
+  "open_terminal",
+  "previous_session",
+  "next_session",
+]);
 
 export const DEFAULT_SHORTCUT_SETTINGS: ShortcutSettings = {
   enabled: false,

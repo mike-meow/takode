@@ -318,10 +318,11 @@ describe("shortcuts", () => {
 
   it("marks global search and session switching as app-global shortcuts", () => {
     expect(isAppGlobalShortcutAction("global_search")).toBe(true);
+    expect(isAppGlobalShortcutAction("open_terminal")).toBe(true);
     expect(isAppGlobalShortcutAction("previous_session")).toBe(true);
     expect(isAppGlobalShortcutAction("next_session")).toBe(true);
     expect(isAppGlobalShortcutAction("search_session")).toBe(false);
-    expect(isAppGlobalShortcutAction("open_terminal")).toBe(false);
+    expect(isAppGlobalShortcutAction("toggle_sidebar")).toBe(false);
   });
 
   it("prefers the current session cwd when opening a new session", () => {
