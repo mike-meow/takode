@@ -505,6 +505,7 @@ export async function transitionQuest(questId: string, input: QuestTransitionInp
     ...(current.tags?.length ? { tags: current.tags } : {}),
     ...(current.parentId ? { parentId: current.parentId } : {}),
     ...(current.images?.length ? { images: current.images } : {}),
+    ...(current.commitShas?.length ? { commitShas: current.commitShas } : {}),
     ...(previousOwners.length ? { previousOwnerSessionIds: previousOwners } : {}),
     ...(currentFeedback?.length ? { feedback: currentFeedback } : {}),
   };
@@ -609,7 +610,9 @@ export async function transitionQuest(questId: string, input: QuestTransitionInp
         verificationItems,
         verificationInboxUnread: true,
         ...(nextPreviousOwners.length ? { previousOwnerSessionIds: nextPreviousOwners } : {}),
-        ...(inputCommitShas?.length ? { commitShas: inputCommitShas } : {}),
+        ...(inputCommitShas?.length
+          ? { commitShas: normalizeCommitShas([...(current.commitShas ?? []), ...inputCommitShas]) }
+          : {}),
       } as QuestNeedsVerification;
       break;
     }
