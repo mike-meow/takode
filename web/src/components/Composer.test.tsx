@@ -1952,7 +1952,9 @@ describe("Composer VS Code context", () => {
 
     expect(screen.getByText("1 line selected")).toBeTruthy();
     expect(screen.getByText("App.tsx:42")).toBeTruthy();
-    expect(screen.getByTitle("[user selection in VSCode: web/src/App.tsx line 42] (this may or may not be relevant)")).toBeTruthy();
+    expect(
+      screen.getByTitle("[user selection in VSCode: web/src/App.tsx line 42] (this may or may not be relevant)"),
+    ).toBeTruthy();
   });
 
   it("renders the current VS Code selection as an attachment chip", () => {
