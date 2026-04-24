@@ -75,12 +75,11 @@ function buildSelectionPayload(input) {
   if (!input || !input.pathLabel || !input.absolutePath) {
     return null;
   }
-  if (input.isEmpty) {
-    return null;
-  }
-  const lineCount = getSelectedLineCountFromRange(input);
+  // Cursor-only editor state should still flow through the sync path so the
+  // composer can show the current VS Code location above the draft.
+  const endLine = input.isEmpty ? input.startLine : getInclusiveEndLine(input);
+  const lineCount = input.isEmpty ? 1 : getSelectedLineCountFromRange(input);
   if (!lineCount) return null;
-  const endLine = getInclusiveEndLine(input);
   return {
     absolutePath: input.absolutePath,
     relativePath: input.pathLabel,

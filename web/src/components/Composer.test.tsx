@@ -1934,6 +1934,27 @@ describe("Composer ask permission toggle", () => {
 });
 
 describe("Composer VS Code context", () => {
+  it("renders a cursor-only VS Code location as a single-line chip", () => {
+    setupMockStore({
+      vscodeSelectionContext: {
+        selection: {
+          absolutePath: "/test/web/src/App.tsx",
+          startLine: 42,
+          endLine: 42,
+          lineCount: 1,
+        },
+        updatedAt: 1,
+        sourceId: "vscode:window-3",
+        sourceType: "vscode-window",
+      },
+    });
+    render(<Composer sessionId="s1" />);
+
+    expect(screen.getByText("1 line selected")).toBeTruthy();
+    expect(screen.getByText("App.tsx:42")).toBeTruthy();
+    expect(screen.getByTitle("[user selection in VSCode: web/src/App.tsx line 42] (this may or may not be relevant)")).toBeTruthy();
+  });
+
   it("renders the current VS Code selection as an attachment chip", () => {
     setupMockStore({
       vscodeSelectionContext: {

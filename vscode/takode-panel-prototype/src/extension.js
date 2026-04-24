@@ -438,9 +438,9 @@ function activate(context) {
   });
 
   const heartbeatInterval = setInterval(() => {
-    // Selection: no force — only republish if the fingerprint actually changed.
-    // Force-publishing creates timestamp churn that makes the browser badge flicker.
-    void selectionSync.publishSelection(getBackgroundSelectionContext());
+    // Revalidate unchanged selection state against the server so Takode
+    // recovers after a server restart without churning timestamps every tick.
+    void selectionSync.publishSelection(getBackgroundSelectionContext(), { revalidate: true });
     void selectionSync.publishWindow({ force: true, lastActivityAt: lastWindowActivityAt });
   }, SELECTION_SYNC_HEARTBEAT_MS);
   context.subscriptions.push({

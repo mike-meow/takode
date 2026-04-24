@@ -2632,6 +2632,39 @@ describe("POST /api/vscode/selection", () => {
     });
   });
 
+  it("accepts a cursor-only single-line VSCode location payload", async () => {
+    const res = await app.request("/api/vscode/selection", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        selection: {
+          absolutePath: "/repo/src/app.ts",
+          startLine: 42,
+          endLine: 42,
+          lineCount: 1,
+        },
+        updatedAt: 2500,
+        sourceId: "window-a",
+        sourceType: "vscode-window",
+        sourceLabel: "VS Code A",
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(bridge.updateVsCodeSelectionState).toHaveBeenCalledWith({
+      selection: {
+        absolutePath: "/repo/src/app.ts",
+        startLine: 42,
+        endLine: 42,
+        lineCount: 1,
+      },
+      updatedAt: 2500,
+      sourceId: "window-a",
+      sourceType: "vscode-window",
+      sourceLabel: "VS Code A",
+    });
+  });
+
   it("accepts explicit clears", async () => {
     const res = await app.request("/api/vscode/selection", {
       method: "POST",

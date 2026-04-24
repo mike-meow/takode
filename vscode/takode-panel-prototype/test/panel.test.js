@@ -153,8 +153,8 @@ test("buildSelectionPayload counts full-line selections using VS Code range sema
   );
 });
 
-test("buildSelectionPayload returns null for an empty selection", () => {
-  assert.equal(
+test("buildSelectionPayload keeps cursor-only editor context as a single-line payload", () => {
+  assert.deepEqual(
     buildSelectionPayload({
       absolutePath: "/workspace/project/web/src/App.tsx",
       pathLabel: "web/src/App.tsx",
@@ -163,7 +163,14 @@ test("buildSelectionPayload returns null for an empty selection", () => {
       isEmpty: true,
       lineText: "const route = useMemo(() => parseHash(hash), [hash]);",
     }),
-    null,
+    {
+      absolutePath: "/workspace/project/web/src/App.tsx",
+      relativePath: "web/src/App.tsx",
+      displayPath: "App.tsx",
+      startLine: 42,
+      endLine: 42,
+      lineCount: 1,
+    },
   );
 });
 

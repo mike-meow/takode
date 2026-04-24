@@ -152,6 +152,90 @@ test("selection sync retries the same payload after a failed publish", async () 
   assert.equal(calls.length, 2);
 });
 
+test("selection sync republishes unchanged selection after the server loses state on restart", async () => {
+  const calls = [];
+  let serverState = null;
+  const sourceInfo = {
+    sourceId: "vscode-window:test",
+    sourceType: "vscode-window",
+    sourceLabel: "VS Code",
+  };
+  const selection = {
+    absolutePath: "/workspace/project/web/src/App.tsx",
+    startLine: 42,
+    endLine: 42,
+    lineCount: 1,
+  };
+  const manager = createSelectionSyncManager({
+    fetchImpl: async (url, options = {}) => {
+      calls.push({ url, options });
+      if (options.method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ state: serverState }),
+        };
+      }
+      if (String(url).endsWith("/api/vscode/selection")) {
+        serverState = JSON.parse(options.body);
+      }
+      return { ok: true, status: 200, json: async () => ({ ok: true }) };
+    },
+    getBaseUrls: () => ["http://localhost:3456"],
+    getSourceInfo: () => sourceInfo,
+  });
+
+  assert.equal(await manager.publishSelection(selection), true);
+  assert.equal(calls.length, 1);
+
+  serverState = null;
+
+  assert.equal(await manager.publishSelection(selection, { revalidate: true }), true);
+  assert.equal(calls.length, 3);
+  assert.equal(calls[1].options.method, "GET");
+  assert.equal(calls[2].options.method, "POST");
+  assert.deepEqual(serverState.selection, selection);
+});
+
+test("selection sync skips republishing unchanged selection when the server still has it after revalidation", async () => {
+  const calls = [];
+  let serverState = null;
+  const sourceInfo = {
+    sourceId: "vscode-window:test",
+    sourceType: "vscode-window",
+    sourceLabel: "VS Code",
+  };
+  const selection = {
+    absolutePath: "/workspace/project/web/src/App.tsx",
+    startLine: 42,
+    endLine: 42,
+    lineCount: 1,
+  };
+  const manager = createSelectionSyncManager({
+    fetchImpl: async (url, options = {}) => {
+      calls.push({ url, options });
+      if (options.method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ state: serverState }),
+        };
+      }
+      if (String(url).endsWith("/api/vscode/selection")) {
+        serverState = JSON.parse(options.body);
+      }
+      return { ok: true, status: 200, json: async () => ({ ok: true }) };
+    },
+    getBaseUrls: () => ["http://localhost:3456"],
+    getSourceInfo: () => sourceInfo,
+  });
+
+  assert.equal(await manager.publishSelection(selection), true);
+  assert.equal(await manager.publishSelection(selection, { revalidate: true }), false);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].options.method, "GET");
+});
+
 test("window sync publishes workspace roots and deduplicates identical heartbeats unless forced", async () => {
   const calls = [];
   const manager = createSelectionSyncManager({

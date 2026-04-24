@@ -116,6 +116,65 @@ async function postJson(fetchImpl, apiUrl, payload) {
   });
 }
 
+function selectionStateMatches(selectionState, selection, sourceInfo) {
+  if (selectionState == null) {
+    return selection === null;
+  }
+  if (!selectionState || typeof selectionState !== "object") {
+    return false;
+  }
+
+  const serverSourceLabel = typeof selectionState.sourceLabel === "string" ? selectionState.sourceLabel : null;
+  if (
+    selectionState.sourceId !== sourceInfo.sourceId
+    || selectionState.sourceType !== sourceInfo.sourceType
+    || serverSourceLabel !== (sourceInfo.sourceLabel || null)
+  ) {
+    return false;
+  }
+
+  if (selection === null) {
+    return selectionState.selection === null;
+  }
+
+  const serverSelection = selectionState.selection;
+  if (!serverSelection || typeof serverSelection !== "object") {
+    return false;
+  }
+
+  return (
+    serverSelection.absolutePath === selection.absolutePath
+    && serverSelection.startLine === selection.startLine
+    && serverSelection.endLine === selection.endLine
+    && serverSelection.lineCount === selection.lineCount
+  );
+}
+
+async function shouldRepublishSelection(fetchImpl, urls, selection, sourceInfo, logDebug) {
+  for (const { apiUrl } of urls) {
+    try {
+      const response = await fetchImpl(apiUrl, {
+        method: "GET",
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      });
+      if (!response.ok) {
+        logDebug("selectionSync revalidate failed", { apiUrl, status: response.status });
+        return true;
+      }
+      const body = await response.json().catch(() => ({}));
+      if (!selectionStateMatches(body?.state, selection, sourceInfo)) {
+        logDebug("selectionSync revalidate missing state", { apiUrl });
+        return true;
+      }
+    } catch (error) {
+      const text = error instanceof Error ? error.message : String(error);
+      logDebug("selectionSync revalidate error", { apiUrl, error: text });
+      return true;
+    }
+  }
+  return false;
+}
+
 function createSelectionSyncManager({
   fetchImpl = fetch,
   getBaseUrls,
@@ -131,8 +190,15 @@ function createSelectionSyncManager({
     const sourceInfo = getSourceInfo();
     const urls = dedupeApiUrls(getBaseUrls(), getSelectionApiUrl);
     const fingerprint = getSelectionFingerprint(selection, sourceInfo, urls);
-    if (!options.force && fingerprint === lastSelectionFingerprint) {
-      return false;
+    const isUnchanged = !options.force && fingerprint === lastSelectionFingerprint;
+    if (isUnchanged) {
+      if (!options.revalidate) {
+        return false;
+      }
+      const needsRepublish = await shouldRepublishSelection(fetchImpl, urls, selection, sourceInfo, logDebug);
+      if (!needsRepublish) {
+        return false;
+      }
     }
 
     if (urls.length === 0) {
