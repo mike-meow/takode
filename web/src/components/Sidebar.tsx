@@ -32,6 +32,7 @@ import type { SidebarSessionItem as SessionItemType } from "../utils/sidebar-ses
 import { buildSidebarVisibleSessions } from "../utils/sidebar-visible-sessions.js";
 import { isDesktopShellLayout } from "../utils/layout.js";
 import { questOwnsSessionName } from "../utils/quest-helpers.js";
+import { requestThreadViewportSnapshot } from "../utils/thread-viewport.js";
 import {
   buildHerdGroupBadgeThemes,
   getHerdGroupLeaderId,
@@ -1287,6 +1288,7 @@ export function Sidebar() {
               if (!isTerminalPage) {
                 const state = useStore.getState();
                 const sessionId = state.currentSessionId;
+                requestThreadViewportSnapshot(sessionId);
                 const sessionCwd =
                   (sessionId ? state.sessions.get(sessionId)?.cwd : null) ??
                   state.sdkSessions.find((sdk) => sdk.sessionId === sessionId)?.cwd ??

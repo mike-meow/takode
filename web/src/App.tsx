@@ -32,6 +32,7 @@ import { isPendingId } from "./utils/pending-creation.js";
 import { isDesktopShellLayout, isDesktopTaskPanelLayout } from "./utils/layout.js";
 import { getLastSessionCreationContext } from "./utils/new-session-defaults.js";
 import { buildSidebarVisibleSessions } from "./utils/sidebar-visible-sessions.js";
+import { requestThreadViewportSnapshot } from "./utils/thread-viewport.js";
 import {
   announceVsCodeReady,
   type VsCodeSelectionContextPayload,
@@ -287,6 +288,7 @@ export default function App() {
         lastNewSessionContext: getLastSessionCreationContext(),
         openNewSessionModal: (context) => state.openNewSessionModal(context),
         openTerminal: state.openTerminal,
+        captureConversationViewport: () => requestThreadViewportSnapshot(currentSessionId),
         setActiveTab: state.setActiveTab,
         toggleSidebar: () => state.setSidebarOpen(!state.sidebarOpen),
         navigateTo,

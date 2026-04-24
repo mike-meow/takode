@@ -65,6 +65,7 @@ export interface ShortcutRuntime {
   lastNewSessionContext?: ShortcutNewSessionContext | null;
   openNewSessionModal: (context?: ShortcutNewSessionContext) => void;
   openTerminal: (cwd: string, sessionId?: string | null) => void;
+  captureConversationViewport?: () => void;
   setActiveTab: (tab: "chat" | "diff") => void;
   toggleSidebar: () => void;
   navigateTo: (path: string) => void;
@@ -544,6 +545,7 @@ export function performShortcutAction(actionId: ShortcutActionId, runtime: Short
         }
         return runtime.navigateToMostRecentSession();
       }
+      runtime.captureConversationViewport?.();
       const cwd = runtime.currentSessionCwd ?? runtime.terminalCwd;
       if (cwd) runtime.openTerminal(cwd, runtime.currentSessionId);
       runtime.navigateTo("/terminal");

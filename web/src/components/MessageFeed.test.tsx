@@ -134,6 +134,7 @@ import {
   findVisibleSectionEndIndex,
   findVisibleSectionStartIndex,
 } from "./MessageFeed.js";
+import { requestThreadViewportSnapshot } from "../utils/thread-viewport.js";
 
 function makeMessage(overrides: Partial<ChatMessage> & { role: ChatMessage["role"] }): ChatMessage {
   return {
@@ -1051,6 +1052,189 @@ describe("MessageFeed - scroll behavior", () => {
       } else {
         delete (HTMLDivElement.prototype as { scrollTop?: unknown }).scrollTop;
       }
+    }
+  });
+
+  it("captures a terminal-switch snapshot and restores to the real bottom on remount", () => {
+    const sid = "test-terminal-roundtrip-bottom";
+    setStoreMessages(sid, [
+      makeMessage({ id: "u1", role: "user", content: "Question" }),
+      makeMessage({ id: "a1", role: "assistant", content: "Answer" }),
+    ]);
+
+    let scrollHeightValue = 1200;
+    const originalScrollHeight = Object.getOwnPropertyDescriptor(HTMLDivElement.prototype, "scrollHeight");
+    const originalScrollTop = Object.getOwnPropertyDescriptor(HTMLDivElement.prototype, "scrollTop");
+    const originalClientHeight = Object.getOwnPropertyDescriptor(HTMLDivElement.prototype, "clientHeight");
+    let scrollTopValue = 788;
+    Object.defineProperty(HTMLDivElement.prototype, "scrollHeight", {
+      configurable: true,
+      get() {
+        return this.classList.contains("overflow-y-auto") ? scrollHeightValue : 0;
+      },
+    });
+    Object.defineProperty(HTMLDivElement.prototype, "clientHeight", {
+      configurable: true,
+      get() {
+        return this.classList.contains("overflow-y-auto") ? 400 : 0;
+      },
+    });
+    Object.defineProperty(HTMLDivElement.prototype, "scrollTop", {
+      configurable: true,
+      get() {
+        return this.classList.contains("overflow-y-auto") ? scrollTopValue : 0;
+      },
+      set(value) {
+        scrollTopValue = value as number;
+      },
+    });
+
+    mockSetFeedScrollPosition.mockImplementationOnce((sessionId, pos) => {
+      setStoreFeedScrollPosition(sessionId, pos);
+    });
+
+    try {
+      const { unmount } = render(<MessageFeed sessionId={sid} />);
+      requestThreadViewportSnapshot(sid);
+      unmount();
+
+      scrollHeightValue = 1600;
+      scrollTopValue = 0;
+      mockScrollTo.mockClear();
+
+      render(<MessageFeed sessionId={sid} />);
+
+      expect(mockScrollTo).toHaveBeenCalledWith({ top: 1188, behavior: "auto" });
+    } finally {
+      if (originalScrollHeight) {
+        Object.defineProperty(HTMLDivElement.prototype, "scrollHeight", originalScrollHeight);
+      } else {
+        delete (HTMLDivElement.prototype as { scrollHeight?: unknown }).scrollHeight;
+      }
+      if (originalClientHeight) {
+        Object.defineProperty(HTMLDivElement.prototype, "clientHeight", originalClientHeight);
+      } else {
+        delete (HTMLDivElement.prototype as { clientHeight?: unknown }).clientHeight;
+      }
+      if (originalScrollTop) {
+        Object.defineProperty(HTMLDivElement.prototype, "scrollTop", originalScrollTop);
+      } else {
+        delete (HTMLDivElement.prototype as { scrollTop?: unknown }).scrollTop;
+      }
+    }
+  });
+
+  it("captures an anchored older viewport when snapshotting before a terminal switch", () => {
+    const sid = "test-terminal-roundtrip-anchor";
+    setStoreMessages(sid, [
+      makeMessage({ id: "u1", role: "user", content: "First request" }),
+      makeMessage({ id: "a1", role: "assistant", content: "First result" }),
+      makeMessage({ id: "u2", role: "user", content: "Second request" }),
+      makeMessage({ id: "a2", role: "assistant", content: "Second result" }),
+      makeMessage({ id: "u3", role: "user", content: "Third request" }),
+      makeMessage({ id: "a3", role: "assistant", content: "Third result" }),
+    ]);
+
+    mockSetFeedScrollPosition.mockImplementation((sessionId, pos) => {
+      setStoreFeedScrollPosition(sessionId, pos);
+    });
+
+    const { container } = render(<MessageFeed sessionId={sid} />);
+    const scrollContainer = container.querySelector(".overflow-y-auto") as HTMLDivElement;
+    let scrollTopValue = 720;
+
+    const originalClientHeight = Object.getOwnPropertyDescriptor(HTMLDivElement.prototype, "clientHeight");
+    const originalScrollHeight = Object.getOwnPropertyDescriptor(HTMLDivElement.prototype, "scrollHeight");
+    const originalScrollTop = Object.getOwnPropertyDescriptor(HTMLDivElement.prototype, "scrollTop");
+
+    Object.defineProperty(HTMLDivElement.prototype, "clientHeight", {
+      configurable: true,
+      get() {
+        return this.classList.contains("overflow-y-auto") ? 400 : 0;
+      },
+    });
+    Object.defineProperty(HTMLDivElement.prototype, "scrollHeight", {
+      configurable: true,
+      get() {
+        return this.classList.contains("overflow-y-auto") ? 1600 : 0;
+      },
+    });
+    Object.defineProperty(HTMLDivElement.prototype, "scrollTop", {
+      configurable: true,
+      get() {
+        return this.classList.contains("overflow-y-auto") ? scrollTopValue : 0;
+      },
+      set(value) {
+        scrollTopValue = value as number;
+      },
+    });
+
+    const originalGetBoundingClientRect = HTMLElement.prototype.getBoundingClientRect;
+    const makeRect = (top: number, height: number): DOMRect =>
+      ({
+        x: 0,
+        y: top,
+        top,
+        bottom: top + height,
+        left: 0,
+        right: 320,
+        width: 320,
+        height,
+        toJSON() {
+          return {};
+        },
+      }) as DOMRect;
+
+    HTMLElement.prototype.getBoundingClientRect = function getBoundingClientRectMock() {
+      const element = this as HTMLElement;
+      if (element === scrollContainer || element.classList.contains("overflow-y-auto")) {
+        return makeRect(0, 400);
+      }
+
+      const baseTopByTurnId: Record<string, { top: number; height: number }> = {
+        u1: { top: 0, height: 300 },
+        u2: { top: 740, height: 300 },
+        u3: { top: 1180, height: 300 },
+      };
+
+      const turnId = element.dataset.turnId;
+      if (turnId && baseTopByTurnId[turnId] !== undefined) {
+        const turn = baseTopByTurnId[turnId];
+        return makeRect(turn.top - scrollTopValue, turn.height);
+      }
+
+      return makeRect(-1000, 0);
+    };
+
+    try {
+      fireEvent.scroll(scrollContainer);
+      requestThreadViewportSnapshot(sid);
+      expect(mockSetFeedScrollPosition).toHaveBeenCalledWith(
+        sid,
+        expect.objectContaining({
+          scrollTop: 720,
+          isAtBottom: false,
+          anchorTurnId: "u2",
+          anchorOffsetTop: 20,
+        }),
+      );
+    } finally {
+      if (originalClientHeight) {
+        Object.defineProperty(HTMLDivElement.prototype, "clientHeight", originalClientHeight);
+      } else {
+        delete (HTMLDivElement.prototype as { clientHeight?: unknown }).clientHeight;
+      }
+      if (originalScrollHeight) {
+        Object.defineProperty(HTMLDivElement.prototype, "scrollHeight", originalScrollHeight);
+      } else {
+        delete (HTMLDivElement.prototype as { scrollHeight?: unknown }).scrollHeight;
+      }
+      if (originalScrollTop) {
+        Object.defineProperty(HTMLDivElement.prototype, "scrollTop", originalScrollTop);
+      } else {
+        delete (HTMLDivElement.prototype as { scrollTop?: unknown }).scrollTop;
+      }
+      HTMLElement.prototype.getBoundingClientRect = originalGetBoundingClientRect;
     }
   });
 

@@ -28,6 +28,7 @@ import { TimerChip } from "./TimerWidget.js";
 import { NotificationChip } from "./NotificationChip.js";
 import { useTextSelection } from "../hooks/useTextSelection.js";
 import { SelectionContextMenu } from "./SelectionContextMenu.js";
+import { SAVE_THREAD_VIEWPORT_EVENT } from "../utils/thread-viewport.js";
 import {
   HISTORY_WINDOW_SECTION_TURN_COUNT,
   HISTORY_WINDOW_VISIBLE_SECTION_COUNT,
@@ -2835,25 +2836,38 @@ export function MessageFeed({
     [getFeedBlockBottom],
   );
 
+  const persistFeedViewport = useCallback(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const anchor = findVisibleTurnAnchor(container);
+    useStore.getState().setFeedScrollPosition(sessionId, {
+      scrollTop: container.scrollTop,
+      scrollHeight: container.scrollHeight,
+      isAtBottom: autoFollowEnabledRef.current && isNearBottom.current,
+      anchorTurnId: anchor?.turnId ?? null,
+      anchorOffsetTop: anchor?.offsetTop,
+      lastSeenContentBottom: lastSeenContentBottomRef.current ?? getRealContentBottom(),
+    });
+  }, [findVisibleTurnAnchor, getRealContentBottom, sessionId]);
+
   // Save scroll position on unmount. Uses useLayoutEffect so the cleanup runs
   // in the layout phase — BEFORE the new component's effects try to restore,
   // avoiding the race where useEffect cleanup runs too late.
   useLayoutEffect(() => {
     return () => {
-      const el = containerRef.current;
-      if (el) {
-        const anchor = findVisibleTurnAnchor(el);
-        useStore.getState().setFeedScrollPosition(sessionId, {
-          scrollTop: el.scrollTop,
-          scrollHeight: el.scrollHeight,
-          isAtBottom: autoFollowEnabledRef.current && isNearBottom.current,
-          anchorTurnId: anchor?.turnId ?? null,
-          anchorOffsetTop: anchor?.offsetTop,
-          lastSeenContentBottom: lastSeenContentBottomRef.current ?? getRealContentBottom(),
-        });
-      }
+      persistFeedViewport();
     };
-  }, [findVisibleTurnAnchor, getRealContentBottom, sessionId]);
+  }, [persistFeedViewport]);
+
+  useEffect(() => {
+    const handleSnapshotRequest = (event: Event) => {
+      const detail = (event as CustomEvent<{ sessionId?: string | null }>).detail;
+      if (!detail?.sessionId || detail.sessionId !== sessionId) return;
+      persistFeedViewport();
+    };
+    window.addEventListener(SAVE_THREAD_VIEWPORT_EVENT, handleSnapshotRequest as EventListener);
+    return () => window.removeEventListener(SAVE_THREAD_VIEWPORT_EVENT, handleSnapshotRequest as EventListener);
+  }, [persistFeedViewport, sessionId]);
 
   const sections = useMemo(() => buildFeedSections(turns, sectionTurnCount), [sectionTurnCount, turns]);
   const isWindowedHistory = historyWindow !== null;
