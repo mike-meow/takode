@@ -31,6 +31,7 @@ import { QuestDetailPanel } from "./components/QuestDetailPanel.js";
 import { isPendingId } from "./utils/pending-creation.js";
 import { isDesktopShellLayout, isDesktopTaskPanelLayout } from "./utils/layout.js";
 import { getLastSessionCreationContext } from "./utils/new-session-defaults.js";
+import { buildSidebarVisibleSessions } from "./utils/sidebar-visible-sessions.js";
 import {
   announceVsCodeReady,
   type VsCodeSelectionContextPayload,
@@ -59,6 +60,39 @@ function useHash() {
     },
     () => window.location.hash,
   );
+}
+
+function buildSidebarOrderedShortcutSessions(state: ReturnType<typeof useStore.getState>) {
+  const { orderedVisibleSessionIds } = buildSidebarVisibleSessions({
+    sessions: state.sessions,
+    sdkSessions: state.sdkSessions,
+    cliConnected: state.cliConnected,
+    cliDisconnectReason: state.cliDisconnectReason,
+    sessionStatus: state.sessionStatus,
+    pendingPermissions: state.pendingPermissions,
+    askPermission: state.askPermission,
+    diffFileStats: state.diffFileStats,
+    treeGroups: state.treeGroups,
+    treeAssignments: state.treeAssignments,
+    treeNodeOrder: state.treeNodeOrder,
+    sessionAttention: state.sessionAttention,
+    sessionSortMode: state.sessionSortMode,
+    countUserPermissions: () => 0,
+  });
+  const sdkById = new Map(state.sdkSessions.map((session) => [session.sessionId, session] as const));
+  return orderedVisibleSessionIds
+    .map((sessionId, index) => {
+      const session = sdkById.get(sessionId);
+      if (!session) return null;
+      return {
+        sessionId: session.sessionId,
+        createdAt: session.createdAt,
+        archived: session.archived,
+        cronJobId: session.cronJobId ?? null,
+        orderIndex: index,
+      };
+    })
+    .filter((session): session is NonNullable<typeof session> => session !== null);
 }
 
 export default function App() {
@@ -236,12 +270,7 @@ export default function App() {
         terminalCwd: state.terminalCwd,
         activeTab: state.activeTab,
         isSearchOpen: currentSessionId ? getSessionSearchState(state, currentSessionId).isOpen : false,
-        sessions: state.sdkSessions.map((session) => ({
-          sessionId: session.sessionId,
-          createdAt: session.createdAt,
-          archived: session.archived,
-          cronJobId: session.cronJobId ?? null,
-        })),
+        sessions: buildSidebarOrderedShortcutSessions(state),
         focusGlobalSearch: () => {
           state.setSidebarOpen(true);
           requestAnimationFrame(() => {

@@ -42,6 +42,7 @@ export interface ShortcutSessionSummary {
   createdAt: number;
   archived?: boolean;
   cronJobId?: string | null;
+  orderIndex?: number | null;
 }
 
 export interface ShortcutNewSessionContext {
@@ -446,9 +447,20 @@ export function getMatchingShortcutAction(
 }
 
 export function getShortcutSessions(sessions: ShortcutSessionSummary[]): ShortcutSessionSummary[] {
-  return [...sessions]
-    .filter((session) => !session.archived && !session.cronJobId)
-    .sort((left, right) => right.createdAt - left.createdAt);
+  const base = sessions.filter((session) => !session.archived && !session.cronJobId);
+  const hasSidebarOrder = base.some((session) => typeof session.orderIndex === "number");
+  return [...base]
+    .filter((session) => !hasSidebarOrder || typeof session.orderIndex === "number")
+    .sort((left, right) => {
+      const leftOrder = left.orderIndex;
+      const rightOrder = right.orderIndex;
+      if (typeof leftOrder === "number" && typeof rightOrder === "number") {
+        return leftOrder - rightOrder;
+      }
+      if (typeof leftOrder === "number") return -1;
+      if (typeof rightOrder === "number") return 1;
+      return right.createdAt - left.createdAt;
+    });
 }
 
 function getAnchorSessionIndex(

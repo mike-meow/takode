@@ -121,6 +121,7 @@ interface MockStoreState {
   markSessionUnread: ReturnType<typeof vi.fn>;
   clearSessionAttention: ReturnType<typeof vi.fn>;
   setTreeGroups: ReturnType<typeof vi.fn>;
+  focusComposer: ReturnType<typeof vi.fn>;
 }
 
 function makeSession(id: string, overrides: Partial<SessionState> = {}): SessionState {
@@ -220,6 +221,7 @@ function createMockState(overrides: Partial<MockStoreState> = {}): MockStoreStat
     markSessionUnread: vi.fn(),
     clearSessionAttention: vi.fn(),
     setTreeGroups: vi.fn(),
+    focusComposer: vi.fn(),
     ...overrides,
   };
 }
@@ -422,7 +424,7 @@ describe("Sidebar", { timeout: 10000 }, () => {
       expect(mockApi.searchSessions).toHaveBeenCalledWith(
         "beta",
         expect.objectContaining({
-          includeArchived: true,
+          includeArchived: false,
           signal: expect.any(AbortSignal),
         }),
       );
@@ -432,6 +434,43 @@ describe("Sidebar", { timeout: 10000 }, () => {
     const highlight = screen.getByText("beta");
     expect(highlight.tagName).toBe("MARK");
     expect(screen.getByText(/find/i)).toBeInTheDocument();
+  });
+
+  it("excludes archived sessions from global search by default", async () => {
+    const session1 = makeSession("s1", { cwd: "/repo/a" });
+    const sdk1 = makeSdkSession("s1", { archived: false, createdAt: 1000 });
+    mockState = createMockState({
+      sessions: new Map([["s1", session1]]),
+      sdkSessions: [sdk1],
+      sessionNames: new Map([["s1", "Alpha"]]),
+    });
+    mockApi.searchSessions.mockResolvedValueOnce({
+      query: "alpha",
+      tookMs: 3,
+      totalMatches: 1,
+      results: [
+        {
+          sessionId: "s1",
+          score: 500,
+          matchedField: "name",
+          matchContext: "name: Alpha",
+          matchedAt: 12345,
+        },
+      ],
+    });
+
+    render(<Sidebar />);
+    fireEvent.change(screen.getByPlaceholderText("Search..."), { target: { value: "alpha" } });
+
+    await waitFor(() => {
+      expect(mockApi.searchSessions).toHaveBeenCalledWith(
+        "alpha",
+        expect.objectContaining({
+          includeArchived: false,
+          signal: expect.any(AbortSignal),
+        }),
+      );
+    });
   });
 
   it("aborts the previous in-flight server search when query changes", async () => {
@@ -548,6 +587,7 @@ describe("Sidebar", { timeout: 10000 }, () => {
     expect(screen.queryByText("name:")).not.toBeInTheDocument();
     expect(mockState.markSessionViewed).toHaveBeenCalledWith("s2");
     expect(mockState.setSearchPreviewSessionId).toHaveBeenLastCalledWith(null);
+    await waitFor(() => expect(mockState.focusComposer).toHaveBeenCalled());
   });
 
   it("opens the clicked global-search result and exits search mode", async () => {

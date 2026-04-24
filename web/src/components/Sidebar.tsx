@@ -29,7 +29,7 @@ import { deriveSessionStatus } from "./SessionStatusDot.js";
 import type { SessionTaskEntry, SdkSessionInfo } from "../types.js";
 
 import type { SidebarSessionItem as SessionItemType } from "../utils/sidebar-session-item.js";
-import { buildTreeViewGroups } from "../utils/tree-grouping.js";
+import { buildSidebarVisibleSessions } from "../utils/sidebar-visible-sessions.js";
 import { isDesktopShellLayout } from "../utils/layout.js";
 import { questOwnsSessionName } from "../utils/quest-helpers.js";
 import {
@@ -44,16 +44,6 @@ const restrictToVerticalAxis: Modifier = ({ transform }) => ({
   ...transform,
   x: 0,
 });
-
-function sumDiffFileStats(fileStats: Map<string, { additions: number; deletions: number }> | undefined) {
-  let additions = 0;
-  let deletions = 0;
-  for (const stats of fileStats?.values() ?? []) {
-    additions += stats.additions;
-    deletions += stats.deletions;
-  }
-  return { additions, deletions };
-}
 
 function sessionTaskHistoryEqual(a: SessionTaskEntry[] | undefined, b: SessionTaskEntry[] | undefined): boolean {
   if (a === b) return true;
@@ -393,6 +383,11 @@ export function Sidebar() {
     api.markSessionRead?.(sessionId).catch(() => {});
     // Navigate to session hash — App.tsx hash effect handles setCurrentSession + connectSession
     navigateToSession(sessionId);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        useStore.getState().focusComposer();
+      });
+    });
     // Close sidebar on mobile
     if (!isDesktopLayout) {
       useStore.getState().setSidebarOpen(false);
@@ -636,73 +631,41 @@ export function Sidebar() {
     }
   }, []);
 
-  // Combine sessions from WsBridge state + SDK sessions list
-  const allSessionIds = new Set<string>();
-  for (const id of sessions.keys()) allSessionIds.add(id);
-  for (const s of sdkSessions) allSessionIds.add(s.sessionId);
-
-  const allSessionList: SessionItemType[] = Array.from(allSessionIds)
-    .map((id) => {
-      const bridgeState = sessions.get(id);
-      const sdkInfo = sdkSessions.find((s) => s.sessionId === id);
-      const sdkGitAhead = sdkInfo?.gitAhead ?? 0;
-      const sdkGitBehind = sdkInfo?.gitBehind ?? 0;
-      const gitAhead =
-        bridgeState?.git_ahead === 0 && sdkGitAhead > 0 ? sdkGitAhead : (bridgeState?.git_ahead ?? sdkGitAhead);
-      const gitBehind =
-        bridgeState?.git_behind === 0 && sdkGitBehind > 0 ? sdkGitBehind : (bridgeState?.git_behind ?? sdkGitBehind);
-      const serverLinesAdded = bridgeState?.total_lines_added ?? sdkInfo?.totalLinesAdded ?? 0;
-      const serverLinesRemoved = bridgeState?.total_lines_removed ?? sdkInfo?.totalLinesRemoved ?? 0;
-      const localLineStats = sumDiffFileStats(diffFileStats.get(id));
-      const linesAdded =
-        serverLinesAdded === 0 &&
-        serverLinesRemoved === 0 &&
-        (localLineStats.additions > 0 || localLineStats.deletions > 0)
-          ? localLineStats.additions
-          : serverLinesAdded;
-      const linesRemoved =
-        serverLinesAdded === 0 &&
-        serverLinesRemoved === 0 &&
-        (localLineStats.additions > 0 || localLineStats.deletions > 0)
-          ? localLineStats.deletions
-          : serverLinesRemoved;
-      return {
-        id,
-        claimedQuestStatus: bridgeState?.claimedQuestStatus ?? sdkInfo?.claimedQuestStatus ?? undefined,
-        model: bridgeState?.model || sdkInfo?.model || "",
-        cwd: bridgeState?.cwd || sdkInfo?.cwd || "",
-        gitBranch: bridgeState?.git_branch || sdkInfo?.gitBranch || "",
-        isContainerized: bridgeState?.is_containerized || !!sdkInfo?.containerId || false,
-        gitAhead,
-        gitBehind,
-        linesAdded,
-        linesRemoved,
-        isConnected: cliConnected.get(id) ?? sdkInfo?.cliConnected ?? false,
-        status: sessionStatus.get(id) ?? null,
-        sdkState: sdkInfo?.state ?? null,
-        createdAt: sdkInfo?.createdAt ?? 0,
-        archived: sdkInfo?.archived ?? false,
-        archivedAt: sdkInfo?.archivedAt,
-        backendType: bridgeState?.backend_type || sdkInfo?.backendType || "claude",
-        repoRoot: bridgeState?.repo_root || sdkInfo?.repoRoot || "",
-        permCount: countUserPermissions(pendingPermissions.get(id)),
-        pendingTimerCount: sdkInfo?.pendingTimerCount ?? 0,
-        cronJobId: bridgeState?.cronJobId || sdkInfo?.cronJobId,
-        cronJobName: bridgeState?.cronJobName || sdkInfo?.cronJobName,
-        isWorktree: bridgeState?.is_worktree || sdkInfo?.isWorktree || false,
-        worktreeExists: sdkInfo?.worktreeExists,
-        worktreeDirty: sdkInfo?.worktreeDirty,
-        askPermission: askPermissionMap?.get(id),
-        idleKilled: cliDisconnectReason.get(id) === "idle_limit",
-        lastActivityAt: sdkInfo?.lastActivityAt,
-        lastUserMessageAt: sdkInfo?.lastUserMessageAt,
-        isOrchestrator: sdkInfo?.isOrchestrator || false,
-        herdedBy: sdkInfo?.herdedBy,
-        sessionNum: sdkInfo?.sessionNum ?? null,
-        reviewerOf: sdkInfo?.reviewerOf,
-      };
-    })
-    .sort((a, b) => b.createdAt - a.createdAt);
+  const { allSessionList, activeSessions, activeReviewers, cronSessions, archivedSessions, treeViewGroups } =
+    useMemo(
+      () =>
+        buildSidebarVisibleSessions({
+          sessions,
+          sdkSessions,
+          cliConnected,
+          cliDisconnectReason,
+          sessionStatus,
+          pendingPermissions,
+          askPermission: askPermissionMap ?? new Map(),
+          diffFileStats,
+          treeGroups,
+          treeAssignments,
+          treeNodeOrder,
+          sessionAttention,
+          sessionSortMode,
+          countUserPermissions,
+        }),
+      [
+        sessions,
+        sdkSessions,
+        cliConnected,
+        cliDisconnectReason,
+        sessionStatus,
+        pendingPermissions,
+        askPermissionMap,
+        diffFileStats,
+        treeGroups,
+        treeAssignments,
+        treeNodeOrder,
+        sessionAttention,
+        sessionSortMode,
+      ],
+    );
 
   // Map: parentSessionNum → active reviewer SessionItem (for inline badge on parent row)
   const activeReviewerByParent = useMemo(() => {
@@ -714,35 +677,9 @@ export function Sidebar() {
     }
     return map;
   }, [allSessionList]);
-
-  // Reviewer sessions render inline within herd groups rather than as top-level sidebar rows.
-  const activeSessions = allSessionList.filter((s) => !s.archived && !s.cronJobId && s.reviewerOf === undefined);
-  const activeReviewers = useMemo(
-    () => allSessionList.filter((s) => !s.archived && s.reviewerOf !== undefined),
-    [allSessionList],
-  );
-  const cronSessions = allSessionList.filter((s) => !s.archived && !!s.cronJobId);
-  const archivedSessions = allSessionList
-    .filter((s) => s.archived && s.reviewerOf === undefined)
-    .sort((a, b) => (b.archivedAt ?? b.createdAt) - (a.archivedAt ?? a.createdAt));
   const currentSession = currentSessionId ? allSessionList.find((s) => s.id === currentSessionId) : null;
   const logoSrc = currentSession?.backendType === "codex" ? "/logo-codex.svg" : "/logo.png";
   const [showCronSessions, setShowCronSessions] = useState(true);
-
-  // Build tree view groups (herd-centric grouping)
-  const treeViewGroups = useMemo(
-    () =>
-      buildTreeViewGroups(
-        activeSessions,
-        treeGroups,
-        treeAssignments,
-        sessionAttention,
-        sessionSortMode,
-        treeNodeOrder,
-        activeReviewers,
-      ),
-    [activeSessions, treeGroups, treeAssignments, sessionAttention, sessionSortMode, treeNodeOrder, activeReviewers],
-  );
   const treeGroupIds = useMemo(() => treeViewGroups.map((g) => g.id), [treeViewGroups]);
   const groupPointerSensor = useSensor(PointerSensor, { activationConstraint: { distance: 8 } });
   const groupSensors = useSensors(groupPointerSensor);
@@ -826,7 +763,7 @@ export function Sidebar() {
     const timer = setTimeout(async () => {
       try {
         const resp = await api.searchSessions(q, {
-          includeArchived: true,
+          includeArchived: false,
           signal: controller.signal,
         });
         if (controller.signal.aborted) return;

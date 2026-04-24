@@ -98,8 +98,8 @@ describe("shortcuts", () => {
       activeTab: "chat",
       isSearchOpen: false,
       sessions: [
-        { sessionId: "s1", createdAt: 3 },
-        { sessionId: "s2", createdAt: 2 },
+        { sessionId: "s1", createdAt: 3, orderIndex: 0 },
+        { sessionId: "s2", createdAt: 2, orderIndex: 1 },
         { sessionId: "s3", createdAt: 1, archived: true },
       ],
       focusGlobalSearch: vi.fn(),
@@ -117,6 +117,137 @@ describe("shortcuts", () => {
 
     expect(handled).toBe(true);
     expect(navigateToSession).toHaveBeenCalledWith("s1");
+  });
+
+  it("follows sidebar order instead of createdAt order for previous and next session shortcuts", () => {
+    const navigateToSession = vi.fn();
+    const sessions = [
+      { sessionId: "s-created-latest", createdAt: 300, orderIndex: 2 },
+      { sessionId: "s-current", createdAt: 200, orderIndex: 0 },
+      { sessionId: "s-middle", createdAt: 100, orderIndex: 1 },
+    ];
+
+    performShortcutAction("next_session", {
+      route: { page: "session", sessionId: "s-current" },
+      currentSessionId: "s-current",
+      currentSessionCwd: "/repo",
+      terminalCwd: null,
+      activeTab: "chat",
+      isSearchOpen: false,
+      sessions,
+      focusGlobalSearch: vi.fn(),
+      openSearch: vi.fn(),
+      closeSearch: vi.fn(),
+      lastNewSessionContext: null,
+      openNewSessionModal: vi.fn(),
+      openTerminal: vi.fn(),
+      toggleSidebar: vi.fn(),
+      setActiveTab: vi.fn(),
+      navigateTo: vi.fn(),
+      navigateToSession,
+      navigateToMostRecentSession: vi.fn().mockReturnValue(true),
+    });
+
+    expect(navigateToSession).toHaveBeenCalledWith("s-middle");
+  });
+
+  it("skips reviewer sessions when following sidebar order", () => {
+    const navigateToSession = vi.fn();
+    const sessions = [
+      { sessionId: "leader", createdAt: 300, orderIndex: 0 },
+      { sessionId: "reviewer-chip", createdAt: 250, orderIndex: null },
+      { sessionId: "worker", createdAt: 200, orderIndex: 1 },
+    ];
+
+    performShortcutAction("next_session", {
+      route: { page: "session", sessionId: "leader" },
+      currentSessionId: "leader",
+      currentSessionCwd: "/repo",
+      terminalCwd: null,
+      activeTab: "chat",
+      isSearchOpen: false,
+      sessions,
+      focusGlobalSearch: vi.fn(),
+      openSearch: vi.fn(),
+      closeSearch: vi.fn(),
+      lastNewSessionContext: null,
+      openNewSessionModal: vi.fn(),
+      openTerminal: vi.fn(),
+      toggleSidebar: vi.fn(),
+      setActiveTab: vi.fn(),
+      navigateTo: vi.fn(),
+      navigateToSession,
+      navigateToMostRecentSession: vi.fn().mockReturnValue(true),
+    });
+
+    expect(navigateToSession).toHaveBeenCalledWith("worker");
+    expect(navigateToSession).not.toHaveBeenCalledWith("reviewer-chip");
+  });
+
+  it("wraps next_session from the last visible non-reviewer to the first visible non-reviewer", () => {
+    const navigateToSession = vi.fn();
+    const sessions = [
+      { sessionId: "leader", createdAt: 300, orderIndex: 0 },
+      { sessionId: "reviewer-chip", createdAt: 250, orderIndex: null },
+      { sessionId: "worker", createdAt: 200, orderIndex: 1 },
+    ];
+
+    performShortcutAction("next_session", {
+      route: { page: "session", sessionId: "worker" },
+      currentSessionId: "worker",
+      currentSessionCwd: "/repo",
+      terminalCwd: null,
+      activeTab: "chat",
+      isSearchOpen: false,
+      sessions,
+      focusGlobalSearch: vi.fn(),
+      openSearch: vi.fn(),
+      closeSearch: vi.fn(),
+      lastNewSessionContext: null,
+      openNewSessionModal: vi.fn(),
+      openTerminal: vi.fn(),
+      toggleSidebar: vi.fn(),
+      setActiveTab: vi.fn(),
+      navigateTo: vi.fn(),
+      navigateToSession,
+      navigateToMostRecentSession: vi.fn().mockReturnValue(true),
+    });
+
+    expect(navigateToSession).toHaveBeenCalledWith("leader");
+    expect(navigateToSession).not.toHaveBeenCalledWith("reviewer-chip");
+  });
+
+  it("wraps previous_session from the first visible non-reviewer to the last visible non-reviewer", () => {
+    const navigateToSession = vi.fn();
+    const sessions = [
+      { sessionId: "leader", createdAt: 300, orderIndex: 0 },
+      { sessionId: "reviewer-chip", createdAt: 250, orderIndex: null },
+      { sessionId: "worker", createdAt: 200, orderIndex: 1 },
+    ];
+
+    performShortcutAction("previous_session", {
+      route: { page: "session", sessionId: "leader" },
+      currentSessionId: "leader",
+      currentSessionCwd: "/repo",
+      terminalCwd: null,
+      activeTab: "chat",
+      isSearchOpen: false,
+      sessions,
+      focusGlobalSearch: vi.fn(),
+      openSearch: vi.fn(),
+      closeSearch: vi.fn(),
+      lastNewSessionContext: null,
+      openNewSessionModal: vi.fn(),
+      openTerminal: vi.fn(),
+      toggleSidebar: vi.fn(),
+      setActiveTab: vi.fn(),
+      navigateTo: vi.fn(),
+      navigateToSession,
+      navigateToMostRecentSession: vi.fn().mockReturnValue(true),
+    });
+
+    expect(navigateToSession).toHaveBeenCalledWith("worker");
+    expect(navigateToSession).not.toHaveBeenCalledWith("reviewer-chip");
   });
 
   it("matches the standard preset shifted bracket session navigation bindings", () => {
