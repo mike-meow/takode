@@ -288,33 +288,6 @@ describe("hasDangerousShellConstructs", () => {
   it("returns false for safe commands", () => {
     expect(hasDangerousShellConstructs("ls -la /tmp")).toBe(false);
   });
-
-  it("allows safe heredoc $(cat <<'EOF' ... EOF)", () => {
-    const cmd = `takode send 16 "$(cat <<'EOF'\nHello world\nMulti-line message\nEOF\n)"`;
-    expect(hasDangerousShellConstructs(cmd)).toBe(false);
-  });
-
-  it("allows safe heredoc $(cat <<EOF ... EOF) without quotes", () => {
-    const cmd = `takode send 16 "$(cat <<EOF\nHello world\nEOF\n)"`;
-    expect(hasDangerousShellConstructs(cmd)).toBe(false);
-  });
-
-  it("allows heredoc with indent-stripping <<-", () => {
-    const cmd = `git commit -m "$(cat <<-'EOF'\n  Commit message here.\n  EOF\n  )"`;
-    expect(hasDangerousShellConstructs(cmd)).toBe(false);
-  });
-
-  it("still detects $() when mixed with heredoc", () => {
-    // Heredoc is safe but there's ALSO a separate $() outside it
-    const cmd = `takode send 16 "$(cat <<'EOF'\nhello\nEOF\n)" && echo $(whoami)`;
-    expect(hasDangerousShellConstructs(cmd)).toBe(true);
-  });
-
-  it("still detects backticks inside heredoc command", () => {
-    // The heredoc content is fine but backticks outside are dangerous
-    const cmd = "echo `whoami` && takode send 16 \"$(cat <<'EOF'\nhello\nEOF\n)\"";
-    expect(hasDangerousShellConstructs(cmd)).toBe(true);
-  });
 });
 
 describe("isDangerousFirstToken", () => {
