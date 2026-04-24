@@ -16,10 +16,14 @@ jobs:
         with:
           bun-version: latest
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - name: Install dependencies
         working-directory: web
         run: bun install
 
       - name: Run coverage gate on PR changes (min 80%)
         working-directory: web
-        run: bun run test -- --coverage --pool=forks --changed=origin/${{ github.base_ref }}
+        run: npx vitest run --coverage --changed=origin/${{ github.base_ref }}
