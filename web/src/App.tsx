@@ -40,6 +40,7 @@ import {
 import { ensureVsCodeEditorPreference } from "./utils/vscode-bridge.js";
 import {
   getMatchingShortcutAction,
+  isAppGlobalShortcutAction,
   isShortcutEventTargetEditable,
   performShortcutAction,
   shouldBlurVimEscape,
@@ -254,9 +255,9 @@ export default function App() {
         event.stopPropagation();
         return;
       }
-      if (editableTarget) return;
       const actionId = getMatchingShortcutAction(state.shortcutSettings, event);
       if (!actionId) return;
+      if (editableTarget && !isAppGlobalShortcutAction(actionId)) return;
 
       const currentSessionId = state.currentSessionId;
       const currentSession =

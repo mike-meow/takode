@@ -11,7 +11,52 @@ interface MockStoreState {
   zoomLevel: number;
   currentSessionId: string | null;
   searchPreviewSessionId: string | null;
+  terminalCwd: string | null;
   connectionStatus: Map<string, "connecting" | "connected" | "disconnected">;
+  cliConnected: Map<string, boolean>;
+  cliDisconnectReason: Map<string, "idle_limit" | "broken" | null>;
+  sessionStatus: Map<string, "idle" | "running" | "compacting" | "reverting" | null>;
+  pendingPermissions: Map<string, Map<string, unknown>>;
+  askPermission: Map<string, boolean>;
+  diffFileStats: Map<string, Map<string, { additions: number; deletions: number }>>;
+  shortcutSettings: {
+    enabled: boolean;
+    preset: "standard" | "vscode-light" | "vim-light";
+    overrides: Record<string, string | null>;
+  };
+  sdkSessions: Array<{
+    sessionId: string;
+    createdAt: number;
+    archived?: boolean;
+    cronJobId?: string | null;
+    state?: "starting" | "connected" | "running" | "exited" | null;
+    cwd?: string;
+    model?: string;
+    gitBranch?: string;
+    gitAhead?: number;
+    gitBehind?: number;
+    totalLinesAdded?: number;
+    totalLinesRemoved?: number;
+    pendingTimerCount?: number;
+    backendType?: "claude" | "codex" | "claude-sdk";
+    repoRoot?: string;
+    cliConnected?: boolean;
+    isWorktree?: boolean;
+    worktreeExists?: boolean;
+    worktreeDirty?: boolean;
+    lastActivityAt?: number;
+    lastUserMessageAt?: number;
+    isOrchestrator?: boolean;
+    herdedBy?: string;
+    sessionNum?: number | null;
+    reviewerOf?: number;
+    claimedQuestStatus?: string;
+  }>;
+  treeGroups: Array<{ id: string; name: string }>;
+  treeAssignments: Map<string, string>;
+  treeNodeOrder: Map<string, string[]>;
+  sessionAttention: Map<string, "action" | "error" | "review" | null>;
+  sessionSortMode: "created" | "activity";
   sidebarOpen: boolean;
   taskPanelOpen: boolean;
   activeTab: "chat" | "diff";
@@ -23,6 +68,11 @@ interface MockStoreState {
   markSessionViewed: ReturnType<typeof vi.fn>;
   closeNewSessionModal: ReturnType<typeof vi.fn>;
   setSidebarOpen: ReturnType<typeof vi.fn>;
+  setActiveTab: ReturnType<typeof vi.fn>;
+  openSessionSearch: ReturnType<typeof vi.fn>;
+  closeSessionSearch: ReturnType<typeof vi.fn>;
+  openNewSessionModal: ReturnType<typeof vi.fn>;
+  openTerminal: ReturnType<typeof vi.fn>;
   sessions: Map<string, { backend_type?: string }>;
 }
 
@@ -35,7 +85,21 @@ function resetStore(overrides: Partial<MockStoreState> = {}) {
     zoomLevel: 1,
     currentSessionId: "s1",
     searchPreviewSessionId: null,
+    terminalCwd: null,
     connectionStatus: new Map([["s1", "connected"]]),
+    cliConnected: new Map([["s1", true]]),
+    cliDisconnectReason: new Map(),
+    sessionStatus: new Map([["s1", "idle"]]),
+    pendingPermissions: new Map(),
+    askPermission: new Map(),
+    diffFileStats: new Map(),
+    shortcutSettings: { enabled: false, preset: "standard", overrides: {} },
+    sdkSessions: [{ sessionId: "s1", createdAt: 1, archived: false, cwd: "/repo/s1", backendType: "claude" }],
+    treeGroups: [{ id: "default", name: "Default" }],
+    treeAssignments: new Map(),
+    treeNodeOrder: new Map(),
+    sessionAttention: new Map(),
+    sessionSortMode: "created",
     sidebarOpen: false,
     taskPanelOpen: false,
     activeTab: "chat",
@@ -47,6 +111,11 @@ function resetStore(overrides: Partial<MockStoreState> = {}) {
     markSessionViewed: vi.fn(),
     closeNewSessionModal: vi.fn(),
     setSidebarOpen: vi.fn(),
+    setActiveTab: vi.fn(),
+    openSessionSearch: vi.fn(),
+    closeSessionSearch: vi.fn(),
+    openNewSessionModal: vi.fn(),
+    openTerminal: vi.fn(),
     sessions: new Map([["s1", { backend_type: "claude" }]]),
     ...overrides,
   };
@@ -55,7 +124,17 @@ function resetStore(overrides: Partial<MockStoreState> = {}) {
 vi.mock("./store.js", () => {
   const useStore: any = (selector: (state: MockStoreState) => unknown) => selector(mockState);
   useStore.getState = () => mockState;
-  return { useStore };
+  return {
+    useStore,
+    getSessionSearchState: () => ({
+      query: "",
+      isOpen: false,
+      mode: "strict",
+      category: "all",
+      matches: [],
+      currentMatchIndex: -1,
+    }),
+  };
 });
 
 const mockCheckHealth = vi.fn().mockResolvedValue(true);
@@ -264,5 +343,72 @@ describe("App hidden panels", () => {
     expect(chatView).toHaveAttribute("data-session-id", "s1");
     expect(chatView).toHaveAttribute("data-preview", "false");
     expect(mockDisconnectSession).toHaveBeenCalledWith("s2");
+  });
+
+  it("triggers global search even when focus is inside an input", () => {
+    resetStore({
+      shortcutSettings: { enabled: true, preset: "standard", overrides: {} },
+      sidebarOpen: false,
+    });
+    render(<App />);
+
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    input.focus();
+    input.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "F", ctrlKey: true, shiftKey: true, bubbles: true, cancelable: true }),
+    );
+
+    expect(mockState.setSidebarOpen).toHaveBeenCalledWith(true);
+    input.remove();
+  });
+
+  it("triggers session switching even when focus is inside an input", () => {
+    resetStore({
+      shortcutSettings: { enabled: true, preset: "standard", overrides: {} },
+      currentSessionId: "s1",
+      connectionStatus: new Map([
+        ["s1", "connected"],
+        ["s2", "connected"],
+      ]),
+      cliConnected: new Map([
+        ["s1", true],
+        ["s2", true],
+      ]),
+      sessionStatus: new Map([
+        ["s1", "idle"],
+        ["s2", "idle"],
+      ]),
+      sessions: new Map([
+        ["s1", { backend_type: "claude" }],
+        ["s2", { backend_type: "claude" }],
+      ]),
+      sdkSessions: [
+        { sessionId: "s1", createdAt: 2, archived: false, cwd: "/repo/s1", backendType: "claude" },
+        { sessionId: "s2", createdAt: 1, archived: false, cwd: "/repo/s2", backendType: "claude" },
+      ],
+      treeGroups: [{ id: "default", name: "Default" }],
+      treeAssignments: new Map(),
+      treeNodeOrder: new Map([["default", ["s1", "s2"]]]),
+    });
+    window.location.hash = "#/session/s1";
+    render(<App />);
+
+    const input = document.createElement("textarea");
+    document.body.appendChild(input);
+    input.focus();
+    input.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "}",
+        code: "BracketRight",
+        ctrlKey: true,
+        shiftKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+
+    expect(window.location.hash).toBe("#/session/s2");
+    input.remove();
   });
 });

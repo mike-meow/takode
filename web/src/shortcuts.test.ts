@@ -6,6 +6,7 @@ import {
   formatShortcut,
   getMatchingShortcutAction,
   getShortcutHint,
+  isAppGlobalShortcutAction,
   performShortcutAction,
   resolveShortcutNewSessionContext,
   shouldBlurVimEscape,
@@ -313,6 +314,14 @@ describe("shortcuts", () => {
     expect(sidebarHandled).toBe(true);
     expect(focusGlobalSearch).toHaveBeenCalledTimes(1);
     expect(toggleSidebar).toHaveBeenCalledTimes(1);
+  });
+
+  it("marks global search and session switching as app-global shortcuts", () => {
+    expect(isAppGlobalShortcutAction("global_search")).toBe(true);
+    expect(isAppGlobalShortcutAction("previous_session")).toBe(true);
+    expect(isAppGlobalShortcutAction("next_session")).toBe(true);
+    expect(isAppGlobalShortcutAction("search_session")).toBe(false);
+    expect(isAppGlobalShortcutAction("open_terminal")).toBe(false);
   });
 
   it("prefers the current session cwd when opening a new session", () => {

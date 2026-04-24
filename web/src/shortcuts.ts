@@ -84,6 +84,8 @@ const ACTION_ORDER: ShortcutActionId[] = [
   "new_session",
 ];
 
+const APP_GLOBAL_SHORTCUT_ACTIONS = new Set<ShortcutActionId>(["global_search", "previous_session", "next_session"]);
+
 export const DEFAULT_SHORTCUT_SETTINGS: ShortcutSettings = {
   enabled: false,
   preset: "standard",
@@ -413,6 +415,10 @@ export function shouldBlurVimEscape(
 ): boolean {
   const resolved = settings ?? DEFAULT_SHORTCUT_SETTINGS;
   return resolved.enabled && resolved.preset === "vim-light" && event.key === "Escape" && isShortcutEventTargetEditable(target);
+}
+
+export function isAppGlobalShortcutAction(actionId: ShortcutActionId): boolean {
+  return APP_GLOBAL_SHORTCUT_ACTIONS.has(actionId);
 }
 
 export function matchesShortcutEvent(
