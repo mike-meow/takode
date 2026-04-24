@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   handleCodexPermissionRequest,
   handleControlRequest,
+  handleSetModel,
   handlePermissionResponse,
   routeBrowserMessage,
   handleSdkPermissionRequest,
@@ -200,6 +201,26 @@ describe("permission response handling in browser routing", () => {
       "s1",
       "Keep planning around the websocket error path",
       undefined,
+    );
+  });
+
+  it("updates launcher session model when Claude model changes", () => {
+    const session = makeSession();
+    const launcherInfo = { model: "claude-sonnet-4-5-20250929" };
+    const deps = makeDeps();
+    deps.getLauncherSessionInfo = vi.fn(() => launcherInfo);
+
+    handleSetModel(session, "claude-opus-4-5-20250929", deps);
+
+    expect(session.state.model).toBe("claude-opus-4-5-20250929");
+    expect(launcherInfo.model).toBe("claude-opus-4-5-20250929");
+    expect(deps.sendToCLI).toHaveBeenCalledWith(session, expect.stringContaining('"subtype":"set_model"'));
+    expect(deps.broadcastToBrowsers).toHaveBeenCalledWith(
+      session,
+      expect.objectContaining({
+        type: "session_update",
+        session: expect.objectContaining({ model: "claude-opus-4-5-20250929" }),
+      }),
     );
   });
 

@@ -978,7 +978,10 @@ export function handleInterrupt(
 export function handleSetModel(
   session: AdapterBrowserRoutingSessionLike,
   model: string,
-  deps: Pick<AdapterBrowserRoutingDeps, "sendToCLI" | "getLauncherSessionInfo" | "broadcastToBrowsers" | "persistSession">,
+  deps: Pick<
+    AdapterBrowserRoutingDeps,
+    "sendToCLI" | "getLauncherSessionInfo" | "broadcastToBrowsers" | "persistSession"
+  >,
 ): void {
   if (session.backendType === "claude-sdk" && session.claudeSdkAdapter) {
     session.claudeSdkAdapter.sendBrowserMessage({ type: "set_model", model } as any);
