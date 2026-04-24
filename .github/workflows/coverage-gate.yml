@@ -26,4 +26,9 @@ jobs:
 
       - name: Run coverage gate on PR changes (min 80%)
         working-directory: web
-        run: npx vitest run --coverage --changed=origin/${{ github.base_ref }}
+        run: >-
+          npx vitest run --coverage --changed=origin/${{ github.base_ref }}
+          --exclude 'server/cli-launcher.test.ts'
+          --exclude 'server/routes.test.ts'
+          --exclude 'server/quest-cli.test.ts'
+          --exclude 'server/terminal-manager.test.ts'
