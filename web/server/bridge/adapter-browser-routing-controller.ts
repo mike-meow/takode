@@ -1597,7 +1597,9 @@ function formatStatusTokenCount(count: number): string {
 
 function formatRateLimitStatus(
   label: string,
-  limit: NonNullable<NonNullable<SessionState["codex_rate_limits"]>[keyof NonNullable<SessionState["codex_rate_limits"]>]>,
+  limit: NonNullable<
+    NonNullable<SessionState["codex_rate_limits"]>[keyof NonNullable<SessionState["codex_rate_limits"]>]
+  >,
 ): string {
   const windowLabel =
     limit.windowDurationMins >= 60 && limit.windowDurationMins % 60 === 0
@@ -1617,9 +1619,12 @@ function buildCodexStatusText(session: AdapterBrowserRoutingSessionLike): string
   const cwd = session.state.cwd?.trim();
   if (cwd) lines.push(`- Directory: ${cwd}`);
 
-  const contextPercent = typeof session.state.context_used_percent === "number" ? session.state.context_used_percent : 0;
+  const contextPercent =
+    typeof session.state.context_used_percent === "number" ? session.state.context_used_percent : 0;
   const contextWindow =
-    session.state.codex_token_details?.modelContextWindow || inferContextWindowFromModel(session.state.model || "") || 0;
+    session.state.codex_token_details?.modelContextWindow ||
+    inferContextWindowFromModel(session.state.model || "") ||
+    0;
   if (contextWindow > 0) {
     lines.push(`- Context: ${contextPercent}% used (${formatStatusTokenCount(contextWindow)} window)`);
   } else {
@@ -1655,10 +1660,7 @@ function buildCodexStatusText(session: AdapterBrowserRoutingSessionLike): string
   return lines.join("\n");
 }
 
-function handleCodexStatusCommand(
-  session: AdapterBrowserRoutingSessionLike,
-  deps: AdapterBrowserRoutingDeps,
-): void {
+function handleCodexStatusCommand(session: AdapterBrowserRoutingSessionLike, deps: AdapterBrowserRoutingDeps): void {
   const ts = Date.now();
   const userHistoryEntry: Extract<BrowserIncomingMessage, { type: "user_message" }> = {
     type: "user_message",
