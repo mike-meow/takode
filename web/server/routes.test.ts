@@ -9070,8 +9070,9 @@ describe("Takode server-authoritative auth", () => {
   });
 
   // Verifies the takode answer route correctly routes an ExitPlanMode approval
-  // through the external permission-response path so leader approval behaves
-  // like the browser Allow button.
+  // through routeBrowserMessage for claude-sdk sessions. This covers the bug
+  // where stale pendingPermissions entries from adapter disconnects caused
+  // takode answer to resolve the wrong request_id.
   it("takode answer approves ExitPlanMode and routes the permission response", async () => {
     setupTakodeSessions();
     bridge.getSession.mockReturnValue({

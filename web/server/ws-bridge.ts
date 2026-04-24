@@ -1730,22 +1730,6 @@ export class WsBridge {
     }
   }
 
-  async routeExternalPermissionResponse(
-    session: Session,
-    msg: Extract<BrowserOutgoingMessage, { type: "permission_response" }>,
-    actorSessionId?: string,
-  ): Promise<void> {
-    await routeBrowserMessageController(
-      session,
-      {
-        ...msg,
-        ...(actorSessionId ? { actorSessionId } : {}),
-      },
-      undefined,
-      this.getBrowserRoutingDeps(),
-    );
-  }
-
   private enqueueCodexQuestLifecycle(session: Session, task: () => Promise<void>): Promise<void> {
     const prior = this.codexQuestLifecycleChains.get(session.id);
     const next = (prior ?? Promise.resolve()).catch(() => {}).then(() => task());

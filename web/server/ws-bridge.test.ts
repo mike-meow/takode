@@ -10058,64 +10058,6 @@ describe("permission broadcasts include request_id", () => {
     expect(approved.tool_name).toBe("ExitPlanMode");
   });
 
-  it("external ExitPlanMode approval follows the browser approval path and clears pending UI state", async () => {
-    bridge.handleCLIMessage(
-      cli,
-      JSON.stringify({
-        type: "control_request",
-        request_id: "req-leader-plan",
-        request: {
-          subtype: "can_use_tool",
-          tool_name: "ExitPlanMode",
-          input: { plan: "1. Ship the fix", allowedPrompts: [] },
-          tool_use_id: "tu-leader-plan",
-        },
-      }),
-    );
-    expect(bridge.getSession("s1")!.pendingPermissions.has("req-leader-plan")).toBe(true);
-    browser.send.mockClear();
-    cli.send.mockClear();
-
-    await bridge.routeExternalPermissionResponse(
-      bridge.getSession("s1")!,
-      {
-        type: "permission_response",
-        request_id: "req-leader-plan",
-        behavior: "allow",
-        updated_input: { plan: "1. Ship the fix", allowedPrompts: [] },
-      },
-      "leader-session",
-    );
-
-    expect(bridge.getSession("s1")!.pendingPermissions.has("req-leader-plan")).toBe(false);
-
-    const cliCalls = cli.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
-    const response = cliCalls.find((m: any) => m.type === "control_response");
-    expect(response).toMatchObject({
-      response: {
-        subtype: "success",
-        request_id: "req-leader-plan",
-        response: {
-          behavior: "allow",
-          updatedInput: { plan: "1. Ship the fix", allowedPrompts: [] },
-        },
-      },
-    });
-
-    const browserCalls = browser.send.mock.calls.map((c: unknown[]) => JSON.parse(c[0] as string));
-    const approved = browserCalls.find((m: any) => m.type === "permission_approved");
-    expect(approved).toMatchObject({
-      request_id: "req-leader-plan",
-      tool_name: "ExitPlanMode",
-      summary: "Plan approved",
-    });
-    const sessionActivity = browserCalls.find(
-      (m: any) => m.type === "session_activity_update" && m.session_id === "s1",
-    );
-    expect(sessionActivity?.session?.pendingPermissionCount).toBe(0);
-    expect(sessionActivity?.session?.pendingPermissionSummary).toBeNull();
-  });
-
   it("permission_denied broadcast includes request_id", async () => {
     bridge.handleCLIMessage(
       cli,

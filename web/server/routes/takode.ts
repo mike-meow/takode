@@ -97,12 +97,20 @@ export function createTakodeRoutes(ctx: RouteContext) {
   const isBridgeSessionBusy = (session: BridgeSession | null | undefined): boolean =>
     !!session && (session.isGenerating || session.pendingPermissions.size > 0);
   const routeLeaderPermissionResponse = async (
+    sessionId: string,
     session: BridgeSession,
     msg: LeaderPermissionResponse,
     actorSessionId: string,
   ): Promise<boolean> => {
     if (typeof bridgeAny.routeExternalPermissionResponse === "function") {
       await bridgeAny.routeExternalPermissionResponse(session, msg, actorSessionId);
+      return true;
+    }
+    if (typeof bridgeAny.handleBrowserMessage === "function") {
+      await bridgeAny.handleBrowserMessage(
+        { data: { kind: "browser", sessionId }, send: () => {}, close: () => {}, readyState: 1 },
+        JSON.stringify({ ...msg, actorSessionId }),
+      );
       return true;
     }
     if (typeof bridgeAny.routeBrowserMessage === "function") {
@@ -958,6 +966,7 @@ export function createTakodeRoutes(ctx: RouteContext) {
       }
 
       const routed = await routeLeaderPermissionResponse(
+        id,
         session,
         {
           type: "permission_response",
@@ -975,6 +984,7 @@ export function createTakodeRoutes(ctx: RouteContext) {
       const isApprove = response.toLowerCase().startsWith("approve");
       if (isApprove) {
         const routed = await routeLeaderPermissionResponse(
+          id,
           session,
           {
             type: "permission_response",
@@ -990,6 +1000,7 @@ export function createTakodeRoutes(ctx: RouteContext) {
         // "reject" or "reject: feedback text"
         const feedback = response.replace(/^reject:?\s*/i, "").trim() || "Rejected by leader";
         const routed = await routeLeaderPermissionResponse(
+          id,
           session,
           {
             type: "permission_response",
