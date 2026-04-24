@@ -1,5 +1,11 @@
 # Takode Changelog
 
+## 2026-04-24
+
+### Fixed
+
+- **Archived session cleanup** -- Archived sessions without worktree tracker mappings can now be deleted cleanly
+
 ## 2026-04-23
 
 ### Added
