@@ -55,6 +55,8 @@ interface MockStoreState {
   treeGroups: Array<{ id: string; name: string }>;
   treeAssignments: Map<string, string>;
   treeNodeOrder: Map<string, string[]>;
+  collapsedTreeGroups: Set<string>;
+  expandedHerdNodes: Set<string>;
   sessionAttention: Map<string, "action" | "error" | "review" | null>;
   sessionSortMode: "created" | "activity";
   sidebarOpen: boolean;
@@ -98,6 +100,8 @@ function resetStore(overrides: Partial<MockStoreState> = {}) {
     treeGroups: [{ id: "default", name: "Default" }],
     treeAssignments: new Map(),
     treeNodeOrder: new Map(),
+    collapsedTreeGroups: new Set(),
+    expandedHerdNodes: new Set(),
     sessionAttention: new Map(),
     sessionSortMode: "created",
     sidebarOpen: false,
@@ -410,5 +414,80 @@ describe("App hidden panels", () => {
 
     expect(window.location.hash).toBe("#/session/s2");
     input.remove();
+  });
+
+  it("skips sessions hidden by collapsed herd rows when switching sessions", () => {
+    resetStore({
+      shortcutSettings: { enabled: true, preset: "standard", overrides: {} },
+      currentSessionId: "leader",
+      connectionStatus: new Map([
+        ["leader", "connected"],
+        ["worker-hidden", "connected"],
+        ["standalone", "connected"],
+      ]),
+      cliConnected: new Map([
+        ["leader", true],
+        ["worker-hidden", true],
+        ["standalone", true],
+      ]),
+      sessionStatus: new Map([
+        ["leader", "idle"],
+        ["worker-hidden", "idle"],
+        ["standalone", "idle"],
+      ]),
+      sessions: new Map([
+        ["leader", { backend_type: "claude" }],
+        ["worker-hidden", { backend_type: "claude" }],
+        ["standalone", { backend_type: "claude" }],
+      ]),
+      sdkSessions: [
+        {
+          sessionId: "leader",
+          createdAt: 3,
+          archived: false,
+          cwd: "/repo/leader",
+          backendType: "claude",
+          isOrchestrator: true,
+          sessionNum: 10,
+        },
+        {
+          sessionId: "worker-hidden",
+          createdAt: 2,
+          archived: false,
+          cwd: "/repo/worker-hidden",
+          backendType: "claude",
+          herdedBy: "leader",
+          sessionNum: 11,
+        },
+        {
+          sessionId: "standalone",
+          createdAt: 1,
+          archived: false,
+          cwd: "/repo/standalone",
+          backendType: "claude",
+          sessionNum: 12,
+        },
+      ],
+      treeGroups: [{ id: "default", name: "Default" }],
+      treeAssignments: new Map(),
+      treeNodeOrder: new Map([["default", ["leader", "standalone"]]]),
+      expandedHerdNodes: new Set(),
+    });
+    window.location.hash = "#/session/leader";
+    render(<App />);
+
+    document.body.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "}",
+        code: "BracketRight",
+        ctrlKey: true,
+        shiftKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+
+    expect(window.location.hash).toBe("#/session/standalone");
+    expect(window.location.hash).not.toBe("#/session/worker-hidden");
   });
 });

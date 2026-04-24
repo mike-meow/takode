@@ -24,6 +24,8 @@ export interface SidebarVisibleSessionsInput {
   treeGroups: TreeGroup[];
   treeAssignments: Map<string, string>;
   treeNodeOrder: Map<string, string[]>;
+  collapsedTreeGroups: Set<string>;
+  expandedHerdNodes: Set<string>;
   sessionAttention: Map<string, "action" | "error" | "review" | null>;
   sessionSortMode: "created" | "activity";
   countUserPermissions: (perms: Map<string, unknown> | undefined) => number;
@@ -52,6 +54,8 @@ export function buildSidebarVisibleSessions(input: SidebarVisibleSessionsInput):
     treeGroups,
     treeAssignments,
     treeNodeOrder,
+    collapsedTreeGroups,
+    expandedHerdNodes,
     sessionAttention,
     sessionSortMode,
     countUserPermissions,
@@ -140,9 +144,16 @@ export function buildSidebarVisibleSessions(input: SidebarVisibleSessionsInput):
     treeNodeOrder,
     activeReviewers,
   );
-  const orderedVisibleSessionIds = treeViewGroups.flatMap((group) =>
-    group.nodes.flatMap((node) => [node.leader.id, ...node.workers.map((worker) => worker.id)]),
-  );
+  const orderedVisibleSessionIds = treeViewGroups.flatMap((group) => {
+    if (collapsedTreeGroups.has(group.id)) return [];
+    return group.nodes.flatMap((node) => {
+      const visibleIds = [node.leader.id];
+      if (expandedHerdNodes.has(node.leader.id)) {
+        visibleIds.push(...node.workers.map((worker) => worker.id));
+      }
+      return visibleIds;
+    });
+  });
 
   return {
     allSessionList,

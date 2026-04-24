@@ -76,6 +76,8 @@ function buildSidebarOrderedShortcutSessions(state: ReturnType<typeof useStore.g
     treeGroups: state.treeGroups,
     treeAssignments: state.treeAssignments,
     treeNodeOrder: state.treeNodeOrder,
+    collapsedTreeGroups: state.collapsedTreeGroups,
+    expandedHerdNodes: state.expandedHerdNodes,
     sessionAttention: state.sessionAttention,
     sessionSortMode: state.sessionSortMode,
     countUserPermissions: () => 0,

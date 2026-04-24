@@ -67,11 +67,85 @@ describe("buildSidebarVisibleSessions", () => {
       treeGroups,
       treeAssignments: new Map(),
       treeNodeOrder: new Map(),
+      collapsedTreeGroups: new Set(),
+      expandedHerdNodes: new Set(["leader"]),
       sessionAttention: new Map(),
       sessionSortMode: "created",
       countUserPermissions: () => 0,
     });
 
     expect(result.orderedVisibleSessionIds).toEqual(["leader", "worker"]);
+  });
+
+  it("hides workers from ordered visible rows when their herd is collapsed", () => {
+    const sessions = new Map<string, SessionState>([
+      ["leader", makeSessionState("leader")],
+      ["worker", makeSessionState("worker")],
+      ["standalone", makeSessionState("standalone")],
+    ]);
+    const sdkSessions: SdkSessionInfo[] = [
+      makeSdkSession("leader", { createdAt: 3, sessionNum: 10, isOrchestrator: true }),
+      makeSdkSession("worker", { createdAt: 2, herdedBy: "leader", sessionNum: 11 }),
+      makeSdkSession("standalone", { createdAt: 1, sessionNum: 12 }),
+    ];
+
+    const result = buildSidebarVisibleSessions({
+      sessions,
+      sdkSessions,
+      cliConnected: new Map(),
+      cliDisconnectReason: new Map(),
+      sessionStatus: new Map(),
+      pendingPermissions: new Map(),
+      askPermission: new Map(),
+      diffFileStats: new Map(),
+      treeGroups: [{ id: "default", name: "Default" }],
+      treeAssignments: new Map(),
+      treeNodeOrder: new Map([["default", ["leader", "standalone"]]]),
+      collapsedTreeGroups: new Set(),
+      expandedHerdNodes: new Set(),
+      sessionAttention: new Map(),
+      sessionSortMode: "created",
+      countUserPermissions: () => 0,
+    });
+
+    expect(result.orderedVisibleSessionIds).toEqual(["leader", "standalone"]);
+  });
+
+  it("hides an entire collapsed tree group from ordered visible rows", () => {
+    const sessions = new Map<string, SessionState>([
+      ["default-session", makeSessionState("default-session")],
+      ["quest-session", makeSessionState("quest-session")],
+    ]);
+    const sdkSessions: SdkSessionInfo[] = [
+      makeSdkSession("default-session", { createdAt: 2, sessionNum: 10 }),
+      makeSdkSession("quest-session", { createdAt: 1, sessionNum: 11 }),
+    ];
+
+    const result = buildSidebarVisibleSessions({
+      sessions,
+      sdkSessions,
+      cliConnected: new Map(),
+      cliDisconnectReason: new Map(),
+      sessionStatus: new Map(),
+      pendingPermissions: new Map(),
+      askPermission: new Map(),
+      diffFileStats: new Map(),
+      treeGroups: [
+        { id: "default", name: "Default" },
+        { id: "quest", name: "Quest" },
+      ],
+      treeAssignments: new Map([["quest-session", "quest"]]),
+      treeNodeOrder: new Map([
+        ["default", ["default-session"]],
+        ["quest", ["quest-session"]],
+      ]),
+      collapsedTreeGroups: new Set(["quest"]),
+      expandedHerdNodes: new Set(),
+      sessionAttention: new Map(),
+      sessionSortMode: "created",
+      countUserPermissions: () => 0,
+    });
+
+    expect(result.orderedVisibleSessionIds).toEqual(["default-session"]);
   });
 });
