@@ -127,9 +127,10 @@ import { SettingsPage } from "./SettingsPage.js";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  Element.prototype.scrollIntoView = vi.fn();
   mockState = createMockState();
   window.location.hash = "#/settings";
-  // Clear collapse and scroll state between tests
+  // Clear scroll state between tests.
   localStorage.removeItem("cc-settings-collapsed");
   localStorage.removeItem("cc-settings-scroll");
   mockApi.getSettings.mockResolvedValue({
@@ -164,21 +165,32 @@ beforeEach(() => {
   mockApi.getCaffeinateStatus.mockResolvedValue({ active: false, engagedAt: null, expiresAt: null });
 });
 
+async function waitForSettingsPage() {
+  await screen.findAllByText("Notifications");
+}
+
+function settingsSection(title: string): HTMLElement {
+  const heading = screen.getAllByText(title).find((node) => node.closest("[data-settings-section-id]"));
+  if (!heading) throw new Error(`Missing settings section: ${title}`);
+  const section = heading.closest("section, form");
+  if (!section) throw new Error(`Missing section wrapper: ${title}`);
+  return section as HTMLElement;
+}
+
 describe("SettingsPage", () => {
   it("loads settings on mount", async () => {
     render(<SettingsPage />);
 
     expect(mockApi.getSettings).toHaveBeenCalledTimes(1);
     // Wait for loading to complete — section headings are visible
-    await screen.findByText("Notifications");
+    await waitForSettingsPage();
   });
 
   it("shows shortcuts disabled by default in a compact state", async () => {
     render(<SettingsPage />);
 
-    await screen.findByText("Notifications");
-    const shortcutsHeading = screen.getByText("Shortcuts");
-    const shortcutsSection = shortcutsHeading.closest("section") ?? shortcutsHeading.parentElement?.parentElement;
+    await waitForSettingsPage();
+    const shortcutsSection = settingsSection("Shortcuts");
     expect(within(shortcutsSection as HTMLElement).getByText("Off")).toBeInTheDocument();
     expect(
       within(shortcutsSection as HTMLElement).getByText("Enable shortcuts to edit presets and bindings."),
@@ -198,7 +210,7 @@ describe("SettingsPage", () => {
 
     render(<SettingsPage />);
 
-    await screen.findByText("Notifications");
+    await waitForSettingsPage();
     expect(screen.getByLabelText("Preset")).toHaveValue("standard");
     expect(screen.getByText("Search Current Session")).toBeInTheDocument();
   });
@@ -214,7 +226,7 @@ describe("SettingsPage", () => {
 
     render(<SettingsPage />);
 
-    await screen.findByText("Notifications");
+    await waitForSettingsPage();
     fireEvent.click(screen.getByRole("button", { name: "Record new shortcut" }));
     fireEvent.keyDown(window, { key: "l", ctrlKey: true });
 
@@ -238,7 +250,7 @@ describe("SettingsPage", () => {
 
     render(<SettingsPage />);
 
-    await screen.findByText("Notifications");
+    await waitForSettingsPage();
     const offButtons = screen.getAllByRole("button", { name: "Off" });
     fireEvent.click(offButtons[0]);
 
@@ -340,11 +352,8 @@ describe("SettingsPage", () => {
 
     render(<SettingsPage />);
 
-    const pushoverToggle = await screen.findByRole("button", { name: "Push Notifications (Pushover)" });
-    const pushoverForm = pushoverToggle.closest("form")!;
-    if (within(pushoverForm).queryAllByRole("checkbox").length === 0) {
-      fireEvent.click(pushoverToggle);
-    }
+    await waitForSettingsPage();
+    const pushoverForm = settingsSection("Push Notifications (Pushover)");
 
     await waitFor(() => {
       expect(within(pushoverForm).getAllByRole("checkbox").length).toBeGreaterThanOrEqual(3);
@@ -374,7 +383,7 @@ describe("SettingsPage", () => {
 
   it("navigates back when Back button is clicked", async () => {
     render(<SettingsPage />);
-    await screen.findByText("Notifications");
+    await waitForSettingsPage();
 
     fireEvent.click(screen.getByText("Back"));
     expect(window.location.hash).toBe("");
@@ -382,13 +391,13 @@ describe("SettingsPage", () => {
 
   it("hides Back button in embedded mode", async () => {
     render(<SettingsPage embedded />);
-    await screen.findByText("Notifications");
+    await waitForSettingsPage();
     expect(screen.queryByText("Back")).not.toBeInTheDocument();
   });
 
   it("toggles sound notifications from settings", async () => {
     render(<SettingsPage />);
-    await screen.findByText("Notifications");
+    await waitForSettingsPage();
 
     fireEvent.click(screen.getByText(/^Sound$/));
     expect(mockState.toggleNotificationSound).toHaveBeenCalledTimes(1);
@@ -397,7 +406,7 @@ describe("SettingsPage", () => {
   it("cycles theme from settings", async () => {
     mockState = createMockState({ colorTheme: "light", darkMode: false });
     render(<SettingsPage />);
-    await screen.findByText("Notifications");
+    await waitForSettingsPage();
 
     // Click the Theme button — should cycle to next theme ("dark")
     fireEvent.click(screen.getByText(/^Theme$/));
@@ -406,7 +415,7 @@ describe("SettingsPage", () => {
 
   it("navigates to environments page from settings", async () => {
     render(<SettingsPage />);
-    await screen.findByText("Notifications");
+    await waitForSettingsPage();
 
     fireEvent.click(screen.getByText("Manage Environments"));
     expect(window.location.hash).toBe("#/environments");
@@ -415,7 +424,7 @@ describe("SettingsPage", () => {
   it("navigates to logs page from settings", async () => {
     // The log viewer should be grouped under Server & Diagnostics rather than exposed as a standalone Logs section.
     render(<SettingsPage />);
-    await screen.findByText("Notifications");
+    await waitForSettingsPage();
 
     expect(screen.queryByText(/^Logs$/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByText("Open Log Viewer"));
@@ -483,7 +492,7 @@ describe("SettingsPage", () => {
     expect(screen.getByRole("button", { name: /Heavy Repo Mode On/ })).toBeInTheDocument();
   });
 
-  it("does not poll sleep inhibitor status while the Sessions section is collapsed", async () => {
+  it("ignores stale Sessions collapse state while polling sleep inhibitor status", async () => {
     vi.useFakeTimers();
     localStorage.setItem("cc-settings-collapsed", JSON.stringify(["sessions"]));
     mockApi.getSettings.mockResolvedValue({
@@ -504,18 +513,18 @@ describe("SettingsPage", () => {
 
     try {
       render(<SettingsPage />);
-      expect(screen.getByText("Notifications")).toBeInTheDocument();
       await act(async () => {
         await Promise.resolve();
       });
+      expect(settingsSection("Notifications")).toBeInTheDocument();
 
-      expect(mockApi.getCaffeinateStatus).not.toHaveBeenCalled();
+      expect(mockApi.getCaffeinateStatus).toHaveBeenCalled();
 
       await act(async () => {
         vi.advanceTimersByTime(20_000);
       });
 
-      expect(mockApi.getCaffeinateStatus).not.toHaveBeenCalled();
+      expect(mockApi.getCaffeinateStatus).toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }
@@ -546,10 +555,10 @@ describe("SettingsPage", () => {
 
     try {
       render(<SettingsPage />);
-      expect(screen.getByText("Notifications")).toBeInTheDocument();
       await act(async () => {
         await Promise.resolve();
       });
+      expect(settingsSection("Notifications")).toBeInTheDocument();
 
       expect(mockApi.getCaffeinateStatus).not.toHaveBeenCalled();
 
@@ -641,7 +650,7 @@ describe("SettingsPage", () => {
 
     try {
       render(<SettingsPage />);
-      await screen.findByText("Notifications");
+      await waitForSettingsPage();
       fireEvent.click(screen.getByText(/^Desktop Alerts$/));
 
       await waitFor(() => {
@@ -656,7 +665,7 @@ describe("SettingsPage", () => {
   it("does not show OpenRouter section", async () => {
     // OpenRouter has been removed in favor of Haiku-based session naming
     render(<SettingsPage />);
-    await screen.findByText("Notifications");
+    await waitForSettingsPage();
 
     expect(screen.queryByText("OpenRouter")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("OpenRouter API Key")).not.toBeInTheDocument();
@@ -708,70 +717,81 @@ describe("SettingsPage", () => {
     });
   });
 
-  // ── Collapsible section tests ──────────────────────────────────────────────
+  // ── Search and section navigation tests ───────────────────────────────────
 
-  it("collapses a section when header is clicked", async () => {
+  it("keeps sections expanded when section headers are clicked", async () => {
     render(<SettingsPage />);
-    await screen.findByText("Notifications");
+    await waitForSettingsPage();
 
-    // Sound toggle should be visible initially.
     expect(screen.getByText(/^Sound$/)).toBeInTheDocument();
 
-    // Click the Notifications section header to collapse it
-    fireEvent.click(screen.getByText("Notifications"));
+    fireEvent.click(settingsSection("Notifications").querySelector("h2") as HTMLElement);
 
-    // Sound toggle should be hidden after collapsing.
-    expect(screen.queryByText(/^Sound$/)).not.toBeInTheDocument();
-  });
-
-  it("expands a collapsed section when header is clicked again", async () => {
-    render(<SettingsPage />);
-    await screen.findByText("Notifications");
-
-    // Collapse
-    fireEvent.click(screen.getByText("Notifications"));
-    expect(screen.queryByText(/^Sound$/)).not.toBeInTheDocument();
-
-    // Expand
-    fireEvent.click(screen.getByText("Notifications"));
     expect(screen.getByText(/^Sound$/)).toBeInTheDocument();
+    expect(localStorage.getItem("cc-settings-collapsed")).toBeNull();
   });
 
-  it("persists collapse state to localStorage", async () => {
+  it("ignores stale persisted collapse state and renders sections expanded", async () => {
+    localStorage.setItem("cc-settings-collapsed", JSON.stringify(["notifications", "sessions"]));
+
     render(<SettingsPage />);
-    await screen.findByText("Notifications");
+    await waitForSettingsPage();
 
-    // Collapse the notifications section
-    fireEvent.click(screen.getByText("Notifications"));
-
-    // Verify localStorage was updated
-    const stored = JSON.parse(localStorage.getItem("cc-settings-collapsed") || "[]");
-    expect(stored).toContain("notifications");
+    expect(screen.getByText(/^Sound$/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Max Keep-Alive/i)).toBeInTheDocument();
   });
 
-  it("restores collapse state from localStorage on mount", async () => {
-    // Pre-set collapse state
-    localStorage.setItem("cc-settings-collapsed", JSON.stringify(["notifications"]));
-
+  it("filters sections with fuzzy search across labels and aliases", async () => {
     render(<SettingsPage />);
-    await screen.findByText("Appearance & Display"); // wait for render
+    await waitForSettingsPage();
 
-    // Notifications section should be collapsed — Sound toggle not visible
-    expect(screen.queryByRole("button", { name: /Sound/i })).not.toBeInTheDocument();
-    // But the section heading should still be visible
-    expect(screen.getByText("Notifications")).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search settings" }), { target: { value: "vscode" } });
+
+    const cliSection = settingsSection("CLI & Backends");
+    expect(cliSection).toBeVisible();
+    expect(settingsSection("Shortcuts")).toBeVisible();
+    expect(settingsSection("Appearance & Display")).not.toBeVisible();
+    expect(within(cliSection).getByLabelText("Editor")).toBeVisible();
+    expect(within(cliSection).getByLabelText("Claude Code")).not.toBeVisible();
   });
 
-  it("renders all 7 section headings", async () => {
+  it("shows an empty state when no settings match", async () => {
     render(<SettingsPage />);
-    await screen.findByText("Notifications");
+    await waitForSettingsPage();
 
-    expect(screen.getByText("Appearance & Display")).toBeInTheDocument();
-    expect(screen.getByText("Notifications")).toBeInTheDocument();
-    expect(screen.getByText("CLI & Backends")).toBeInTheDocument();
-    expect(screen.getByText("Sessions")).toBeInTheDocument();
-    expect(screen.getByText("Push Notifications (Pushover)")).toBeInTheDocument();
-    expect(screen.getByText("Auto-Approval (LLM)")).toBeInTheDocument();
-    expect(screen.getByText("Server & Diagnostics")).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search settings" }), {
+      target: { value: "definitelynotasetting" },
+    });
+
+    expect(screen.getByText('No settings match "definitelynotasetting".')).toBeInTheDocument();
+    expect(settingsSection("Notifications")).not.toBeVisible();
+  });
+
+  it("jumps to settings sections from the desktop nav and mobile control", async () => {
+    render(<SettingsPage />);
+    await waitForSettingsPage();
+
+    fireEvent.click(screen.getByRole("button", { name: /^Sessions$/ }));
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Jump to settings section" }), {
+      target: { value: "server" },
+    });
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalledTimes(2);
+  });
+
+  it("renders all section headings", async () => {
+    render(<SettingsPage />);
+    await waitForSettingsPage();
+
+    expect(settingsSection("Appearance & Display")).toBeInTheDocument();
+    expect(settingsSection("Notifications")).toBeInTheDocument();
+    expect(settingsSection("CLI & Backends")).toBeInTheDocument();
+    expect(settingsSection("Sessions")).toBeInTheDocument();
+    expect(settingsSection("Push Notifications (Pushover)")).toBeInTheDocument();
+    expect(settingsSection("Auto-Approval (LLM)")).toBeInTheDocument();
+    expect(settingsSection("Session Namer")).toBeInTheDocument();
+    expect(settingsSection("Voice Transcription")).toBeInTheDocument();
+    expect(settingsSection("Server & Diagnostics")).toBeInTheDocument();
   });
 });

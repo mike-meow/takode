@@ -1,25 +1,9 @@
-import { useEffect, useState, type ReactNode, type FormEvent } from "react";
-
-// ── Collapse state persistence ──────────────────────────────────────────────
-// Stored as a JSON array of collapsed section IDs in localStorage.
-// Registered as a GLOBAL_KEY in scoped-storage.ts (UI preference, not server-specific).
-
-const STORAGE_KEY = "cc-settings-collapsed";
-
-function readCollapsed(): Set<string> {
-  try {
-    return new Set(JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"));
-  } catch {
-    return new Set();
-  }
-}
-
-function writeCollapsed(set: Set<string>): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify([...set]));
-}
+import { useEffect, type ReactNode, type FormEvent } from "react";
+import { settingsSectionDomId } from "./settings-search.js";
 
 export function isCollapsibleSectionCollapsed(id: string): boolean {
-  return readCollapsed().has(id);
+  void id;
+  return false;
 }
 
 // ── Component ───────────────────────────────────────────────────────────────
@@ -31,12 +15,18 @@ interface CollapsibleSectionProps {
   title: string;
   /** Optional description shown below the title (only when expanded) */
   description?: string;
-  /** Render as a <form> instead of <div> (for sections with submit handlers) */
-  as?: "div" | "form";
+  /** Render as a <form> instead of <section> (for sections with submit handlers) */
+  as?: "section" | "div" | "form";
   /** Form onSubmit handler (only when as="form") */
   onSubmit?: (e: FormEvent) => void;
   /** Optional callback when persisted collapsed state changes */
   onCollapsedChange?: (collapsed: boolean) => void;
+  /** Hide this section when Settings search excludes it */
+  hidden?: boolean;
+  /** Active search query, used only to expose match count text */
+  searchQuery?: string;
+  /** Number of matches in this section while search is active */
+  matchCount?: number;
   children: ReactNode;
 }
 
@@ -44,53 +34,41 @@ export function CollapsibleSection({
   id,
   title,
   description,
-  as: Tag = "div",
+  as: Tag = "section",
   onSubmit,
   onCollapsedChange,
+  hidden = false,
+  searchQuery = "",
+  matchCount = 0,
   children,
 }: CollapsibleSectionProps) {
-  const [collapsed, setCollapsed] = useState(() => readCollapsed().has(id));
-
   useEffect(() => {
-    onCollapsedChange?.(collapsed);
-  }, [collapsed, onCollapsedChange]);
+    onCollapsedChange?.(false);
+  }, [onCollapsedChange]);
 
-  function toggle() {
-    setCollapsed((prev) => {
-      const set = readCollapsed();
-      if (prev) set.delete(id);
-      else set.add(id);
-      writeCollapsed(set);
-      return !prev;
-    });
-  }
+  const hasSearch = searchQuery.trim().length > 0;
 
   return (
     <Tag
       {...(Tag === "form" ? { onSubmit } : {})}
+      id={settingsSectionDomId(id)}
+      data-settings-section-id={id}
+      hidden={hidden}
       className="bg-cc-card border border-cc-border rounded-xl overflow-hidden"
     >
-      <button
-        type="button"
-        onClick={toggle}
-        className="w-full flex items-center justify-between p-4 sm:p-5 cursor-pointer hover:bg-cc-hover/50 transition-colors"
-      >
+      <div className="flex items-start justify-between gap-3 border-b border-cc-border/70 p-4 sm:p-5">
         <h2 className="text-sm font-semibold text-cc-fg">{title}</h2>
-        <svg
-          className={`w-3.5 h-3.5 text-cc-muted transition-transform duration-200 ${collapsed ? "" : "rotate-90"}`}
-          viewBox="0 0 16 16"
-          fill="currentColor"
-        >
-          <path d="M6 3l5 5-5 5" />
-        </svg>
-      </button>
+        {hasSearch && (
+          <span className="shrink-0 rounded-full bg-cc-hover px-2 py-0.5 text-[11px] text-cc-muted">
+            {matchCount} {matchCount === 1 ? "match" : "matches"}
+          </span>
+        )}
+      </div>
 
-      {!collapsed && (
-        <div className="px-4 sm:px-5 pb-4 sm:pb-5 space-y-3">
-          {description && <p className="text-xs text-cc-muted">{description}</p>}
-          {children}
-        </div>
-      )}
+      <div className="px-4 sm:px-5 pb-4 sm:pb-5 pt-4 space-y-3">
+        {description && <p className="text-xs text-cc-muted">{description}</p>}
+        {children}
+      </div>
     </Tag>
   );
 }

@@ -1,4 +1,5 @@
 import { CollapsibleSection } from "./CollapsibleSection.js";
+import type { SettingsSearchResults, SettingsSectionId } from "./settings-search.js";
 
 export function SettingsServerDiagnosticsSection({
   logFile,
@@ -6,15 +7,26 @@ export function SettingsServerDiagnosticsSection({
   restartError,
   restarting,
   onRestartServer,
+  sectionSearch,
 }: {
   logFile: string;
   restartSupported: boolean;
   restartError: string;
   restarting: boolean;
   onRestartServer: () => void;
+  sectionSearch?: {
+    results: SettingsSearchResults;
+    id: SettingsSectionId;
+  };
 }) {
   return (
-    <CollapsibleSection id="server" title="Server & Diagnostics">
+    <CollapsibleSection
+      id="server"
+      title="Server & Diagnostics"
+      hidden={sectionSearch ? !sectionSearch.results.visibleSectionIds.has(sectionSearch.id) : false}
+      searchQuery={sectionSearch?.results.query}
+      matchCount={sectionSearch ? (sectionSearch.results.sectionMatchCounts.get(sectionSearch.id) ?? 0) : 0}
+    >
       <div className="space-y-3">
         <div>
           <p className="text-sm font-medium text-cc-fg">Log Viewer</p>

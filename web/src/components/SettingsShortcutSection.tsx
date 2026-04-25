@@ -8,6 +8,7 @@ import {
   type ShortcutSettings,
 } from "../shortcuts.js";
 import { CollapsibleSection } from "./CollapsibleSection.js";
+import type { SettingsSearchResults, SettingsSectionId } from "./settings-search.js";
 
 export function SettingsShortcutSection({
   shortcutSettings,
@@ -18,6 +19,7 @@ export function SettingsShortcutSection({
   recordingShortcutActionId,
   setRecordingShortcutActionId,
   shortcutPlatform,
+  sectionSearch,
 }: {
   shortcutSettings: ShortcutSettings;
   setShortcutsEnabled: (enabled: boolean) => void;
@@ -27,6 +29,10 @@ export function SettingsShortcutSection({
   recordingShortcutActionId: ShortcutActionId | null;
   setRecordingShortcutActionId: (actionId: ShortcutActionId | null) => void;
   shortcutPlatform?: string;
+  sectionSearch?: {
+    results: SettingsSearchResults;
+    id: SettingsSectionId;
+  };
 }) {
   const shortcutPresetBindings = getShortcutPresetBindings(shortcutSettings.preset);
   const shortcutPresetIsCustom = SHORTCUT_ACTIONS.some(
@@ -40,6 +46,9 @@ export function SettingsShortcutSection({
       id="shortcuts"
       title="Shortcuts"
       description="Keyboard shortcuts stay off by default. Choose a preset, then optionally override individual actions."
+      hidden={sectionSearch ? !sectionSearch.results.visibleSectionIds.has(sectionSearch.id) : false}
+      searchQuery={sectionSearch?.results.query}
+      matchCount={sectionSearch ? (sectionSearch.results.sectionMatchCounts.get(sectionSearch.id) ?? 0) : 0}
     >
       <button
         type="button"
