@@ -2,6 +2,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import "@testing-library/jest-dom";
+import { api } from "../api.js";
+import { openPathWithEditorPreference } from "../utils/vscode-bridge.js";
 
 interface MockStoreState {
   sessions: Map<
@@ -92,11 +94,27 @@ vi.mock("../ws.js", () => ({
   sendToSession: vi.fn(),
 }));
 
+vi.mock("../api.js", () => ({
+  api: {
+    getSettings: vi.fn(),
+  },
+}));
+
+vi.mock("../utils/vscode-bridge.js", () => ({
+  openPathWithEditorPreference: vi.fn(),
+}));
+
 import { SessionInfoPopover } from "./SessionInfoPopover.js";
 
 describe("SessionInfoPopover", () => {
   beforeEach(() => {
     window.location.hash = "#/session/s1";
+    vi.mocked(api.getSettings).mockReset();
+    vi.mocked(api.getSettings).mockResolvedValue({ editorConfig: { editor: "cursor" } } as Awaited<
+      ReturnType<typeof api.getSettings>
+    >);
+    vi.mocked(openPathWithEditorPreference).mockReset();
+    vi.mocked(openPathWithEditorPreference).mockResolvedValue(true);
   });
 
   it("navigates to questmaster focused quest when clicking a quest history row", () => {
@@ -237,6 +255,73 @@ describe("SessionInfoPopover", () => {
     expect(screen.getByTestId("session-info-path-repo-tail")).toHaveTextContent("companion");
     expect(screen.getByTitle("/Users/test/.companion/worktrees/companion/jiayi-wt-3116")).toBeInTheDocument();
     expect(screen.getByTitle("/Users/test/Code/companion")).toBeInTheDocument();
+    expect(screen.getByTestId("session-info-path-worktree-scroller")).toHaveClass("overflow-x-auto");
+    expect(screen.getByTestId("session-info-path-worktree-tail")).toHaveTextContent(
+      "/Users/test/.companion/worktrees/companion/jiayi-wt-3116",
+    );
+    expect(screen.getByRole("button", { name: "Copy Worktree" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy Base repo" })).toBeInTheDocument();
+  });
+
+  it("opens the session working directory through the configured editor", async () => {
+    resetStore([]);
+    const session = storeState.sessions.get("s1");
+    if (!session) throw new Error("missing session fixture");
+    session.cwd = "/Users/test/.companion/worktrees/companion/jiayi-wt-3116";
+    session.repo_root = "/Users/test/Code/companion";
+    session.is_worktree = true;
+    storeState.sdkSessions = [
+      {
+        sessionId: "s1",
+        cwd: session.cwd,
+        backendType: "codex",
+      },
+    ];
+    vi.mocked(api.getSettings).mockResolvedValue({ editorConfig: { editor: "cursor" } } as Awaited<
+      ReturnType<typeof api.getSettings>
+    >);
+
+    render(<SessionInfoPopover sessionId="s1" onClose={() => {}} />);
+
+    const button = await screen.findByTestId("session-info-open-working-directory");
+    await waitFor(() => expect(button).not.toBeDisabled());
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(openPathWithEditorPreference).toHaveBeenCalledWith(
+        {
+          absolutePath: "/Users/test/.companion/worktrees/companion/jiayi-wt-3116",
+          targetKind: "directory",
+        },
+        "cursor",
+      );
+    });
+  });
+
+  it("disables the working directory open action when no editor is configured", async () => {
+    resetStore([]);
+    vi.mocked(api.getSettings).mockResolvedValue({ editorConfig: { editor: "none" } } as Awaited<
+      ReturnType<typeof api.getSettings>
+    >);
+
+    render(<SessionInfoPopover sessionId="s1" onClose={() => {}} />);
+
+    const button = await screen.findByTestId("session-info-open-working-directory");
+    await waitFor(() => expect(button).toBeDisabled());
+    expect(button).toHaveAttribute("title", "Configure an editor in Settings to open this directory.");
+  });
+
+  it("shows an inline error when the configured editor cannot open the working directory", async () => {
+    resetStore([]);
+    vi.mocked(openPathWithEditorPreference).mockRejectedValue(new Error("Editor failed"));
+
+    render(<SessionInfoPopover sessionId="s1" onClose={() => {}} />);
+
+    const button = await screen.findByTestId("session-info-open-working-directory");
+    await waitFor(() => expect(button).not.toBeDisabled());
+    fireEvent.click(button);
+
+    expect(await screen.findByTestId("session-info-open-editor-error")).toHaveTextContent("Editor failed");
   });
 
   it("shows concise herd relationship chips in the info panel", () => {

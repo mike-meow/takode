@@ -476,8 +476,12 @@ export function createSystemRoutes(ctx: RouteContext) {
     const line = record.line;
     const column = record.column;
     const endLine = record.endLine;
+    const targetKind = record.targetKind;
     if (typeof absolutePath !== "string" || absolutePath.trim().length === 0) {
       return c.json({ error: "absolutePath is required" }, 400);
+    }
+    if (targetKind !== undefined && targetKind !== "file" && targetKind !== "directory") {
+      return c.json({ error: 'targetKind must be "file" or "directory" when provided' }, 400);
     }
     if (line !== undefined && !Number.isFinite(line)) {
       return c.json({ error: "line must be a number when provided" }, 400);
@@ -493,11 +497,14 @@ export function createSystemRoutes(ctx: RouteContext) {
     }
 
     try {
+      const normalizedTargetKind: "file" | "directory" | undefined =
+        targetKind === "file" || targetKind === "directory" ? targetKind : undefined;
       const target = {
         absolutePath,
         ...(Number.isFinite(line) ? { line: Number(line) } : {}),
         ...(Number.isFinite(column) ? { column: Number(column) } : {}),
         ...(Number.isFinite(endLine) ? { endLine: Number(endLine) } : {}),
+        ...(normalizedTargetKind ? { targetKind: normalizedTargetKind } : {}),
       };
       const dispatched =
         browserTransportState() && browserTransportDeps()

@@ -1,10 +1,9 @@
-import { shortenHome } from "../utils/path-display.js";
-
 interface SessionPathSummaryProps {
   cwd?: string | null;
   repoRoot?: string | null;
   isWorktree?: boolean;
   testIdPrefix?: string;
+  interactivePaths?: boolean;
 }
 
 interface PathRow {
@@ -13,19 +12,31 @@ interface PathRow {
   path: string;
 }
 
-function splitDisplayPath(path: string): { full: string; prefix: string; tail: string } {
-  const full = shortenHome(path);
-  const normalized = full.length > 1 ? full.replace(/\/+$/, "") : full;
+function getPathTail(path: string): string {
+  const normalized = path.length > 1 ? path.replace(/[/\\]+$/, "") : path;
   const slashIndex = normalized.lastIndexOf("/");
-  if (slashIndex <= 0) return { full, prefix: "", tail: normalized };
-  return {
-    full,
-    prefix: normalized.slice(0, slashIndex + 1),
-    tail: normalized.slice(slashIndex + 1),
-  };
+  const backslashIndex = normalized.lastIndexOf("\\");
+  const separatorIndex = Math.max(slashIndex, backslashIndex);
+  if (separatorIndex < 0) return normalized;
+  return normalized.slice(separatorIndex + 1) || normalized;
 }
 
-export function SessionPathSummary({ cwd, repoRoot, isWorktree, testIdPrefix }: SessionPathSummaryProps) {
+function selectElementText(element: HTMLElement) {
+  const selection = window.getSelection?.();
+  if (!selection) return;
+  const range = document.createRange();
+  range.selectNodeContents(element);
+  selection.removeAllRanges();
+  selection.addRange(range);
+}
+
+export function SessionPathSummary({
+  cwd,
+  repoRoot,
+  isWorktree,
+  testIdPrefix,
+  interactivePaths,
+}: SessionPathSummaryProps) {
   const rows: PathRow[] = [];
   if (!cwd) return null;
 
@@ -40,7 +51,7 @@ export function SessionPathSummary({ cwd, repoRoot, isWorktree, testIdPrefix }: 
   return (
     <div className="space-y-1.5">
       {rows.map((row) => {
-        const { full, prefix, tail } = splitDisplayPath(row.path);
+        const tail = getPathTail(row.path);
         return (
           <div
             key={row.key}
@@ -55,16 +66,40 @@ export function SessionPathSummary({ cwd, repoRoot, isWorktree, testIdPrefix }: 
               <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 shrink-0 text-cc-muted/45">
                 <path d="M1 3.5A1.5 1.5 0 012.5 2h3.379a1.5 1.5 0 011.06.44l.622.621a.5.5 0 00.353.146H13.5A1.5 1.5 0 0115 4.707V12.5a1.5 1.5 0 01-1.5 1.5h-11A1.5 1.5 0 011 12.5v-9z" />
               </svg>
-              <div className="flex min-w-0 items-baseline overflow-hidden whitespace-nowrap font-mono-code text-[11px]">
-                {prefix && <span className="min-w-0 truncate text-cc-muted/55">{prefix}</span>}
-                <span
-                  data-testid={testIdPrefix ? `${testIdPrefix}-${row.key}-tail` : undefined}
-                  className="max-w-[75%] shrink-0 truncate font-semibold text-cc-fg/95"
-                >
-                  {tail || full}
-                </span>
+              <div
+                data-testid={testIdPrefix ? `${testIdPrefix}-${row.key}-scroller` : undefined}
+                className={`min-w-0 flex-1 overflow-x-auto overflow-y-hidden whitespace-nowrap font-mono-code text-[11px] text-cc-fg/95 ${
+                  interactivePaths ? "select-text rounded bg-cc-hover/40 px-1.5 py-1" : ""
+                }`}
+                style={{ scrollbarGutter: interactivePaths ? "stable" : undefined }}
+                onDoubleClick={
+                  interactivePaths
+                    ? (event) => {
+                        selectElementText(event.currentTarget);
+                      }
+                    : undefined
+                }
+              >
+                <span data-testid={testIdPrefix ? `${testIdPrefix}-${row.key}-tail` : undefined}>{row.path}</span>
               </div>
+              {interactivePaths && (
+                <button
+                  type="button"
+                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-cc-muted hover:bg-cc-hover hover:text-cc-fg disabled:cursor-not-allowed disabled:opacity-40"
+                  title={`Copy ${row.label?.toLowerCase() ?? "path"}`}
+                  aria-label={`Copy ${row.label ?? "path"}`}
+                  onClick={() => {
+                    void navigator.clipboard?.writeText(row.path);
+                  }}
+                >
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-3 w-3">
+                    <path d="M5.5 5.5h6v8h-6z" />
+                    <path d="M3.5 10.5h-1v-8h6v1" />
+                  </svg>
+                </button>
+              )}
             </div>
+            <span className="sr-only">{tail}</span>
           </div>
         );
       })}

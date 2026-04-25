@@ -397,6 +397,7 @@ export interface VsCodeRemoteOpenFileTarget {
   line?: number;
   column?: number;
   endLine?: number;
+  targetKind?: "file" | "directory";
 }
 
 export interface VsCodeRemoteOpenFileResponse {

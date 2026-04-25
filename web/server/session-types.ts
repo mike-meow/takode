@@ -302,9 +302,10 @@ export interface VsCodeWindowState {
 
 export interface VsCodeOpenFileTarget {
   absolutePath: string;
-  line: number;
-  column: number;
+  line?: number;
+  column?: number;
   endLine?: number;
+  targetKind?: "file" | "directory";
 }
 
 export interface VsCodeOpenFileCommand {

@@ -14,6 +14,8 @@ import { sendToSession } from "../ws.js";
 import { SessionNumChip } from "./SessionNumChip.js";
 import { SessionPathSummary } from "./SessionPathSummary.js";
 import { SessionPayloadStats } from "./SessionPayloadStats.js";
+import { api, type EditorKind } from "../api.js";
+import { openPathWithEditorPreference } from "../utils/vscode-bridge.js";
 
 export function SessionInfoPopover({ sessionId, onClose }: { sessionId: string; onClose: () => void }) {
   const session = useStore((s) => s.sessions.get(sessionId));
@@ -86,6 +88,10 @@ export function SessionInfoPopover({ sessionId, onClose }: { sessionId: string; 
   const codexReasoningEffort = session?.codex_reasoning_effort || "";
   const [showModelDropdown, setShowModelDropdown] = useState(false);
   const [showReasoningDropdown, setShowReasoningDropdown] = useState(false);
+  const [editorKind, setEditorKind] = useState<EditorKind | null>(null);
+  const [editorConfigError, setEditorConfigError] = useState("");
+  const [openEditorError, setOpenEditorError] = useState("");
+  const [openingEditor, setOpeningEditor] = useState(false);
   const modelDropdownRef = useRef<HTMLDivElement>(null);
   const reasoningDropdownRef = useRef<HTMLDivElement>(null);
   const modelOptions = useMemo(() => getModelsForBackend(backendType as "claude" | "codex"), [backendType]);
@@ -101,6 +107,26 @@ export function SessionInfoPopover({ sessionId, onClose }: { sessionId: string; 
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setEditorKind(null);
+    setEditorConfigError("");
+    api
+      .getSettings()
+      .then((settings) => {
+        if (cancelled) return;
+        setEditorKind(settings.editorConfig?.editor ?? "none");
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setEditorConfigError(error instanceof Error ? error.message : "Unable to load editor settings.");
+        setEditorKind("none");
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const backendLabel = backendType === "codex" ? "Codex" : "Claude";
@@ -120,6 +146,38 @@ export function SessionInfoPopover({ sessionId, onClose }: { sessionId: string; 
     const leader = sdkSessions.find((sdk) => sdk.sessionId === sdkSession.herdedBy && !sdk.archived);
     return leader?.sessionId ?? sdkSession.herdedBy;
   }, [sdkSession?.isOrchestrator, sdkSession?.herdedBy, sdkSessions]);
+  const editorDisabledReason = !cwd
+    ? "No working directory is available for this session."
+    : editorConfigError
+      ? `Unable to load editor settings: ${editorConfigError}`
+      : editorKind === null
+        ? "Loading editor settings..."
+        : editorKind === "none"
+          ? "Configure an editor in Settings to open this directory."
+          : "";
+  const canOpenWorkingDirectory = !!cwd && !!editorKind && editorKind !== "none" && !editorConfigError;
+
+  async function handleOpenWorkingDirectory() {
+    if (!cwd || !editorKind || editorKind === "none") return;
+    setOpeningEditor(true);
+    setOpenEditorError("");
+    try {
+      const opened = await openPathWithEditorPreference(
+        {
+          absolutePath: cwd,
+          targetKind: "directory",
+        },
+        editorKind,
+      );
+      if (!opened) {
+        setOpenEditorError("Configure an editor in Settings to open this directory.");
+      }
+    } catch (error) {
+      setOpenEditorError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setOpeningEditor(false);
+    }
+  }
 
   return (
     <div
@@ -234,12 +292,40 @@ export function SessionInfoPopover({ sessionId, onClose }: { sessionId: string; 
             </div>
           )}
           {cwd && (
-            <SessionPathSummary
-              cwd={cwd}
-              repoRoot={sessionVm?.repoRoot}
-              isWorktree={sessionVm?.isWorktree}
-              testIdPrefix="session-info-path"
-            />
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] uppercase tracking-wider text-cc-muted/60">Working Directory</span>
+                <button
+                  type="button"
+                  data-testid="session-info-open-working-directory"
+                  className="hidden sm:inline-flex items-center gap-1 rounded-md border border-cc-border px-2 py-1 text-[11px] text-cc-muted transition-colors hover:border-cc-primary/40 hover:bg-cc-hover hover:text-cc-fg disabled:cursor-not-allowed disabled:opacity-45"
+                  disabled={!canOpenWorkingDirectory || openingEditor}
+                  title={editorDisabledReason || "Open this session's working directory in the configured editor"}
+                  onClick={() => {
+                    void handleOpenWorkingDirectory();
+                  }}
+                >
+                  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-3 w-3">
+                    <path d="M6 3.5h6.5V10" />
+                    <path d="M12.5 3.5 6 10" />
+                    <path d="M12.5 12.5h-9v-9" />
+                  </svg>
+                  {openingEditor ? "Opening" : "Open"}
+                </button>
+              </div>
+              <SessionPathSummary
+                cwd={cwd}
+                repoRoot={sessionVm?.repoRoot}
+                isWorktree={sessionVm?.isWorktree}
+                testIdPrefix="session-info-path"
+                interactivePaths
+              />
+              {openEditorError && (
+                <div data-testid="session-info-open-editor-error" className="text-[11px] leading-snug text-red-400">
+                  {openEditorError}
+                </div>
+              )}
+            </div>
           )}
           {/* Git summary */}
           {hasGit && (

@@ -9,11 +9,16 @@ export interface VsCodeOpenFileTarget {
   line?: number;
   column?: number;
   endLine?: number;
+  targetKind?: "file" | "directory";
 }
 
 export function buildLocalEditorUri(target: VsCodeOpenFileTarget, editor: "vscode-local" | "cursor"): string {
   const scheme = editor === "cursor" ? "cursor" : "vscode";
-  return `${scheme}://file/${encodeURI(target.absolutePath)}:${Math.max(1, target.line ?? 1)}:${Math.max(1, target.column ?? 1)}`;
+  const pathUri = `${scheme}://file/${encodeURI(target.absolutePath)}`;
+  if (target.targetKind === "directory") {
+    return pathUri;
+  }
+  return `${pathUri}:${Math.max(1, target.line ?? 1)}:${Math.max(1, target.column ?? 1)}`;
 }
 
 function isAbsolutePath(path: string): boolean {
@@ -44,9 +49,13 @@ export function openFileInEmbeddedVsCode(target: VsCodeOpenFileTarget): boolean 
         type: VSCODE_OPEN_FILE_MESSAGE_TYPE,
         payload: {
           absolutePath: target.absolutePath,
-          line: Math.max(1, target.line ?? 1),
-          column: Math.max(1, target.column ?? 1),
-          ...(Number.isFinite(target.endLine) ? { endLine: Math.max(1, Number(target.endLine)) } : {}),
+          ...(target.targetKind === "directory"
+            ? { targetKind: "directory" }
+            : {
+                line: Math.max(1, target.line ?? 1),
+                column: Math.max(1, target.column ?? 1),
+                ...(Number.isFinite(target.endLine) ? { endLine: Math.max(1, Number(target.endLine)) } : {}),
+              }),
         },
       },
       "*",
@@ -80,6 +89,10 @@ export async function openFileWithEditorPreference(target: VsCodeOpenFileTarget,
   const uri = buildLocalEditorUri(target, editor === "cursor" ? "cursor" : "vscode-local");
   window.open(uri, "_blank", "noopener,noreferrer");
   return true;
+}
+
+export async function openPathWithEditorPreference(target: VsCodeOpenFileTarget, editor: EditorKind): Promise<boolean> {
+  return openFileWithEditorPreference(target, editor);
 }
 
 export async function ensureVsCodeEditorPreference(): Promise<void> {

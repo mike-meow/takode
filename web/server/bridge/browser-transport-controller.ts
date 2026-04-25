@@ -1104,7 +1104,13 @@ export function resolveVsCodeOpenFileResult(
 
 export async function requestVsCodeOpenFile(
   state: BrowserTransportStateLike,
-  target: { absolutePath: string; line?: number; column?: number; endLine?: number },
+  target: {
+    absolutePath: string;
+    line?: number;
+    column?: number;
+    endLine?: number;
+    targetKind?: "file" | "directory";
+  },
   deps: BrowserTransportDeps,
   options?: { timeoutMs?: number },
 ): Promise<{ sourceId: string; commandId: string }> {
@@ -1118,11 +1124,15 @@ export async function requestVsCodeOpenFile(
     sourceId: sourceWindow.sourceId,
     target: {
       absolutePath: target.absolutePath,
-      line: Math.max(1, target.line ?? 1),
-      column: Math.max(1, target.column ?? 1),
-      ...(Number.isFinite(target.endLine)
-        ? { endLine: Math.max(Math.max(1, target.line ?? 1), Number(target.endLine)) }
-        : {}),
+      ...(target.targetKind === "directory"
+        ? { targetKind: "directory" as const }
+        : {
+            line: Math.max(1, target.line ?? 1),
+            column: Math.max(1, target.column ?? 1),
+            ...(Number.isFinite(target.endLine)
+              ? { endLine: Math.max(Math.max(1, target.line ?? 1), Number(target.endLine)) }
+              : {}),
+          }),
     },
     createdAt: Date.now(),
   };

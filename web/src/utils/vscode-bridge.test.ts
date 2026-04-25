@@ -4,6 +4,7 @@ import {
   buildLocalEditorUri,
   ensureVsCodeEditorPreference,
   openFileWithEditorPreference,
+  openPathWithEditorPreference,
   openFileInEmbeddedVsCode,
   resolveEmbeddedVsCodePath,
 } from "./vscode-bridge.js";
@@ -74,6 +75,27 @@ describe("vscode-bridge", () => {
     expect(buildLocalEditorUri({ absolutePath: "/workspace/project/src/app.ts" }, "cursor")).toBe(
       "cursor://file//workspace/project/src/app.ts:1:1",
     );
+    expect(buildLocalEditorUri({ absolutePath: "/workspace/project", targetKind: "directory" }, "cursor")).toBe(
+      "cursor://file//workspace/project",
+    );
+  });
+
+  it("posts directory-open requests to the embedded VS Code wrapper without file coordinates", () => {
+    window.history.replaceState({}, "", "/?takodeHost=vscode");
+    const postMessageSpy = vi.spyOn(window.parent, "postMessage");
+
+    expect(openFileInEmbeddedVsCode({ absolutePath: "/workspace/project", targetKind: "directory" })).toBe(true);
+    expect(postMessageSpy).toHaveBeenCalledWith(
+      {
+        source: "takode-vscode-prototype",
+        type: "takode:open-file",
+        payload: {
+          absolutePath: "/workspace/project",
+          targetKind: "directory",
+        },
+      },
+      "*",
+    );
   });
 
   it("routes remote editor opens through the server API", async () => {
@@ -87,6 +109,18 @@ describe("vscode-bridge", () => {
       line: 42,
       column: 3,
       endLine: 44,
+    });
+  });
+
+  it("routes configured editor directory opens through the same editor preference", async () => {
+    await openPathWithEditorPreference(
+      { absolutePath: "/workspace/project", targetKind: "directory" },
+      "vscode-remote",
+    );
+
+    expect(api.openVsCodeRemoteFile).toHaveBeenCalledWith({
+      absolutePath: "/workspace/project",
+      targetKind: "directory",
     });
   });
 
