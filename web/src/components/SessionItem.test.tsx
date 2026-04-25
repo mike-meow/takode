@@ -789,6 +789,80 @@ describe("SessionItem quest title label", () => {
   });
 });
 
+describe("SessionItem rename input", () => {
+  // Bug fix: space key was committing the rename because keyup propagated
+  // to the parent <button>, which treats space-keyup as a click.
+  it("does not commit rename when space is pressed (inserts space instead)", () => {
+    const onConfirmRename = vi.fn();
+    const setEditingName = vi.fn();
+    renderSessionItem({
+      editingSessionId: "s1",
+      editingName: "hello",
+      setEditingName,
+      onConfirmRename,
+      onCancelRename: vi.fn(),
+    });
+
+    const input = screen.getByDisplayValue("hello");
+    // Simulate keydown + keyup for space — keyup must not bubble to button
+    fireEvent.keyDown(input, { key: " " });
+    fireEvent.keyUp(input, { key: " " });
+
+    expect(onConfirmRename).not.toHaveBeenCalled();
+  });
+
+  // Bug fix: double-click rename flashed away because the onBlur fired
+  // before the useEffect could focus the input (mouseup blur race).
+  it("ignores blur events immediately after entering edit mode", () => {
+    const onConfirmRename = vi.fn();
+    // Render with editing already active (simulates the state right after
+    // double-click sets editingSessionId).
+    renderSessionItem({
+      editingSessionId: "s1",
+      editingName: "hello",
+      setEditingName: vi.fn(),
+      onConfirmRename,
+      onCancelRename: vi.fn(),
+    });
+
+    const input = screen.getByDisplayValue("hello");
+    // Fire blur immediately — within the 200ms grace window
+    fireEvent.blur(input);
+
+    expect(onConfirmRename).not.toHaveBeenCalled();
+  });
+
+  it("confirms rename on Enter key", () => {
+    const onConfirmRename = vi.fn();
+    renderSessionItem({
+      editingSessionId: "s1",
+      editingName: "new name",
+      setEditingName: vi.fn(),
+      onConfirmRename,
+      onCancelRename: vi.fn(),
+    });
+
+    const input = screen.getByDisplayValue("new name");
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onConfirmRename).toHaveBeenCalledTimes(1);
+  });
+
+  it("cancels rename on Escape key", () => {
+    const onCancelRename = vi.fn();
+    renderSessionItem({
+      editingSessionId: "s1",
+      editingName: "new name",
+      setEditingName: vi.fn(),
+      onConfirmRename: vi.fn(),
+      onCancelRename,
+    });
+
+    const input = screen.getByDisplayValue("new name");
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(onCancelRename).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("SessionItem isDraggable cursor styling", () => {
   // When isDraggable is true (default), the session button shows a grab cursor
   // on desktop (sm breakpoint) so users know they can drag to reorder.
