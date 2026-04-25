@@ -9,8 +9,8 @@ use tauri::Manager;
 /// Holds the sidecar server process so we can kill it on exit.
 struct ServerProcess(Mutex<Option<Child>>);
 
-/// Wait for the Hono server to become ready on localhost:3456.
-/// Polls every 200ms up to ~15 seconds.
+/// Wait for a TCP server to become ready on localhost.
+/// Polls every 200ms up to the given timeout.
 fn wait_for_server(port: u16, timeout: Duration) -> bool {
     let start = std::time::Instant::now();
     let addr = format!("127.0.0.1:{}", port);
@@ -21,6 +21,32 @@ fn wait_for_server(port: u16, timeout: Duration) -> bool {
         std::thread::sleep(Duration::from_millis(200));
     }
     false
+}
+
+/// Gracefully shut down a child process: SIGTERM first, wait up to 2s,
+/// then SIGKILL if still alive.
+fn graceful_shutdown(child: &mut Child) {
+    // Send SIGTERM via libc (Child::kill sends SIGKILL).
+    #[cfg(unix)]
+    {
+        unsafe {
+            libc::kill(child.id() as libc::pid_t, libc::SIGTERM);
+        }
+        // Wait up to 2 seconds for the process to exit.
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        loop {
+            match child.try_wait() {
+                Ok(Some(_)) => return, // exited
+                Ok(None) if std::time::Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(100));
+                }
+                _ => break, // timed out or error — fall through to SIGKILL
+            }
+        }
+    }
+    // Fallback: force kill.
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 fn main() {
@@ -59,7 +85,7 @@ fn main() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            // Kill the sidecar when the main window is destroyed.
+            // Gracefully stop the sidecar when the main window is destroyed.
             if let tauri::WindowEvent::Destroyed = event {
                 if let Some(mut child) = window
                     .app_handle()
@@ -69,11 +95,37 @@ fn main() {
                     .unwrap()
                     .take()
                 {
-                    let _ = child.kill();
-                    let _ = child.wait();
+                    graceful_shutdown(&mut child);
                 }
             }
         })
         .run(tauri::generate_context!())
         .expect("error while running takode");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::TcpListener;
+
+    /// Binding a listener on a port should make wait_for_server return true.
+    #[test]
+    fn wait_for_server_returns_true_when_listening() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        assert!(wait_for_server(port, Duration::from_secs(2)));
+        drop(listener);
+    }
+
+    /// When nothing is listening, wait_for_server should return false after timeout.
+    #[test]
+    fn wait_for_server_returns_false_on_timeout() {
+        // Bind and immediately drop to get a port that's definitely free.
+        let port = {
+            let l = TcpListener::bind("127.0.0.1:0").unwrap();
+            l.local_addr().unwrap().port()
+        };
+        // Use a short timeout so the test doesn't take long.
+        assert!(!wait_for_server(port, Duration::from_millis(400)));
+    }
 }
