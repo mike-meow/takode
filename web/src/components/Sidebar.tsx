@@ -28,8 +28,8 @@ import { YarnBallSpinner } from "./CatIcons.js";
 import { deriveSessionStatus } from "./SessionStatusDot.js";
 import type { SessionTaskEntry, SdkSessionInfo } from "../types.js";
 
-import type { SidebarSessionItem as SessionItemType } from "../utils/sidebar-session-item.js";
 import { buildSidebarVisibleSessions } from "../utils/sidebar-visible-sessions.js";
+import { buildReviewerByParent } from "../utils/reviewer-by-parent.js";
 import { isDesktopShellLayout } from "../utils/layout.js";
 import { questOwnsSessionName } from "../utils/quest-helpers.js";
 import { requestThreadViewportSnapshot } from "../utils/thread-viewport.js";
@@ -676,22 +676,7 @@ export function Sidebar() {
   // Map: parentSessionNum -> reviewer SessionItem (for inline badge on parent row).
   // Includes archived reviewers so historical review trajectories stay inspectable
   // from their parent without becoming standalone sidebar clutter.
-  const activeReviewerByParent = useMemo(() => {
-    const map = new Map<number, SessionItemType>();
-    for (const s of allSessionList) {
-      if (s.reviewerOf !== undefined) {
-        const existing = map.get(s.reviewerOf);
-        if (
-          !existing ||
-          (existing.archived && !s.archived) ||
-          (existing.archived === s.archived && s.createdAt > existing.createdAt)
-        ) {
-          map.set(s.reviewerOf, s);
-        }
-      }
-    }
-    return map;
-  }, [allSessionList]);
+  const reviewerByParent = useMemo(() => buildReviewerByParent(allSessionList), [allSessionList]);
   const currentSession = currentSessionId ? allSessionList.find((s) => s.id === currentSessionId) : null;
   const logoSrc = currentSession?.backendType === "codex" ? "/logo-codex.svg" : "/logo.png";
   const [showCronSessions, setShowCronSessions] = useState(true);
@@ -1231,7 +1216,7 @@ export function Sidebar() {
                         isRecentlyRenamed={recentlyRenamed.has(s.id)}
                         herdGroupBadgeTheme={herdGroupBadgeThemes.get(s.id)}
                         herdHoverHighlight={herdHoverHighlights.get(s.id)}
-                        reviewerSession={s.sessionNum != null ? activeReviewerByParent.get(s.sessionNum) : undefined}
+                        reviewerSession={s.sessionNum != null ? reviewerByParent.get(s.sessionNum) : undefined}
                         useStatusBar
                         {...sessionItemProps}
                       />
@@ -1270,7 +1255,7 @@ export function Sidebar() {
                           isRecentlyRenamed={recentlyRenamed.has(s.id)}
                           herdGroupBadgeTheme={herdGroupBadgeThemes.get(s.id)}
                           herdHoverHighlight={herdHoverHighlights.get(s.id)}
-                          reviewerSession={s.sessionNum != null ? activeReviewerByParent.get(s.sessionNum) : undefined}
+                          reviewerSession={s.sessionNum != null ? reviewerByParent.get(s.sessionNum) : undefined}
                           useStatusBar
                           {...sessionItemProps}
                         />
