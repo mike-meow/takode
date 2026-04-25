@@ -1,0 +1,10 @@
+# Build artifacts
+/src-tauri/target/
+/src-tauri/binaries/
+/src-tauri/web/
+
+# Generated icons for platforms we don't target (macOS only)
+/src-tauri/icons/ios/
+/src-tauri/icons/android/
+/src-tauri/icons/Square*.png
+/src-tauri/icons/StoreLogo.png

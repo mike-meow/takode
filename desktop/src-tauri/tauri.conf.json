@@ -1,0 +1,40 @@
+{
+  "productName": "Takode",
+  "version": "0.1.0",
+  "identifier": "sh.takode.app",
+  "build": {
+    "frontendDist": "http://localhost:3456"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Takode",
+        "width": 1280,
+        "height": 900,
+        "minWidth": 800,
+        "minHeight": 600
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": {
+      "binaries/*": "binaries/",
+      "web/**/*": "web/"
+    },
+    "macOS": {
+      "signingIdentity": "-"
+    }
+  }
+}
