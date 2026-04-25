@@ -2,9 +2,16 @@
 
 ## 2026-04-24
 
+### Added
+
+- **Session Info editor actions** -- Session Info can open the active working directory in the configured editor, with long worktree/base paths kept scrollable and copyable
+- **Leader needs-input reminders** -- Leader sessions are reminded about unresolved same-session needs-input notifications before handling new direct user messages
+
 ### Fixed
 
 - **Archived session cleanup** -- Archived sessions without worktree tracker mappings can now be deleted cleanly
+- **Session preview and Questmaster polish** -- Session message previews, quest deep-link scrolling, and oversized MessageFeed test coverage were repaired and reorganized
+- **Codex recovery and replay costs** -- Codex orphaned tool-preview recovery now waits for the watchdog window, and persisted replay buffers are sanitized to avoid hot-tail and metric memory spikes
 
 ## 2026-04-23
 
