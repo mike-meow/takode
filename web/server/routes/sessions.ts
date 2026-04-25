@@ -1112,6 +1112,9 @@ export function createSessionsRoutes(ctx: RouteContext) {
     const includeArchivedRaw = c.req.query("includeArchived");
     const includeArchived =
       includeArchivedRaw === undefined ? true : !["0", "false", "no"].includes(includeArchivedRaw.toLowerCase());
+    const includeReviewersRaw = c.req.query("includeReviewers");
+    const includeReviewers =
+      includeReviewersRaw !== undefined && ["1", "true", "yes"].includes(includeReviewersRaw.toLowerCase());
 
     const startedAt = Date.now();
     const sessions = launcher.listSessions();
@@ -1123,6 +1126,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
       return {
         sessionId: s.sessionId,
         archived: !!s.archived,
+        reviewerOf: s.reviewerOf,
         createdAt: s.createdAt || 0,
         lastActivityAt: s.lastActivityAt,
         name: names[s.sessionId] ?? s.name ?? "",
@@ -1140,6 +1144,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
       query: rawQuery,
       limit,
       includeArchived,
+      includeReviewers,
       messageLimitPerSession,
     });
 

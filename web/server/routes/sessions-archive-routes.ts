@@ -83,9 +83,10 @@ export function registerSessionsArchiveRoutes(api: Hono, deps: SessionsArchiveRo
       void timerManager.cancelAllTimers(id);
     }
 
-    // Auto-stop reviewer sessions tied to this parent.
-    // Reviewer sessions are temporary quality gates -- when the parent worker is
-    // archived, the reviewer is no longer useful and should be cleaned up.
+    // Auto-archive reviewer sessions tied to this parent.
+    // Reviewer sessions are historical quality records; when the parent is
+    // archived, keep the reviewer trajectory inspectable without leaving a live
+    // reviewer process or a standalone active-sidebar row.
     // listSessions() returns a new array (Array.from), and kill() only mutates
     // session.state without removing from the sessions map, so iteration is safe.
     const archivedNum = launcher.getSessionNum(id);
@@ -93,7 +94,7 @@ export function registerSessionsArchiveRoutes(api: Hono, deps: SessionsArchiveRo
       const allSessions = launcher.listSessions();
       for (const s of allSessions) {
         if (s.reviewerOf === archivedNum && !s.archived) {
-          console.log(`[routes] Auto-stopping reviewer session ${s.sessionId} (reviewerOf=#${archivedNum})`);
+          console.log(`[routes] Auto-archiving reviewer session ${s.sessionId} (reviewerOf=#${archivedNum})`);
           await launcher.kill(s.sessionId);
           containerManager.removeContainer(s.sessionId);
           queueArchivedWorktreeCleanup(s.sessionId, { archiveBranch: true });

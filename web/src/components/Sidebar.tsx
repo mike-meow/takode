@@ -673,12 +673,21 @@ export function Sidebar() {
     ],
   );
 
-  // Map: parentSessionNum → active reviewer SessionItem (for inline badge on parent row)
+  // Map: parentSessionNum -> reviewer SessionItem (for inline badge on parent row).
+  // Includes archived reviewers so historical review trajectories stay inspectable
+  // from their parent without becoming standalone sidebar clutter.
   const activeReviewerByParent = useMemo(() => {
     const map = new Map<number, SessionItemType>();
     for (const s of allSessionList) {
-      if (s.reviewerOf !== undefined && !s.archived) {
-        map.set(s.reviewerOf, s);
+      if (s.reviewerOf !== undefined) {
+        const existing = map.get(s.reviewerOf);
+        if (
+          !existing ||
+          (existing.archived && !s.archived) ||
+          (existing.archived === s.archived && s.createdAt > existing.createdAt)
+        ) {
+          map.set(s.reviewerOf, s);
+        }
       }
     }
     return map;
@@ -770,6 +779,7 @@ export function Sidebar() {
       try {
         const resp = await api.searchSessions(q, {
           includeArchived: false,
+          includeReviewers: false,
           signal: controller.signal,
         });
         if (controller.signal.aborted) return;

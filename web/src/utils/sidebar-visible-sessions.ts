@@ -132,6 +132,7 @@ export function buildSidebarVisibleSessions(input: SidebarVisibleSessionsInput):
     (session) => !session.archived && !session.cronJobId && session.reviewerOf === undefined,
   );
   const activeReviewers = allSessionList.filter((session) => !session.archived && session.reviewerOf !== undefined);
+  const attachedReviewers = allSessionList.filter((session) => session.reviewerOf !== undefined && !session.cronJobId);
   const cronSessions = allSessionList.filter((session) => !session.archived && !!session.cronJobId);
   const archivedSessions = allSessionList
     .filter((session) => session.archived && session.reviewerOf === undefined)
@@ -144,7 +145,7 @@ export function buildSidebarVisibleSessions(input: SidebarVisibleSessionsInput):
     sessionAttention,
     sessionSortMode,
     treeNodeOrder,
-    activeReviewers,
+    attachedReviewers,
   );
   const orderedVisibleSessionIds = treeViewGroups.flatMap((group) => {
     if (collapsedTreeGroups.has(group.id)) return [];

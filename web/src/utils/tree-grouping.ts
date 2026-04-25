@@ -46,6 +46,14 @@ function sortByCustomOrder(sessions: SessionItem[], customOrder?: string[]): voi
   }
 }
 
+/** Prefer active reviewer chips, then newer archived reviewer records. */
+function sortReviewersForParent(reviewers: SessionItem[]): void {
+  reviewers.sort((a, b) => {
+    if (a.archived !== b.archived) return a.archived ? 1 : -1;
+    return b.createdAt - a.createdAt;
+  });
+}
+
 // ─── Builder ─────────────────────────────────────────────────────────────────
 
 /**
@@ -178,6 +186,9 @@ export function buildTreeViewGroups(
       const list = reviewersByParent.get(r.reviewerOf!) || [];
       list.push(r);
       reviewersByParent.set(r.reviewerOf!, list);
+    }
+    for (const list of reviewersByParent.values()) {
+      sortReviewersForParent(list);
     }
 
     // Sort leaders/standalone by activity or by custom order / creation

@@ -78,6 +78,35 @@ describe("searchSessionDocuments", () => {
     expect(activeOnly.results.map((r) => r.sessionId)).toEqual(["active"]);
   });
 
+  it("excludes reviewer sessions by default and can explicitly include them", () => {
+    const docs: SessionSearchDocument[] = [
+      {
+        sessionId: "worker",
+        archived: false,
+        createdAt: 1,
+        name: "Needle worker",
+      },
+      {
+        sessionId: "reviewer",
+        archived: false,
+        reviewerOf: 7,
+        createdAt: 2,
+        name: "Needle reviewer",
+      },
+    ];
+
+    // Reviewer sessions are valuable historical records, but they are noisy in
+    // normal global search results unless the caller asks for them.
+    const defaultOut = searchSessionDocuments(docs, { query: "needle" });
+    expect(defaultOut.results.map((r) => r.sessionId)).toEqual(["worker"]);
+
+    const withReviewers = searchSessionDocuments(docs, {
+      query: "needle",
+      includeReviewers: true,
+    });
+    expect(withReviewers.results.map((r) => r.sessionId)).toEqual(["reviewer", "worker"]);
+  });
+
   it("matches CamelCase tokens in session names", () => {
     // "plan mode" should match "ExitPlanMode" via CamelCase boundary splitting
     const docs: SessionSearchDocument[] = [

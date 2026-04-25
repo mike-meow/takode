@@ -645,6 +645,7 @@ export const api = {
     options?: {
       limit?: number;
       includeArchived?: boolean;
+      includeReviewers?: boolean;
       messageLimitPerSession?: number;
       signal?: AbortSignal;
     },
@@ -656,6 +657,9 @@ export const api = {
     }
     if (typeof options?.includeArchived === "boolean") {
       params.set("includeArchived", options.includeArchived ? "true" : "false");
+    }
+    if (typeof options?.includeReviewers === "boolean") {
+      params.set("includeReviewers", options.includeReviewers ? "true" : "false");
     }
     if (typeof options?.messageLimitPerSession === "number") {
       params.set("messageLimitPerSession", String(options.messageLimitPerSession));

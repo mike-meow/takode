@@ -147,6 +147,30 @@ describe("deleteSession", () => {
 });
 
 // ===========================================================================
+// searchSessions
+// ===========================================================================
+describe("searchSessions", () => {
+  it("passes reviewer inclusion explicitly when requested", async () => {
+    mockFetch.mockResolvedValueOnce(mockResponse({ query: "review", tookMs: 1, totalMatches: 0, results: [] }));
+
+    await api.searchSessions("review", {
+      includeArchived: true,
+      includeReviewers: true,
+      messageLimitPerSession: 75,
+      limit: 25,
+    });
+
+    const [url] = mockFetch.mock.calls[0];
+    expect(url).toContain("/api/sessions/search?");
+    expect(url).toContain("q=review");
+    expect(url).toContain("includeArchived=true");
+    expect(url).toContain("includeReviewers=true");
+    expect(url).toContain("messageLimitPerSession=75");
+    expect(url).toContain("limit=25");
+  });
+});
+
+// ===========================================================================
 // herdSessions
 // ===========================================================================
 describe("herdSessions", () => {

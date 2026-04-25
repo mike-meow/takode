@@ -354,6 +354,28 @@ describe("buildTreeViewGroups", () => {
     expect(withEmpty[0].nodes).toHaveLength(withUndefined[0].nodes.length);
   });
 
+  it("orders active reviewers before archived historical reviewer records", () => {
+    const sessions = [makeSession({ id: "worker-1", sessionNum: 5 })];
+    const reviewerSessions = [
+      makeSession({ id: "archived-reviewer", sessionNum: 21, reviewerOf: 5, archived: true, createdAt: 300 }),
+      makeSession({ id: "active-reviewer", sessionNum: 20, reviewerOf: 5, archived: false, createdAt: 200 }),
+    ];
+
+    const result = buildTreeViewGroups(
+      sessions,
+      defaultGroups,
+      emptyAssignments,
+      undefined,
+      undefined,
+      undefined,
+      reviewerSessions,
+    );
+
+    // Parent rows use the first reviewer as their compact badge target, so an
+    // active reviewer should win over an archived record when both exist.
+    expect(result[0].nodes[0].reviewers.map((r) => r.id)).toEqual(["active-reviewer", "archived-reviewer"]);
+  });
+
   it("reviewers are isolated to their parent's group (no cross-group bleed)", () => {
     // Reviewers should only appear in the group where their parent session lives.
     const groups: TreeGroup[] = [

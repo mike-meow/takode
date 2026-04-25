@@ -431,6 +431,7 @@ describe("Sidebar", { timeout: 10000 }, () => {
         "beta",
         expect.objectContaining({
           includeArchived: false,
+          includeReviewers: false,
           signal: expect.any(AbortSignal),
         }),
       );
@@ -473,6 +474,7 @@ describe("Sidebar", { timeout: 10000 }, () => {
         "alpha",
         expect.objectContaining({
           includeArchived: false,
+          includeReviewers: false,
           signal: expect.any(AbortSignal),
         }),
       );
@@ -1703,6 +1705,48 @@ describe("Sidebar", { timeout: 10000 }, () => {
     });
 
     expect(screen.queryByTitle("parent-1")).toBeNull();
+  });
+
+  it("shows an archived reviewer badge on its archived parent instead of a standalone archived reviewer row", async () => {
+    // Archived reviewers should remain inspectable from the parent session, but
+    // should not add extra rows to the ordinary Archived session list.
+    const parentSession = makeSession("parent-archived");
+    const reviewerSession = makeSession("reviewer-archived");
+    const parentSdk = makeSdkSession("parent-archived", {
+      sessionNum: 8,
+      archived: true,
+      archivedAt: 1700000000000,
+      createdAt: 1700000000000,
+    });
+    const reviewerSdk = makeSdkSession("reviewer-archived", {
+      sessionNum: 42,
+      reviewerOf: 8,
+      archived: true,
+      archivedAt: 1700000001000,
+      createdAt: 1700000001000,
+    });
+    mockState = createMockState({
+      sessions: new Map([
+        ["parent-archived", parentSession],
+        ["reviewer-archived", reviewerSession],
+      ]),
+      sdkSessions: [parentSdk, reviewerSdk],
+      sessionNames: new Map([
+        ["parent-archived", "Archived Parent"],
+        ["reviewer-archived", "Archived Reviewer"],
+      ]),
+    });
+
+    render(<Sidebar />);
+    expect(screen.getByText("Archived (1)")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Archived (1)"));
+
+    const parentButton = screen.getByText("Archived Parent").closest("button")!;
+    expect(within(parentButton).getByTestId("session-reviewer-badge")).toHaveAttribute(
+      "data-reviewer-status",
+      "archived",
+    );
+    expect(screen.queryByText("Archived Reviewer")).toBeNull();
   });
 
   it("shows a bounded task-history scroller in session hover card", async () => {

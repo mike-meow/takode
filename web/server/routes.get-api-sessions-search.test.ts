@@ -614,4 +614,34 @@ describe("GET /api/sessions/search", () => {
     });
     expect(json.results.some((r: any) => r.sessionId === "s-archived")).toBe(false);
   });
+
+  it("excludes reviewer sessions by default and includes them when requested", async () => {
+    launcher.listSessions.mockReturnValue([
+      { sessionId: "s-worker", state: "running", cwd: "/worker", createdAt: 1, archived: false, sessionNum: 42 },
+      {
+        sessionId: "s-reviewer",
+        state: "exited",
+        cwd: "/reviewer",
+        createdAt: 2,
+        archived: true,
+        reviewerOf: 42,
+      },
+    ]);
+    vi.mocked(sessionNames.getAllNames).mockReturnValue({
+      "s-worker": "Needle worker",
+      "s-reviewer": "Needle reviewer",
+    });
+
+    // Normal global search keeps reviewer records out of the result set so
+    // historical review trajectories do not dominate ordinary session lookup.
+    const defaultRes = await app.request("/api/sessions/search?q=needle", { method: "GET" });
+    expect(defaultRes.status).toBe(200);
+    const defaultJson = await defaultRes.json();
+    expect(defaultJson.results.map((r: any) => r.sessionId)).toEqual(["s-worker"]);
+
+    const includeRes = await app.request("/api/sessions/search?q=needle&includeReviewers=true", { method: "GET" });
+    expect(includeRes.status).toBe(200);
+    const includeJson = await includeRes.json();
+    expect(includeJson.results.map((r: any) => r.sessionId)).toEqual(["s-reviewer", "s-worker"]);
+  });
 });

@@ -16,6 +16,7 @@ export type SessionSearchMatchedField =
 export interface SessionSearchDocument {
   sessionId: string;
   archived: boolean;
+  reviewerOf?: number;
   createdAt: number;
   lastActivityAt?: number;
   name?: string;
@@ -46,6 +47,7 @@ export interface SearchSessionDocumentsOptions {
   query: string;
   limit?: number;
   includeArchived?: boolean;
+  includeReviewers?: boolean;
   messageLimitPerSession?: number;
 }
 
@@ -220,6 +222,7 @@ export function searchSessionDocuments(
   };
 
   const includeArchived = options.includeArchived !== false;
+  const includeReviewers = options.includeReviewers === true;
   const limit = clampInt(Math.floor(options.limit ?? 50), 1, 200);
   const messageLimitPerSession = clampInt(Math.floor(options.messageLimitPerSession ?? 400), 50, 2000);
 
@@ -227,6 +230,7 @@ export function searchSessionDocuments(
 
   for (const doc of docs) {
     if (!includeArchived && doc.archived) continue;
+    if (!includeReviewers && doc.reviewerOf !== undefined) continue;
 
     const recencyTs = doc.lastActivityAt ?? doc.createdAt ?? 0;
     let best: SessionSearchResult | null = null;

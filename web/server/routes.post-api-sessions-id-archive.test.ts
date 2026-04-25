@@ -604,7 +604,7 @@ describe("POST /api/sessions/:id/archive", () => {
     );
   });
 
-  it("auto-stops and archives reviewer sessions when parent is archived", async () => {
+  it("auto-archives reviewer sessions as inspectable records when parent is archived", async () => {
     // Parent session #42 has a reviewer session linked via reviewerOf
     launcher.getSessionNum.mockReturnValue(42);
     launcher.listSessions.mockReturnValue([
@@ -636,10 +636,17 @@ describe("POST /api/sessions/:id/archive", () => {
     // Parent session should be killed and archived
     expect(launcher.kill).toHaveBeenCalledWith("s1");
     expect(launcher.setArchived).toHaveBeenCalledWith("s1", true);
-    // Reviewer session should also be killed and archived
+    // Reviewer session should also be killed and archived, but not deleted, so
+    // its historical review trajectory remains inspectable from the parent.
     expect(launcher.kill).toHaveBeenCalledWith("reviewer-1");
     expect(launcher.setArchived).toHaveBeenCalledWith("reviewer-1", true);
     expect(sessionStore.setArchived).toHaveBeenCalledWith("reviewer-1", true);
+    expect(launcher.removeSession).not.toHaveBeenCalledWith("reviewer-1");
+    expect(bridge.closeSession).not.toHaveBeenCalledWith("reviewer-1");
+    expect(bridge.broadcastGlobal).not.toHaveBeenCalledWith({
+      type: "session_deleted",
+      session_id: "reviewer-1",
+    });
     // Reviewer should emit session_archived (not session_deleted) since it's herded
     expect(bridge.emitTakodeEvent).toHaveBeenCalledWith("reviewer-1", "session_archived", {
       archive_source: "cascade",
