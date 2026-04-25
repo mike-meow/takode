@@ -26,6 +26,8 @@ Examples:
 - Lightweight code journey without porting: `takode board set q-12 --worker 5 --phases planning,implementation,skeptic-review,reviewer-groom --preset lightweight-code`
 - Investigation-only journey: `takode board set q-12 --worker 5 --phases planning --preset investigation`
 
+When `--phases` is supplied for an active row and `--status` is omitted, the board starts that row at the first planned phase. Use `--status QUEUED --wait-for ...` only when the assembled journey is intentionally waiting before dispatch.
+
 ### `takode board advance <quest-id>`
 
 Transition to the next Quest Journey phase. At the final built-in phase (porting / `PORTING`), advance removes the row from the board.

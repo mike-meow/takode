@@ -5,6 +5,7 @@ import * as sessionNames from "../session-names.js";
 import type { HerdSessionsResponse } from "../../shared/herd-types.js";
 import {
   FREE_WORKER_WAIT_FOR_TOKEN,
+  getQuestJourneyPhase,
   getInvalidQuestJourneyPhaseIds,
   isValidQuestId,
   isValidWaitForRef,
@@ -1362,6 +1363,26 @@ export function createTakodeRoutes(ctx: RouteContext) {
 
     const bridgeSession = wsBridge.getSession(id);
     const existingRow = bridgeSession?.board.get(questId) ?? null;
+    let journey: QuestJourneyPlanState | undefined;
+    let firstPlannedPhaseState: string | undefined;
+    if (Array.isArray(body.phases)) {
+      const phaseIds = body.phases
+        .filter((s: unknown) => typeof s === "string" && s.trim())
+        .map((s: string) => s.trim());
+      if (phaseIds.length === 0) {
+        return c.json({ error: "Quest Journey phases require at least one phase ID" }, 400);
+      }
+      const invalid = getInvalidQuestJourneyPhaseIds(phaseIds);
+      if (invalid.length > 0) {
+        return c.json({ error: `Invalid Quest Journey phase(s): ${invalid.join(", ")}` }, 400);
+      }
+      const typedPhaseIds = phaseIds as QuestJourneyPhaseId[];
+      firstPlannedPhaseState = getQuestJourneyPhase(typedPhaseIds[0])?.state;
+      journey = {
+        presetId: typeof body.presetId === "string" && body.presetId.trim() ? body.presetId.trim() : "custom",
+        phaseIds: typedPhaseIds,
+      };
+    }
     const implicitQueuedStatus =
       typeof body.status !== "string" &&
       typeof body.worker !== "string" &&
@@ -1372,7 +1393,7 @@ export function createTakodeRoutes(ctx: RouteContext) {
     const mergedStatus =
       typeof body.status === "string"
         ? body.status.trim() || undefined
-        : (implicitQueuedStatus ?? existingRow?.status?.trim() ?? undefined);
+        : (implicitQueuedStatus ?? existingRow?.status?.trim() ?? firstPlannedPhaseState);
     const mergedWaitFor = waitFor !== undefined ? waitFor : existingRow?.waitFor;
     if (mergedStatus === "QUEUED" && (!mergedWaitFor || mergedWaitFor.length === 0)) {
       return c.json(
@@ -1389,20 +1410,8 @@ export function createTakodeRoutes(ctx: RouteContext) {
         : existingRow && "noCode" in existingRow
           ? existingRow.noCode
           : undefined;
-    let journey: QuestJourneyPlanState | undefined;
-    if (Array.isArray(body.phases)) {
-      const phaseIds = body.phases
-        .filter((s: unknown) => typeof s === "string" && s.trim())
-        .map((s: string) => s.trim());
-      const invalid = getInvalidQuestJourneyPhaseIds(phaseIds);
-      if (invalid.length > 0) {
-        return c.json({ error: `Invalid Quest Journey phase(s): ${invalid.join(", ")}` }, 400);
-      }
-      journey = {
-        presetId: typeof body.presetId === "string" && body.presetId.trim() ? body.presetId.trim() : "custom",
-        phaseIds: phaseIds as QuestJourneyPhaseId[],
-      };
-    }
+    const statusForUpsert =
+      typeof body.status === "string" ? body.status : (implicitQueuedStatus ?? firstPlannedPhaseState);
 
     const board = bridgeSession
       ? upsertBoardRowController(
@@ -1414,7 +1423,7 @@ export function createTakodeRoutes(ctx: RouteContext) {
             workerNum: typeof body.workerNum === "number" ? body.workerNum : undefined,
             noCode,
             journey,
-            status: typeof body.status === "string" ? body.status : implicitQueuedStatus,
+            status: statusForUpsert,
             waitFor,
           },
           workBoardStateDeps,

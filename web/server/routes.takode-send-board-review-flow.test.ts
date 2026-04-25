@@ -741,6 +741,39 @@ describe("Takode server-authoritative auth", () => {
     });
   });
 
+  it("initializes a phase-planned active board row to the first planned phase when status is omitted", async () => {
+    setupTakodeSessions();
+
+    const res = await app.request("/api/sessions/orch-1/board", {
+      method: "POST",
+      headers: authHeaders("orch-1", "tok-1"),
+      body: JSON.stringify({
+        questId: "q-9",
+        worker: "worker-1",
+        workerNum: 11,
+        phases: ["planning", "implementation", "skeptic-review"],
+        presetId: "lightweight-code",
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      board: [
+        {
+          questId: "q-9",
+          worker: "worker-1",
+          workerNum: 11,
+          status: "PLANNING",
+          journey: {
+            presetId: "lightweight-code",
+            phaseIds: ["planning", "implementation", "skeptic-review"],
+            currentPhaseId: "planning",
+          },
+        },
+      ],
+    });
+  });
+
   it("rejects unknown planned phase IDs", async () => {
     setupTakodeSessions();
 
@@ -753,6 +786,21 @@ describe("Takode server-authoritative auth", () => {
     expect(res.status).toBe(400);
     expect(await res.json()).toMatchObject({
       error: expect.stringContaining("human-verification"),
+    });
+  });
+
+  it("rejects empty planned phase lists instead of falling back to the full-code sequence", async () => {
+    setupTakodeSessions();
+
+    const res = await app.request("/api/sessions/orch-1/board", {
+      method: "POST",
+      headers: authHeaders("orch-1", "tok-1"),
+      body: JSON.stringify({ questId: "q-9", status: "PLANNING", phases: [" ", ""] }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({
+      error: expect.stringContaining("at least one phase ID"),
     });
   });
 
