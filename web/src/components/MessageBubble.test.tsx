@@ -327,6 +327,7 @@ describe("MessageBubble - user messages", () => {
 
   it("copies a stable message link for user messages", async () => {
     const prevSdkSessions = useStore.getState().sdkSessions;
+    const prevMessages = new Map(useStore.getState().messages);
     useStore.setState({
       sdkSessions: [
         { sessionId: "session-abc", state: "connected", cwd: "/repo", createdAt: 1, sessionNum: 123 } as any,
@@ -334,17 +335,20 @@ describe("MessageBubble - user messages", () => {
     });
 
     try {
-      const msg = makeMessage({ id: "user-msg-42", role: "user", content: "Link me" });
+      const msg = makeMessage({ id: "user-msg-42", role: "user", content: "Link me", historyIndex: 4 });
+      useStore
+        .getState()
+        .setMessages("session-abc", [makeMessage({ id: "previous-msg", role: "assistant", content: "Previous" }), msg]);
       render(<MessageBubble message={msg} sessionId="session-abc" />);
 
       fireEvent.click(screen.getByTitle("Message options"));
       fireEvent.click(screen.getByText("Copy message link"));
 
       await waitFor(() => {
-        expect(writeClipboardTextMock).toHaveBeenCalledWith("http://localhost:3000/#/session/123/msg/user-msg-42");
+        expect(writeClipboardTextMock).toHaveBeenCalledWith("http://localhost:3000/#/session/123/msg/4");
       });
     } finally {
-      useStore.setState({ sdkSessions: prevSdkSessions });
+      useStore.setState({ sdkSessions: prevSdkSessions, messages: prevMessages });
     }
   });
 
@@ -828,6 +832,7 @@ describe("MessageBubble - assistant messages", () => {
 
   it("copies a stable message link for assistant messages", async () => {
     const prevSdkSessions = useStore.getState().sdkSessions;
+    const prevMessages = new Map(useStore.getState().messages);
     useStore.setState({
       sdkSessions: [
         { sessionId: "session-abc", state: "connected", cwd: "/repo", createdAt: 1, sessionNum: 123 } as any,
@@ -835,17 +840,25 @@ describe("MessageBubble - assistant messages", () => {
     });
 
     try {
-      const msg = makeMessage({ id: "asst-msg-42", role: "assistant", content: "Assistant link target" });
+      const msg = makeMessage({
+        id: "asst-msg-42",
+        role: "assistant",
+        content: "Assistant link target",
+        historyIndex: 2,
+      });
+      useStore
+        .getState()
+        .setMessages("session-abc", [makeMessage({ id: "prompt-msg", role: "user", content: "Question" }), msg]);
       render(<MessageBubble message={msg} sessionId="session-abc" />);
 
       fireEvent.click(screen.getByTitle("Copy message"));
       fireEvent.click(screen.getByText("Copy message link"));
 
       await waitFor(() => {
-        expect(writeClipboardTextMock).toHaveBeenCalledWith("http://localhost:3000/#/session/123/msg/asst-msg-42");
+        expect(writeClipboardTextMock).toHaveBeenCalledWith("http://localhost:3000/#/session/123/msg/2");
       });
     } finally {
-      useStore.setState({ sdkSessions: prevSdkSessions });
+      useStore.setState({ sdkSessions: prevSdkSessions, messages: prevMessages });
     }
   });
 

@@ -3,7 +3,7 @@ import type { SdkSessionInfo } from "../types.js";
 
 export type Route =
   | { page: "home" }
-  | { page: "session"; sessionId: string; messageId?: string }
+  | { page: "session"; sessionId: string; messageIndex?: number; messageId?: string }
   | { page: "settings" }
   | { page: "logs" }
   | { page: "terminal" }
@@ -55,8 +55,14 @@ export function parseHash(hash: string): Route {
     const rawSessionId = markerIdx >= 0 ? sessionPath.slice(0, markerIdx) : sessionPath;
     const rawMessageId = markerIdx >= 0 ? sessionPath.slice(markerIdx + messageMarker.length) : "";
     const sessionId = decodeURIComponent(rawSessionId);
-    const messageId = rawMessageId ? decodeURIComponent(rawMessageId) : undefined;
-    if (sessionId) return messageId ? { page: "session", sessionId, messageId } : { page: "session", sessionId };
+    const messageRef = rawMessageId ? decodeURIComponent(rawMessageId) : undefined;
+    if (sessionId) {
+      if (!messageRef) return { page: "session", sessionId };
+      if (/^\d+$/.test(messageRef)) {
+        return { page: "session", sessionId, messageIndex: Number.parseInt(messageRef, 10) };
+      }
+      return { page: "session", sessionId, messageId: messageRef };
+    }
   }
 
   return { page: "home" };
@@ -131,10 +137,10 @@ export function sessionHash(sessionId: string | number): string {
 }
 
 /**
- * Build a hash string for a given session + stable message ID.
+ * Build a hash string for a given session + readable message index.
  */
-export function sessionMessageHash(sessionId: string | number, messageId: string): string {
-  return `${sessionHash(sessionId)}/msg/${encodeURIComponent(messageId)}`;
+export function sessionMessageHash(sessionId: string | number, messageIndex: number): string {
+  return `${sessionHash(sessionId)}/msg/${encodeURIComponent(String(messageIndex))}`;
 }
 
 /**
@@ -159,15 +165,16 @@ export function scrollToMessageIndex(sessionId: string, messageIndex: number): v
   const store = useStore.getState();
   const messages = store.messages.get(sessionId);
 
-  if (messages && messageIndex < messages.length) {
-    const targetMsg = messages[messageIndex];
+  if (messages) {
+    const targetMsg = messages.find((msg) => msg.historyIndex === messageIndex) ?? messages[messageIndex];
     if (targetMsg) {
       store.requestScrollToMessage(sessionId, targetMsg.id);
       store.setExpandAllInTurn(sessionId, targetMsg.id);
+      return;
     }
-  } else {
-    store.setPendingScrollToMessageIndex(sessionId, messageIndex);
   }
+
+  store.setPendingScrollToMessageIndex(sessionId, messageIndex);
 }
 
 /**
@@ -188,7 +195,7 @@ export function navigateToSessionMessageId(
   options: { replace?: boolean; routeSessionId?: string | number } = {},
 ): void {
   const { replace = false, routeSessionId = sessionId } = options;
-  const newHash = sessionMessageHash(routeSessionId, messageId);
+  const newHash = `${sessionHash(routeSessionId)}/msg/${encodeURIComponent(messageId)}`;
   if (replace) {
     history.replaceState(null, "", newHash);
     window.dispatchEvent(new HashChangeEvent("hashchange"));
@@ -201,9 +208,12 @@ export function navigateToSessionMessageId(
 }
 
 /**
- * Read message index from hash query param (e.g. `?msg=42`).
+ * Read message index from the route path (e.g. `/msg/42`) or legacy query param (e.g. `?msg=42`).
  */
 export function messageIndexFromHash(hash: string): number | null {
+  const route = parseHash(hash);
+  if (route.page === "session" && route.messageIndex != null) return route.messageIndex;
+
   const { params } = splitHash(hash);
   const raw = params.get("msg");
   if (!raw) return null;

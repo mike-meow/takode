@@ -85,6 +85,7 @@ export function normalizeHistoryMessageToChatMessages(
         role: "user",
         content: histMsg.content,
         timestamp: histMsg.timestamp,
+        historyIndex,
         ...(histMsg.images?.length ? { images: histMsg.images } : {}),
         ...(localImages?.length ? { localImages } : {}),
         ...(typeof histMsg.client_msg_id === "string" ? { clientMsgId: histMsg.client_msg_id } : {}),
@@ -104,6 +105,7 @@ export function normalizeHistoryMessageToChatMessages(
         content: extractTextFromBlocks(normalizedContent),
         contentBlocks: normalizedContent,
         timestamp: histMsg.timestamp || Date.now(),
+        historyIndex,
         parentToolUseId: histMsg.parent_tool_use_id,
         model: msg.model,
         stopReason: msg.stop_reason,
@@ -125,6 +127,7 @@ export function normalizeHistoryMessageToChatMessages(
         role: "system",
         content: histMsg.summary || "Conversation compacted",
         timestamp: histMsg.timestamp,
+        historyIndex,
         variant: "info",
       },
     ];
@@ -137,6 +140,7 @@ export function normalizeHistoryMessageToChatMessages(
         role: "system",
         content: histMsg.summary,
         timestamp: histMsg.timestamp,
+        historyIndex,
         variant: "denied",
       },
     ];
@@ -149,6 +153,7 @@ export function normalizeHistoryMessageToChatMessages(
         role: "system",
         content: histMsg.summary,
         timestamp: histMsg.timestamp,
+        historyIndex,
         variant: "approved",
         ...(histMsg.answers?.length ? { metadata: { answers: histMsg.answers } } : {}),
       },
@@ -163,6 +168,7 @@ export function normalizeHistoryMessageToChatMessages(
         role: "system",
         content: histMsg.summary,
         timestamp: Date.now(),
+        historyIndex,
         variant: "task_completed",
       },
     ];
@@ -178,6 +184,7 @@ export function normalizeHistoryMessageToChatMessages(
           role: resultRole,
           content: result.result,
           timestamp: fallbackTimestamp ?? Date.now(),
+          historyIndex,
         },
       ];
     }
@@ -189,6 +196,7 @@ export function normalizeHistoryMessageToChatMessages(
         role: "system",
         content: `Error: ${errorText}`,
         timestamp: Date.now(),
+        historyIndex,
         variant: "error",
       },
     ];

@@ -423,7 +423,7 @@ function resolvePendingMessageScroll(sessionId: string, messages: ChatMessage[])
   const pendingIdx = store.pendingScrollToMessageIndex.get(sessionId);
   if (pendingIdx == null) return;
   store.clearPendingScrollToMessageIndex(sessionId);
-  const targetMsg = messages[pendingIdx];
+  const targetMsg = messages.find((msg) => msg.historyIndex === pendingIdx) ?? messages[pendingIdx];
   if (targetMsg) {
     store.requestScrollToMessage(sessionId, targetMsg.id);
     store.setExpandAllInTurn(sessionId, targetMsg.id);

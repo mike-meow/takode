@@ -3,10 +3,12 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   absoluteUrlForHash,
   messageIdFromHash,
+  messageIndexFromHash,
   parseHash,
   resolveSessionIdFromRoute,
   sessionHash,
   sessionMessageHash,
+  scrollToMessageIndex,
   navigateToSession,
   navigateHome,
   navigateToMostRecentSession,
@@ -90,6 +92,14 @@ describe("parseHash", () => {
     });
   });
 
+  it("parses session route with a readable message index in the path", () => {
+    expect(parseHash("#/session/123/msg/42")).toEqual({
+      page: "session",
+      sessionId: "123",
+      messageIndex: 42,
+    });
+  });
+
   it("returns home for session route with empty ID", () => {
     // #/session/ with no ID should be treated as home
     expect(parseHash("#/session/")).toEqual({ page: "home" });
@@ -153,15 +163,50 @@ describe("sessionHash", () => {
 });
 
 describe("sessionMessageHash", () => {
-  it("builds a stable message-ID path under the session route", () => {
-    expect(sessionMessageHash(123, "asst-42")).toBe("#/session/123/msg/asst-42");
+  it("builds a readable message-index path under the session route", () => {
+    expect(sessionMessageHash(123, 42)).toBe("#/session/123/msg/42");
   });
 });
 
 describe("messageIdFromHash", () => {
   it("reads the stable message ID from the session path", () => {
     expect(messageIdFromHash("#/session/123/msg/asst-42")).toBe("asst-42");
+    expect(messageIdFromHash("#/session/123/msg/42")).toBeNull();
     expect(messageIdFromHash("#/session/123?msg=42")).toBeNull();
+  });
+});
+
+describe("messageIndexFromHash", () => {
+  it("reads the readable message index from the session path", () => {
+    expect(messageIndexFromHash("#/session/123/msg/42")).toBe(42);
+  });
+
+  it("falls back to the legacy query parameter", () => {
+    expect(messageIndexFromHash("#/session/123?msg=42")).toBe(42);
+  });
+
+  it("ignores opaque message IDs", () => {
+    expect(messageIndexFromHash("#/session/123/msg/asst-42")).toBeNull();
+  });
+});
+
+describe("scrollToMessageIndex", () => {
+  beforeEach(() => {
+    useStore.getState().reset();
+  });
+
+  it("resolves readable indexes against raw messageHistory indexes before rendered array positions", () => {
+    // Rendered position 1 corresponds to raw messageHistory index 2 when
+    // messageHistory[1] was a non-rendered tool_result_preview.
+    useStore.getState().setMessages("s1", [
+      { id: "u0", role: "user", content: "Prompt", timestamp: 100, historyIndex: 0 },
+      { id: "a2", role: "assistant", content: "Answer", timestamp: 200, historyIndex: 2 },
+    ]);
+
+    scrollToMessageIndex("s1", 2);
+
+    expect(useStore.getState().scrollToMessageId.get("s1")).toBe("a2");
+    expect(useStore.getState().expandAllInTurn.get("s1")).toBe("a2");
   });
 });
 

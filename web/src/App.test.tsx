@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
 
 const mockConnectSession = vi.fn();
@@ -59,6 +59,7 @@ interface MockStoreState {
   expandedHerdNodes: Set<string>;
   sessionAttention: Map<string, "action" | "error" | "review" | null>;
   sessionSortMode: "created" | "activity";
+  messages: Map<string, Array<{ id: string; historyIndex?: number }>>;
   sidebarOpen: boolean;
   taskPanelOpen: boolean;
   activeTab: "chat" | "diff";
@@ -68,6 +69,9 @@ interface MockStoreState {
   setServerReachable: ReturnType<typeof vi.fn>;
   setCurrentSession: ReturnType<typeof vi.fn>;
   markSessionViewed: ReturnType<typeof vi.fn>;
+  requestScrollToMessage: ReturnType<typeof vi.fn>;
+  setExpandAllInTurn: ReturnType<typeof vi.fn>;
+  setPendingScrollToMessageIndex: ReturnType<typeof vi.fn>;
   closeNewSessionModal: ReturnType<typeof vi.fn>;
   setSidebarOpen: ReturnType<typeof vi.fn>;
   setActiveTab: ReturnType<typeof vi.fn>;
@@ -104,6 +108,16 @@ function resetStore(overrides: Partial<MockStoreState> = {}) {
     expandedHerdNodes: new Set(),
     sessionAttention: new Map(),
     sessionSortMode: "created",
+    messages: new Map([
+      [
+        "s1",
+        [
+          { id: "m0", historyIndex: 0 },
+          { id: "m1", historyIndex: 1 },
+          { id: "m2", historyIndex: 2 },
+        ],
+      ],
+    ]),
     sidebarOpen: false,
     taskPanelOpen: false,
     activeTab: "chat",
@@ -113,6 +127,9 @@ function resetStore(overrides: Partial<MockStoreState> = {}) {
     setServerReachable: vi.fn(),
     setCurrentSession: vi.fn(),
     markSessionViewed: vi.fn(),
+    requestScrollToMessage: vi.fn(),
+    setExpandAllInTurn: vi.fn(),
+    setPendingScrollToMessageIndex: vi.fn(),
     closeNewSessionModal: vi.fn(),
     setSidebarOpen: vi.fn(),
     setActiveTab: vi.fn(),
@@ -143,10 +160,12 @@ vi.mock("./store.js", () => {
 
 const mockCheckHealth = vi.fn().mockResolvedValue(true);
 const mockMarkSessionRead = vi.fn().mockResolvedValue({ ok: true });
+const mockListSessions = vi.fn().mockResolvedValue([]);
 
 vi.mock("./api.js", () => ({
   api: {
     markSessionRead: (...args: unknown[]) => mockMarkSessionRead(...args),
+    listSessions: (...args: unknown[]) => mockListSessions(...args),
   },
   checkHealth: (...args: unknown[]) => mockCheckHealth(...args),
 }));
@@ -236,6 +255,7 @@ import App from "./App.js";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mockListSessions.mockResolvedValue([]);
   resetStore();
   window.location.hash = "#/session/s1";
 });
@@ -315,6 +335,58 @@ describe("App hidden panels", () => {
     expect(chatView).toHaveAttribute("data-session-id", "s2");
     expect(chatView).toHaveAttribute("data-preview", "true");
     expect(mockConnectSession).toHaveBeenCalledWith("s2");
+  });
+
+  it("resolves readable message deep links through raw history index before selecting and scrolling", async () => {
+    resetStore({
+      currentSessionId: null,
+      sdkSessions: [
+        {
+          sessionId: "s1",
+          createdAt: 1,
+          archived: false,
+          cwd: "/repo/s1",
+          backendType: "claude",
+          sessionNum: 123,
+        },
+      ],
+      messages: new Map([
+        [
+          "s1",
+          [
+            { id: "m0", historyIndex: 0 },
+            // Raw history index 1 can be a non-rendered entry such as tool_result_preview.
+            { id: "m2", historyIndex: 2 },
+          ],
+        ],
+      ]),
+      sessions: new Map([["s1", { backend_type: "claude" }]]),
+    });
+    window.location.hash = "#/session/123/msg/2";
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(mockState.setCurrentSession).toHaveBeenCalledWith("s1");
+      expect(mockConnectSession).toHaveBeenCalledWith("s1");
+      expect(mockState.requestScrollToMessage).toHaveBeenCalledWith("s1", "m2");
+      expect(mockState.setExpandAllInTurn).toHaveBeenCalledWith("s1", "m2");
+    });
+    expect(screen.getByTestId("chat-view")).toHaveAttribute("data-session-id", "s1");
+    expect(mockConnectSession).not.toHaveBeenCalledWith("123");
+  });
+
+  it("does not show a fake session for an unresolved numeric message deep link", () => {
+    resetStore({ currentSessionId: null, sdkSessions: [], sessions: new Map(), messages: new Map() });
+    window.location.hash = "#/session/123/msg/2";
+
+    render(<App />);
+
+    expect(screen.getByTestId("empty-state")).toBeInTheDocument();
+    expect(screen.queryByTestId("chat-view")).toBeNull();
+    expect(screen.queryByTestId("session-creation-view")).toBeNull();
+    expect(mockState.setCurrentSession).not.toHaveBeenCalledWith("123");
+    expect(mockConnectSession).not.toHaveBeenCalledWith("123");
   });
 
   it("cleans up preview mode when searchPreviewSessionId is cleared", () => {

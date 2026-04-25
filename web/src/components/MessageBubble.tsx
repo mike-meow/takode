@@ -73,10 +73,18 @@ function formatTurnDuration(ms: number): string {
   return `${mins}m ${secs}s`;
 }
 
-function buildCopyMessageLink(sessionId: string | undefined, messageId: string, sdkSessions: SdkSessionInfo[]) {
+function buildCopyMessageLink(sessionId: string | undefined, message: ChatMessage, sdkSessions: SdkSessionInfo[]) {
   if (!sessionId) return null;
+  const messageIndex =
+    message.historyIndex ??
+    useStore
+      .getState()
+      .messages.get(sessionId)
+      ?.findIndex((msg) => msg.id === message.id) ??
+    -1;
+  if (messageIndex < 0) return null;
   const sessionRef = routeSessionRefForId(sessionId, sdkSessions);
-  return absoluteUrlForHash(sessionMessageHash(sessionRef, messageId));
+  return absoluteUrlForHash(sessionMessageHash(sessionRef, messageIndex));
 }
 
 function buildDraftImageName(mediaType: string, index: number): string {
@@ -1126,10 +1134,10 @@ function UserMessageMenu({
   }, [message.content, showCopied]);
 
   const handleCopyLink = useCallback(() => {
-    const link = buildCopyMessageLink(sessionId, message.id, sdkSessions);
+    const link = buildCopyMessageLink(sessionId, message, sdkSessions);
     if (!link) return;
     writeClipboardText(link).then(showCopied).catch(console.error);
-  }, [message.id, sdkSessions, sessionId, showCopied]);
+  }, [message, sdkSessions, sessionId, showCopied]);
 
   const handleRevert = useCallback(async () => {
     if (!sessionId || !message.id) return;
@@ -1466,12 +1474,12 @@ function CopyMessageButton({
   }, [message, contentRef, showFeedback]);
 
   const handleCopyLink = useCallback(() => {
-    const link = buildCopyMessageLink(sessionId, message.id, sdkSessions);
+    const link = buildCopyMessageLink(sessionId, message, sdkSessions);
     if (!link) return;
     writeClipboardText(link)
       .then(() => showFeedback("Link"))
       .catch(console.error);
-  }, [message.id, sdkSessions, sessionId, showFeedback]);
+  }, [message, sdkSessions, sessionId, showFeedback]);
 
   const toggle = useCallback(() => {
     if (menuPos) {

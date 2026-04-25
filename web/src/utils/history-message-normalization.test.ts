@@ -3,6 +3,40 @@ import type { BrowserIncomingMessage } from "../types.js";
 import { normalizeHistoryMessageToChatMessages } from "./history-message-normalization.js";
 
 describe("normalizeHistoryMessageToChatMessages", () => {
+  it("stores the raw messageHistory index on visible user and assistant messages", () => {
+    // Message links use this raw index so `#/session/123/msg/N` matches
+    // Takode CLI reads even when non-rendered history entries exist.
+    const user = normalizeHistoryMessageToChatMessages(
+      { type: "user_message", id: "u1", content: "Prompt", timestamp: 100 },
+      3,
+    )[0]!;
+    const assistant = normalizeHistoryMessageToChatMessages(
+      {
+        type: "assistant",
+        timestamp: 200,
+        parent_tool_use_id: null,
+        message: {
+          id: "a1",
+          type: "message",
+          role: "assistant",
+          model: "claude-test",
+          stop_reason: null,
+          usage: {
+            input_tokens: 1,
+            output_tokens: 2,
+            cache_creation_input_tokens: 0,
+            cache_read_input_tokens: 0,
+          },
+          content: [{ type: "text", text: "Answer" }],
+        },
+      },
+      5,
+    )[0]!;
+
+    expect(user.historyIndex).toBe(3);
+    expect(assistant.historyIndex).toBe(5);
+  });
+
   it("can expose successful result messages for preview-only callers", () => {
     // Preview callers opt into this path so hover cards can show successful
     // `result` text while the main session feed still omits non-error results.
@@ -41,6 +75,7 @@ describe("normalizeHistoryMessageToChatMessages", () => {
         role: "assistant",
         content: "Linked result body",
         timestamp: 999,
+        historyIndex: 9,
       },
     ]);
     now.mockRestore();
@@ -66,6 +101,7 @@ describe("normalizeHistoryMessageToChatMessages", () => {
         role: "system",
         content: "Approved Bash",
         timestamp: 1000,
+        historyIndex: 7,
         variant: "approved",
         metadata: {
           answers: [{ question: "Proceed?", answer: "Yes" }],
@@ -93,6 +129,7 @@ describe("normalizeHistoryMessageToChatMessages", () => {
         role: "system",
         content: "Background task finished",
         timestamp: 123456,
+        historyIndex: 4,
         variant: "task_completed",
       },
     ]);

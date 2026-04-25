@@ -91,6 +91,60 @@ describe("GET /api/sessions/:id/messages/:idx/preview", () => {
     });
   });
 
+  it("uses raw messageHistory indexes when skipped entries precede a visible assistant message", async () => {
+    // This mirrors Takode CLI references: msg 2 means raw messageHistory[2],
+    // even though messageHistory[1] is not rendered as a ChatMessage.
+    const history: BrowserIncomingMessage[] = [
+      { type: "user_message", id: "u1", content: "Start", timestamp: 100 },
+      {
+        type: "tool_result_preview",
+        previews: [
+          {
+            tool_use_id: "tool-1",
+            content: "Hidden tool preview",
+            is_error: false,
+            total_size: 19,
+            is_truncated: false,
+          },
+        ],
+      },
+      {
+        type: "assistant",
+        timestamp: 300,
+        parent_tool_use_id: null,
+        message: {
+          id: "a2",
+          type: "message",
+          role: "assistant",
+          model: "claude-test",
+          stop_reason: null,
+          usage: {
+            input_tokens: 1,
+            output_tokens: 2,
+            cache_creation_input_tokens: 0,
+            cache_read_input_tokens: 0,
+          },
+          content: [{ type: "text", text: "Agent-readable answer" }],
+        },
+      },
+    ];
+    const app = makeRoute(history);
+
+    const res = await app.request("/api/sessions/123/messages/2/preview");
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(body).toMatchObject({
+      idx: 2,
+      type: "assistant",
+      content: "Agent-readable answer",
+      rawMessage: {
+        type: "assistant",
+        message: { id: "a2" },
+      },
+    });
+  });
+
   it("returns not found for unavailable message indexes", async () => {
     // Keeps genuinely unavailable references on the existing unavailable UI path.
     const app = makeRoute([{ type: "user_message", id: "u1", content: "Only message", timestamp: 100 }]);

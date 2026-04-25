@@ -136,6 +136,8 @@ export interface ChatMessage {
   pendingState?: "uploading" | "delivering" | "failed";
   pendingError?: string;
   clientMsgId?: string;
+  /** Raw server messageHistory index, used for Takode CLI-compatible message links. */
+  historyIndex?: number;
 }
 
 export interface PendingUserUpload {

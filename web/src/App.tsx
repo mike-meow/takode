@@ -3,12 +3,14 @@ import { useShallow } from "zustand/react/shallow";
 import { useStore, getSessionSearchState } from "./store.js";
 import { connectSession, disconnectSession, sendVsCodeSelectionUpdate } from "./ws.js";
 import { api, checkHealth } from "./api.js";
+import type { SdkSessionInfo } from "./types.js";
 
 import {
   parseHash,
   navigateToSession,
   navigateToMostRecentSession,
   messageIndexFromHash,
+  resolveSessionIdFromRoute,
   scrollToMessageIndex,
 } from "./utils/routing.js";
 import { navigateTo } from "./utils/navigation.js";
@@ -53,6 +55,11 @@ type TakodeDebugWindow = Window &
     __TAKODE_SET_VSCODE_CONTEXT__?: (payload: VsCodeSelectionContextPayload | null) => void;
     __TAKODE_CLEAR_VSCODE_CONTEXT__?: () => void;
   };
+
+function stripSessionSearchMetadata(session: SdkSessionInfo): SdkSessionInfo {
+  const { taskHistory: _taskHistory, keywords: _keywords, ...rest } = session;
+  return rest;
+}
 
 function useHash() {
   return useSyncExternalStore(
@@ -114,6 +121,7 @@ export default function App() {
     newSessionModalState,
     serverRestarting,
     serverReachable,
+    sdkSessions,
   } = useStore(
     useShallow((s) => ({
       colorTheme: s.colorTheme,
@@ -129,6 +137,7 @@ export default function App() {
       newSessionModalState: s.newSessionModalState,
       serverRestarting: s.serverRestarting,
       serverReachable: s.serverReachable,
+      sdkSessions: s.sdkSessions,
     })),
   );
   const hash = useHash();
@@ -149,7 +158,11 @@ export default function App() {
     !isPendingId(currentSessionId) &&
     currentSessionConnectionStatus === "connected";
   const showServerUnreachableBanner = !serverReachable && !suppressServerUnreachableBanner;
-  const displayedSessionId = searchPreviewSessionId ?? currentSessionId;
+  const routeSessionId = useMemo(
+    () => (route.page === "session" ? resolveSessionIdFromRoute(route.sessionId, sdkSessions) : null),
+    [route, sdkSessions],
+  );
+  const displayedSessionId = searchPreviewSessionId ?? (route.page === "session" ? routeSessionId : currentSessionId);
 
   useEffect(() => {
     const el = document.documentElement;
@@ -217,6 +230,27 @@ export default function App() {
       window.removeEventListener("message", handleParentMessage);
     };
   }, []);
+
+  useEffect(() => {
+    if (route.page !== "session") return;
+    if (!/^\d+$/.test(route.sessionId)) return;
+    if (routeSessionId) return;
+
+    let cancelled = false;
+    api
+      .listSessions()
+      .then((sessions) => {
+        if (cancelled) return;
+        useStore.getState().setSdkSessions(sessions.map(stripSessionSearchMetadata));
+      })
+      .catch((err) => {
+        console.warn("[app] failed to hydrate sessions for numeric route:", err);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [route, routeSessionId]);
 
   useEffect(() => {
     void (async () => {
@@ -342,30 +376,42 @@ export default function App() {
 
     if (route.page === "session") {
       const store = useStore.getState();
-      if (store.currentSessionId !== route.sessionId) {
-        store.setCurrentSession(route.sessionId);
+      const resolvedSessionId = resolveSessionIdFromRoute(route.sessionId, store.sdkSessions);
+      if (!resolvedSessionId) {
+        if (store.currentSessionId !== null) {
+          store.setCurrentSession(null);
+        }
+        if (connectedSessionIdRef.current) {
+          disconnectSession(connectedSessionIdRef.current);
+          connectedSessionIdRef.current = null;
+        }
+        return;
       }
 
-      // Handle ?msg=N query param for message-level deep links (right-click → open in new tab)
+      if (store.currentSessionId !== resolvedSessionId) {
+        store.setCurrentSession(resolvedSessionId);
+      }
+
+      // Handle /msg/N and legacy ?msg=N message-level deep links.
       const msgIdx = messageIndexFromHash(hash);
       if (msgIdx != null) {
-        scrollToMessageIndex(route.sessionId, msgIdx);
+        scrollToMessageIndex(resolvedSessionId, msgIdx);
       }
       // Don't connect WebSocket or fire REST calls for pending sessions
       // (they don't exist on the server yet)
-      if (isPendingId(route.sessionId)) {
+      if (isPendingId(resolvedSessionId)) {
         if (connectedSessionIdRef.current) {
           disconnectSession(connectedSessionIdRef.current);
           connectedSessionIdRef.current = null;
         }
       } else {
-        if (connectedSessionIdRef.current && connectedSessionIdRef.current !== route.sessionId) {
+        if (connectedSessionIdRef.current && connectedSessionIdRef.current !== resolvedSessionId) {
           disconnectSession(connectedSessionIdRef.current);
         }
-        store.markSessionViewed(route.sessionId);
-        api.markSessionRead?.(route.sessionId).catch(() => {});
-        connectSession(route.sessionId);
-        connectedSessionIdRef.current = route.sessionId;
+        store.markSessionViewed(resolvedSessionId);
+        api.markSessionRead?.(resolvedSessionId).catch(() => {});
+        connectSession(resolvedSessionId);
+        connectedSessionIdRef.current = resolvedSessionId;
       }
     } else if (route.page === "home") {
       const store = useStore.getState();
@@ -384,7 +430,7 @@ export default function App() {
         connectedSessionIdRef.current = null;
       }
     }
-  }, [route]);
+  }, [hash, route, sdkSessions]);
 
   useEffect(() => {
     const previewSessionId =
