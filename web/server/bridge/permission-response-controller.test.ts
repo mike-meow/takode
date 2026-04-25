@@ -1,4 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
+
+// Mock settings-rule-matcher so tests don't depend on the host's ~/.claude/settings.json.
+// Without this, a real Bash(*) allow rule would auto-approve permissions that the test
+// expects to land in pendingPermissions.
+vi.mock("./settings-rule-matcher.js", () => ({
+  shouldSettingsRuleApprove: vi.fn(async () => null),
+}));
+
 import {
   handleCodexPermissionRequest,
   handleControlRequest,

@@ -16,7 +16,7 @@ import {
  *
  * Should be called once per active session (in ChatView).
  */
-export function useSessionSearch(sessionId: string): void {
+export function useSessionSearch(sessionId: string, enabled = true): void {
   const messages = useStore((s) => s.messages.get(sessionId));
   const leaderSessionId = useStore((s) => s.sdkSessions.find((sdk) => sdk.sessionId === sessionId)?.herdedBy);
   const searchState = useStore((s) => getSessionSearchState(s, sessionId));
@@ -26,6 +26,9 @@ export function useSessionSearch(sessionId: string): void {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    if (!enabled) {
+      return;
+    }
     if (!isOpen || !query.trim()) {
       setSearchResults(sessionId, []);
       return;
@@ -42,7 +45,7 @@ export function useSessionSearch(sessionId: string): void {
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [query, mode, category, isOpen, messages, leaderSessionId, sessionId, setSearchResults]);
+  }, [enabled, query, mode, category, isOpen, messages, leaderSessionId, sessionId, setSearchResults]);
 }
 
 /**

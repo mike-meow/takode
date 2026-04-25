@@ -4,6 +4,8 @@ import { scopedSetItem } from "./scoped-storage.js";
 import {
   getGlobalNewSessionDefaults,
   getGroupNewSessionDefaults,
+  getLastSessionCreationContext,
+  saveLastSessionCreationContext,
   getTreeGroupNewSessionDefaultsKey,
   saveGroupNewSessionDefaults,
 } from "./new-session-defaults.js";
@@ -29,6 +31,7 @@ describe("new-session-defaults", () => {
       model: "gpt-5.4",
       mode: "agent",
       askPermission: false,
+      sessionRole: "worker",
       envSlug: "prod",
       cwd: "",
       useWorktree: false,
@@ -47,6 +50,7 @@ describe("new-session-defaults", () => {
       model: "claude-opus-4-6",
       mode: "agent",
       askPermission: true,
+      sessionRole: "worker",
       envSlug: "",
       cwd: "",
       useWorktree: false,
@@ -64,6 +68,7 @@ describe("new-session-defaults", () => {
       model: "gpt-5.4",
       mode: "agent",
       askPermission: false,
+      sessionRole: "leader",
       envSlug: "sandbox",
       cwd: "/repo-a/worktrees/feature-x",
       useWorktree: true,
@@ -76,6 +81,7 @@ describe("new-session-defaults", () => {
       model: "gpt-5.4",
       mode: "agent",
       askPermission: false,
+      sessionRole: "leader",
       envSlug: "sandbox",
       cwd: "/repo-a/worktrees/feature-x",
       useWorktree: true,
@@ -88,6 +94,7 @@ describe("new-session-defaults", () => {
       model: "claude-opus-4-6",
       mode: "agent",
       askPermission: true,
+      sessionRole: "worker",
       envSlug: "",
       cwd: "",
       useWorktree: true,
@@ -105,6 +112,7 @@ describe("new-session-defaults", () => {
       model: "",
       mode: "agent",
       askPermission: false,
+      sessionRole: "worker",
       cwd: "",
     });
   });
@@ -112,5 +120,19 @@ describe("new-session-defaults", () => {
   it("namespaces tree-group defaults keys separately from project paths", () => {
     expect(getTreeGroupNewSessionDefaultsKey(" team-alpha ")).toBe("tree-group:team-alpha");
     expect(getTreeGroupNewSessionDefaultsKey("")).toBe("");
+  });
+
+  it("persists the last session-creation modal context for shortcut reuse", () => {
+    saveLastSessionCreationContext({
+      cwd: "/repo-a/worktrees/feature-x",
+      treeGroupId: "frontend",
+      newSessionDefaultsKey: "tree-group:frontend",
+    });
+
+    expect(getLastSessionCreationContext()).toEqual({
+      cwd: "/repo-a/worktrees/feature-x",
+      treeGroupId: "frontend",
+      newSessionDefaultsKey: "tree-group:frontend",
+    });
   });
 });

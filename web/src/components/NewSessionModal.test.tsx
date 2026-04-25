@@ -51,6 +51,7 @@ vi.mock("../utils/new-session-defaults.js", () => ({
   getGlobalNewSessionDefaults: (...args: unknown[]) => mockGetGlobalNewSessionDefaults(...args),
   getGroupNewSessionDefaults: (...args: unknown[]) => mockGetGroupNewSessionDefaults(...args),
   saveGroupNewSessionDefaults: (...args: unknown[]) => mockSaveGroupNewSessionDefaults(...args),
+  saveLastSessionCreationContext: vi.fn(),
 }));
 
 vi.mock("./EnvManager.js", () => ({

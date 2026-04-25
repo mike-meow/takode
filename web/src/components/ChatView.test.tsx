@@ -94,6 +94,10 @@ vi.mock("./TodoStatusLine.js", () => ({
   TodoStatusLine: () => <div data-testid="todo-status-line" />,
 }));
 
+vi.mock("./WorkBoardBar.js", () => ({
+  WorkBoardBar: () => <div data-testid="work-board-bar" />,
+}));
+
 vi.mock("./CatIcons.js", () => ({
   YarnBallDot: () => <span data-testid="yarnball-dot" />,
 }));
@@ -191,5 +195,18 @@ describe("ChatView backend banners", () => {
 
     expect(scope.getByTestId("message-feed")).not.toHaveAttribute("data-latest-indicator-mode", "external");
     expect(scope.queryByTestId("elapsed-timer")).not.toBeInTheDocument();
+  });
+
+  it("renders a read-only preview surface without live chat controls", () => {
+    const view = render(<ChatView sessionId="s1" preview />);
+    const scope = within(view.container);
+
+    expect(scope.getByText("Previewing search result. Press Enter to select this conversation.")).toBeInTheDocument();
+    expect(scope.getByTestId("message-feed")).toBeInTheDocument();
+    expect(scope.queryByTestId("composer")).not.toBeInTheDocument();
+    expect(scope.queryByTestId("task-outline-bar")).not.toBeInTheDocument();
+    expect(scope.queryByTestId("permission-banner")).not.toBeInTheDocument();
+    expect(scope.queryByTestId("plan-review-overlay")).not.toBeInTheDocument();
+    expect(scope.queryByTestId("todo-status-line")).not.toBeInTheDocument();
   });
 });

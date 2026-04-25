@@ -1128,10 +1128,13 @@ export const api = {
     post<{ ok: boolean; skills: string[] }>(`/sessions/${encodeURIComponent(sessionId)}/skills/refresh`, {}),
 
   // Terminal
-  spawnTerminal: (cwd: string, cols?: number, rows?: number) =>
-    post<{ terminalId: string }>("/terminal/spawn", { cwd, cols, rows }),
+  spawnTerminal: (cwd: string, cols?: number, rows?: number, sessionId?: string) =>
+    post<{ terminalId: string }>("/terminal/spawn", { cwd, cols, rows, sessionId }),
   killTerminal: () => post<{ ok: boolean }>("/terminal/kill"),
-  getTerminal: () => get<{ active: boolean; terminalId?: string; cwd?: string }>("/terminal"),
+  getTerminal: (sessionId?: string) =>
+    get<{ active: boolean; terminalId?: string; cwd?: string }>(
+      sessionId ? `/terminal?sessionId=${encodeURIComponent(sessionId)}` : "/terminal",
+    ),
 
   // Cron jobs
   listCronJobs: () => get<CronJobInfo[]>("/cron/jobs"),

@@ -14,6 +14,7 @@ import { GitHubPRDisplay } from "../TaskPanel.js";
 import { SessionStatusDot } from "../SessionStatusDot.js";
 import { SessionItem } from "../SessionItem.js";
 import { YarnBallDot } from "../CatIcons.js";
+import { getShortcutTitle } from "../../shortcuts.js";
 import {
   MOCK_MCP_SERVERS,
   MOCK_PR_DRAFT,
@@ -163,6 +164,80 @@ export function PlaygroundOverviewSections() {
           className="max-w-3xl border border-cc-border rounded-xl overflow-hidden bg-cc-card h-[620px]"
         >
           <ChatView sessionId={MOCK_SESSION_ID} />
+        </div>
+      </Section>
+
+      <Section
+        title="Search Preview Chat"
+        description="Read-only right-pane preview shown while navigating global-search results before Enter commits selection."
+      >
+        <div className="max-w-3xl border border-cc-border rounded-xl overflow-hidden bg-cc-card h-[420px]">
+          <ChatView sessionId={MOCK_SESSION_ID} preview />
+        </div>
+      </Section>
+
+      <Section title="Shortcut Hints" description="Hover helper titles for the first shortcut-enabled chat controls.">
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            title={getShortcutTitle(
+              "Global search",
+              { enabled: true, preset: "standard", overrides: {} },
+              "global_search",
+              "MacIntel",
+            )}
+            className="px-3 py-2 rounded-lg bg-cc-hover text-sm text-cc-fg"
+          >
+            Global Search
+          </button>
+          <button
+            type="button"
+            title={getShortcutTitle(
+              "Search messages",
+              { enabled: true, preset: "standard", overrides: {} },
+              "search_session",
+              "MacIntel",
+            )}
+            className="px-3 py-2 rounded-lg bg-cc-hover text-sm text-cc-fg"
+          >
+            Search
+          </button>
+          <button
+            type="button"
+            title={getShortcutTitle(
+              "New session",
+              { enabled: true, preset: "standard", overrides: {} },
+              "new_session",
+              "MacIntel",
+            )}
+            className="px-3 py-2 rounded-lg bg-cc-hover text-sm text-cc-fg"
+          >
+            New Session
+          </button>
+          <button
+            type="button"
+            title={getShortcutTitle(
+              "Toggle sidebar",
+              { enabled: true, preset: "standard", overrides: {} },
+              "toggle_sidebar",
+              "MacIntel",
+            )}
+            className="px-3 py-2 rounded-lg bg-cc-hover text-sm text-cc-fg"
+          >
+            Sidebar
+          </button>
+          <button
+            type="button"
+            title={getShortcutTitle(
+              "Terminal",
+              { enabled: true, preset: "standard", overrides: {} },
+              "open_terminal",
+              "MacIntel",
+            )}
+            className="px-3 py-2 rounded-lg bg-cc-hover text-sm text-cc-fg"
+          >
+            Terminal
+          </button>
         </div>
       </Section>
 

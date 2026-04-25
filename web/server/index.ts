@@ -760,7 +760,7 @@ const server = Bun.serve<SocketData>({
       } else if (data.kind === "browser") {
         wsBridge.handleBrowserOpen(ws, data.sessionId);
       } else if (data.kind === "terminal") {
-        terminalManager.addBrowserSocket(ws);
+        terminalManager.addBrowserSocket(data.terminalId, ws);
       }
     },
     message(ws: ServerWebSocket<SocketData>, msg: string | Buffer) {
@@ -770,7 +770,7 @@ const server = Bun.serve<SocketData>({
       } else if (data.kind === "browser") {
         wsBridge.handleBrowserMessage(ws, msg);
       } else if (data.kind === "terminal") {
-        terminalManager.handleBrowserMessage(ws, msg);
+        terminalManager.handleBrowserMessage(data.terminalId, ws, msg);
       }
     },
     close(ws: ServerWebSocket<SocketData>, code: number, reason: string) {
@@ -780,7 +780,7 @@ const server = Bun.serve<SocketData>({
       } else if (data.kind === "browser") {
         wsBridge.handleBrowserClose(ws, code, reason);
       } else if (data.kind === "terminal") {
-        terminalManager.removeBrowserSocket(ws);
+        terminalManager.removeBrowserSocket(data.terminalId, ws);
       }
     },
   },

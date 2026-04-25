@@ -10,13 +10,19 @@ import {
   type PushoverEventFilters,
 } from "../api.js";
 import { useStore, COLOR_THEMES } from "../store.js";
-import { AutoApprovalConfigCard } from "./AutoApprovalConfigCard.js";
+import {
+  recordShortcutBindingFromEvent,
+  type ShortcutActionId,
+} from "../shortcuts.js";
 import { NamerDebugPanel } from "./NamerDebugPanel.js";
 import { AutoApprovalDebugPanel } from "./AutoApprovalDebugPanel.js";
 import { TranscriptionDebugPanel } from "./TranscriptionDebugPanel.js";
 import { EnhancementTester } from "./EnhancementTester.js";
 import { CollapsibleSection, isCollapsibleSectionCollapsed } from "./CollapsibleSection.js";
 import { FolderPicker } from "./FolderPicker.js";
+import { AutoApprovalConfigCard } from "./AutoApprovalConfigCard.js";
+import { SettingsServerDiagnosticsSection } from "./SettingsServerDiagnosticsSection.js";
+import { SettingsShortcutSection } from "./SettingsShortcutSection.js";
 import { EDIT_BLOCKS_EXPANDED_KEY } from "./ToolBlock.js";
 
 import { navigateToSession, navigateToMostRecentSession } from "../utils/routing.js";
@@ -46,7 +52,14 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
   const setNotificationDesktop = useStore((s) => s.setNotificationDesktop);
   const showUsageBars = useStore((s) => s.showUsageBars);
   const toggleShowUsageBars = useStore((s) => s.toggleShowUsageBars);
+  const shortcutSettings = useStore((s) => s.shortcutSettings);
+  const setShortcutsEnabled = useStore((s) => s.setShortcutsEnabled);
+  const setShortcutPreset = useStore((s) => s.setShortcutPreset);
+  const setShortcutOverride = useStore((s) => s.setShortcutOverride);
+  const resetShortcutOverrides = useStore((s) => s.resetShortcutOverrides);
   const notificationApiAvailable = typeof Notification !== "undefined";
+  const shortcutPlatform = typeof navigator === "undefined" ? undefined : navigator.platform;
+  const [recordingShortcutActionId, setRecordingShortcutActionId] = useState<ShortcutActionId | null>(null);
 
   // Edit/Write blocks default-expanded preference (localStorage, global)
   const [editBlocksExpanded, setEditBlocksExpanded] = useState(() => {
@@ -554,6 +567,27 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
     }
   }
 
+  useEffect(() => {
+    if (!recordingShortcutActionId) return;
+
+    function handleShortcutRecord(event: KeyboardEvent) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!recordingShortcutActionId) return;
+      if (event.key === "Escape") {
+        setRecordingShortcutActionId(null);
+        return;
+      }
+      const binding = recordShortcutBindingFromEvent(event);
+      if (!binding) return;
+      setShortcutOverride(recordingShortcutActionId, binding);
+      setRecordingShortcutActionId(null);
+    }
+
+    window.addEventListener("keydown", handleShortcutRecord, true);
+    return () => window.removeEventListener("keydown", handleShortcutRecord, true);
+  }, [recordingShortcutActionId, setShortcutOverride]);
+
   return (
     <div
       ref={scrollRef}
@@ -684,7 +718,18 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
           )}
         </CollapsibleSection>
 
-        {/* ── 3. CLI & Backends ────────────────────────────────── */}
+        <SettingsShortcutSection
+          shortcutSettings={shortcutSettings}
+          setShortcutsEnabled={setShortcutsEnabled}
+          setShortcutPreset={setShortcutPreset}
+          setShortcutOverride={setShortcutOverride}
+          resetShortcutOverrides={resetShortcutOverrides}
+          recordingShortcutActionId={recordingShortcutActionId}
+          setRecordingShortcutActionId={setRecordingShortcutActionId}
+          shortcutPlatform={shortcutPlatform}
+        />
+
+        {/* ── 4. CLI & Backends ────────────────────────────────── */}
         <CollapsibleSection
           id="cli"
           title="CLI & Backends"
@@ -1903,70 +1948,13 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
           <EnhancementTester />
         </CollapsibleSection>
 
-        {/* ── 9. Server & Diagnostics ──────────────────────────── */}
-        <CollapsibleSection id="server" title="Server & Diagnostics">
-          <div className="space-y-3">
-            <div>
-              <p className="text-sm font-medium text-cc-fg">Log Viewer</p>
-              <p className="mt-0.5 text-xs text-cc-muted">
-                Structured server/runtime logs with live streaming, filtering, and Takode CLI access.
-              </p>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                window.location.hash = "#/logs";
-              }}
-              className="px-3 py-2 rounded-lg text-sm font-medium bg-cc-hover text-cc-fg hover:bg-cc-active transition-colors cursor-pointer"
-            >
-              Open Log Viewer
-            </button>
-
-            {logFile && (
-              <div className="px-3 py-2 rounded-lg bg-cc-hover/60 border border-cc-border text-xs text-cc-muted font-mono break-all">
-                {logFile}
-              </div>
-            )}
-
-            <p className="text-xs text-cc-muted">
-              CLI access: <code className="font-mono">takode logs --level warn,error --follow</code>
-            </p>
-
-            <div className="border-t border-cc-border pt-3 space-y-3">
-              <p className="text-xs text-cc-muted">
-                Restart the server process. Useful after pulling new code. Sessions will reconnect automatically.
-              </p>
-
-              {!restartSupported && (
-                <div className="px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-600 dark:text-amber-400">
-                  Restart not available. Start the server with{" "}
-                  <code className="font-mono bg-cc-hover px-1 py-0.5 rounded">make dev</code> or{" "}
-                  <code className="font-mono bg-cc-hover px-1 py-0.5 rounded">make serve</code> to enable.
-                </div>
-              )}
-
-              {restartError && (
-                <div className="px-3 py-2 rounded-lg bg-cc-error/10 border border-cc-error/20 text-xs text-cc-error">
-                  {restartError}
-                </div>
-              )}
-
-              <button
-                type="button"
-                onClick={onRestartServer}
-                disabled={restarting || !restartSupported}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  restarting || !restartSupported
-                    ? "bg-cc-hover text-cc-muted cursor-not-allowed"
-                    : "bg-cc-primary hover:bg-cc-primary-hover text-white cursor-pointer"
-                }`}
-              >
-                {restarting ? "Restarting..." : "Restart Server"}
-              </button>
-            </div>
-          </div>
-        </CollapsibleSection>
+        <SettingsServerDiagnosticsSection
+          logFile={logFile}
+          restartSupported={restartSupported}
+          restartError={restartError}
+          restarting={restarting}
+          onRestartServer={onRestartServer}
+        />
       </div>
     </div>
   );

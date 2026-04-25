@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, fireEvent, waitFor, within, act } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import type { SessionState, SdkSessionInfo } from "../types.js";
 
@@ -8,6 +8,10 @@ import type { SessionState, SdkSessionInfo } from "../types.js";
 const mockConnectSession = vi.fn();
 const mockConnectAllSessions = vi.fn();
 const mockDisconnectSession = vi.fn();
+const scrollTargetSessionIds: string[] = [];
+const mockScrollIntoView = vi.fn(function (this: Element) {
+  scrollTargetSessionIds.push((this as HTMLElement).dataset.sessionId ?? "");
+});
 
 vi.mock("../ws.js", () => ({
   connectSession: (...args: unknown[]) => mockConnectSession(...args),
@@ -80,6 +84,12 @@ interface MockStoreState {
   pendingPermissions: Map<string, Map<string, unknown>>;
   sessionAttention: Map<string, "action" | "error" | "review" | null>;
   diffFileStats: Map<string, Map<string, { additions: number; deletions: number }>>;
+  shortcutSettings: {
+    enabled: boolean;
+    preset: "standard" | "vscode-light" | "vim-light";
+    overrides: Record<string, string | null>;
+  };
+  searchPreviewSessionId: string | null;
   sessionInfoOpenSessionId: string | null;
   reorderMode: boolean;
   setReorderMode: ReturnType<typeof vi.fn>;
@@ -95,6 +105,7 @@ interface MockStoreState {
   toggleTreeNodeCollapse: ReturnType<typeof vi.fn>;
   toggleHerdNodeExpand: ReturnType<typeof vi.fn>;
   setServerName: ReturnType<typeof vi.fn>;
+  setSearchPreviewSessionId: ReturnType<typeof vi.fn>;
   setCurrentSession: ReturnType<typeof vi.fn>;
   removeSession: ReturnType<typeof vi.fn>;
   newSession: ReturnType<typeof vi.fn>;
@@ -114,6 +125,7 @@ interface MockStoreState {
   markSessionUnread: ReturnType<typeof vi.fn>;
   clearSessionAttention: ReturnType<typeof vi.fn>;
   setTreeGroups: ReturnType<typeof vi.fn>;
+  focusComposer: ReturnType<typeof vi.fn>;
 }
 
 function makeSession(id: string, overrides: Partial<SessionState> = {}): SessionState {
@@ -176,6 +188,8 @@ function createMockState(overrides: Partial<MockStoreState> = {}): MockStoreStat
     pendingPermissions: new Map(),
     sessionAttention: new Map(),
     diffFileStats: new Map(),
+    shortcutSettings: { enabled: false, preset: "standard", overrides: {} },
+    searchPreviewSessionId: null,
     sessionInfoOpenSessionId: null,
     reorderMode: false,
     setReorderMode: vi.fn(),
@@ -191,6 +205,7 @@ function createMockState(overrides: Partial<MockStoreState> = {}): MockStoreStat
     toggleTreeNodeCollapse: vi.fn(),
     toggleHerdNodeExpand: vi.fn(),
     setServerName: vi.fn(),
+    setSearchPreviewSessionId: vi.fn(),
     setCurrentSession: vi.fn(),
     removeSession: vi.fn(),
     newSession: vi.fn(),
@@ -210,6 +225,7 @@ function createMockState(overrides: Partial<MockStoreState> = {}): MockStoreStat
     markSessionUnread: vi.fn(),
     clearSessionAttention: vi.fn(),
     setTreeGroups: vi.fn(),
+    focusComposer: vi.fn(),
     ...overrides,
   };
 }
@@ -245,11 +261,9 @@ import { Sidebar } from "./Sidebar.js";
 
 beforeEach(() => {
   vi.clearAllMocks();
-  Object.defineProperty(globalThis, "alert", {
-    configurable: true,
-    writable: true,
-    value: mockAlert,
-  });
+  vi.stubGlobal("alert", mockAlert);
+  scrollTargetSessionIds.length = 0;
+  Element.prototype.scrollIntoView = mockScrollIntoView;
   mockState = createMockState();
   window.location.hash = "";
   setTouchDevice(false);
@@ -277,22 +291,7 @@ function expectDocumentOrder(nodes: HTMLElement[]) {
   }
 }
 
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (reason?: unknown) => void;
-  const promise = new Promise<T>((res, rej) => {
-    resolve = res;
-    reject = rej;
-  });
-  return { promise, resolve, reject };
-}
-
 describe("Sidebar", { timeout: 10000 }, () => {
-  afterEach(() => {
-    vi.useRealTimers();
-    vi.restoreAllMocks();
-  });
-
   it("polling refreshes sdk sessions without calling connectAllSessions", async () => {
     const listed = [makeSdkSession("s1")];
     mockApi.listSessions.mockResolvedValueOnce(listed);
@@ -363,104 +362,6 @@ describe("Sidebar", { timeout: 10000 }, () => {
     });
   });
 
-  it("refreshes stale session info when the window regains focus", async () => {
-    let now = 1_000;
-    vi.spyOn(Date, "now").mockImplementation(() => now);
-
-    mockApi.listSessions
-      .mockResolvedValueOnce([makeSdkSession("s1", { createdAt: 1_000 })])
-      .mockResolvedValueOnce([makeSdkSession("s2", { createdAt: 2_000 })]);
-
-    render(<Sidebar />);
-
-    await waitFor(() => {
-      expect(mockApi.listSessions).toHaveBeenCalledTimes(1);
-      expect(mockState.setSdkSessions).toHaveBeenCalledWith([expect.objectContaining({ sessionId: "s1" })]);
-    });
-
-    now += 3 * 60 * 1000 + 1;
-    window.dispatchEvent(new Event("focus"));
-
-    await waitFor(() => {
-      expect(mockApi.listSessions).toHaveBeenCalledTimes(2);
-      expect(mockState.setSdkSessions).toHaveBeenLastCalledWith([expect.objectContaining({ sessionId: "s2" })]);
-    });
-  });
-
-  it("does not refresh recent session info on focus before the stale window elapses", async () => {
-    let now = 5_000;
-    vi.spyOn(Date, "now").mockImplementation(() => now);
-
-    mockApi.listSessions.mockResolvedValueOnce([makeSdkSession("s1", { createdAt: 1_000 })]);
-
-    render(<Sidebar />);
-
-    await waitFor(() => {
-      expect(mockApi.listSessions).toHaveBeenCalledTimes(1);
-      expect(mockState.setSdkSessions).toHaveBeenCalledWith([expect.objectContaining({ sessionId: "s1" })]);
-    });
-    await Promise.resolve();
-
-    now += 60_000;
-    window.dispatchEvent(new Event("focus"));
-    await Promise.resolve();
-
-    expect(mockApi.listSessions).toHaveBeenCalledTimes(1);
-  });
-
-  it("refreshes stale session info when the page becomes visible again", async () => {
-    let now = 10_000;
-    vi.spyOn(Date, "now").mockImplementation(() => now);
-
-    mockApi.listSessions
-      .mockResolvedValueOnce([makeSdkSession("s1", { createdAt: 1_000 })])
-      .mockResolvedValueOnce([makeSdkSession("s3", { createdAt: 3_000 })]);
-
-    render(<Sidebar />);
-
-    await waitFor(() => {
-      expect(mockApi.listSessions).toHaveBeenCalledTimes(1);
-      expect(mockState.setSdkSessions).toHaveBeenCalledWith([expect.objectContaining({ sessionId: "s1" })]);
-    });
-
-    now += 3 * 60 * 1000 + 1;
-    Object.defineProperty(document, "visibilityState", {
-      configurable: true,
-      value: "visible",
-    });
-    document.dispatchEvent(new Event("visibilitychange"));
-
-    await waitFor(() => {
-      expect(mockApi.listSessions).toHaveBeenCalledTimes(2);
-      expect(mockState.setSdkSessions).toHaveBeenLastCalledWith([expect.objectContaining({ sessionId: "s3" })]);
-    });
-  });
-
-  it("shows and clears a refresh indicator when session retrieval is slow", async () => {
-    vi.useFakeTimers();
-    const pendingList = deferred<SdkSessionInfo[]>();
-    mockApi.listSessions.mockImplementationOnce(() => pendingList.promise);
-
-    render(<Sidebar />);
-
-    expect(screen.queryByText("Refreshing sessions...")).not.toBeInTheDocument();
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(400);
-    });
-
-    expect(screen.getByText("Refreshing sessions...")).toBeInTheDocument();
-
-    await act(async () => {
-      pendingList.resolve([makeSdkSession("slow-1", { model: "claude-opus-4-6" })]);
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(mockState.setSdkSessions).toHaveBeenCalledWith([expect.objectContaining({ sessionId: "slow-1" })]);
-    expect(screen.queryByText("Refreshing sessions...")).not.toBeInTheDocument();
-  });
-
   it("hydrates tree groups from server on mount", async () => {
     // Validates that sidebar fetches tree groups on first render so grouping
     // is correct immediately, without waiting for a WebSocket session connect.
@@ -529,7 +430,7 @@ describe("Sidebar", { timeout: 10000 }, () => {
       expect(mockApi.searchSessions).toHaveBeenCalledWith(
         "beta",
         expect.objectContaining({
-          includeArchived: true,
+          includeArchived: false,
           signal: expect.any(AbortSignal),
         }),
       );
@@ -539,6 +440,43 @@ describe("Sidebar", { timeout: 10000 }, () => {
     const highlight = screen.getByText("beta");
     expect(highlight.tagName).toBe("MARK");
     expect(screen.getByText(/find/i)).toBeInTheDocument();
+  });
+
+  it("excludes archived sessions from global search by default", async () => {
+    const session1 = makeSession("s1", { cwd: "/repo/a" });
+    const sdk1 = makeSdkSession("s1", { archived: false, createdAt: 1000 });
+    mockState = createMockState({
+      sessions: new Map([["s1", session1]]),
+      sdkSessions: [sdk1],
+      sessionNames: new Map([["s1", "Alpha"]]),
+    });
+    mockApi.searchSessions.mockResolvedValueOnce({
+      query: "alpha",
+      tookMs: 3,
+      totalMatches: 1,
+      results: [
+        {
+          sessionId: "s1",
+          score: 500,
+          matchedField: "name",
+          matchContext: "name: Alpha",
+          matchedAt: 12345,
+        },
+      ],
+    });
+
+    render(<Sidebar />);
+    fireEvent.change(screen.getByPlaceholderText("Search..."), { target: { value: "alpha" } });
+
+    await waitFor(() => {
+      expect(mockApi.searchSessions).toHaveBeenCalledWith(
+        "alpha",
+        expect.objectContaining({
+          includeArchived: false,
+          signal: expect.any(AbortSignal),
+        }),
+      );
+    });
   });
 
   it("aborts the previous in-flight server search when query changes", async () => {
@@ -567,6 +505,134 @@ describe("Sidebar", { timeout: 10000 }, () => {
     await waitFor(() => expect(mockApi.searchSessions).toHaveBeenCalledTimes(2));
 
     await waitFor(() => expect(signals[0]?.aborted).toBe(true));
+  });
+
+  it("selects the first global-search result by default and previews with arrow keys without committing selection side effects", async () => {
+    const session1 = makeSession("s1", { cwd: "/repo/a" });
+    const session2 = makeSession("s2", { cwd: "/repo/b" });
+    mockState = createMockState({
+      sessions: new Map([
+        ["s1", session1],
+        ["s2", session2],
+      ]),
+      sdkSessions: [makeSdkSession("s1", { createdAt: 1000 }), makeSdkSession("s2", { createdAt: 900 })],
+      sessionNames: new Map([
+        ["s1", "Alpha"],
+        ["s2", "Beta"],
+      ]),
+    });
+    mockApi.searchSessions.mockResolvedValueOnce({
+      query: "a",
+      tookMs: 2,
+      totalMatches: 2,
+      results: [
+        { sessionId: "s1", score: 10, matchedField: "name", matchContext: "name: Alpha", matchedAt: 1 },
+        { sessionId: "s2", score: 9, matchedField: "name", matchContext: "name: Beta", matchedAt: 1 },
+      ],
+    });
+
+    render(<Sidebar />);
+    const input = screen.getByPlaceholderText("Search...");
+    fireEvent.change(input, { target: { value: "a" } });
+
+    const alphaRow = await screen.findByText("Alpha");
+    const betaRow = await screen.findByText("Beta");
+    expect(alphaRow.closest("button")).toHaveAttribute("data-search-selected", "true");
+    expect(betaRow.closest("button")).not.toHaveAttribute("data-search-selected", "true");
+    expect(mockState.setSearchPreviewSessionId).toHaveBeenCalledWith("s1");
+    expect(mockScrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+    expect(scrollTargetSessionIds).toContain("s1");
+    expect(mockState.markSessionViewed).not.toHaveBeenCalled();
+    expect(window.location.hash).toBe("");
+
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    expect(betaRow.closest("button")).toHaveAttribute("data-search-selected", "true");
+    expect(mockState.setSearchPreviewSessionId).toHaveBeenLastCalledWith("s2");
+    expect(scrollTargetSessionIds.at(-1)).toBe("s2");
+    expect(mockState.markSessionViewed).not.toHaveBeenCalled();
+    expect(window.location.hash).toBe("");
+
+    fireEvent.keyDown(input, { key: "ArrowUp" });
+    expect(alphaRow.closest("button")).toHaveAttribute("data-search-selected", "true");
+    expect(mockState.setSearchPreviewSessionId).toHaveBeenLastCalledWith("s1");
+    expect(mockState.markSessionViewed).not.toHaveBeenCalled();
+    expect(window.location.hash).toBe("");
+  });
+
+  it("opens the selected global-search result on Enter and exits search mode", async () => {
+    const session1 = makeSession("s1", { cwd: "/repo/a" });
+    const session2 = makeSession("s2", { cwd: "/repo/b" });
+    mockState = createMockState({
+      sessions: new Map([
+        ["s1", session1],
+        ["s2", session2],
+      ]),
+      sdkSessions: [makeSdkSession("s1", { createdAt: 1000 }), makeSdkSession("s2", { createdAt: 900 })],
+      sessionNames: new Map([
+        ["s1", "Alpha"],
+        ["s2", "Beta"],
+      ]),
+    });
+    mockApi.searchSessions.mockResolvedValueOnce({
+      query: "a",
+      tookMs: 2,
+      totalMatches: 2,
+      results: [
+        { sessionId: "s1", score: 10, matchedField: "name", matchContext: "name: Alpha", matchedAt: 1 },
+        { sessionId: "s2", score: 9, matchedField: "name", matchContext: "name: Beta", matchedAt: 1 },
+      ],
+    });
+
+    render(<Sidebar />);
+    const input = screen.getByPlaceholderText("Search...");
+    fireEvent.change(input, { target: { value: "a" } });
+    await screen.findByText("Alpha");
+
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    expect(window.location.hash).toBe("#/session/s2");
+    expect(input).toHaveValue("");
+    expect(screen.queryByText("name:")).not.toBeInTheDocument();
+    expect(mockState.markSessionViewed).toHaveBeenCalledWith("s2");
+    expect(mockState.setSearchPreviewSessionId).toHaveBeenLastCalledWith(null);
+    await waitFor(() => expect(mockState.focusComposer).toHaveBeenCalled());
+  });
+
+  it("opens the clicked global-search result and exits search mode", async () => {
+    const session1 = makeSession("s1", { cwd: "/repo/a" });
+    const session2 = makeSession("s2", { cwd: "/repo/b" });
+    mockState = createMockState({
+      sessions: new Map([
+        ["s1", session1],
+        ["s2", session2],
+      ]),
+      sdkSessions: [makeSdkSession("s1", { createdAt: 1000 }), makeSdkSession("s2", { createdAt: 900 })],
+      sessionNames: new Map([
+        ["s1", "Alpha"],
+        ["s2", "Beta"],
+      ]),
+    });
+    mockApi.searchSessions.mockResolvedValueOnce({
+      query: "a",
+      tookMs: 2,
+      totalMatches: 2,
+      results: [
+        { sessionId: "s1", score: 10, matchedField: "name", matchContext: "name: Alpha", matchedAt: 1 },
+        { sessionId: "s2", score: 9, matchedField: "name", matchContext: "name: Beta", matchedAt: 1 },
+      ],
+    });
+
+    render(<Sidebar />);
+    const input = screen.getByPlaceholderText("Search...");
+    fireEvent.change(input, { target: { value: "a" } });
+
+    fireEvent.click((await screen.findByText("Beta")).closest("button")!);
+
+    expect(window.location.hash).toBe("#/session/s2");
+    expect(input).toHaveValue("");
+    expect(mockState.markSessionViewed).toHaveBeenCalledWith("s2");
+    expect(mockState.setSearchPreviewSessionId).toHaveBeenLastCalledWith(null);
   });
 
   it("renders session items for active sessions", () => {
@@ -740,6 +806,30 @@ describe("Sidebar", { timeout: 10000 }, () => {
     // Find the session button element
     const sessionButton = screen.getByText("claude-sonnet-4-5-20250929").closest("button");
     expect(sessionButton).toHaveClass("bg-cc-active");
+  });
+
+  it("auto-scrolls the sidebar to keep the active session row visible", () => {
+    const session1 = makeSession("s1", { model: "Session One" });
+    const session2 = makeSession("s2", { model: "Session Two" });
+    const sdk1 = makeSdkSession("s1", { model: "Session One", createdAt: 2 });
+    const sdk2 = makeSdkSession("s2", { model: "Session Two", createdAt: 1 });
+    mockState = createMockState({
+      sessions: new Map([
+        ["s1", session1],
+        ["s2", session2],
+      ]),
+      sdkSessions: [sdk1, sdk2],
+      currentSessionId: "s2",
+      treeGroups: [{ id: "default", name: "Default" }],
+      treeNodeOrder: new Map([["default", ["s1", "s2"]]]),
+    });
+
+    render(<Sidebar />);
+
+    const activeButton = screen.getByText("Session Two").closest("button");
+    expect(activeButton).toHaveAttribute("data-active-session", "true");
+    expect(mockScrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+    expect(scrollTargetSessionIds).toContain("s2");
   });
 
   it("clicking a session navigates to the session hash", () => {
@@ -1253,25 +1343,6 @@ describe("Sidebar", { timeout: 10000 }, () => {
     expect(screen.getByText("2")).toBeInTheDocument();
   });
 
-  it("uses the server-authored pending permission count for inactive sessions without a live permission map", () => {
-    const session = makeSession("s1");
-    const sdk = makeSdkSession("s1", {
-      pendingPermissionCount: 1,
-      pendingPermissionSummary: "pending plan",
-    });
-    mockState = createMockState({
-      sessions: new Map([["s1", session]]),
-      sdkSessions: [sdk],
-      cliConnected: new Map([["s1", true]]),
-    });
-
-    render(<Sidebar />);
-    const permissionBadge = screen
-      .getAllByText("1")
-      .find((node) => node.classList.contains("bg-cc-warning") && node.classList.contains("px-1"))!;
-    expect(permissionBadge).toBeInTheDocument();
-  });
-
   it("session keeps git stats but hides git branch text when bridgeState is unavailable", () => {
     // No bridgeState — only sdkInfo (REST API) data available.
     // Line stats come from server via sdkInfo (single source of truth).
@@ -1736,9 +1807,7 @@ describe("Sidebar", { timeout: 10000 }, () => {
     const leaderBetaButton = screen.getByText("Leader Beta").closest("button")!;
     const workerBetaButton = screen.getByText("Worker Beta").closest("button")!;
 
-    expect(
-      leaderAlphaButton.compareDocumentPosition(workerAlphaButton) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    expect(leaderAlphaButton.compareDocumentPosition(workerAlphaButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(leaderBetaButton.compareDocumentPosition(workerBetaButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 

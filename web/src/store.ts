@@ -17,6 +17,13 @@ import type {
 import { api, type PRStatusResponse, type CreationProgressEvent, type CreateSessionOpts } from "./api.js";
 import type { BoardRowData } from "./components/BoardTable.js";
 import {
+  DEFAULT_SHORTCUT_SETTINGS,
+  shortcutsEqual,
+  type ShortcutActionId,
+  type ShortcutPresetId,
+  type ShortcutSettings,
+} from "./shortcuts.js";
+import {
   reconcileQuestList,
   sdkSessionListEqual,
   sessionTaskHistoryEqual,
@@ -75,6 +82,33 @@ export type { SearchMatch, SessionSearchCategory, SessionSearchState };
 export type { PendingSession };
 
 const TOOL_PROGRESS_OUTPUT_LIMIT = 12_000;
+
+function getInitialShortcutSettings(): ShortcutSettings {
+  if (typeof window === "undefined") return DEFAULT_SHORTCUT_SETTINGS;
+  const stored = scopedGetItem("cc-shortcuts");
+  if (!stored) return DEFAULT_SHORTCUT_SETTINGS;
+  try {
+    const parsed = JSON.parse(stored) as Partial<ShortcutSettings> | null;
+    const preset = parsed?.preset;
+    const enabled = parsed?.enabled;
+    const overrides = parsed?.overrides;
+    return {
+      enabled: typeof enabled === "boolean" ? enabled : DEFAULT_SHORTCUT_SETTINGS.enabled,
+      preset:
+        preset === "standard" || preset === "vscode-light" || preset === "vim-light"
+          ? preset
+          : DEFAULT_SHORTCUT_SETTINGS.preset,
+      overrides: overrides && typeof overrides === "object" ? overrides : {},
+    };
+  } catch {
+    return DEFAULT_SHORTCUT_SETTINGS;
+  }
+}
+
+function persistShortcutSettings(settings: ShortcutSettings): void {
+  if (typeof window === "undefined") return;
+  scopedSetItem("cc-shortcuts", JSON.stringify(settings));
+}
 
 function shouldPauseQuestBackgroundRefresh(): boolean {
   return typeof document !== "undefined" && document.visibilityState === "hidden";
@@ -253,6 +287,7 @@ export const useStore = create<AppState>((set, get) => ({
   notificationSound: getInitialNotificationSound(),
   notificationDesktop: getInitialNotificationDesktop(),
   showUsageBars: typeof window !== "undefined" ? scopedGetItem("cc-show-usage") !== "false" : true,
+  shortcutSettings: getInitialShortcutSettings(),
   sidebarOpen: typeof window !== "undefined" ? isDesktopShellLayout(getInitialZoomLevel()) : true,
   sessionInfoOpenSessionId: null,
   reorderMode: false,
@@ -261,6 +296,7 @@ export const useStore = create<AppState>((set, get) => ({
       ? "activity"
       : "created",
   taskPanelOpen: false,
+  searchPreviewSessionId: null,
   newSessionModalState: null,
   questOverlayId: null,
   questOverlaySearchHighlight: null,
@@ -282,6 +318,7 @@ export const useStore = create<AppState>((set, get) => ({
   collapsibleTurnIds: new Map(),
   terminalOpen: false,
   terminalCwd: null,
+  terminalSessionId: null,
   terminalId: null,
 
   addPendingSession: (session) =>
@@ -374,6 +411,40 @@ export const useStore = create<AppState>((set, get) => ({
       scopedSetItem("cc-show-usage", String(next));
       return { showUsageBars: next };
     }),
+  setShortcutsEnabled: (enabled) =>
+    set((s) => {
+      const shortcutSettings = { ...s.shortcutSettings, enabled };
+      if (shortcutsEqual(shortcutSettings, s.shortcutSettings)) return {};
+      persistShortcutSettings(shortcutSettings);
+      return { shortcutSettings };
+    }),
+  setShortcutPreset: (preset) =>
+    set((s) => {
+      const shortcutSettings = { ...s.shortcutSettings, preset };
+      if (shortcutsEqual(shortcutSettings, s.shortcutSettings)) return {};
+      persistShortcutSettings(shortcutSettings);
+      return { shortcutSettings };
+    }),
+  setShortcutOverride: (actionId, binding) =>
+    set((s) => {
+      const overrides = { ...s.shortcutSettings.overrides };
+      if (binding === undefined) {
+        delete overrides[actionId];
+      } else {
+        overrides[actionId] = binding;
+      }
+      const shortcutSettings = { ...s.shortcutSettings, overrides };
+      if (shortcutsEqual(shortcutSettings, s.shortcutSettings)) return {};
+      persistShortcutSettings(shortcutSettings);
+      return { shortcutSettings };
+    }),
+  resetShortcutOverrides: () =>
+    set((s) => {
+      const shortcutSettings = { ...s.shortcutSettings, overrides: {} };
+      if (shortcutsEqual(shortcutSettings, s.shortcutSettings)) return {};
+      persistShortcutSettings(shortcutSettings);
+      return { shortcutSettings };
+    }),
   setSidebarOpen: (v) => set({ sidebarOpen: v }),
   setSessionInfoOpenSessionId: (sessionId) => set({ sessionInfoOpenSessionId: sessionId }),
   setReorderMode: (v) => set({ reorderMode: v }),
@@ -382,6 +453,7 @@ export const useStore = create<AppState>((set, get) => ({
     set({ sessionSortMode: mode });
   },
   setTaskPanelOpen: (open) => set({ taskPanelOpen: open }),
+  setSearchPreviewSessionId: (sessionId) => set({ searchPreviewSessionId: sessionId }),
   openNewSessionModal: (opts) => set({ newSessionModalState: opts ?? {} }),
   closeNewSessionModal: () => set({ newSessionModalState: null }),
   openQuestOverlay: (questId, searchHighlight) =>
@@ -1862,9 +1934,10 @@ export const useStore = create<AppState>((set, get) => ({
 
   setTerminalOpen: (open) => set({ terminalOpen: open }),
   setTerminalCwd: (cwd) => set({ terminalCwd: cwd }),
+  setTerminalSessionId: (sessionId) => set({ terminalSessionId: sessionId }),
   setTerminalId: (id) => set({ terminalId: id }),
-  openTerminal: (cwd) => set({ terminalOpen: true, terminalCwd: cwd }),
-  closeTerminal: () => set({ terminalOpen: false, terminalCwd: null, terminalId: null }),
+  openTerminal: (cwd, sessionId) => set({ terminalOpen: true, terminalCwd: cwd, terminalSessionId: sessionId ?? null }),
+  closeTerminal: () => set({ terminalOpen: false, terminalCwd: null, terminalSessionId: null, terminalId: null }),
 
   reset: () => {
     resetQuestRefreshStateForTests();
@@ -1928,6 +2001,7 @@ export const useStore = create<AppState>((set, get) => ({
       activeTab: "chat" as const,
       diffPanelSelectedFile: new Map(),
       feedScrollPosition: new Map(),
+      shortcutSettings: DEFAULT_SHORTCUT_SETTINGS,
       composerDrafts: new Map(),
       pendingUserUploads: new Map(),
       pendingUserUploadRestorations: new Map(),
@@ -1940,8 +2014,10 @@ export const useStore = create<AppState>((set, get) => ({
       questmasterSearchQuery: "",
       questmasterSelectedTags: [],
       questmasterViewMode: null,
+      searchPreviewSessionId: null,
       terminalOpen: false,
       terminalCwd: null,
+      terminalSessionId: null,
       terminalId: null,
     });
   },

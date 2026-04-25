@@ -1,20 +1,17 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { useStore } from "./store.js";
+import { useStore, getSessionSearchState } from "./store.js";
 import { connectSession, disconnectSession, sendVsCodeSelectionUpdate } from "./ws.js";
 import { api, checkHealth } from "./api.js";
 
 import {
-  messageIdFromHash,
   parseHash,
-  resolveSessionIdFromRoute,
   navigateToSession,
   navigateToMostRecentSession,
   messageIndexFromHash,
   scrollToMessageIndex,
 } from "./utils/routing.js";
-import { bootstrapServerId, scopedGetItem } from "./utils/scoped-storage.js";
-import { createMessageLinkHandoff } from "./utils/message-link-handoff.js";
+import { navigateTo } from "./utils/navigation.js";
 import { Sidebar } from "./components/Sidebar.js";
 import { ChatView } from "./components/ChatView.js";
 import { TopBar } from "./components/TopBar.js";
@@ -33,12 +30,22 @@ import { QuestmasterPage } from "./components/QuestmasterPage.js";
 import { QuestDetailPanel } from "./components/QuestDetailPanel.js";
 import { isPendingId } from "./utils/pending-creation.js";
 import { isDesktopShellLayout, isDesktopTaskPanelLayout } from "./utils/layout.js";
+import { getLastSessionCreationContext } from "./utils/new-session-defaults.js";
+import { buildSidebarVisibleSessions } from "./utils/sidebar-visible-sessions.js";
+import { requestThreadViewportSnapshot } from "./utils/thread-viewport.js";
 import {
   announceVsCodeReady,
   type VsCodeSelectionContextPayload,
   maybeReadVsCodeSelectionContext,
 } from "./utils/vscode-context.js";
 import { ensureVsCodeEditorPreference } from "./utils/vscode-bridge.js";
+import {
+  getMatchingShortcutAction,
+  isAppGlobalShortcutAction,
+  isShortcutEventTargetEditable,
+  performShortcutAction,
+  shouldBlurVimEscape,
+} from "./shortcuts.js";
 
 type TakodeDebugWindow = Window &
   typeof globalThis & {
@@ -57,47 +64,75 @@ function useHash() {
   );
 }
 
+function buildSidebarOrderedShortcutSessions(state: ReturnType<typeof useStore.getState>) {
+  const { orderedVisibleSessionIds } = buildSidebarVisibleSessions({
+    sessions: state.sessions,
+    sdkSessions: state.sdkSessions,
+    cliConnected: state.cliConnected,
+    cliDisconnectReason: state.cliDisconnectReason,
+    sessionStatus: state.sessionStatus,
+    pendingPermissions: state.pendingPermissions,
+    askPermission: state.askPermission,
+    diffFileStats: state.diffFileStats,
+    treeGroups: state.treeGroups,
+    treeAssignments: state.treeAssignments,
+    treeNodeOrder: state.treeNodeOrder,
+    collapsedTreeGroups: state.collapsedTreeGroups,
+    expandedHerdNodes: state.expandedHerdNodes,
+    sessionAttention: state.sessionAttention,
+    sessionSortMode: state.sessionSortMode,
+    countUserPermissions: () => 0,
+  });
+  const sdkById = new Map(state.sdkSessions.map((session) => [session.sessionId, session] as const));
+  return orderedVisibleSessionIds
+    .map((sessionId, index) => {
+      const session = sdkById.get(sessionId);
+      if (!session) return null;
+      return {
+        sessionId: session.sessionId,
+        createdAt: session.createdAt,
+        archived: session.archived,
+        cronJobId: session.cronJobId ?? null,
+        orderIndex: index,
+      };
+    })
+    .filter((session): session is NonNullable<typeof session> => session !== null);
+}
+
 export default function App() {
   const {
     colorTheme,
     darkMode,
     zoomLevel,
     currentSessionId,
+    searchPreviewSessionId,
     currentSessionConnectionStatus,
+    shortcutSettings,
     sidebarOpen,
     taskPanelOpen,
     activeTab,
     newSessionModalState,
     serverRestarting,
     serverReachable,
-    sdkSessions,
-    setCurrentSession,
-    setServerName,
   } = useStore(
     useShallow((s) => ({
       colorTheme: s.colorTheme,
       darkMode: s.darkMode,
       zoomLevel: s.zoomLevel,
       currentSessionId: s.currentSessionId,
+      searchPreviewSessionId: s.searchPreviewSessionId,
       currentSessionConnectionStatus: s.currentSessionId ? (s.connectionStatus.get(s.currentSessionId) ?? null) : null,
+      shortcutSettings: s.shortcutSettings,
       sidebarOpen: s.sidebarOpen,
       taskPanelOpen: s.taskPanelOpen,
       activeTab: s.activeTab,
       newSessionModalState: s.newSessionModalState,
       serverRestarting: s.serverRestarting,
       serverReachable: s.serverReachable,
-      sdkSessions: s.sdkSessions,
-      setCurrentSession: s.setCurrentSession,
-      setServerName: s.setServerName,
     })),
   );
   const hash = useHash();
   const route = useMemo(() => parseHash(hash), [hash]);
-  const routeMessageId = useMemo(() => messageIdFromHash(hash), [hash]);
-  const resolvedRouteSessionId = useMemo(
-    () => (route.page === "session" ? resolveSessionIdFromRoute(route.sessionId, sdkSessions) : null),
-    [route, sdkSessions],
-  );
   const isSettingsPage = route.page === "settings";
   const isLogsPage = route.page === "logs";
   const isTerminalPage = route.page === "terminal";
@@ -114,6 +149,7 @@ export default function App() {
     !isPendingId(currentSessionId) &&
     currentSessionConnectionStatus === "connected";
   const showServerUnreachableBanner = !serverReachable && !suppressServerUnreachableBanner;
+  const displayedSessionId = searchPreviewSessionId ?? currentSessionId;
 
   useEffect(() => {
     const el = document.documentElement;
@@ -213,6 +249,62 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      const state = useStore.getState();
+      const editableTarget = isShortcutEventTargetEditable(event.target);
+      if (shouldBlurVimEscape(state.shortcutSettings, event, event.target)) {
+        (event.target as HTMLElement | null)?.blur?.();
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      const actionId = getMatchingShortcutAction(state.shortcutSettings, event);
+      if (!actionId) return;
+      if (editableTarget && !isAppGlobalShortcutAction(actionId)) return;
+
+      const currentSessionId = state.currentSessionId;
+      const currentSession =
+        (currentSessionId ? state.sessions.get(currentSessionId) : null) ??
+        (currentSessionId ? state.sdkSessions.find((session) => session.sessionId === currentSessionId) : null) ??
+        null;
+      const handled = performShortcutAction(actionId, {
+        route,
+        currentSessionId,
+        currentSessionCwd: currentSession?.cwd ?? null,
+        terminalCwd: state.terminalCwd,
+        activeTab: state.activeTab,
+        isSearchOpen: currentSessionId ? getSessionSearchState(state, currentSessionId).isOpen : false,
+        sessions: buildSidebarOrderedShortcutSessions(state),
+        focusGlobalSearch: () => {
+          state.setSidebarOpen(true);
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              window.dispatchEvent(new CustomEvent("takode:focus-global-search"));
+            });
+          });
+        },
+        openSearch: state.openSessionSearch,
+        closeSearch: state.closeSessionSearch,
+        lastNewSessionContext: getLastSessionCreationContext(),
+        openNewSessionModal: (context) => state.openNewSessionModal(context),
+        openTerminal: state.openTerminal,
+        captureConversationViewport: () => requestThreadViewportSnapshot(currentSessionId),
+        setActiveTab: state.setActiveTab,
+        toggleSidebar: () => state.setSidebarOpen(!state.sidebarOpen),
+        navigateTo,
+        navigateToSession,
+        navigateToMostRecentSession: () => navigateToMostRecentSession(),
+      });
+      if (!handled) return;
+      event.preventDefault();
+      event.stopPropagation();
+    }
+
+    document.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () => document.removeEventListener("keydown", handleKeyDown, { capture: true });
+  }, [route, shortcutSettings]);
+
+  useEffect(() => {
     // Size the parent chain (html → body → #root) to the viewport so the
     // app container can use percentage-based dimensions for zoom scaling.
     // We use % instead of viewport units (vw/dvh) because CSS `zoom`
@@ -236,82 +328,7 @@ export default function App() {
   // so the mount logic can use it even if the hash-sync branch would clear it.
   const restoredIdRef = useRef(useStore.getState().currentSessionId);
   const connectedSessionIdRef = useRef<string | null>(null);
-  const [serverId, setServerId] = useState(() =>
-    typeof window !== "undefined" ? localStorage.getItem("cc-server-id") || "" : "",
-  );
-  const handoffRef = useRef<ReturnType<typeof createMessageLinkHandoff> | null>(null);
-  const handoffAttemptedRef = useRef(false);
-
-  useEffect(() => {
-    api
-      .getSettings()
-      .then((settings) => {
-        if (settings.serverName) setServerName(settings.serverName);
-        if (!settings.serverId) return;
-        setServerId(settings.serverId);
-        const migrated = bootstrapServerId(settings.serverId);
-        if (!migrated) return;
-        const store = useStore.getState();
-        const sessionId = scopedGetItem("cc-current-session");
-        store.setCurrentSession(sessionId);
-        const namesRaw = scopedGetItem("cc-session-names");
-        if (!namesRaw) return;
-        try {
-          for (const [id, name] of JSON.parse(namesRaw)) {
-            store.setSessionName(id, name);
-          }
-        } catch {
-          // Ignore malformed localStorage entries so startup can continue.
-        }
-      })
-      .catch(() => {});
-  }, [setServerName]);
-
-  useEffect(() => {
-    api
-      .listSessions()
-      .then((sessions) => {
-        useStore.getState().setSdkSessions(sessions);
-      })
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    if (!serverId) return;
-
-    handoffRef.current?.cleanup();
-    handoffRef.current = createMessageLinkHandoff({
-      serverId,
-      onNavigateHash: (targetHash) => {
-        history.replaceState(null, "", targetHash);
-        window.dispatchEvent(new HashChangeEvent("hashchange"));
-      },
-    });
-
-    return () => {
-      handoffRef.current?.cleanup();
-      handoffRef.current = null;
-    };
-  }, [serverId]);
-
-  useEffect(() => {
-    if (handoffAttemptedRef.current) return;
-    if (!routeMessageId) {
-      handoffAttemptedRef.current = true;
-      return;
-    }
-    if (!handoffRef.current) return;
-
-    handoffAttemptedRef.current = true;
-    void handoffRef.current.requestReuse(hash).then((handled) => {
-      if (!handled) return;
-      try {
-        window.close();
-      } catch {
-        // Browsers can refuse close() for non-script-opened tabs. Best effort only.
-      }
-    });
-  }, [hash, routeMessageId, serverId]);
+  const previewConnectedSessionIdRef = useRef<string | null>(null);
 
   // Sync hash → store. On mount, restore a localStorage session into the URL first.
   useEffect(() => {
@@ -325,58 +342,35 @@ export default function App() {
 
     if (route.page === "session") {
       const store = useStore.getState();
-      if (!resolvedRouteSessionId) {
-        if (store.currentSessionId !== null) {
-          setCurrentSession(null);
-        }
-        if (connectedSessionIdRef.current) {
-          disconnectSession(connectedSessionIdRef.current);
-          connectedSessionIdRef.current = null;
-        }
-        return;
+      if (store.currentSessionId !== route.sessionId) {
+        store.setCurrentSession(route.sessionId);
       }
 
-      if (store.currentSessionId !== resolvedRouteSessionId) {
-        setCurrentSession(resolvedRouteSessionId);
-      }
-
-      if (route.messageId) {
-        // If messages are already loaded, scroll immediately; otherwise defer
-        // until message_history arrives (mirrors pendingScrollToMessageIndex).
-        const messages = store.messages.get(resolvedRouteSessionId);
-        if (messages && messages.length > 0) {
-          store.requestScrollToMessage(resolvedRouteSessionId, route.messageId);
-          store.setExpandAllInTurn(resolvedRouteSessionId, route.messageId);
-        } else {
-          store.setPendingScrollToMessageId(resolvedRouteSessionId, route.messageId);
-        }
-      } else {
-        // Handle legacy ?msg=N query param for message-level deep links.
-        const msgIdx = messageIndexFromHash(hash);
-        if (msgIdx != null) {
-          scrollToMessageIndex(resolvedRouteSessionId, msgIdx);
-        }
+      // Handle ?msg=N query param for message-level deep links (right-click → open in new tab)
+      const msgIdx = messageIndexFromHash(hash);
+      if (msgIdx != null) {
+        scrollToMessageIndex(route.sessionId, msgIdx);
       }
       // Don't connect WebSocket or fire REST calls for pending sessions
       // (they don't exist on the server yet)
-      if (isPendingId(resolvedRouteSessionId)) {
+      if (isPendingId(route.sessionId)) {
         if (connectedSessionIdRef.current) {
           disconnectSession(connectedSessionIdRef.current);
           connectedSessionIdRef.current = null;
         }
       } else {
-        if (connectedSessionIdRef.current && connectedSessionIdRef.current !== resolvedRouteSessionId) {
+        if (connectedSessionIdRef.current && connectedSessionIdRef.current !== route.sessionId) {
           disconnectSession(connectedSessionIdRef.current);
         }
-        store.markSessionViewed(resolvedRouteSessionId);
-        api.markSessionRead?.(resolvedRouteSessionId).catch(() => {});
-        connectSession(resolvedRouteSessionId);
-        connectedSessionIdRef.current = resolvedRouteSessionId;
+        store.markSessionViewed(route.sessionId);
+        api.markSessionRead?.(route.sessionId).catch(() => {});
+        connectSession(route.sessionId);
+        connectedSessionIdRef.current = route.sessionId;
       }
     } else if (route.page === "home") {
       const store = useStore.getState();
       if (store.currentSessionId !== null) {
-        setCurrentSession(null);
+        store.setCurrentSession(null);
       }
       if (connectedSessionIdRef.current) {
         disconnectSession(connectedSessionIdRef.current);
@@ -390,13 +384,44 @@ export default function App() {
         connectedSessionIdRef.current = null;
       }
     }
-  }, [hash, resolvedRouteSessionId, route, setCurrentSession]);
+  }, [route]);
+
+  useEffect(() => {
+    const previewSessionId =
+      searchPreviewSessionId &&
+      !isPendingId(searchPreviewSessionId) &&
+      searchPreviewSessionId !== currentSessionId
+        ? searchPreviewSessionId
+        : null;
+
+    const previousPreviewSessionId = previewConnectedSessionIdRef.current;
+    if (previousPreviewSessionId && previousPreviewSessionId !== previewSessionId) {
+      disconnectSession(previousPreviewSessionId);
+      previewConnectedSessionIdRef.current = null;
+    }
+
+    if (!previewSessionId) return;
+
+    connectSession(previewSessionId);
+    previewConnectedSessionIdRef.current = previewSessionId;
+
+    return () => {
+      if (previewConnectedSessionIdRef.current === previewSessionId && previewSessionId !== currentSessionId) {
+        disconnectSession(previewSessionId);
+        previewConnectedSessionIdRef.current = null;
+      }
+    };
+  }, [searchPreviewSessionId, currentSessionId]);
 
   useEffect(() => {
     return () => {
       if (connectedSessionIdRef.current) {
         disconnectSession(connectedSessionIdRef.current);
         connectedSessionIdRef.current = null;
+      }
+      if (previewConnectedSessionIdRef.current) {
+        disconnectSession(previewConnectedSessionIdRef.current);
+        previewConnectedSessionIdRef.current = null;
       }
     };
   }, []);
@@ -486,11 +511,15 @@ export default function App() {
           {isSessionView && (
             <>
               {/* Chat tab — visible when activeTab is "chat" or no session */}
-              <div className={`absolute inset-0 ${activeTab === "chat" || !currentSessionId ? "" : "hidden"}`}>
-                {currentSessionId && isPendingId(currentSessionId) ? (
-                  <SessionCreationView pendingId={currentSessionId} />
-                ) : currentSessionId ? (
-                  <ChatView key={currentSessionId} sessionId={currentSessionId} />
+              <div className={`absolute inset-0 ${activeTab === "chat" || !displayedSessionId ? "" : "hidden"}`}>
+                {displayedSessionId && isPendingId(displayedSessionId) ? (
+                  <SessionCreationView pendingId={displayedSessionId} />
+                ) : displayedSessionId ? (
+                  <ChatView
+                    key={displayedSessionId}
+                    sessionId={displayedSessionId}
+                    preview={searchPreviewSessionId === displayedSessionId}
+                  />
                 ) : (
                   <EmptyState />
                 )}

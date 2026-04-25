@@ -46,6 +46,8 @@ const SCOPED_KEYS = [
   "cc-diff-base",
   "cc-recent-dirs",
   "cc-questmaster-view",
+  "cc-shortcuts",
+  "cc-last-session-creation-context",
   "cc-collapsed-tree-groups",
   "cc-collapsed-tree-nodes",
   "cc-expanded-herd-nodes",

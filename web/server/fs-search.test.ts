@@ -2,6 +2,17 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { writeFile, mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { execSync } from "node:child_process";
+
+// These integration tests require a real ripgrep binary. Skip when rg is not
+// available (e.g. GitHub Actions runners that don't ship ripgrep).
+let rgAvailable = false;
+try {
+  execSync("rg --version", { stdio: "ignore" }); // sync-ok: one-shot cold path before tests
+  rgAvailable = true;
+} catch {
+  /* rg not installed */
+}
 
 /**
  * Tests for the /fs/search endpoint behavior.
@@ -59,7 +70,7 @@ async function searchFiles(root: string, query: string): Promise<Array<{ relativ
   }));
 }
 
-describe("file search (fs/search logic)", () => {
+describe.skipIf(!rgAvailable)("file search (fs/search logic)", () => {
   beforeEach(async () => {
     // Create a fresh test directory with known files
     await rm(TEST_DIR, { recursive: true, force: true });

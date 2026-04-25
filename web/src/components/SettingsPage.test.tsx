@@ -8,6 +8,11 @@ interface MockStoreState {
   notificationSound: boolean;
   notificationDesktop: boolean;
   showUsageBars: boolean;
+  shortcutSettings: {
+    enabled: boolean;
+    preset: "standard" | "vscode-light" | "vim-light";
+    overrides: Record<string, string | null>;
+  };
   zoomLevel: number;
   currentSessionId: string | null;
   sdkSessions: Array<{ sessionId: string; createdAt: number; archived?: boolean; cronJobId?: string }>;
@@ -16,6 +21,10 @@ interface MockStoreState {
   toggleNotificationSound: ReturnType<typeof vi.fn>;
   setNotificationDesktop: ReturnType<typeof vi.fn>;
   toggleShowUsageBars: ReturnType<typeof vi.fn>;
+  setShortcutsEnabled: ReturnType<typeof vi.fn>;
+  setShortcutPreset: ReturnType<typeof vi.fn>;
+  setShortcutOverride: ReturnType<typeof vi.fn>;
+  resetShortcutOverrides: ReturnType<typeof vi.fn>;
   setZoomLevel: ReturnType<typeof vi.fn>;
   setServerRestarting: ReturnType<typeof vi.fn>;
 }
@@ -29,6 +38,11 @@ function createMockState(overrides: Partial<MockStoreState> = {}): MockStoreStat
     notificationSound: true,
     notificationDesktop: false,
     showUsageBars: false,
+    shortcutSettings: {
+      enabled: false,
+      preset: "standard",
+      overrides: {},
+    },
     zoomLevel: 1.0,
     currentSessionId: null,
     sdkSessions: [],
@@ -37,6 +51,10 @@ function createMockState(overrides: Partial<MockStoreState> = {}): MockStoreStat
     toggleNotificationSound: vi.fn(),
     setNotificationDesktop: vi.fn(),
     toggleShowUsageBars: vi.fn(),
+    setShortcutsEnabled: vi.fn(),
+    setShortcutPreset: vi.fn(),
+    setShortcutOverride: vi.fn(),
+    resetShortcutOverrides: vi.fn(),
     setZoomLevel: vi.fn(),
     setServerRestarting: vi.fn(),
     ...overrides,
@@ -153,6 +171,76 @@ describe("SettingsPage", () => {
     expect(mockApi.getSettings).toHaveBeenCalledTimes(1);
     // Wait for loading to complete — section headings are visible
     await screen.findByText("Notifications");
+  });
+
+  it("shows shortcuts disabled by default in a compact state", async () => {
+    render(<SettingsPage />);
+
+    await screen.findByText("Notifications");
+    const shortcutsHeading = screen.getByText("Shortcuts");
+    const shortcutsSection = shortcutsHeading.closest("section") ?? shortcutsHeading.parentElement?.parentElement;
+    expect(within(shortcutsSection as HTMLElement).getByText("Off")).toBeInTheDocument();
+    expect(within(shortcutsSection as HTMLElement).getByText("Enable shortcuts to edit presets and bindings.")).toBeInTheDocument();
+    expect(within(shortcutsSection as HTMLElement).queryByLabelText("Preset")).not.toBeInTheDocument();
+    expect(within(shortcutsSection as HTMLElement).queryByText("Search Current Session")).not.toBeInTheDocument();
+  });
+
+  it("shows shortcut preset controls when shortcuts are enabled", async () => {
+    mockState = createMockState({
+      shortcutSettings: {
+        enabled: true,
+        preset: "standard",
+        overrides: {},
+      },
+    });
+
+    render(<SettingsPage />);
+
+    await screen.findByText("Notifications");
+    expect(screen.getByLabelText("Preset")).toHaveValue("standard");
+    expect(screen.getByText("Search Current Session")).toBeInTheDocument();
+  });
+
+  it("records and clears a custom shortcut override", async () => {
+    mockState = createMockState({
+      shortcutSettings: {
+        enabled: true,
+        preset: "standard",
+        overrides: { search_session: "Ctrl+K" },
+      },
+    });
+
+    render(<SettingsPage />);
+
+    await screen.findByText("Notifications");
+    fireEvent.click(screen.getByRole("button", { name: "Record new shortcut" }));
+    fireEvent.keyDown(window, { key: "l", ctrlKey: true });
+
+    expect(mockState.setShortcutOverride).toHaveBeenCalledWith("search_session", "Ctrl+L");
+
+    const resetButton = screen
+      .getAllByRole("button", { name: "Use preset default" })
+      .find((button) => !button.hasAttribute("disabled"));
+    fireEvent.click(resetButton as HTMLButtonElement);
+    expect(mockState.setShortcutOverride).toHaveBeenCalledWith("search_session", undefined);
+  });
+
+  it("allows disabling an individual shortcut with Off", async () => {
+    mockState = createMockState({
+      shortcutSettings: {
+        enabled: true,
+        preset: "standard",
+        overrides: {},
+      },
+    });
+
+    render(<SettingsPage />);
+
+    await screen.findByText("Notifications");
+    const offButtons = screen.getAllByRole("button", { name: "Off" });
+    fireEvent.click(offButtons[0]);
+
+    expect(mockState.setShortcutOverride).toHaveBeenCalledWith("global_search", null);
   });
 
   it("does not start settings-page background work while inactive", () => {

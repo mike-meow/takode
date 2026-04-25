@@ -132,12 +132,14 @@ export interface AppState {
   notificationSound: boolean;
   notificationDesktop: boolean;
   showUsageBars: boolean;
+  shortcutSettings: import("./shortcuts.js").ShortcutSettings;
   sidebarOpen: boolean;
   sessionInfoOpenSessionId: string | null;
   reorderMode: boolean;
   sessionSortMode: "created" | "activity";
   setSessionSortMode: (mode: "created" | "activity") => void;
   taskPanelOpen: boolean;
+  searchPreviewSessionId: string | null;
   newSessionModalState: {
     groupKey?: string;
     cwd?: string;
@@ -166,10 +168,18 @@ export interface AppState {
   toggleNotificationDesktop: () => void;
   setShowUsageBars: (v: boolean) => void;
   toggleShowUsageBars: () => void;
+  setShortcutsEnabled: (enabled: boolean) => void;
+  setShortcutPreset: (preset: import("./shortcuts.js").ShortcutPresetId) => void;
+  setShortcutOverride: (
+    actionId: import("./shortcuts.js").ShortcutActionId,
+    binding: string | null | undefined,
+  ) => void;
+  resetShortcutOverrides: () => void;
   setSidebarOpen: (v: boolean) => void;
   setSessionInfoOpenSessionId: (sessionId: string | null) => void;
   setReorderMode: (v: boolean) => void;
   setTaskPanelOpen: (open: boolean) => void;
+  setSearchPreviewSessionId: (sessionId: string | null) => void;
   openNewSessionModal: (opts?: {
     groupKey?: string;
     cwd?: string;
@@ -340,11 +350,13 @@ export interface AppState {
   setDiffPanelSelectedFile: (sessionId: string, filePath: string | null) => void;
   terminalOpen: boolean;
   terminalCwd: string | null;
+  terminalSessionId: string | null;
   terminalId: string | null;
   setTerminalOpen: (open: boolean) => void;
   setTerminalCwd: (cwd: string | null) => void;
+  setTerminalSessionId: (sessionId: string | null) => void;
   setTerminalId: (id: string | null) => void;
-  openTerminal: (cwd: string) => void;
+  openTerminal: (cwd: string, sessionId?: string | null) => void;
   closeTerminal: () => void;
   reset: () => void;
 }

@@ -95,7 +95,7 @@ describe("ActiveTimersPage", () => {
     render(<ActiveTimersPage embedded />);
 
     expect(await screen.findByText("Active Timers")).toBeInTheDocument();
-    expect(screen.getByText("Current Timers")).toBeInTheDocument();
+    expect(await screen.findByText("Current Timers")).toBeInTheDocument();
     expect(screen.getByText("2 timers across 2 sessions.")).toBeInTheDocument();
     expect(screen.getByText("Check build health")).toBeInTheDocument();
     expect(screen.getByText("Refresh docs")).toBeInTheDocument();

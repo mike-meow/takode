@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { useStore, getSessionSearchState } from "../store.js";
+import { useStore } from "../store.js";
 import { api } from "../api.js";
 import { MessageFeed } from "./MessageFeed.js";
 import { Composer } from "./Composer.js";
@@ -28,7 +28,7 @@ function CompactingIndicator({ sessionId }: { sessionId: string }) {
   );
 }
 
-export function ChatView({ sessionId }: { sessionId: string }) {
+export function ChatView({ sessionId, preview = false }: { sessionId: string; preview?: boolean }) {
   const {
     sessionPerms,
     connStatus,
@@ -38,8 +38,6 @@ export function ChatView({ sessionId }: { sessionId: string }) {
     cliEverConnected,
     cliDisconnectReason,
     isArchived,
-    searchIsOpen,
-    openSearch,
   } = useStore(
     useShallow((s) => ({
       sessionPerms: s.pendingPermissions.get(sessionId),
@@ -50,32 +48,12 @@ export function ChatView({ sessionId }: { sessionId: string }) {
       cliEverConnected: s.cliEverConnected.get(sessionId) ?? false,
       cliDisconnectReason: s.cliDisconnectReason.get(sessionId) ?? null,
       isArchived: s.sdkSessions.find((sdk) => sdk.sessionId === sessionId)?.archived ?? false,
-      searchIsOpen: getSessionSearchState(s, sessionId).isOpen,
-      openSearch: s.openSessionSearch,
     })),
   );
 
   // Within-session search
   const searchInputRef = useRef<HTMLInputElement>(null);
-  useSessionSearch(sessionId);
-
-  // Global Cmd+F / Ctrl+F handler
-  useEffect(() => {
-    function handleKeyDown(e: KeyboardEvent) {
-      const isMod = e.metaKey || e.ctrlKey;
-      if (isMod && e.key === "f") {
-        e.preventDefault();
-        if (searchIsOpen) {
-          searchInputRef.current?.focus();
-          searchInputRef.current?.select();
-        } else {
-          openSearch(sessionId);
-        }
-      }
-    }
-    document.addEventListener("keydown", handleKeyDown, { capture: true });
-    return () => document.removeEventListener("keydown", handleKeyDown, { capture: true });
-  }, [sessionId, searchIsOpen, openSearch]);
+  useSessionSearch(sessionId, !preview);
 
   const perms = useMemo(() => (sessionPerms ? Array.from(sessionPerms.values()) : []), [sessionPerms]);
 
@@ -114,11 +92,17 @@ export function ChatView({ sessionId }: { sessionId: string }) {
     backendError?.includes("could not be resumed because its local rollout is missing or unreadable") ?? false;
   return (
     <div className="flex flex-col h-full min-h-0">
-      {/* Within-session message search bar */}
-      <SearchBar sessionId={sessionId} inputRef={searchInputRef} />
+      {preview ? (
+        <div className="shrink-0 px-4 py-2 border-b border-cc-border bg-cc-card/80 text-[11px] text-cc-muted font-medium">
+          Previewing search result. Press Enter to select this conversation.
+        </div>
+      ) : (
+        /* Within-session message search bar */
+        <SearchBar sessionId={sessionId} inputRef={searchInputRef} />
+      )}
 
       {/* CLI starting / resuming banner */}
-      {showStartingBanner && (
+      {!preview && showStartingBanner && (
         <div className="px-4 py-2 bg-cc-border/30 border-b border-cc-border text-center flex items-center justify-center gap-2">
           <svg
             className="animate-spin h-3 w-3 text-cc-text-secondary"
@@ -140,7 +124,7 @@ export function ChatView({ sessionId }: { sessionId: string }) {
       )}
 
       {/* Broken session banner */}
-      {connStatus === "connected" && !cliConnected && backendState === "broken" && (
+      {!preview && connStatus === "connected" && !cliConnected && backendState === "broken" && (
         <div className="px-4 py-2 bg-cc-warning/10 border-b border-cc-warning/20 text-center flex items-center justify-center gap-3">
           <span className="text-xs text-cc-warning font-medium">
             {backendError || "CLI failed to recover. Relaunch to resume queued messages."}
@@ -155,7 +139,8 @@ export function ChatView({ sessionId }: { sessionId: string }) {
       )}
 
       {/* CLI disconnected banner (CLI was connected before but dropped) */}
-      {connStatus === "connected" &&
+      {!preview &&
+        connStatus === "connected" &&
         !cliConnected &&
         cliEverConnected &&
         backendState !== "broken" &&
@@ -192,14 +177,14 @@ export function ChatView({ sessionId }: { sessionId: string }) {
         )}
 
       {/* WebSocket disconnected banner */}
-      {connStatus === "disconnected" && (
+      {!preview && connStatus === "disconnected" && (
         <div className="px-4 py-2 bg-cc-warning/10 border-b border-cc-warning/20 text-center">
           <span className="text-xs text-cc-warning font-medium">Reconnecting to session...</span>
         </div>
       )}
 
       {/* Archived session banner */}
-      {isArchived && (
+      {!preview && isArchived && (
         <div className="px-4 py-2 bg-amber-500/10 border-b border-amber-500/25 flex items-center justify-center gap-3">
           <span className="text-xs text-amber-300 font-medium">This session is archived.</span>
           <button
@@ -212,24 +197,25 @@ export function ChatView({ sessionId }: { sessionId: string }) {
       )}
 
       {/* Session task outline — horizontal milestone chips */}
-      <TaskOutlineBar sessionId={sessionId} />
+      {!preview && <TaskOutlineBar sessionId={sessionId} />}
 
       {/* Plan overlay fills the chat area, OR show the normal message feed */}
-      {showPlanOverlay ? (
+      {!preview && showPlanOverlay ? (
         <PlanReviewOverlay permission={planPerm} sessionId={sessionId} onCollapse={() => setPlanCollapsed(true)} />
       ) : (
         <MessageFeed sessionId={sessionId} />
       )}
 
       {/* Collapsed plan chip (when plan exists but is collapsed) */}
-      {planPerm && planCollapsed && (
+      {!preview && planPerm && planCollapsed && (
         <div className="shrink-0 border-t border-cc-border bg-cc-card px-2 sm:px-4 py-2">
           <PlanCollapsedChip permission={planPerm} sessionId={sessionId} onExpand={() => setPlanCollapsed(false)} />
         </div>
       )}
 
       {/* Non-plan permission banners — collapsible */}
-      {otherPerms.length > 0 &&
+      {!preview &&
+        otherPerms.length > 0 &&
         (permsCollapsed ? (
           <PermissionsCollapsedChip permissions={otherPerms} onExpand={() => setPermsCollapsed(false)} />
         ) : (
@@ -272,16 +258,16 @@ export function ChatView({ sessionId }: { sessionId: string }) {
         ))}
 
       {/* Compacting indicator — fixed above composer, green like running state */}
-      <CompactingIndicator sessionId={sessionId} />
+      {!preview && <CompactingIndicator sessionId={sessionId} />}
 
       {/* Active todo status — shows current in-progress task */}
-      <TodoStatusLine sessionId={sessionId} />
+      {!preview && <TodoStatusLine sessionId={sessionId} />}
 
       {/* Persistent work board for orchestrator sessions */}
-      <WorkBoardBar sessionId={sessionId} />
+      {!preview && <WorkBoardBar sessionId={sessionId} />}
 
       {/* Composer */}
-      <Composer sessionId={sessionId} />
+      {!preview && <Composer sessionId={sessionId} />}
     </div>
   );
 }

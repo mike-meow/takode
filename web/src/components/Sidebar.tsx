@@ -29,34 +29,22 @@ import { deriveSessionStatus } from "./SessionStatusDot.js";
 import type { SessionTaskEntry, SdkSessionInfo } from "../types.js";
 
 import type { SidebarSessionItem as SessionItemType } from "../utils/sidebar-session-item.js";
-import { buildTreeViewGroups } from "../utils/tree-grouping.js";
+import { buildSidebarVisibleSessions } from "../utils/sidebar-visible-sessions.js";
 import { isDesktopShellLayout } from "../utils/layout.js";
 import { questOwnsSessionName } from "../utils/quest-helpers.js";
+import { requestThreadViewportSnapshot } from "../utils/thread-viewport.js";
 import {
   buildHerdGroupBadgeThemes,
   getHerdGroupLeaderId,
   type HerdGroupBadgeTheme,
 } from "../utils/herd-group-theme.js";
-
-const SIDEBAR_SESSION_POLL_INTERVAL_MS = 5000;
-const SIDEBAR_SESSION_STALE_REFRESH_MS = 3 * 60 * 1000;
-const SIDEBAR_SLOW_REFRESH_INDICATOR_DELAY_MS = 400;
+import { getShortcutTitle } from "../shortcuts.js";
 
 /** Restrict drag movement to vertical axis only. */
 const restrictToVerticalAxis: Modifier = ({ transform }) => ({
   ...transform,
   x: 0,
 });
-
-function sumDiffFileStats(fileStats: Map<string, { additions: number; deletions: number }> | undefined) {
-  let additions = 0;
-  let deletions = 0;
-  for (const stats of fileStats?.values() ?? []) {
-    additions += stats.additions;
-    deletions += stats.deletions;
-  }
-  return { additions, deletions };
-}
 
 function sessionTaskHistoryEqual(a: SessionTaskEntry[] | undefined, b: SessionTaskEntry[] | undefined): boolean {
   if (a === b) return true;
@@ -181,173 +169,101 @@ export function Sidebar() {
   const toggleTreeGroupCollapse = useStore((s) => s.toggleTreeGroupCollapse);
   const collapsedTreeNodes = useStore((s) => s.collapsedTreeNodes);
   const toggleTreeNodeCollapse = useStore((s) => s.toggleTreeNodeCollapse);
+  const expandedHerdNodes = useStore((s) => s.expandedHerdNodes);
   const treeNodeOrder = useStore((s) => s.treeNodeOrder);
   const pendingSessions = useStore((s) => s.pendingSessions);
   const diffFileStats = useStore((s) => s.diffFileStats);
   const serverName = useStore((s) => s.serverName);
   const setServerName = useStore((s) => s.setServerName);
+  const setSearchPreviewSessionId = useStore((s) => s.setSearchPreviewSessionId);
   const zoomLevel = useStore((s) => s.zoomLevel ?? 1);
+  const shortcutSettings = useStore((s) => s.shortcutSettings);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchResults, setSearchResults] = useState<SessionSearchResult[] | null>(null);
   const [isSearching, setIsSearching] = useState(false);
-  const [showSessionRefreshStatus, setShowSessionRefreshStatus] = useState(false);
+  const [activeSearchResultIndex, setActiveSearchResultIndex] = useState(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const sidebarMountedRef = useRef(true);
-  const lastSuccessfulSessionRefreshAtRef = useRef(0);
-  const inFlightSessionRefreshRef = useRef<Promise<void> | null>(null);
-  const slowRefreshTimerRef = useRef<number | null>(null);
+  const sessionScrollerRef = useRef<HTMLDivElement>(null);
   const route = parseHash(hash);
   const isSettingsPage = route.page === "settings";
   const isTerminalPage = route.page === "terminal";
   const isScheduledPage = route.page === "scheduled";
   const isQuestmasterPage = route.page === "questmaster";
   const isDesktopLayout = isDesktopShellLayout(zoomLevel);
-  const getSidebarPermissionCount = useCallback(
-    (sessionId: string, fallbackCount?: number | null) => {
-      const livePermissions = pendingPermissions.get(sessionId);
-      if (livePermissions) return countUserPermissions(livePermissions);
-      return fallbackCount ?? 0;
-    },
-    [pendingPermissions],
-  );
+  const shortcutPlatform = typeof navigator === "undefined" ? undefined : navigator.platform;
 
-  const applySessionSnapshot = useCallback((list: SdkSessionInfo[]) => {
-    const store = useStore.getState();
-    store.setSdkSessions(list.map(stripSearchMetadata));
-    // Hydrate session names from server (server is source of truth for auto-generated names)
-    let batchedAttention: Map<string, "action" | "error" | "review" | null> | null = null;
-    for (const s of list) {
-      if (s.name) {
-        const currentStoreName = store.sessionNames.get(s.sessionId);
-        if (currentStoreName !== s.name) {
-          const hadRandomName = !!currentStoreName && /^[A-Z][a-z]+ [A-Z][a-z]+$/.test(currentStoreName);
-          store.setSessionName(s.sessionId, s.name);
-          if (hadRandomName) {
-            store.markRecentlyRenamed(s.sessionId);
-          }
-        }
-      }
-      if (!s.isOrchestrator && questOwnsSessionName(s.claimedQuestStatus ?? undefined)) {
-        store.markQuestNamed(s.sessionId);
-      } else {
-        store.clearQuestNamed(s.sessionId);
-      }
-      // Hydrate last message preview from server (only if client doesn't have one yet)
-      if (s.lastMessagePreview && !store.sessionPreviews.has(s.sessionId)) {
-        store.setSessionPreview(s.sessionId, s.lastMessagePreview);
-      }
-      // Hydrate task history and keywords from server for search
-      const nextTaskHistory = s.taskHistory ?? [];
-      const currentTaskHistory = store.sessionTaskHistory.get(s.sessionId);
-      if (!sessionTaskHistoryEqual(currentTaskHistory, nextTaskHistory)) {
-        store.setSessionTaskHistory(s.sessionId, nextTaskHistory);
-      }
-      const nextKeywords = s.keywords ?? [];
-      const currentKeywords = store.sessionKeywords.get(s.sessionId);
-      if (!stringArrayEqual(currentKeywords, nextKeywords)) {
-        store.setSessionKeywords(s.sessionId, nextKeywords);
-      }
-      // Batch server-authoritative attention state changes
-      if (s.attentionReason !== undefined) {
-        const currentAttention = store.sessionAttention.get(s.sessionId);
-        if (currentAttention !== s.attentionReason) {
-          // Suppress attention for the session the user is currently viewing
-          if (store.currentSessionId === s.sessionId && s.attentionReason) {
-            api.markSessionRead(s.sessionId).catch(() => {});
-          } else {
-            if (!batchedAttention) batchedAttention = new Map(store.sessionAttention);
-            batchedAttention.set(s.sessionId, s.attentionReason ?? null);
-          }
-        }
-      }
-    }
-    if (batchedAttention) {
-      useStore.setState({ sessionAttention: batchedAttention });
-    }
-  }, []);
-
-  const refreshSessionList = useCallback(
-    ({ reason }: { reason: "mount" | "poll" | "focus" | "visibility" | "pageshow" }) => {
-      if (inFlightSessionRefreshRef.current) {
-        return inFlightSessionRefreshRef.current;
-      }
-      const currentRefreshPromise = (async () => {
-        if (slowRefreshTimerRef.current !== null) {
-          window.clearTimeout(slowRefreshTimerRef.current);
-        }
-        slowRefreshTimerRef.current = window.setTimeout(() => {
-          if (sidebarMountedRef.current) {
-            setShowSessionRefreshStatus(true);
-          }
-        }, SIDEBAR_SLOW_REFRESH_INDICATOR_DELAY_MS);
-        try {
-          const list = await api.listSessions();
-          lastSuccessfulSessionRefreshAtRef.current = Date.now();
-          applySessionSnapshot(list);
-        } catch (e) {
-          console.warn(`[sidebar] session refresh failed (${reason}):`, e);
-        } finally {
-          if (slowRefreshTimerRef.current !== null) {
-            window.clearTimeout(slowRefreshTimerRef.current);
-            slowRefreshTimerRef.current = null;
-          }
-          if (sidebarMountedRef.current) {
-            setShowSessionRefreshStatus(false);
-          }
-          inFlightSessionRefreshRef.current = null;
-        }
-      })();
-      inFlightSessionRefreshRef.current = currentRefreshPromise;
-      return currentRefreshPromise;
-    },
-    [applySessionSnapshot],
-  );
-
-  // Poll for SDK sessions on mount and refresh stale snapshots when the page regains attention.
+  // Poll for SDK sessions on mount
   useEffect(() => {
     let active = true;
-    sidebarMountedRef.current = true;
-    void refreshSessionList({ reason: "mount" });
-
-    const interval = window.setInterval(() => {
-      void refreshSessionList({ reason: "poll" });
-    }, SIDEBAR_SESSION_POLL_INTERVAL_MS);
-
-    const refreshIfStale = (reason: "focus" | "visibility" | "pageshow") => {
-      if (!active) return;
-      const lastRefreshAt = lastSuccessfulSessionRefreshAtRef.current;
-      if (lastRefreshAt !== 0 && Date.now() - lastRefreshAt < SIDEBAR_SESSION_STALE_REFRESH_MS) {
-        return;
+    async function poll() {
+      try {
+        const list = await api.listSessions();
+        if (active) {
+          const store = useStore.getState();
+          store.setSdkSessions(list.map(stripSearchMetadata));
+          // Hydrate session names from server (server is source of truth for auto-generated names)
+          let batchedAttention: Map<string, "action" | "error" | "review" | null> | null = null;
+          for (const s of list) {
+            if (s.name) {
+              const currentStoreName = store.sessionNames.get(s.sessionId);
+              if (currentStoreName !== s.name) {
+                const hadRandomName = !!currentStoreName && /^[A-Z][a-z]+ [A-Z][a-z]+$/.test(currentStoreName);
+                store.setSessionName(s.sessionId, s.name);
+                if (hadRandomName) {
+                  store.markRecentlyRenamed(s.sessionId);
+                }
+              }
+            }
+            if (!s.isOrchestrator && questOwnsSessionName(s.claimedQuestStatus ?? undefined)) {
+              store.markQuestNamed(s.sessionId);
+            } else {
+              store.clearQuestNamed(s.sessionId);
+            }
+            // Hydrate last message preview from server (only if client doesn't have one yet)
+            if (s.lastMessagePreview && !store.sessionPreviews.has(s.sessionId)) {
+              store.setSessionPreview(s.sessionId, s.lastMessagePreview);
+            }
+            // Hydrate task history and keywords from server for search
+            const nextTaskHistory = s.taskHistory ?? [];
+            const currentTaskHistory = store.sessionTaskHistory.get(s.sessionId);
+            if (!sessionTaskHistoryEqual(currentTaskHistory, nextTaskHistory)) {
+              store.setSessionTaskHistory(s.sessionId, nextTaskHistory);
+            }
+            const nextKeywords = s.keywords ?? [];
+            const currentKeywords = store.sessionKeywords.get(s.sessionId);
+            if (!stringArrayEqual(currentKeywords, nextKeywords)) {
+              store.setSessionKeywords(s.sessionId, nextKeywords);
+            }
+            // Batch server-authoritative attention state changes
+            if (s.attentionReason !== undefined) {
+              const currentAttention = store.sessionAttention.get(s.sessionId);
+              if (currentAttention !== s.attentionReason) {
+                // Suppress attention for the session the user is currently viewing
+                if (store.currentSessionId === s.sessionId && s.attentionReason) {
+                  api.markSessionRead(s.sessionId).catch(() => {});
+                } else {
+                  if (!batchedAttention) batchedAttention = new Map(store.sessionAttention);
+                  batchedAttention.set(s.sessionId, s.attentionReason ?? null);
+                }
+              }
+            }
+          }
+          if (batchedAttention) {
+            useStore.setState({ sessionAttention: batchedAttention });
+          }
+        }
+      } catch (e) {
+        console.warn("[sidebar] session poll failed:", e);
       }
-      void refreshSessionList({ reason });
-    };
-
-    const handleWindowFocus = () => refreshIfStale("focus");
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        refreshIfStale("visibility");
-      }
-    };
-    const handlePageShow = () => refreshIfStale("pageshow");
-
-    window.addEventListener("focus", handleWindowFocus);
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("pageshow", handlePageShow);
-
+    }
+    poll();
+    const interval = setInterval(poll, 5000);
     return () => {
       active = false;
-      sidebarMountedRef.current = false;
-      window.clearInterval(interval);
-      window.removeEventListener("focus", handleWindowFocus);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("pageshow", handlePageShow);
-      if (slowRefreshTimerRef.current !== null) {
-        window.clearTimeout(slowRefreshTimerRef.current);
-        slowRefreshTimerRef.current = null;
-      }
+      clearInterval(interval);
     };
-  }, [refreshSessionList]);
+  }, []);
 
   // Hydrate tree groups on mount so sidebar renders correct grouping immediately.
   // After this initial fetch, WebSocket tree_groups_update keeps groups in sync.
@@ -399,7 +315,7 @@ export function Sidebar() {
     for (const sdk of sdkSessions) {
       if (sdk.archived) continue;
       const vs = deriveSessionStatus({
-        permCount: getSidebarPermissionCount(sdk.sessionId, sdk.pendingPermissionCount),
+        permCount: countUserPermissions(pendingPermissions.get(sdk.sessionId)),
         isConnected: cliConnected.get(sdk.sessionId) ?? sdk.cliConnected ?? false,
         sdkState: sdk.state ?? null,
         status: sessionStatus.get(sdk.sessionId) ?? null,
@@ -411,15 +327,7 @@ export function Sidebar() {
     const suffix = import.meta.env.DEV ? "[DEV] Takode" : "Takode";
     const base = serverName ? `${serverName} — ${suffix}` : suffix;
     document.title = totalAttention > 0 ? `(${totalAttention}) ${base}` : base;
-  }, [
-    serverName,
-    sessionAttention,
-    sdkSessions,
-    sessionStatus,
-    cliConnected,
-    cliDisconnectReason,
-    getSidebarPermissionCount,
-  ]);
+  }, [serverName, sessionAttention, pendingPermissions, sdkSessions, sessionStatus, cliConnected, cliDisconnectReason]);
 
   // Focus server name input when entering edit mode
   useEffect(() => {
@@ -471,14 +379,30 @@ export function Sidebar() {
 
   function handleSelectSession(sessionId: string) {
     setContextMenu(null);
+    setSearchQuery("");
+    setActiveSearchResultIndex(0);
+    setSearchPreviewSessionId(null);
     useStore.getState().markSessionViewed(sessionId);
     api.markSessionRead?.(sessionId).catch(() => {});
     // Navigate to session hash — App.tsx hash effect handles setCurrentSession + connectSession
     navigateToSession(sessionId);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        useStore.getState().focusComposer();
+      });
+    });
     // Close sidebar on mobile
     if (!isDesktopLayout) {
       useStore.getState().setSidebarOpen(false);
     }
+  }
+
+  function handlePreviewSearchSession(sessionId: string) {
+    if (currentSessionId === sessionId) {
+      setSearchPreviewSessionId(null);
+      return;
+    }
+    setSearchPreviewSessionId(sessionId);
   }
 
   function handleNewSession() {
@@ -487,6 +411,17 @@ export function Sidebar() {
       useStore.getState().setSidebarOpen(false);
     }
   }
+
+  useEffect(() => {
+    function handleFocusGlobalSearch() {
+      requestAnimationFrame(() => {
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      });
+    }
+    window.addEventListener("takode:focus-global-search", handleFocusGlobalSearch);
+    return () => window.removeEventListener("takode:focus-global-search", handleFocusGlobalSearch);
+  }, []);
 
   /** Tree view variant: assigns new session to the tree group after creation. */
   function handleCreateSessionInTreeGroup(treeGroupId: string) {
@@ -699,75 +634,45 @@ export function Sidebar() {
     }
   }, []);
 
-  // Combine sessions from WsBridge state + SDK sessions list
-  const allSessionIds = new Set<string>();
-  for (const id of sessions.keys()) allSessionIds.add(id);
-  for (const s of sdkSessions) allSessionIds.add(s.sessionId);
-
-  const allSessionList: SessionItemType[] = Array.from(allSessionIds)
-    .map((id) => {
-      const bridgeState = sessions.get(id);
-      const sdkInfo = sdkSessions.find((s) => s.sessionId === id);
-      const sdkGitAhead = sdkInfo?.gitAhead ?? 0;
-      const sdkGitBehind = sdkInfo?.gitBehind ?? 0;
-      const gitAhead =
-        bridgeState?.git_ahead === 0 && sdkGitAhead > 0 ? sdkGitAhead : (bridgeState?.git_ahead ?? sdkGitAhead);
-      const gitBehind =
-        bridgeState?.git_behind === 0 && sdkGitBehind > 0 ? sdkGitBehind : (bridgeState?.git_behind ?? sdkGitBehind);
-      const serverLinesAdded = bridgeState?.total_lines_added ?? sdkInfo?.totalLinesAdded ?? 0;
-      const serverLinesRemoved = bridgeState?.total_lines_removed ?? sdkInfo?.totalLinesRemoved ?? 0;
-      const localLineStats = sumDiffFileStats(diffFileStats.get(id));
-      const linesAdded =
-        serverLinesAdded === 0 &&
-        serverLinesRemoved === 0 &&
-        (localLineStats.additions > 0 || localLineStats.deletions > 0)
-          ? localLineStats.additions
-          : serverLinesAdded;
-      const linesRemoved =
-        serverLinesAdded === 0 &&
-        serverLinesRemoved === 0 &&
-        (localLineStats.additions > 0 || localLineStats.deletions > 0)
-          ? localLineStats.deletions
-          : serverLinesRemoved;
-      return {
-        id,
-        claimedQuestStatus: bridgeState?.claimedQuestStatus ?? sdkInfo?.claimedQuestStatus ?? undefined,
-        model: bridgeState?.model || sdkInfo?.model || "",
-        cwd: bridgeState?.cwd || sdkInfo?.cwd || "",
-        gitBranch: bridgeState?.git_branch || sdkInfo?.gitBranch || "",
-        isContainerized: bridgeState?.is_containerized || !!sdkInfo?.containerId || false,
-        gitAhead,
-        gitBehind,
-        linesAdded,
-        linesRemoved,
-        isConnected: cliConnected.get(id) ?? sdkInfo?.cliConnected ?? false,
-        status: sessionStatus.get(id) ?? null,
-        sdkState: sdkInfo?.state ?? null,
-        createdAt: sdkInfo?.createdAt ?? 0,
-        archived: sdkInfo?.archived ?? false,
-        archivedAt: sdkInfo?.archivedAt,
-        backendType: bridgeState?.backend_type || sdkInfo?.backendType || "claude",
-        repoRoot: bridgeState?.repo_root || sdkInfo?.repoRoot || "",
-        permCount: getSidebarPermissionCount(id, sdkInfo?.pendingPermissionCount),
-        pendingTimerCount: sdkInfo?.pendingTimerCount ?? 0,
-        cronJobId: bridgeState?.cronJobId || sdkInfo?.cronJobId,
-        cronJobName: bridgeState?.cronJobName || sdkInfo?.cronJobName,
-        isWorktree: bridgeState?.is_worktree || sdkInfo?.isWorktree || false,
-        worktreeExists: sdkInfo?.worktreeExists,
-        worktreeDirty: sdkInfo?.worktreeDirty,
-        worktreeCleanupStatus: sdkInfo?.worktreeCleanupStatus,
-        worktreeCleanupError: sdkInfo?.worktreeCleanupError,
-        askPermission: askPermissionMap?.get(id),
-        idleKilled: cliDisconnectReason.get(id) === "idle_limit",
-        lastActivityAt: sdkInfo?.lastActivityAt,
-        lastUserMessageAt: sdkInfo?.lastUserMessageAt,
-        isOrchestrator: sdkInfo?.isOrchestrator || false,
-        herdedBy: sdkInfo?.herdedBy,
-        sessionNum: sdkInfo?.sessionNum ?? null,
-        reviewerOf: sdkInfo?.reviewerOf,
-      };
-    })
-    .sort((a, b) => b.createdAt - a.createdAt);
+  const { allSessionList, activeSessions, activeReviewers, cronSessions, archivedSessions, treeViewGroups } =
+    useMemo(
+      () =>
+        buildSidebarVisibleSessions({
+          sessions,
+          sdkSessions,
+          cliConnected,
+          cliDisconnectReason,
+          sessionStatus,
+          pendingPermissions,
+          askPermission: askPermissionMap ?? new Map(),
+          diffFileStats,
+          treeGroups,
+          treeAssignments,
+          treeNodeOrder,
+          collapsedTreeGroups,
+          expandedHerdNodes,
+          sessionAttention,
+          sessionSortMode,
+          countUserPermissions,
+        }),
+      [
+        sessions,
+        sdkSessions,
+        cliConnected,
+        cliDisconnectReason,
+        sessionStatus,
+        pendingPermissions,
+        askPermissionMap,
+        diffFileStats,
+        treeGroups,
+        treeAssignments,
+        treeNodeOrder,
+        sessionAttention,
+        collapsedTreeGroups,
+        expandedHerdNodes,
+        sessionSortMode,
+      ],
+    );
 
   // Map: parentSessionNum → active reviewer SessionItem (for inline badge on parent row)
   const activeReviewerByParent = useMemo(() => {
@@ -779,35 +684,9 @@ export function Sidebar() {
     }
     return map;
   }, [allSessionList]);
-
-  // Reviewer sessions render inline within herd groups rather than as top-level sidebar rows.
-  const activeSessions = allSessionList.filter((s) => !s.archived && !s.cronJobId && s.reviewerOf === undefined);
-  const activeReviewers = useMemo(
-    () => allSessionList.filter((s) => !s.archived && s.reviewerOf !== undefined),
-    [allSessionList],
-  );
-  const cronSessions = allSessionList.filter((s) => !s.archived && !!s.cronJobId);
-  const archivedSessions = allSessionList
-    .filter((s) => s.archived && s.reviewerOf === undefined)
-    .sort((a, b) => (b.archivedAt ?? b.createdAt) - (a.archivedAt ?? a.createdAt));
   const currentSession = currentSessionId ? allSessionList.find((s) => s.id === currentSessionId) : null;
   const logoSrc = currentSession?.backendType === "codex" ? "/logo-codex.svg" : "/logo.png";
   const [showCronSessions, setShowCronSessions] = useState(true);
-
-  // Build tree view groups (herd-centric grouping)
-  const treeViewGroups = useMemo(
-    () =>
-      buildTreeViewGroups(
-        activeSessions,
-        treeGroups,
-        treeAssignments,
-        sessionAttention,
-        sessionSortMode,
-        treeNodeOrder,
-        activeReviewers,
-      ),
-    [activeSessions, treeGroups, treeAssignments, sessionAttention, sessionSortMode, treeNodeOrder, activeReviewers],
-  );
   const treeGroupIds = useMemo(() => treeViewGroups.map((g) => g.id), [treeViewGroups]);
   const groupPointerSensor = useSensor(PointerSensor, { activationConstraint: { distance: 8 } });
   const groupSensors = useSensors(groupPointerSensor);
@@ -881,6 +760,8 @@ export function Sidebar() {
     if (!q) {
       setSearchResults(null);
       setIsSearching(false);
+      setActiveSearchResultIndex(0);
+      setSearchPreviewSessionId(null);
       return;
     }
 
@@ -889,7 +770,7 @@ export function Sidebar() {
     const timer = setTimeout(async () => {
       try {
         const resp = await api.searchSessions(q, {
-          includeArchived: true,
+          includeArchived: false,
           signal: controller.signal,
         });
         if (controller.signal.aborted) return;
@@ -933,6 +814,38 @@ export function Sidebar() {
     }
     return results;
   }, [searchQuery, searchResults, allSessionList]);
+
+  useEffect(() => {
+    if (!filteredSessions || filteredSessions.length === 0) {
+      setActiveSearchResultIndex(0);
+      setSearchPreviewSessionId(null);
+      return;
+    }
+    setActiveSearchResultIndex((prev) => Math.min(prev, filteredSessions.length - 1));
+  }, [filteredSessions]);
+
+  useEffect(() => {
+    if (!filteredSessions || filteredSessions.length === 0) return;
+    const selected = filteredSessions[activeSearchResultIndex];
+    if (!selected) return;
+    handlePreviewSearchSession(selected.session.id);
+  }, [activeSearchResultIndex, filteredSessions]);
+
+  const highlightedSidebarSessionId = filteredSessions?.[activeSearchResultIndex]?.session.id ?? currentSessionId;
+  const highlightedSidebarSelector = filteredSessions
+    ? "button[data-search-selected='true']"
+    : highlightedSidebarSessionId
+      ? `button[data-session-id='${highlightedSidebarSessionId}'][data-active-session='true']`
+      : null;
+
+  useEffect(() => {
+    if (!highlightedSidebarSessionId || !highlightedSidebarSelector) return;
+    const scroller = sessionScrollerRef.current;
+    if (!scroller) return;
+    const highlightedRow = scroller.querySelector<HTMLElement>(highlightedSidebarSelector);
+    if (!highlightedRow) return;
+    highlightedRow.scrollIntoView({ block: "nearest" });
+  }, [highlightedSidebarSessionId, highlightedSidebarSelector]);
 
   // Show sort/reorder controls when the session list is visible and has multiple sessions.
   const showSortControls = !searchFocused && !searchQuery && !filteredSessions && activeSessions.length > 1;
@@ -1028,6 +941,7 @@ export function Sidebar() {
 
         <button
           onClick={handleNewSession}
+          title={getShortcutTitle("New session", shortcutSettings, "new_session", shortcutPlatform)}
           className="w-full py-2 px-3 text-sm font-medium rounded-[10px] bg-cc-primary hover:bg-cc-primary-hover text-white transition-colors duration-150 flex items-center justify-center gap-1.5 cursor-pointer"
         >
           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5">
@@ -1039,6 +953,7 @@ export function Sidebar() {
 
       {/* Session list */}
       <div
+        ref={sessionScrollerRef}
         data-testid="sidebar-session-scroller"
         className={`flex-1 px-2 pb-2 overflow-x-hidden ${
           mobileReorderHandleActive ? "overflow-y-hidden overscroll-none" : "overflow-y-auto"
@@ -1066,22 +981,52 @@ export function Sidebar() {
                 ref={searchInputRef}
                 type="text"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => {
+                  setActiveSearchResultIndex(0);
+                  setSearchQuery(e.target.value);
+                }}
                 onFocus={() => setSearchFocused(true)}
                 onBlur={() => setSearchFocused(false)}
                 onKeyDown={(e) => {
                   if (e.key === "Escape") {
                     setSearchQuery("");
+                    setSearchPreviewSessionId(null);
                     searchInputRef.current?.blur();
+                    return;
+                  }
+                  if (!filteredSessions || filteredSessions.length === 0) {
+                    return;
+                  }
+                  if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    setActiveSearchResultIndex((prev) => (prev + 1) % filteredSessions.length);
+                    return;
+                  }
+                  if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    setActiveSearchResultIndex((prev) => (prev - 1 + filteredSessions.length) % filteredSessions.length);
+                    return;
+                  }
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    const selected = filteredSessions[activeSearchResultIndex];
+                    if (selected) {
+                      setSearchQuery("");
+                      setActiveSearchResultIndex(0);
+                      setSearchPreviewSessionId(null);
+                      handleSelectSession(selected.session.id);
+                    }
                   }
                 }}
                 placeholder="Search..."
+                title={getShortcutTitle("Global search", shortcutSettings, "global_search", shortcutPlatform)}
                 className="w-full pl-6 pr-6 py-1.5 text-[11px] bg-cc-input-bg border border-cc-border rounded-md text-cc-fg placeholder-cc-muted outline-none focus:border-cc-primary/60 transition-colors"
               />
               {searchQuery && (
                 <button
                   onClick={() => {
                     setSearchQuery("");
+                    setSearchPreviewSessionId(null);
                     searchInputRef.current?.focus();
                   }}
                   className="absolute right-1.5 top-1/2 -translate-y-1/2 text-cc-muted hover:text-cc-fg cursor-pointer"
@@ -1142,10 +1087,11 @@ export function Sidebar() {
                   key={s.id}
                   session={s}
                   isActive={currentSessionId === s.id}
+                  isSearchSelected={filteredSessions[activeSearchResultIndex]?.session.id === s.id}
                   isArchived={s.archived}
                   sessionName={sessionNames.get(s.id)}
                   sessionPreview={sessionPreviews.get(s.id)}
-                  permCount={getSidebarPermissionCount(s.id, s.permCount)}
+                  permCount={countUserPermissions(pendingPermissions.get(s.id))}
                   isRecentlyRenamed={recentlyRenamed.has(s.id)}
                   herdGroupBadgeTheme={herdGroupBadgeThemes.get(s.id)}
                   herdHoverHighlight={herdHoverHighlights.get(s.id)}
@@ -1270,7 +1216,7 @@ export function Sidebar() {
                         session={s}
                         isActive={currentSessionId === s.id}
                         sessionName={sessionNames.get(s.id)}
-                        permCount={getSidebarPermissionCount(s.id, s.permCount)}
+                        permCount={countUserPermissions(pendingPermissions.get(s.id))}
                         isRecentlyRenamed={recentlyRenamed.has(s.id)}
                         herdGroupBadgeTheme={herdGroupBadgeThemes.get(s.id)}
                         herdHoverHighlight={herdHoverHighlights.get(s.id)}
@@ -1309,7 +1255,7 @@ export function Sidebar() {
                           isArchived
                           sessionName={sessionNames.get(s.id)}
                           sessionPreview={sessionPreviews.get(s.id)}
-                          permCount={getSidebarPermissionCount(s.id, s.permCount)}
+                          permCount={countUserPermissions(pendingPermissions.get(s.id))}
                           isRecentlyRenamed={recentlyRenamed.has(s.id)}
                           herdGroupBadgeTheme={herdGroupBadgeThemes.get(s.id)}
                           herdHoverHighlight={herdHoverHighlights.get(s.id)}
@@ -1325,16 +1271,6 @@ export function Sidebar() {
             )}
           </>
         )}
-
-        {showSessionRefreshStatus && (
-          <div
-            className="mx-2 mt-2 px-2.5 py-2 rounded-lg border border-cc-border bg-cc-hover/50 flex items-center gap-2 text-[11px] text-cc-muted"
-            aria-live="polite"
-          >
-            <YarnBallSpinner className="w-3.5 h-3.5 text-cc-primary shrink-0" />
-            <span>Refreshing sessions...</span>
-          </div>
-        )}
       </div>
 
       {/* Footer */}
@@ -1342,18 +1278,26 @@ export function Sidebar() {
         <SidebarUsageBar />
         <div className="flex items-center justify-around">
           <button
-            title="Terminal"
+            title={getShortcutTitle(
+              "Terminal",
+              shortcutSettings,
+              "open_terminal",
+              shortcutPlatform,
+            )}
             onClick={() => {
-              if (isTerminalPage) {
-                const sessionId = useStore.getState().currentSessionId;
-                if (sessionId) {
-                  navigateToSession(sessionId);
-                } else {
-                  navigateToMostRecentSession();
+              if (!isTerminalPage) {
+                const state = useStore.getState();
+                const sessionId = state.currentSessionId;
+                requestThreadViewportSnapshot(sessionId);
+                const sessionCwd =
+                  (sessionId ? state.sessions.get(sessionId)?.cwd : null) ??
+                  state.sdkSessions.find((sdk) => sdk.sessionId === sessionId)?.cwd ??
+                  null;
+                if (sessionCwd) {
+                  state.openTerminal(sessionCwd, sessionId);
                 }
-              } else {
-                window.location.hash = "#/terminal";
               }
+              window.location.hash = "#/terminal";
               if (!isDesktopLayout) {
                 useStore.getState().setSidebarOpen(false);
               }

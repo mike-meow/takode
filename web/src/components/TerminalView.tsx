@@ -8,6 +8,7 @@ import { connectTerminal, sendTerminalInput, sendTerminalResize, disconnectTermi
 
 interface TerminalViewProps {
   cwd: string;
+  sessionId?: string;
   onClose?: () => void;
   embedded?: boolean;
 }
@@ -29,7 +30,7 @@ function getTerminalTheme(theme: ColorTheme) {
   };
 }
 
-export function TerminalView({ cwd, onClose, embedded = false }: TerminalViewProps) {
+export function TerminalView({ cwd, sessionId, onClose, embedded = false }: TerminalViewProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -76,9 +77,9 @@ export function TerminalView({ cwd, onClose, embedded = false }: TerminalViewPro
       );
     }
 
-    // Try to reconnect to an existing terminal for this cwd, else spawn new
+    // Try to reconnect to an existing terminal for this session/cwd, else spawn new.
     api
-      .getTerminal()
+      .getTerminal(sessionId)
       .then((info) => {
         if (cancelled) return;
         if (info.active && info.terminalId && info.cwd === cwd) {
@@ -86,7 +87,7 @@ export function TerminalView({ cwd, onClose, embedded = false }: TerminalViewPro
           wireUp(info.terminalId);
         } else {
           // Spawn a new terminal
-          return api.spawnTerminal(cwd, xterm.cols, xterm.rows).then(({ terminalId }) => {
+          return api.spawnTerminal(cwd, xterm.cols, xterm.rows, sessionId).then(({ terminalId }) => {
             wireUp(terminalId);
           });
         }
@@ -117,7 +118,7 @@ export function TerminalView({ cwd, onClose, embedded = false }: TerminalViewPro
       xtermRef.current = null;
       fitRef.current = null;
     };
-  }, [cwd]);
+  }, [cwd, sessionId]);
 
   // Separate effect: update theme without recreating the terminal
   useEffect(() => {

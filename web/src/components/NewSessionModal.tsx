@@ -27,6 +27,7 @@ import { scopedGetItem, scopedSetItem } from "../utils/scoped-storage.js";
 import {
   getGlobalNewSessionDefaults,
   getGroupNewSessionDefaults,
+  saveLastSessionCreationContext,
   saveGroupNewSessionDefaults,
   type NewSessionBackend,
 } from "../utils/new-session-defaults.js";
@@ -114,7 +115,7 @@ export function NewSessionModal({
   const [gitRepoInfo, setGitRepoInfo] = useState<GitRepoInfo | null>(null);
   const [repoInfoLoading, setRepoInfoLoading] = useState(false);
   const [useWorktree, setUseWorktree] = useState(() => defaults.useWorktree);
-  const [sessionRole, setSessionRole] = useState<"worker" | "leader">("worker");
+  const [sessionRole, setSessionRole] = useState<"worker" | "leader">(() => defaults.sessionRole);
   const [selectedBranch, setSelectedBranch] = useState("");
   const [branches, setBranches] = useState<GitBranchInfo[]>([]);
   const [showBranchDropdown, setShowBranchDropdown] = useState(false);
@@ -146,7 +147,7 @@ export function NewSessionModal({
     setUseWorktree(d.useWorktree);
     setCodexInternetAccess(d.codexInternetAccess);
     setCodexReasoningEffort(d.codexReasoningEffort);
-    setSessionRole("worker");
+    setSessionRole(d.sessionRole);
     setSelectedBranch("");
     setBranches([]);
     setIsNewBranch(false);
@@ -392,6 +393,7 @@ export function NewSessionModal({
         model,
         mode,
         askPermission,
+        sessionRole,
         envSlug: selectedEnv,
         cwd: cwdSnapshot,
         useWorktree,
@@ -399,6 +401,12 @@ export function NewSessionModal({
         codexReasoningEffort,
       });
     }
+
+    saveLastSessionCreationContext({
+      cwd: cwdSnapshot,
+      treeGroupId: treeGroupId || undefined,
+      newSessionDefaultsKey: defaultsGroupKey || undefined,
+    });
 
     // Close modal and navigate to the pending session
     onClose();

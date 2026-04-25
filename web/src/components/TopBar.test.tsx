@@ -52,6 +52,11 @@ interface MockStoreState {
   quests: { status: string }[];
   refreshQuests: ReturnType<typeof vi.fn>;
   questNamedSessions: Set<string>;
+  shortcutSettings?: {
+    enabled: boolean;
+    preset: "standard" | "vscode-light" | "vim-light";
+    overrides: Record<string, string | null>;
+  };
   openSessionSearch: ReturnType<typeof vi.fn>;
   closeSessionSearch: ReturnType<typeof vi.fn>;
 }
@@ -82,6 +87,7 @@ function resetStore(overrides: Partial<MockStoreState> = {}) {
     quests: [],
     refreshQuests: vi.fn().mockResolvedValue(undefined),
     questNamedSessions: new Set(),
+    shortcutSettings: { enabled: false, preset: "standard", overrides: {} },
     openSessionSearch: vi.fn(),
     closeSessionSearch: vi.fn(),
     ...overrides,
@@ -238,6 +244,15 @@ describe("TopBar", () => {
     await waitFor(() => {
       expect(storeState.setSessionInfoOpenSessionId).toHaveBeenLastCalledWith(null);
     });
+  });
+
+  it("shows the enabled search shortcut in the hover title", () => {
+    resetStore({
+      shortcutSettings: { enabled: true, preset: "standard", overrides: {} },
+    });
+
+    render(<TopBar />);
+    expect(screen.getByTitle("Search messages (Ctrl+F)")).toBeInTheDocument();
   });
 
   it("cycles to the next attention session on mobile without opening the sidebar", () => {
