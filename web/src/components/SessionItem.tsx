@@ -1,4 +1,4 @@
-import { useRef, useCallback, useState, useEffect, type RefObject } from "react";
+import { useRef, useCallback, useState, type RefObject } from "react";
 import type { SidebarSessionItem as SessionItemType } from "../utils/sidebar-session-item.js";
 import { deriveSessionStatus, type SessionVisualStatus } from "./SessionStatusDot.js";
 import { useStore } from "../store.js";
@@ -252,12 +252,6 @@ export function SessionItem({
   const shortId = s.id.slice(0, 8);
   const label = sessionName || s.model || shortId;
   const isEditing = editingSessionId === s.id;
-  // Track when edit mode starts so we can ignore spurious blur events
-  // (e.g. from the double-click mouseup before the useEffect focuses the input).
-  const editStartedAt = useRef(0);
-  useEffect(() => {
-    if (isEditing) editStartedAt.current = Date.now();
-  }, [isEditing]);
   const storeQuestNamed = useStore((st) => st.questNamedSessions.has(s.id));
   const bridgeQuestStatus = useStore((st) => st.sessions.get(s.id)?.claimedQuestStatus);
   const questStatus = s.claimedQuestStatus ?? bridgeQuestStatus;
@@ -642,16 +636,7 @@ export function SessionItem({
                     }
                     e.stopPropagation();
                   }}
-                  // Stop keyup propagation so space doesn't activate the parent <button>
-                  // (buttons fire click on keyup for space, not keydown).
-                  onKeyUp={(e) => e.stopPropagation()}
-                  onBlur={() => {
-                    // Ignore blur events within 200ms of entering edit mode —
-                    // the double-click mouseup can steal focus before the
-                    // useEffect in Sidebar has a chance to .focus() the input.
-                    if (Date.now() - editStartedAt.current < 200) return;
-                    onConfirmRename();
-                  }}
+                  onBlur={onConfirmRename}
                   onClick={(e) => e.stopPropagation()}
                   onDoubleClick={(e) => e.stopPropagation()}
                   className="text-[13px] font-medium flex-1 min-w-0 text-cc-fg bg-transparent border border-cc-border rounded px-1 py-0 outline-none focus:border-cc-primary/50"
