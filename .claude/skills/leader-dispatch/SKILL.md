@@ -60,7 +60,7 @@ takode info <N>
 
 Ask: is the new quest related to this worker's recent context (same feature area, same files, direct follow-up)?
 
-Prefer the plain-text forms of `takode info`, `takode scan`, `takode peek`, and `quest show` when making human judgment calls about reuse, context, or relevance. Use `--json` only when you need exact machine fields such as IDs, `commitShas`, version-local quest metadata, or feedback `addressed` flags.
+Prefer the plain-text forms of `takode info`, `takode scan`, `takode peek`, and `quest show` when making human judgment calls about reuse, context, or relevance. Use `quest status <id>` for compact quest state and `quest feedback list/latest/show` for indexed feedback inspection. Use `--json` only when you need exact machine fields such as IDs, `commitShas`, version-local quest metadata, or feedback `addressed` flags from `quest feedback list --json`.
 
 ### 4. Decision Rules
 
@@ -130,6 +130,7 @@ Port summary: commit abc123 ...
 Treat `foo $(bar)` as literal text, not shell.
 EOF
 quest feedback q-123 --text-file /tmp/quest-feedback.txt
+quest feedback latest q-123 --author human --unaddressed --full
 
 printf '%s\n' 'Port summary: commit abc123 ...' 'Treat `foo $(bar)` as literal text, not shell.' | \
   quest feedback q-123 --text-file -

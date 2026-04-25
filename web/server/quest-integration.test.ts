@@ -250,9 +250,26 @@ describe("ensureQuestmasterIntegration", () => {
 
     const skill = String(codexSkillWrite?.[1] ?? "");
     expect(skill).toContain("Prefer the plain-text form");
-    expect(skill).toContain("feedback `addressed` flags");
+    expect(skill).toContain("quest feedback list/latest/show");
+    expect(skill).toContain("quest feedback list --json");
     expect(skill).toContain("`commitShas`");
     expect(skill).toContain("version-local metadata from `quest history`");
+  });
+
+  it("documents feedback inspection and compact status commands", async () => {
+    await ensureQuestmasterIntegration(3456, "/repo/web");
+
+    const codexSkillWrite = fsMocks.writeFileSync.mock.calls.find(
+      (call) => call[0] === "/home/tester/.codex/skills/quest/SKILL.md",
+    );
+    expect(codexSkillWrite).toBeDefined();
+
+    const skill = String(codexSkillWrite?.[1] ?? "");
+    expect(skill).toContain("quest status <id>");
+    expect(skill).toContain("quest feedback list <id>");
+    expect(skill).toContain("quest feedback latest <id>");
+    expect(skill).toContain("quest feedback show <id> <index>");
+    expect(skill).toContain("Use these read-only commands instead of `quest show --json` plus jq/Python");
   });
 
   it("documents quest grep as the preferred way to search inside quest text and comments", async () => {

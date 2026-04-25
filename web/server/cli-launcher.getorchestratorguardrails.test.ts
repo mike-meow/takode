@@ -417,7 +417,8 @@ describe("getOrchestratorGuardrails", () => {
       "prefer the plain-text forms of `takode info`, `takode peek`, `takode scan`, and `quest show`",
     );
     expect(guardrails).toContain("Use `--json` only when you need exact structured fields");
-    expect(guardrails).toContain("feedback `addressed` flags");
+    expect(guardrails).toContain("quest feedback list --json");
+    expect(guardrails).toContain("quest feedback list/latest/show");
     expect(guardrails).toContain("`commitShas`");
     expect(guardrails).toContain("Make every worker instruction stage-explicit");
     expect(guardrails).toContain("Initial dispatch authorizes **planning only**");

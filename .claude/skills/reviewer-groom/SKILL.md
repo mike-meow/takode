@@ -89,7 +89,7 @@ Takode tracks work in sessions.
 - A **quest** is the persistent task record for that work.
 - `takode info <session>` shows metadata about a session, including its worktree path.
 - `takode peek <session>` shows recent conversation context from that session.
-- `quest show <id>` shows the quest details.
+- `quest show <id>` shows the quest details; `quest status <id>` gives compact state and next action; `quest feedback list/latest/show` inspect feedback by the same zero-based indices used by `quest address`.
 
 You do not need the full Takode workflow to use this skill.
 You only need enough context to identify the worker, inspect the diff, and review the code.
@@ -273,6 +273,7 @@ If the quest ID is available, read it:
 
 ```bash
 quest show <quest_id>
+quest feedback list <quest_id> --author human --unaddressed
 ```
 
 Only fall back to `takode info <worker_session> --json` if you need exact structured fields that the plain-text view does not answer cleanly.

@@ -11,6 +11,7 @@
  *   list       List all quests (latest versions)
  *   mine       List quests owned by current session
  *   show       Show full quest detail
+ *   status     Show compact action-oriented quest status
  *   history    Show all versions of a quest
  *   create     Create a new quest
  *   claim      Claim a quest for a session
@@ -49,6 +50,18 @@ import { applyQuestListFilters } from "../server/quest-list-filters.js";
 import { grepQuests } from "../server/quest-grep.js";
 import { getName } from "../server/session-names.js";
 import { formatQuestDetail, formatQuestLine, formatSessionLabel } from "./quest-format.js";
+import {
+  completionHygieneWarnings,
+  feedbackAddWarnings,
+  filterFeedbackEntries,
+  formatFeedbackIndices,
+  isAgentSummaryFeedback,
+  latestAgentSummaryFeedback,
+  latestFeedbackEntry,
+  unaddressedHumanFeedbackEntries,
+  type FeedbackAuthorFilter,
+  type IndexedFeedbackEntry,
+} from "./quest-feedback.js";
 import { fetchSessionMetadataMap, type SessionMetadata } from "./quest-session-metadata.js";
 import { readFile } from "node:fs/promises";
 import { readFileSync, readdirSync } from "node:fs";
@@ -315,6 +328,14 @@ function compactSnippet(text: string, maxLen: number): string {
   return truncate(text.replace(/\s+/g, " ").trim(), maxLen);
 }
 
+function warn(message: string): void {
+  console.error(`Warning: ${message}`);
+}
+
+function warnAll(messages: string[]): void {
+  for (const message of messages) warn(message);
+}
+
 function timeAgo(ts: number): string {
   const seconds = Math.floor((Date.now() - ts) / 1000);
   if (seconds < 60) return `${seconds}s ago`;
@@ -432,6 +453,128 @@ function parsePositiveIntegerFlag(name: string, fallback: number, label: string)
     die(`--${name} must be a positive integer for ${label}`);
   }
   return parsed;
+}
+
+function parseFeedbackAuthorFilter(): FeedbackAuthorFilter {
+  const author = option("author") ?? "all";
+  if (author === "human" || author === "agent" || author === "all") return author;
+  die("--author must be one of: human, agent, all");
+}
+
+function humanFeedbackWarning(quest: QuestmasterTask): string | null {
+  const unaddressed = unaddressedHumanFeedbackEntries(quest);
+  if (unaddressed.length === 0) return null;
+  return `unaddressed human feedback on ${quest.questId}: ${formatFeedbackIndices(unaddressed)}. Inspect with quest feedback list ${quest.questId} --unaddressed and mark resolved with quest address ${quest.questId} <index>.`;
+}
+
+function printHumanFeedbackWarning(quest: QuestmasterTask): void {
+  const message = humanFeedbackWarning(quest);
+  if (message) warn(message);
+}
+
+function feedbackEntryForJson(entry: IndexedFeedbackEntry): IndexedFeedbackEntry {
+  return entry;
+}
+
+function formatFeedbackEntry(entry: IndexedFeedbackEntry, options: { full?: boolean } = {}): string {
+  const state =
+    entry.author === "human"
+      ? entry.addressed
+        ? "addressed"
+        : "unaddressed"
+      : isAgentSummaryFeedback(entry.text)
+        ? "summary"
+        : "comment";
+  const text = options.full ? entry.text : compactSnippet(entry.text, 160);
+  const imageNote = entry.images?.length
+    ? ` (${entry.images.length} image${entry.images.length === 1 ? "" : "s"})`
+    : "";
+  return `#${entry.index} [${entry.author}, ${state}, ${timeAgo(entry.ts)}] ${text}${imageNote}`;
+}
+
+function formatStatusSummary(quest: QuestmasterTask, sessionMetadata?: Map<string, SessionMetadata>): string {
+  const lines: string[] = [];
+  const owner =
+    "sessionId" in quest
+      ? formatSessionLabel(quest.sessionId, sessionMetadata, { currentSessionId, getSessionName: getName })
+      : "unclaimed";
+  const verification =
+    "verificationItems" in quest
+      ? `${quest.verificationItems.filter((item) => item.checked).length}/${quest.verificationItems.length}`
+      : "none";
+  const inbox =
+    quest.status === "needs_verification"
+      ? (quest as { verificationInboxUnread?: boolean }).verificationInboxUnread
+        ? "unread"
+        : "acknowledged"
+      : "n/a";
+  const humanEntries = filterFeedbackEntries(quest, { author: "human" });
+  const unaddressed = unaddressedHumanFeedbackEntries(quest);
+  const latestSummary = latestAgentSummaryFeedback(quest);
+  lines.push(`Quest ${quest.questId}: ${quest.title}`);
+  lines.push(`Status:      ${STATUS_LABELS[quest.status] ?? quest.status}`);
+  lines.push(`Owner:       ${owner}`);
+  lines.push(`Verification:${verification}`);
+  lines.push(`Inbox:       ${inbox}`);
+  lines.push(
+    `Commits:     ${quest.commitShas?.length ?? 0}${quest.commitShas?.length ? ` (${quest.commitShas.join(", ")})` : ""}`,
+  );
+  lines.push(`Human Feedback: ${humanEntries.length}`);
+  lines.push(`Unaddressed: ${unaddressed.length ? formatFeedbackIndices(unaddressed) : "none"}`);
+  lines.push(
+    `Latest Summary: ${latestSummary ? `#${latestSummary.index} ${compactSnippet(latestSummary.text, 120)}` : "none"}`,
+  );
+  lines.push(`Next Action:  ${suggestNextQuestAction(quest)}`);
+  return lines.join("\n");
+}
+
+function statusSummaryForJson(quest: QuestmasterTask): Record<string, unknown> {
+  const humanEntries = filterFeedbackEntries(quest, { author: "human" });
+  const unaddressed = unaddressedHumanFeedbackEntries(quest);
+  const latestSummary = latestAgentSummaryFeedback(quest);
+  return {
+    questId: quest.questId,
+    title: quest.title,
+    status: quest.status,
+    ownerSessionId: "sessionId" in quest ? quest.sessionId : null,
+    verification:
+      "verificationItems" in quest
+        ? {
+            checked: quest.verificationItems.filter((item) => item.checked).length,
+            total: quest.verificationItems.length,
+          }
+        : { checked: 0, total: 0 },
+    inbox:
+      quest.status === "needs_verification"
+        ? (quest as { verificationInboxUnread?: boolean }).verificationInboxUnread
+          ? "unread"
+          : "acknowledged"
+        : null,
+    commitCount: quest.commitShas?.length ?? 0,
+    commitShas: quest.commitShas ?? [],
+    humanFeedbackCount: humanEntries.length,
+    unaddressedHumanFeedbackIndices: unaddressed.map((entry) => entry.index),
+    latestSummary: latestSummary
+      ? { index: latestSummary.index, text: latestSummary.text, ts: latestSummary.ts }
+      : null,
+    suggestedNextAction: suggestNextQuestAction(quest),
+  };
+}
+
+function suggestNextQuestAction(quest: QuestmasterTask): string {
+  const unaddressed = unaddressedHumanFeedbackEntries(quest);
+  if (unaddressed.length > 0) return `address human feedback ${formatFeedbackIndices(unaddressed)}`;
+  if (quest.status === "idea") return "refine the quest before dispatch";
+  if (quest.status === "refined") return "claim the quest before implementation";
+  if (quest.status === "in_progress")
+    return "implement and add a consolidated Summary: feedback comment before handoff";
+  if (quest.status === "needs_verification") {
+    return (quest as { verificationInboxUnread?: boolean }).verificationInboxUnread
+      ? "human verification inbox review"
+      : "await verification or respond to new feedback";
+  }
+  if (quest.status === "done") return "no action";
+  return "inspect quest details";
 }
 
 let stdinTextPromise: Promise<string> | null = null;
@@ -632,6 +775,24 @@ async function cmdShow(): Promise<void> {
   }
   const sessionMetadata = await getSessionMetadataMap();
   console.log(formatQuestDetail(quest, sessionMetadata, { currentSessionId, getSessionName: getName }));
+  printHumanFeedbackWarning(quest);
+}
+
+async function cmdStatus(): Promise<void> {
+  validateFlags(["json"]);
+  const id = positional(0);
+  if (!id) die("Usage: quest status <questId>");
+
+  const quest = await getQuest(id);
+  if (!quest) die(`Quest ${id} not found`);
+
+  if (jsonOutput) {
+    out(statusSummaryForJson(quest));
+    return;
+  }
+  const sessionMetadata = await getSessionMetadataMap();
+  console.log(formatStatusSummary(quest, sessionMetadata));
+  printHumanFeedbackWarning(quest);
 }
 
 async function cmdGrep(): Promise<void> {
@@ -849,6 +1010,7 @@ async function cmdClaim(): Promise<void> {
             getSessionName: getName,
           })}`,
         );
+        printHumanFeedbackWarning(quest);
       }
       return;
     } catch (e) {
@@ -873,6 +1035,7 @@ async function cmdClaim(): Promise<void> {
           getSessionName: getName,
         })}`,
       );
+      printHumanFeedbackWarning(quest);
     }
   } catch (e) {
     die((e as Error).message);
@@ -926,6 +1089,10 @@ async function cmdComplete(): Promise<void> {
       "Warning: quest submitted for verification without verification items. " +
         "Consider adding --items for simple inline lists or --items-file <path> / --items-file - for richer input.",
     );
+  }
+  const currentQuest = await getQuest(id);
+  if (currentQuest) {
+    warnAll(completionHygieneWarnings(currentQuest, items, commitShas));
   }
 
   // Prefer HTTP endpoint when server is available — it broadcasts quest status
@@ -1278,8 +1445,87 @@ async function cmdCheck(): Promise<void> {
 }
 
 async function cmdFeedback(): Promise<void> {
+  const subcommand = positional(0);
+  if (subcommand === "list") return cmdFeedbackList();
+  if (subcommand === "latest") return cmdFeedbackLatest();
+  if (subcommand === "show") return cmdFeedbackShow();
+  if (subcommand === "add") return cmdFeedbackAdd({ explicitAdd: true });
+  return cmdFeedbackAdd({ explicitAdd: false });
+}
+
+async function cmdFeedbackList(): Promise<void> {
+  validateFlags(["last", "author", "unaddressed", "json"]);
+  const id = positional(1);
+  if (!id) die("Usage: quest feedback list <questId> [--last N] [--author human|agent|all] [--unaddressed] [--json]");
+  const quest = await getQuest(id);
+  if (!quest) die(`Quest ${id} not found`);
+  if (flag("last") && option("last") === undefined) die("--last requires a positive integer value");
+  const last = flag("last") ? parsePositiveIntegerFlag("last", 10, "feedback entries") : undefined;
+  const entries = filterFeedbackEntries(quest, {
+    author: parseFeedbackAuthorFilter(),
+    unaddressed: flag("unaddressed"),
+    ...(last !== undefined ? { last } : {}),
+  });
+  if (jsonOutput) {
+    out(entries.map(feedbackEntryForJson));
+    return;
+  }
+  if (entries.length === 0) {
+    console.log(`No feedback entries found for ${quest.questId}.`);
+    return;
+  }
+  for (const entry of entries) {
+    console.log(formatFeedbackEntry(entry));
+  }
+}
+
+async function cmdFeedbackLatest(): Promise<void> {
+  validateFlags(["author", "unaddressed", "full", "json"]);
+  const id = positional(1);
+  if (!id) die("Usage: quest feedback latest <questId> [--author human|agent|all] [--unaddressed] [--full] [--json]");
+  const quest = await getQuest(id);
+  if (!quest) die(`Quest ${id} not found`);
+  const entry = latestFeedbackEntry(quest, {
+    author: parseFeedbackAuthorFilter(),
+    unaddressed: flag("unaddressed"),
+  });
+  if (jsonOutput) {
+    out(entry ? feedbackEntryForJson(entry) : null);
+    return;
+  }
+  if (!entry) {
+    console.log(`No matching feedback entries found for ${quest.questId}.`);
+    return;
+  }
+  console.log(formatFeedbackEntry(entry, { full: flag("full") }));
+}
+
+async function cmdFeedbackShow(): Promise<void> {
+  validateFlags(["json"]);
+  const id = positional(1);
+  const indexStr = positional(2);
+  if (!id || indexStr === undefined) die("Usage: quest feedback show <questId> <index> [--json]");
+  const index = Number(indexStr);
+  if (!Number.isInteger(index) || index < 0) die("Index must be a non-negative integer");
+  const quest = await getQuest(id);
+  if (!quest) die(`Quest ${id} not found`);
+  const entry = filterFeedbackEntries(quest).find((candidate) => candidate.index === index);
+  if (!entry) die(`Feedback index ${index} out of range`);
+  if (jsonOutput) {
+    out(feedbackEntryForJson(entry));
+    return;
+  }
+  console.log(formatFeedbackEntry(entry, { full: true }));
+  if (entry.images?.length) {
+    for (const img of entry.images) {
+      console.log(`  ${img.filename} -> ${img.path}`);
+    }
+  }
+}
+
+async function cmdFeedbackAdd(addOptions: { explicitAdd: boolean }): Promise<void> {
   validateFlags(["text", "text-file", "author", "session", "image", "images", "json"]);
-  const id = positional(0);
+  const id = positional(addOptions.explicitAdd ? 1 : 0);
   if (!id) {
     die(
       'Usage: quest feedback <questId> (--text "..." | --text-file <path>|-) ' +
@@ -1310,6 +1556,7 @@ async function cmdFeedback(): Promise<void> {
   }
 
   try {
+    const before = await getQuest(id);
     const uploadedImages =
       imagePaths.length > 0 ? await Promise.all(imagePaths.map((p) => uploadQuestImage(port, p))) : undefined;
     const res = await fetch(`http://localhost:${port}/api/quests/${encodeURIComponent(id)}/feedback`, {
@@ -1328,12 +1575,15 @@ async function cmdFeedback(): Promise<void> {
       die((err as { error: string }).error || res.statusText);
     }
     const quest = (await res.json()) as QuestmasterTask;
+    const mutationWarnings = feedbackAddWarnings({ before, after: quest, author, text: text.trim() });
     if (jsonOutput) {
       out(quest);
+      warnAll(mutationWarnings);
     } else {
       const entries = "feedback" in quest ? (quest as { feedback?: { author: string; text: string }[] }).feedback : [];
       const imageNote = uploadedImages?.length ? `, ${uploadedImages.length} image(s)` : "";
       console.log(`Added feedback to ${quest.questId} (${entries?.length ?? 0} entries total${imageNote})`);
+      warnAll(mutationWarnings);
     }
   } catch (e) {
     die((e as Error).message);
@@ -1368,12 +1618,19 @@ async function cmdAddress(): Promise<void> {
       die((err as { error: string }).error || res.statusText);
     }
     const quest = (await res.json()) as QuestmasterTask;
+    const unaddressed = unaddressedHumanFeedbackEntries(quest);
     if (jsonOutput) {
       out(quest);
+      if (unaddressed.length > 0) {
+        warn(`remaining unaddressed human feedback: ${formatFeedbackIndices(unaddressed)}.`);
+      }
     } else {
       const fb = "feedback" in quest ? (quest as { feedback?: { addressed?: boolean }[] }).feedback : [];
       const entry = fb?.[index];
       console.log(`Feedback #${index} on ${quest.questId}: ${entry?.addressed ? "addressed" : "unaddressed"}`);
+      if (unaddressed.length > 0) {
+        warn(`remaining unaddressed human feedback: ${formatFeedbackIndices(unaddressed)}.`);
+      }
     }
   } catch (e) {
     die((e as Error).message);
@@ -1511,6 +1768,7 @@ Commands:
   mine   [--json]                                        List quests owned by current session
   grep   <pattern> [--count N] [--json]                  Search inside quest title, description, and feedback/comments with snippets
   show   <id> [--json]                                   Show quest detail
+  status <id> [--json]                                   Show compact action-oriented quest status
   history <id> [--json]                                  Show version history
   tags   [--json]                                        List all existing tags with counts
   create [<title> | --title "..." | --title-file <path>|-] [--desc "..." | --desc-file <path>|-] [--tags "t1,t2"] [--image <path>] [--images "p1,p2"] [--json]
@@ -1531,6 +1789,13 @@ Commands:
   check  <id> <index> [--json]                           Toggle verification item
   feedback <id> [--text "..." | --text-file <path>|-] [--author agent|human] [--session <sid>] [--image <path>] [--images "p1,p2"] [--json]
                                                          Add feedback entry
+  feedback add <id> [--text "..." | --text-file <path>|-] [--author agent|human] [--session <sid>] [--image <path>] [--images "p1,p2"] [--json]
+                                                         Add feedback entry explicitly
+  feedback list <id> [--last N] [--author human|agent|all] [--unaddressed] [--json]
+                                                         List indexed feedback entries
+  feedback latest <id> [--author human|agent|all] [--unaddressed] [--full] [--json]
+                                                         Show latest matching feedback entry
+  feedback show <id> <index> [--json]                    Show one indexed feedback entry
   address <id> <index> [--json]                          Toggle feedback addressed status
   delete <id> [--json]                                   Delete quest
   resize-image <path> [--max-dim 1920] [--json]          Resize an image to fit within max dimension
@@ -1557,6 +1822,8 @@ Safer rich-text input:
   printf '%s\\n' 'Copied \`$(snippet)\` stays literal' | quest create "Quest title" --desc-file -
   quest edit q-1 --desc-file body.md
   quest feedback q-1 --text-file note.md
+  quest feedback latest q-1 --author human --unaddressed --full
+  quest feedback show q-1 0
   printf '%s\\n' 'Line 1' '\`$(nope)\`' | quest feedback q-1 --text-file -
   quest complete q-1 --items-file items.txt
   printf '%s\\n' 'Review comma-heavy item, "quotes", {braces}' | quest complete q-1 --items-file -
@@ -1576,6 +1843,8 @@ async function main(): Promise<void> {
       return cmdGrep();
     case "show":
       return cmdShow();
+    case "status":
+      return cmdStatus();
     case "history":
       return cmdHistory();
     case "tags":

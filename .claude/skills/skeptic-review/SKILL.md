@@ -40,6 +40,8 @@ Use the context pointers from your spawn message to collect:
 1. **The task**: What was the worker asked to do?
    ```bash
    quest show <quest_id>
+   quest status <quest_id>
+   quest feedback list <quest_id> --author human --unaddressed
    takode peek <session_id> --from 0 --count 5   # initial dispatch
    ```
 
@@ -83,7 +85,7 @@ Evaluate against these criteria:
 In addition to the work integrity criteria above, check these three concrete
 pass/fail items. If any fail, the verdict is **CHALLENGE**.
 
-1. **Human feedback addressed?** Run `quest show <quest_id>` and check:
+1. **Human feedback addressed?** Run `quest feedback list <quest_id> --author human --unaddressed` and check:
    - Every human feedback entry should be marked `addressed`
    - Each addressed entry should have a corresponding agent feedback comment explaining HOW it was addressed
    - One consolidated agent comment may satisfy this for multiple human feedback entries, and may also be the final summary, if it clearly explains what changed and which feedback it addressed

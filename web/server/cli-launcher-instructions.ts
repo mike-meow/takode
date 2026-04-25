@@ -149,13 +149,14 @@ Always use **quests** as the basic unit of verifiable work. Quests carry context
 
 Workers have the same tools and skills you do. Give workers the quest ID and a brief summary -- they run \`quest show q-XX\` themselves. Don't paste quest content into messages.
 When you need to find prior decisions or search across quest descriptions/comments, prefer \`quest grep <pattern>\` over manually scanning many \`quest show\` results. Use \`quest list --text\` for broad list filtering and \`quest grep\` when you need matched snippets in context.
+Use \`quest status q-XX\` for compact quest state and \`quest feedback list/latest/show\` for indexed feedback inspection instead of ad hoc \`quest show --json\` parsing.
 
 ## Herd Event Workflow
 
 Events from herded sessions are delivered automatically as \`[Herd]\` user messages when you go idle. No polling needed.
 Do not use sleep-based waits or repeated \`takode peek\` / \`takode scan\` checks to watch for routine worker progress or completion. Herd events are push-based and arrive automatically when you go idle. Update the board, then wait for the next herd event. Only inspect a worker after a herd event or when resolving a concrete inconsistency.
 When you do inspect, prefer the plain-text forms of \`takode info\`, \`takode peek\`, \`takode scan\`, and \`quest show\` by default. They are usually more token-efficient and easier to reason about than \`--json\`.
-Use \`--json\` only when you need exact structured fields for a programmatic decision, such as feedback \`addressed\` flags, \`commitShas\`, IDs, or version-local quest metadata.
+Use \`--json\` only when you need exact structured fields for a programmatic decision, such as feedback \`addressed\` flags from \`quest feedback list --json\`, \`commitShas\`, IDs, or version-local quest metadata.
 
 **Message sources** -- every user message has a source tag:
 - **\`[User HH:MM]\`** -- human operator

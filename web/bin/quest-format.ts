@@ -149,7 +149,8 @@ export function formatQuestDetail(
     ).feedback;
     if (entries?.length) {
       lines.push(`Feedback:`);
-      for (const entry of entries) {
+      for (let index = 0; index < entries.length; index++) {
+        const entry = entries[index]!;
         const authorLabel = entry.authorSessionId
           ? `${entry.author}:${formatSessionLabel(entry.authorSessionId, sessionMetadata, {
               ...options,
@@ -159,7 +160,7 @@ export function formatQuestDetail(
         const tag = entry.addressed
           ? `${authorLabel}, addressed, ${timeAgo(entry.ts)}`
           : `${authorLabel}, ${timeAgo(entry.ts)}`;
-        lines.push(`  [${tag}] ${entry.text}`);
+        lines.push(`  #${index} [${tag}] ${entry.text}`);
         if (entry.images?.length) {
           for (const img of entry.images) {
             lines.push(`    ${img.filename} → ${img.path}`);

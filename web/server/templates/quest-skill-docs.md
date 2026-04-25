@@ -64,6 +64,7 @@ When in doubt about whether a change is quest creation/refinement or routine boo
 quest list   [--status <s1,s2>] [--tag <t>] [--tags "t1,t2"] [--session <sid>] [--text <q>] [--verification <scope>] [--json]  List quests
 quest grep   <pattern> [--count N] [--json]                  Search quest title, description, and feedback/comments
 quest show   <id> [--json]                                    Show quest detail
+quest status <id> [--json]                                    Show compact action-oriented status and next action
 quest history <id> [--json]                                   Show version history
 quest tags   [--json]                                         List all existing tags with counts
 quest create [<title> | --title "..." | --title-file <path>|-] [--desc "..." | --desc-file <path>|-] [--tags "t1,t2"] [--image <path>] [--images "p1,p2"] [--json] Create a quest (auto-assigns ID)
@@ -77,6 +78,10 @@ quest inbox  <id> [--json]                                    Move quest back to
 quest edit   <id> [--title "..." | --title-file <path>|-] [--desc "..." | --desc-file <path>|-] [--tags "t1,t2"] [--json]     Edit in place (NEVER use to create)
 quest check  <id> <index> [--json]                            Toggle verification item
 quest feedback <id> [--text "..." | --text-file <path>|-] [--author agent|human] [--image <path>] [--images "p1,p2"] [--json]  Add feedback entry
+quest feedback add <id> [--text "..." | --text-file <path>|-] [--author agent|human] [--image <path>] [--images "p1,p2"] [--json]  Add feedback entry explicitly
+quest feedback list <id> [--last N] [--author human|agent|all] [--unaddressed] [--json]  List indexed feedback entries
+quest feedback latest <id> [--author human|agent|all] [--unaddressed] [--full] [--json]  Show latest matching feedback
+quest feedback show <id> <index> [--json]                     Show one indexed feedback entry
 quest address <id> <index> [--json]                          Toggle feedback addressed status
 quest delete <id> [--json]                                    Delete quest
 quest resize-image <path> [--max-dim 1920] [--json]           Resize an image to fit within max dimension
@@ -163,7 +168,10 @@ quest edit q-12 --desc-file /tmp/quest-description.md
 quest transition q-12 --status in_progress --desc-file /tmp/quest-description.md
 ```
 
-### quest feedback <id> [--text "..." | --text-file <path>|-] [flags]
+### quest feedback add <id> [--text "..." | --text-file <path>|-] [flags]
+
+`quest feedback <id> ...` remains supported as the backwards-compatible add form. Prefer `quest feedback add <id> ...` in new documentation when the explicit verb improves clarity.
+
 | Flag | Description |
 |------|-------------|
 | `--text "..."` | Short inline feedback text |
@@ -173,6 +181,25 @@ quest transition q-12 --status in_progress --desc-file /tmp/quest-description.md
 | `--image <path>` | Attach an image (can repeat: --image a.png --image b.png) |
 | `--images "a.png,b.png"` | Attach multiple images (comma-separated) |
 | `--json` | Output JSON |
+
+### quest feedback list/latest/show
+
+Use these read-only commands instead of `quest show --json` plus jq/Python when inspecting feedback:
+
+```bash
+quest feedback list q-12 --author human --unaddressed
+quest feedback latest q-12 --author human --unaddressed --full
+quest feedback show q-12 0
+```
+
+- `quest feedback list <id> [--last N] [--author human|agent|all] [--unaddressed] [--json]` preserves the stable zero-based indices used by `quest address`; use `quest feedback list --json` when you need exact `addressed` fields for machine checks.
+- `quest feedback latest <id> [--author human|agent|all] [--unaddressed] [--full] [--json]` shows the latest matching entry.
+- `quest feedback show <id> <index> [--json]` shows one entry by index.
+- `--unaddressed` applies to human feedback entries.
+
+### quest status <id> [--json]
+
+Use `quest status <id>` for a compact action-oriented view: status, owner, verification count, inbox state, commit metadata, human feedback count, unaddressed human feedback indices, latest summary preview, and suggested next action.
 
 **Shell quoting safety:** if feedback text may contain backticks, `$(...)`, quotes, braces, copied CLI output, or other shell-sensitive content, prefer `--text-file <path>` or `--text-file -` instead of inline shell quoting:
 
@@ -299,7 +326,7 @@ quest cancel q-5 --notes-file /tmp/quest-closeout.txt
 
 When the user asks you to work on a quest — whether via the Companion "Assign" button or free-form text like "work on q-5" — follow this order:
 
-1. **Read and verify**: `quest show q-N` — understand the full scope. Prefer the plain-text form for normal reading and judgment; it is more scannable and token-efficient than `--json`. Use `--json` only when you need exact machine fields such as feedback `addressed` flags, `commitShas`, or version-local metadata from `quest history`. **Verify the title matches what you expect.** If the quest title/description doesn't match the task you were asked to work on, STOP — you may have the wrong quest ID. If the quest has a **Feedback** section, read it carefully — these are review comments from the human that must be addressed.
+1. **Read and verify**: `quest show q-N` — understand the full scope. Prefer the plain-text form for normal reading and judgment; it is more scannable and token-efficient than `--json`. Use `quest status q-N` for a compact next-action summary. Use `quest feedback list/latest/show` for indexed feedback inspection, and reserve `--json` for exact machine fields such as `commitShas` or version-local metadata from `quest history`. **Verify the title matches what you expect.** If the quest title/description doesn't match the task you were asked to work on, STOP — you may have the wrong quest ID. If the quest has a **Feedback** section, read it carefully — these are review comments from the human that must be addressed.
    - When you need to search across many quests or within quest comments for prior decisions, prefer `quest grep <pattern>` over manually scanning `quest show` output or relying on `quest list --text`.
 2. **Claim immediately**: `quest claim q-N` — always claim first, regardless of the quest's current status. This links it to your session. If this fails because another session already claimed it, **STOP and tell the user** — do not proceed.
 3. **Polish metadata (required before coding)**:
@@ -312,8 +339,8 @@ When the user asks you to work on a quest — whether via the Companion "Assign"
    - Immediately re-run `quest show q-N` and verify the final title/description/tags are clean.
    - Title rule: concise, **less than 10 words**. Move details to description.
    - Reuse existing tags. Only create new tags when no existing tag fits.
-4. **Work**: Implement the changes. Use TodoWrite for sub-step tracking if needed. If you need additional code changes after a reviewer or human review pass, first commit the current worktree state, then make the follow-up fixes in a separate commit so the reviewer can inspect only the new diff. **If there is human feedback**, address each entry, explain what you did in an agent feedback entry, then mark it with `quest address q-N <index>`. Prefer one consolidated feedback entry when the same update can both summarize the work and explain how human feedback was addressed, for example `quest feedback q-N --text "Summary: fixed the layout issue and addressed feedback #0 by adding flex-wrap"` for short replies, or `quest feedback q-N --text-file -` / `--text-file <path>` when your response includes copied logs or shell-like text. Add separate feedback entries only when the updates are materially different or separation makes the quest easier to read. Run `quest show q-N` to confirm entries show `addressed`.
-5. **Self-check**: Before submitting, verify everything you can yourself. For refactor quests, the current full pre-commit-equivalent automated gate is `cd web && bun run typecheck`, `cd web && bun run test`, and `cd web && bun run format:check`. `format:check` is the current lint/format-equivalent gate in this repo; there is no separate `lint` script right now. If a full run is infeasible, document the exception explicitly in your summary or handoff before submitting. Do not include self-verifiable items in the verification checklist. **Verify all human feedback entries are marked addressed** — run `quest show q-N` and check.
+4. **Work**: Implement the changes. Use TodoWrite for sub-step tracking if needed. If you need additional code changes after a reviewer or human review pass, first commit the current worktree state, then make the follow-up fixes in a separate commit so the reviewer can inspect only the new diff. **If there is human feedback**, inspect it with `quest feedback list q-N --author human --unaddressed`, address each entry, explain what you did in an agent feedback entry, then mark it with `quest address q-N <index>`. Prefer one consolidated feedback entry when the same update can both summarize the work and explain how human feedback was addressed, for example `quest feedback q-N --text "Summary: fixed the layout issue and addressed feedback #0 by adding flex-wrap"` for short replies, or `quest feedback q-N --text-file -` / `--text-file <path>` when your response includes copied logs or shell-like text. Add separate feedback entries only when the updates are materially different or separation makes the quest easier to read. Run `quest feedback list q-N --author human --unaddressed` to confirm no unaddressed entries remain.
+5. **Self-check**: Before submitting, verify everything you can yourself. For refactor quests, the current full pre-commit-equivalent automated gate is `cd web && bun run typecheck`, `cd web && bun run test`, and `cd web && bun run format:check`. `format:check` is the current lint/format-equivalent gate in this repo; there is no separate `lint` script right now. If a full run is infeasible, document the exception explicitly in your summary or handoff before submitting. Do not include self-verifiable items in the verification checklist. **Verify all human feedback entries are marked addressed** — run `quest feedback list q-N --author human --unaddressed` and check that it returns no entries.
 6. **Submit**: `quest complete q-N --items "..."` for simple inline lists, or `quest complete q-N --items-file <path>` / `--items-file -` for comma-heavy or copied verification text. Only list items that truly require human verification (UI appearance, UX feel, edge cases needing judgment). Keep items concise — one short sentence each, scannable at a glance.
    - **Worktree sessions:** If you're working in a git worktree, do **not** run `quest complete` or move the quest to `needs_verification` until your changes are synced to the main repo checkout and pushed. The human verifies from the main repo, not your worktree.
 
@@ -389,7 +416,7 @@ idea → refined → in_progress → needs_verification → done
    - Add or refresh an explicit agent feedback entry explaining HOW you addressed it: `quest feedback q-N --text "Summary: fixed mobile layout with flex-wrap; addressed feedback #0 by preserving the compact breakpoint"` for short replies, or `quest feedback q-N --text-file -` when quoting logs or shell-like text
    - Prefer one consolidated feedback entry when the same update can both summarize the work and address one or more human feedback entries
    - Add separate feedback entries only when they are materially different or necessary for readability
-   - Mark the entry as addressed: `quest address q-N <index>` (run `quest show q-N` after to confirm it shows `addressed`)
+   - Mark the entry as addressed: `quest address q-N <index>` (run `quest feedback list q-N --author human --unaddressed` after to confirm it is gone)
    - Both steps are required -- an explanation without marking, or marking without explaining, is incomplete
    - Do not claim feedback was addressed unless both happened
 
@@ -400,7 +427,7 @@ idea → refined → in_progress → needs_verification → done
    - Write the summary as an outcome note, not a review or rework timeline
    - This summary may also be the explanation for addressed human feedback when it clearly names what feedback was handled and how
    - Re-running the same summary-style feedback (`Summary:` or `Refreshed summary:`) updates the latest agent summary comment instead of appending another near-duplicate summary entry
-   - Before adding a new agent feedback entry, check whether the latest summary or worker update can be refreshed instead
+   - Before adding a new agent feedback entry, check `quest feedback latest q-N --author agent --full` to see whether the latest summary or worker update can be refreshed instead
    - If the work was ported normally, rely on structured metadata (`commitShas` via `quest complete ... --commit/--commits ...`) for routine port information instead of adding a second long prose port comment
    - Only add a second port-specific comment when the porting itself was exceptional and materially worth noting
    - Avoid review-process timelines, duplicate near-identical comments, and excessive commit-by-commit narration unless that detail is essential to understand the result
