@@ -404,6 +404,45 @@ describe("ToolBlock", () => {
     expect(screen.getByRole("button", { name: "Mark handled" }).hasAttribute("disabled")).toBe(true);
   });
 
+  it("uses addressed authoritative notification state instead of stale needs-input fallback", () => {
+    // q-612: when a grouped terminal item can point back to its assistant
+    // message, the marker should resolve the server notification's done state
+    // instead of rendering a generic amber "Needs input" fallback.
+    const previousNotifications = useStore.getState().sessionNotifications;
+    const sessionNotifications = new Map(previousNotifications);
+    sessionNotifications.set("needs-input-session", [
+      {
+        id: "n-needs-input-done",
+        category: "needs-input",
+        timestamp: Date.now(),
+        messageId: "asst-needs-input-done",
+        summary: "Need a decision",
+        done: true,
+      },
+    ]);
+    useStore.setState({ sessionNotifications });
+
+    try {
+      render(
+        <ToolBlock
+          name="Bash"
+          input={{ command: 'TAKODE_API_PORT=3455 takode notify needs-input "Need a decision"' }}
+          toolUseId="tool-notify-done"
+          sessionId="needs-input-session"
+          parentMessageId="asst-needs-input-done"
+        />,
+      );
+
+      const label = screen.getByText("Need a decision");
+      expect(label.className).toContain("line-through");
+      const toggle = screen.getByRole("button", { name: "Mark unhandled" });
+      expect(toggle.hasAttribute("disabled")).toBe(false);
+      expect(screen.queryByRole("button", { name: "Mark handled" })).toBeNull();
+    } finally {
+      useStore.setState({ sessionNotifications: previousNotifications });
+    }
+  });
+
   it("uses the anchored store summary for a lagged takode notify tool marker", () => {
     // q-568: if the inbox notification is already anchored to this message
     // before `msg.notification` lands, ToolBlock should still surface the rich

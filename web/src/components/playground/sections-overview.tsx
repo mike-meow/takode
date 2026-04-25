@@ -89,6 +89,7 @@ import {
   PlaygroundHerdSummaryBar,
   PlaygroundLightboxDemo,
   PlaygroundMcpRow,
+  PlaygroundAddressedNotifyToolBlock,
   PlaygroundSectionGroup,
   TaskRow,
 } from "./shared.js";
@@ -738,6 +739,7 @@ export function PlaygroundOverviewSections() {
             toolUseId="tb-notify-2"
             sessionId={MOCK_SESSION_ID}
           />
+          <PlaygroundAddressedNotifyToolBlock />
           <ToolBlock
             name="Bash"
             input={{ command: 'takode send 17 "If this looks good, later run takode notify review"' }}

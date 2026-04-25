@@ -6,6 +6,7 @@ export interface ToolItem {
   id: string;
   name: string;
   input: Record<string, unknown>;
+  messageId?: string;
 }
 
 export interface ToolMsgGroup {
@@ -86,7 +87,7 @@ function extractToolItems(msg: ChatMessage): ToolItem[] {
       (b): b is ContentBlock & { type: "tool_use"; id: string; name: string; input: Record<string, unknown> } =>
         b.type === "tool_use",
     )
-    .map((b) => ({ id: b.id, name: b.name, input: b.input }));
+    .map((b) => ({ id: b.id, name: b.name, input: b.input, messageId: msg.id }));
 }
 
 /** Get Task tool_use IDs from a feed entry */

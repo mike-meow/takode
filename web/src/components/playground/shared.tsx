@@ -672,6 +672,38 @@ export function PlaygroundDedupedNotificationMessage() {
   );
 }
 
+export function PlaygroundAddressedNotifyToolBlock() {
+  useEffect(() => {
+    const previous = useStore.getState().sessionNotifications;
+    const next = new Map(previous);
+    next.set("playground-addressed-notify", [
+      {
+        id: "playground-addressed-notif-1",
+        category: "needs-input",
+        timestamp: Date.now() - 20_000,
+        messageId: "playground-addressed-msg",
+        summary: "Confirm scope before continuing",
+        done: true,
+      },
+    ]);
+    useStore.setState({ sessionNotifications: next });
+
+    return () => {
+      useStore.setState({ sessionNotifications: previous });
+    };
+  }, []);
+
+  return (
+    <ToolBlock
+      name="Bash"
+      input={{ command: 'takode notify needs-input "Confirm scope before continuing"' }}
+      toolUseId="playground-addressed-notify-tool"
+      sessionId="playground-addressed-notify"
+      parentMessageId="playground-addressed-msg"
+    />
+  );
+}
+
 // ─── Inline MCP Server Row (static preview, no WebSocket) ──────────────────
 
 export function PlaygroundMcpRow({ server }: { server: McpServerDetail }) {

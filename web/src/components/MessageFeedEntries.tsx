@@ -314,7 +314,13 @@ function ToolMessageGroup({
                 onInspect={() => onOpenCodexTerminal(item.id)}
               />
             ) : (
-              <ToolBlock name={item.name} input={item.input} toolUseId={item.id} sessionId={sessionId} />
+              <ToolBlock
+                name={item.name}
+                input={item.input}
+                toolUseId={item.id}
+                sessionId={sessionId}
+                parentMessageId={item.messageId}
+              />
             )}
           </div>
         </div>
@@ -364,6 +370,7 @@ function ToolMessageGroup({
                       input={item.input}
                       toolUseId={item.id}
                       sessionId={sessionId}
+                      parentMessageId={item.messageId}
                       hideLabel={group.toolName === "Bash"}
                     />
                   ),

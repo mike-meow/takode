@@ -404,6 +404,42 @@ describe("sub-conclusions in collapsed turns", () => {
     expect((model.turns[0]?.notificationEntries[0] as { kind: "message"; msg: ChatMessage }).msg.id).toBe("a1");
     expect(model.turns[0]?.agentEntries).toHaveLength(0);
   });
+
+  it("keeps source message ids on grouped terminal tool items", () => {
+    // q-612: MessageFeed renders grouped terminal tools outside the original
+    // assistant message component, so each item must retain its message id for
+    // authoritative notification lookup and done-state rendering.
+    const messages: ChatMessage[] = [
+      makeMessage({
+        id: "a1",
+        role: "assistant",
+        content: "",
+        timestamp: 1,
+        contentBlocks: [
+          {
+            type: "tool_use",
+            id: "tu-notify",
+            name: "Bash",
+            input: { command: 'takode notify needs-input "Need a decision"' },
+          },
+        ],
+      }),
+      makeMessage({
+        id: "a2",
+        role: "assistant",
+        content: "",
+        timestamp: 2,
+        contentBlocks: [{ type: "tool_use", id: "tu-send", name: "Bash", input: { command: "takode send 942" } }],
+      }),
+    ];
+
+    const model = buildFeedModel(messages, false);
+    const group = model.entries[0];
+
+    expect(group?.kind).toBe("tool_msg_group");
+    if (group?.kind !== "tool_msg_group") throw new Error("expected a grouped terminal entry");
+    expect(group.items.map((item) => item.messageId)).toEqual(["a1", "a2"]);
+  });
 });
 
 describe("summarizeHerdEvents", () => {
