@@ -1,5 +1,5 @@
 import { useStore } from "../store.js";
-import type { SdkSessionInfo } from "../types.js";
+import type { ChatMessage, SdkSessionInfo } from "../types.js";
 
 export type Route =
   | { page: "home" }
@@ -143,6 +143,11 @@ export function sessionMessageHash(sessionId: string | number, messageIndex: num
   return `${sessionHash(sessionId)}/msg/${encodeURIComponent(String(messageIndex))}`;
 }
 
+function resolveMessageByReadableIndex(messages: ChatMessage[], messageIndex: number): ChatMessage | undefined {
+  const hasRawHistoryIndexes = messages.some((msg) => typeof msg.historyIndex === "number");
+  return hasRawHistoryIndexes ? messages.find((msg) => msg.historyIndex === messageIndex) : messages[messageIndex];
+}
+
 /**
  * Navigate to a session by updating the URL hash.
  * When replace=true, uses replaceState to avoid creating a history entry.
@@ -166,7 +171,7 @@ export function scrollToMessageIndex(sessionId: string, messageIndex: number): v
   const messages = store.messages.get(sessionId);
 
   if (messages) {
-    const targetMsg = messages.find((msg) => msg.historyIndex === messageIndex) ?? messages[messageIndex];
+    const targetMsg = resolveMessageByReadableIndex(messages, messageIndex);
     if (targetMsg) {
       store.requestScrollToMessage(sessionId, targetMsg.id);
       store.setExpandAllInTurn(sessionId, targetMsg.id);

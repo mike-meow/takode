@@ -657,13 +657,14 @@ export function sendHistoryWindowSync(
   const totalTurns = turns.length;
   let fromTurn = 0;
   let turnCount = 0;
+  let startIdx = 0;
   let messages: BrowserIncomingMessage[] = session.messageHistory.slice();
 
   if (totalTurns > 0) {
     fromTurn = Math.max(0, Math.min(Math.floor(options.fromTurn), totalTurns - 1));
     const endTurnExclusive = Math.min(totalTurns, fromTurn + normalizedTurnCount);
     turnCount = Math.max(0, endTurnExclusive - fromTurn);
-    const startIdx = turns[fromTurn]?.startIdx ?? 0;
+    startIdx = turns[fromTurn]?.startIdx ?? 0;
     const lastTurn = turns[endTurnExclusive - 1];
     const endIdx = lastTurn && lastTurn.endIdx >= 0 ? lastTurn.endIdx : Math.max(0, session.messageHistory.length - 1);
     messages = session.messageHistory.slice(startIdx, endIdx + 1);
@@ -676,6 +677,7 @@ export function sendHistoryWindowSync(
       from_turn: fromTurn,
       turn_count: totalTurns === 0 ? 0 : turnCount,
       total_turns: totalTurns,
+      start_index: startIdx,
       section_turn_count: normalizedSectionTurnCount,
       visible_section_count: normalizedVisibleSectionCount,
     },

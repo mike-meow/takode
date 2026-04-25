@@ -830,7 +830,7 @@ describe("MessageBubble - assistant messages", () => {
     expect(markdown.textContent).toBe("Here is the answer");
   });
 
-  it("copies a stable message link for assistant messages", async () => {
+  it("copies the raw history index for assistant messages loaded from a non-zero history window", async () => {
     const prevSdkSessions = useStore.getState().sdkSessions;
     const prevMessages = new Map(useStore.getState().messages);
     useStore.setState({
@@ -844,18 +844,21 @@ describe("MessageBubble - assistant messages", () => {
         id: "asst-msg-42",
         role: "assistant",
         content: "Assistant link target",
-        historyIndex: 2,
+        historyIndex: 52,
       });
       useStore
         .getState()
-        .setMessages("session-abc", [makeMessage({ id: "prompt-msg", role: "user", content: "Question" }), msg]);
+        .setMessages("session-abc", [
+          makeMessage({ id: "prompt-msg", role: "user", content: "Question", historyIndex: 50 }),
+          msg,
+        ]);
       render(<MessageBubble message={msg} sessionId="session-abc" />);
 
       fireEvent.click(screen.getByTitle("Copy message"));
       fireEvent.click(screen.getByText("Copy message link"));
 
       await waitFor(() => {
-        expect(writeClipboardTextMock).toHaveBeenCalledWith("http://localhost:3000/#/session/123/msg/2");
+        expect(writeClipboardTextMock).toHaveBeenCalledWith("http://localhost:3000/#/session/123/msg/52");
       });
     } finally {
       useStore.setState({ sdkSessions: prevSdkSessions, messages: prevMessages });

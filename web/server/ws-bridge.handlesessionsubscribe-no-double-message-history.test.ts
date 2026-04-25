@@ -774,6 +774,7 @@ describe("handleSessionSubscribe — no double message_history", () => {
       from_turn: 2,
       turn_count: 2,
       total_turns: 4,
+      start_index: 6,
       section_turn_count: 1,
       visible_section_count: 2,
     });
@@ -824,6 +825,7 @@ describe("handleSessionSubscribe — no double message_history", () => {
       from_turn: 0,
       turn_count: 2,
       total_turns: 3,
+      start_index: 0,
       section_turn_count: 1,
       visible_section_count: 2,
     });

@@ -457,6 +457,8 @@ export interface HistoryWindowState {
   from_turn: number;
   turn_count: number;
   total_turns: number;
+  /** Raw session.messageHistory index of the first message in this window. */
+  start_index?: number;
   section_turn_count: number;
   visible_section_count: number;
 }

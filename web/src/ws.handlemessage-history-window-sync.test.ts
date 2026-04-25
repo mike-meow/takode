@@ -126,7 +126,7 @@ function fireMessage(data: Record<string, unknown>) {
 // Connection
 // ===========================================================================
 describe("handleMessage: history_window_sync", () => {
-  it("replaces local messages with the requested history window and records window metadata", () => {
+  it("replaces local messages with the requested history window and preserves raw history indexes", () => {
     wsModule.connectSession("s1");
     fireMessage({ type: "session_init", session: makeSession("s1") });
 
@@ -138,6 +138,18 @@ describe("handleMessage: history_window_sync", () => {
       type: "history_window_sync",
       messages: [
         { type: "user_message", id: "u-window", content: "window user", timestamp: 1000 },
+        {
+          type: "tool_result_preview",
+          previews: [
+            {
+              tool_use_id: "tool-window",
+              content: "hidden preview",
+              is_error: false,
+              total_size: 14,
+              is_truncated: false,
+            },
+          ],
+        },
         {
           type: "assistant",
           message: {
@@ -157,6 +169,7 @@ describe("handleMessage: history_window_sync", () => {
         from_turn: 100,
         turn_count: 150,
         total_turns: 320,
+        start_index: 50,
         section_turn_count: HISTORY_WINDOW_SECTION_TURN_COUNT,
         visible_section_count: HISTORY_WINDOW_VISIBLE_SECTION_COUNT,
       },
@@ -164,13 +177,37 @@ describe("handleMessage: history_window_sync", () => {
 
     const msgs = useStore.getState().messages.get("s1")!;
     expect(msgs.map((m) => m.id)).toEqual(["u-window", "a-window"]);
+    expect(msgs.map((m) => m.historyIndex)).toEqual([50, 52]);
     expect(useStore.getState().historyWindows.get("s1")).toEqual({
       from_turn: 100,
       turn_count: 150,
       total_turns: 320,
+      start_index: 50,
       section_turn_count: HISTORY_WINDOW_SECTION_TURN_COUNT,
       visible_section_count: HISTORY_WINDOW_VISIBLE_SECTION_COUNT,
     });
+  });
+
+  it("keeps a pending raw-index scroll when the current history window does not contain the target", () => {
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+    useStore.getState().setPendingScrollToMessageIndex("s1", 49);
+
+    fireMessage({
+      type: "history_window_sync",
+      messages: [{ type: "user_message", id: "u-window-50", content: "window user", timestamp: 1000 }],
+      window: {
+        from_turn: 100,
+        turn_count: 1,
+        total_turns: 320,
+        start_index: 50,
+        section_turn_count: HISTORY_WINDOW_SECTION_TURN_COUNT,
+        visible_section_count: HISTORY_WINDOW_VISIBLE_SECTION_COUNT,
+      },
+    });
+
+    expect(useStore.getState().scrollToMessageId.get("s1")).toBeUndefined();
+    expect(useStore.getState().pendingScrollToMessageIndex.get("s1")).toBe(49);
   });
 
   it("does not overwrite the session preview when loading an older history window", () => {

@@ -208,6 +208,18 @@ describe("scrollToMessageIndex", () => {
     expect(useStore.getState().scrollToMessageId.get("s1")).toBe("a2");
     expect(useStore.getState().expandAllInTurn.get("s1")).toBe("a2");
   });
+
+  it("leaves raw-index scroll pending instead of falling back to rendered position on partial history", () => {
+    useStore.getState().setMessages("s1", [
+      { id: "u50", role: "user", content: "Prompt", timestamp: 100, historyIndex: 50 },
+      { id: "a52", role: "assistant", content: "Answer", timestamp: 200, historyIndex: 52 },
+    ]);
+
+    scrollToMessageIndex("s1", 1);
+
+    expect(useStore.getState().scrollToMessageId.get("s1")).toBeUndefined();
+    expect(useStore.getState().pendingScrollToMessageIndex.get("s1")).toBe(1);
+  });
 });
 
 describe("resolveSessionIdFromRoute", () => {

@@ -422,12 +422,20 @@ function resolvePendingMessageScroll(sessionId: string, messages: ChatMessage[])
   // Resolve pending message index scroll (from legacy ?msg=N deep links).
   const pendingIdx = store.pendingScrollToMessageIndex.get(sessionId);
   if (pendingIdx == null) return;
+  const hasRawHistoryIndexes = messages.some((msg) => typeof msg.historyIndex === "number");
+  const targetMsg = hasRawHistoryIndexes
+    ? messages.find((msg) => msg.historyIndex === pendingIdx)
+    : messages[pendingIdx];
+  if (!targetMsg) return;
+
   store.clearPendingScrollToMessageIndex(sessionId);
-  const targetMsg = messages.find((msg) => msg.historyIndex === pendingIdx) ?? messages[pendingIdx];
-  if (targetMsg) {
-    store.requestScrollToMessage(sessionId, targetMsg.id);
-    store.setExpandAllInTurn(sessionId, targetMsg.id);
-  }
+  store.requestScrollToMessage(sessionId, targetMsg.id);
+  store.setExpandAllInTurn(sessionId, targetMsg.id);
+}
+
+function historyWindowStartIndex(data: Extract<BrowserIncomingMessage, { type: "history_window_sync" }>): number {
+  const startIndex = data.window.start_index;
+  return typeof startIndex === "number" && Number.isFinite(startIndex) ? Math.max(0, Math.floor(startIndex)) : 0;
 }
 
 function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, deps: WsMessageHandlerDeps) {
@@ -1457,7 +1465,11 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
 
     case "history_window_sync": {
       resetAuthoritativeHistoryState(sessionId);
-      const { chatMessages, frozenCount } = normalizeHistoryMessages(sessionId, data.messages);
+      const { chatMessages, frozenCount } = normalizeHistoryMessages(
+        sessionId,
+        data.messages,
+        historyWindowStartIndex(data),
+      );
       store.setMessages(sessionId, chatMessages, { frozenCount });
       clearPendingUploadsCoveredByHistory(sessionId, data.messages);
       store.setHistoryWindow(sessionId, data.window);
