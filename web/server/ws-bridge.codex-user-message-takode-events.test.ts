@@ -588,6 +588,8 @@ describe("Codex user_message takode events", () => {
       "user_message",
       expect.objectContaining({
         content: "Please prioritize fixing auth bug first",
+        message_id: expect.any(String),
+        turn_target: "current",
       }),
     );
 
@@ -1072,10 +1074,14 @@ describe("Codex user_message takode events", () => {
         }),
       );
 
-      const herdDeliveries = herdInjectSpy.mock.calls.filter(
-        ([sid, _content, source]) => sid === leaderId && source?.sessionId === "herd-events",
+      const turnEndHerdDeliveries = herdInjectSpy.mock.calls.filter(
+        ([sid, content, source]) =>
+          sid === leaderId &&
+          source?.sessionId === "herd-events" &&
+          typeof content === "string" &&
+          content.includes("turn_end"),
       );
-      expect(herdDeliveries).toHaveLength(1);
+      expect(turnEndHerdDeliveries).toHaveLength(1);
     } finally {
       dispatcher.destroy();
       eventSpy.mockRestore();

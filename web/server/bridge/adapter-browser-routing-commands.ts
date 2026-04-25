@@ -6,6 +6,7 @@ import type {
   AdapterBrowserRoutingDeps,
   AdapterBrowserRoutingSessionLike,
 } from "./adapter-browser-routing-controller.js";
+import { emitStoredUserMessageTakodeEvent } from "./user-message-takode-event.js";
 
 type BrowserUserMessage = Extract<BrowserOutgoingMessage, { type: "user_message" }>;
 
@@ -78,6 +79,7 @@ export function handleCliSlashCommand(
 ): void {
   console.log(`[ws-bridge] CLI slash command intercepted for session ${sessionTag(session.id)}: ${command}`);
   const ts = Date.now();
+  const wasGenerating = session.isGenerating;
   const userHistoryEntry: Extract<BrowserIncomingMessage, { type: "user_message" }> = {
     type: "user_message",
     content: command,
@@ -88,6 +90,10 @@ export function handleCliSlashCommand(
   session.lastUserMessage = command;
   deps.touchUserMessage(session.id);
   deps.broadcastToBrowsers(session, userHistoryEntry);
+  emitStoredUserMessageTakodeEvent(deps, session.id, userHistoryEntry, {
+    historyIndex: session.messageHistory.length - 1,
+    turnTarget: wasGenerating ? "queued" : "current",
+  });
   if (session.claudeSdkAdapter) {
     const accepted = session.claudeSdkAdapter.sendBrowserMessage({
       type: "user_message",
@@ -188,6 +194,7 @@ export function handleCodexStatusCommand(
   deps: AdapterBrowserRoutingDeps,
 ): void {
   const ts = Date.now();
+  const wasGenerating = session.isGenerating;
   const userHistoryEntry: Extract<BrowserIncomingMessage, { type: "user_message" }> = {
     type: "user_message",
     content: "/status",
@@ -198,9 +205,12 @@ export function handleCodexStatusCommand(
   session.lastUserMessage = "/status";
   deps.touchUserMessage(session.id);
   deps.broadcastToBrowsers(session, userHistoryEntry);
-  deps.emitTakodeEvent(session.id, "user_message", { content: "/status" });
+  emitStoredUserMessageTakodeEvent(deps, session.id, userHistoryEntry, {
+    historyIndex: session.messageHistory.length - 1,
+    turnTarget: wasGenerating ? "queued" : "current",
+    turnId: session.codexAdapter?.getCurrentTurnId() ?? null,
+  });
 
-  const wasGenerating = session.isGenerating;
   if (!wasGenerating) {
     deps.setGenerating(session, true, "codex_status_command");
     deps.broadcastStatusChange(session, "running");
@@ -261,6 +271,7 @@ export function handleCodexStatusCommand(
 export function handleForceCompact(session: AdapterBrowserRoutingSessionLike, deps: AdapterBrowserRoutingDeps): void {
   console.log(`[ws-bridge] /compact intercepted for session ${sessionTag(session.id)}, triggering force-compact`);
   const ts = Date.now();
+  const wasGenerating = session.isGenerating;
   const userHistoryEntry: Extract<BrowserIncomingMessage, { type: "user_message" }> = {
     type: "user_message",
     content: "/compact",
@@ -271,6 +282,10 @@ export function handleForceCompact(session: AdapterBrowserRoutingSessionLike, de
   session.lastUserMessage = "/compact";
   deps.touchUserMessage(session.id);
   deps.broadcastToBrowsers(session, userHistoryEntry);
+  emitStoredUserMessageTakodeEvent(deps, session.id, userHistoryEntry, {
+    historyIndex: session.messageHistory.length - 1,
+    turnTarget: wasGenerating ? "queued" : "current",
+  });
   queueForceCompactPendingMessage(session, deps);
   deps.requestCliRelaunch?.(session.id);
 }

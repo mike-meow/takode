@@ -593,27 +593,44 @@ describe("CLI slash command interception", () => {
     bridge.handleBrowserOpen(browser, sid);
     browser.send.mockClear();
     adapter.sendBrowserMessage.mockClear();
+    const eventSpy = vi.spyOn(bridge, "emitTakodeEvent");
 
-    bridge.handleBrowserMessage(
-      browser,
-      JSON.stringify({
-        type: "user_message",
-        content: "/context",
-      }),
-    );
+    try {
+      bridge.handleBrowserMessage(
+        browser,
+        JSON.stringify({
+          type: "user_message",
+          content: "/context",
+        }),
+      );
 
-    // Should have forwarded to the SDK adapter with clean content (no timestamp tag)
-    expect(adapter.sendBrowserMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "user_message", content: "/context" }),
-    );
+      // Should have forwarded to the SDK adapter with clean content (no timestamp tag)
+      expect(adapter.sendBrowserMessage).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "user_message", content: "/context" }),
+      );
 
-    // Should have recorded the command in message history
-    const userMsg = session.messageHistory.find((m) => m.type === "user_message" && (m as any).content === "/context");
-    expect(userMsg).toBeTruthy();
+      // Should have recorded the command in message history
+      const userMsg = session.messageHistory.find(
+        (m) => m.type === "user_message" && (m as any).content === "/context",
+      );
+      expect(userMsg).toBeTruthy();
+      expect(eventSpy).toHaveBeenCalledWith(
+        sid,
+        "user_message",
+        expect.objectContaining({
+          content: "/context",
+          msg_index: 0,
+          message_id: expect.any(String),
+          turn_target: "current",
+        }),
+      );
 
-    // Should have broadcast "running" status
-    const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
-    expect(calls).toContainEqual(expect.objectContaining({ type: "status_change", status: "running" }));
+      // Should have broadcast "running" status
+      const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+      expect(calls).toContainEqual(expect.objectContaining({ type: "status_change", status: "running" }));
+    } finally {
+      eventSpy.mockRestore();
+    }
   });
 
   it("forwards /cost to WebSocket session via sendToCLI", () => {

@@ -1003,6 +1003,14 @@ export type TakodeSessionLifecycleEventData = Record<string, never>;
 
 export interface TakodeUserMessageEventData {
   content: string;
+  /** Index in session.messageHistory for exact takode read/peek lookup. */
+  msg_index?: number;
+  /** Stable message id when present on the stored user_message entry. */
+  message_id?: string;
+  /** Current vs queued turn target for the user dispatch, when known. */
+  turn_target?: "current" | "queued" | null;
+  /** Codex turn id when the message is associated with an active Codex turn. */
+  turn_id?: string | null;
   agentSource?: {
     sessionId: string;
     sessionLabel?: string;

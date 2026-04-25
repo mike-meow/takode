@@ -167,7 +167,7 @@ describe("formatActivitySummary", () => {
     expect(result).toContain("Tool Calls not shown above: 1 Bash, 1 Read.");
   });
 
-  it("always includes unseen user messages even when non-user lines exceed the normal cap", () => {
+  it("applies the normal activity cap to user messages", () => {
     const messages: BrowserIncomingMessage[] = [
       userMsg("First unseen user"),
       assistantMsg("older assistant 1"),
@@ -179,14 +179,15 @@ describe("formatActivitySummary", () => {
 
     const result = formatActivitySummary(messages, { startIdx: 10, maxLines: 1 });
 
-    expect(result).toContain('[10] user: "First unseen user"');
-    expect(result).toContain('[13] user: "Second unseen user"');
+    expect(result).not.toContain('[10] user: "First unseen user"');
+    expect(result).not.toContain('[13] user: "Second unseen user"');
     expect(result).toContain('[15] ✓ "Done"');
     expect(result).not.toContain("older assistant 1");
     expect(result).not.toContain("older assistant 2");
+    expect(result).toContain("messages skipped");
   });
 
-  it("drops older non-user lines before unseen user messages when truncation is needed", () => {
+  it("drops older user lines when truncation is needed", () => {
     const messages: BrowserIncomingMessage[] = [
       assistantMsg("older assistant"),
       userMsg("Need this context"),
@@ -196,10 +197,10 @@ describe("formatActivitySummary", () => {
 
     const result = formatActivitySummary(messages, { startIdx: 20, maxLines: 1 });
 
-    expect(result).toContain('[21] user: "Need this context"');
+    expect(result).not.toContain('[21] user: "Need this context"');
     expect(result).toContain('[23] ✓ "Final outcome"');
     expect(result).not.toContain("older assistant");
-    expect(result).toContain("non-user messages skipped");
+    expect(result).toContain("messages skipped");
   });
 
   it("formats error results with ✗ icon", () => {
@@ -261,9 +262,8 @@ describe("formatActivitySummary", () => {
     const result = formatActivitySummary(messages, { startIdx: 0, maxLines: 5 });
     const lines = result.split("\n");
 
-    // Non-user truncation now keeps the most recent non-user lines rather than
-    // preserving the oldest head line.
-    expect(lines[0]).toContain("non-user messages skipped");
+    // Truncation keeps the most recent lines rather than preserving the oldest head line.
+    expect(lines[0]).toContain("messages skipped");
     // Skip marker should be present (no indent)
     expect(result).toContain("...");
     expect(result).toContain("skipped");
@@ -273,16 +273,15 @@ describe("formatActivitySummary", () => {
     expect(result).not.toContain("step 0");
   });
 
-  it("does not truncate when only user messages exceed maxLines", () => {
-    // User messages are exempt from the normal non-user cap.
+  it("truncates when only user messages exceed maxLines", () => {
     const messages = [userMsg("first"), userMsg("second"), userMsg("third")];
     const result = formatActivitySummary(messages, { startIdx: 0, maxLines: 1 });
     const lines = result.split("\n");
 
-    expect(lines[0]).toContain('[0] user: "first"');
-    expect(lines[1]).toContain('[1] user: "second"');
-    expect(lines[2]).toContain('[2] user: "third"');
-    expect(result).not.toContain("skipped");
+    expect(lines[0]).toContain("messages skipped");
+    expect(lines[1]).toContain('[2] user: "third"');
+    expect(result).not.toContain('[0] user: "first"');
+    expect(result).not.toContain('[1] user: "second"');
   });
 
   it("does not truncate when exactly at maxLines boundary", () => {
@@ -292,11 +291,12 @@ describe("formatActivitySummary", () => {
     expect(result).not.toContain("skipped");
     expect(result.split("\n").length).toBe(3);
 
-    // 4 user messages with maxLines=3 still do NOT truncate because the cap
-    // applies only to non-user lines.
+    // 4 user messages with maxLines=3 truncates with tail priority.
     const messages4 = [userMsg("a"), userMsg("b"), userMsg("c"), userMsg("d")];
     const result4 = formatActivitySummary(messages4, { startIdx: 0, maxLines: 3 });
-    expect(result4).not.toContain("skipped");
+    expect(result4).toContain("skipped");
+    expect(result4).not.toContain('[0] user: "a"');
+    expect(result4).toContain('[1] user: "b"');
     expect(result4).toContain('[2] user: "c"');
     expect(result4).toContain('[3] user: "d"');
   });

@@ -299,6 +299,16 @@ describe("permission response handling in browser routing", () => {
     );
     expect(deps.broadcastStatusChange).toHaveBeenCalledWith(session, "compacting");
     expect(deps.requestCliRelaunch).toHaveBeenCalledWith("s1");
+    expect(deps.emitTakodeEvent).toHaveBeenCalledWith(
+      "s1",
+      "user_message",
+      expect.objectContaining({
+        content: "/compact",
+        msg_index: 1,
+        message_id: "user-1",
+        turn_target: "current",
+      }),
+    );
   });
 
   it("auto-rejects pending ExitPlanMode before delivering a fresh leader message", async () => {
@@ -890,6 +900,16 @@ describe("permission response handling in browser routing", () => {
         }),
       }),
     );
+    expect(deps.emitTakodeEvent).toHaveBeenCalledWith(
+      "s1",
+      "user_message",
+      expect.objectContaining({
+        content: "/status",
+        msg_index: 0,
+        message_id: "user-1",
+        turn_target: "current",
+      }),
+    );
     expect(deps.queueCodexPendingStartBatch).not.toHaveBeenCalled();
     expect(session.codexAdapter.sendBrowserMessage).not.toHaveBeenCalled();
   });
@@ -938,6 +958,17 @@ describe("permission response handling in browser routing", () => {
       session,
       expect.objectContaining({
         type: "result",
+      }),
+    );
+    expect(deps.emitTakodeEvent).toHaveBeenCalledWith(
+      "s1",
+      "user_message",
+      expect.objectContaining({
+        content: "/status",
+        msg_index: 0,
+        message_id: "user-1",
+        turn_target: "queued",
+        turn_id: "turn-live",
       }),
     );
     expect(deps.setGenerating).not.toHaveBeenCalled();

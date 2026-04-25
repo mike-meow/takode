@@ -35,24 +35,21 @@ const HIGH_SIGNAL_LIMIT = 1000;
 /** Content limit for assistant narration text (lower signal -- tools carry the info). */
 const ASST_TEXT_LIMIT = 120;
 /** Content limit for the key message in each event (the triggering message). */
-const KEY_MESSAGE_LIMIT = 5000;
+export const KEY_MESSAGE_LIMIT = 5000;
 
 // ─── Public API ─────────────────────────────────────────────────────────────────
 
 export interface FormatActivityOptions {
   /** Base message index offset for display (e.g. msgRange.from). */
   startIdx: number;
-  /** Max non-user output lines (default: 15). User lines are always included. */
+  /** Max output lines before tail-priority truncation (default: 15). */
   maxLines?: number;
-  /** Non-user messages with idx < deduplicatedFrom are skipped as already emitted. */
+  /** Messages with idx < deduplicatedFrom are skipped as already emitted. */
   deduplicatedFrom?: number;
-  /** User message indices that were already surfaced in prior herd activity output. */
-  seenUserMsgIdxs?: ReadonlySet<number>;
 }
 
 export interface FormattedActivitySummary {
   text: string;
-  surfacedUserMsgIdxs: number[];
 }
 
 /**
@@ -73,7 +70,7 @@ export interface FormattedActivitySummary {
  *
  * Truncation is TAIL-PRIORITY: when output exceeds maxLines, the most recent
  * messages are preserved (they're the most diagnostic). Layout when truncated:
- *   first line + "... N messages skipped [range]" + last (maxLines-1) lines
+ *   "... N messages skipped [range]" + last maxLines lines
  */
 export function formatActivitySummary(messages: BrowserIncomingMessage[], options: FormatActivityOptions): string {
   return formatActivitySummaryDetailed(messages, options).text;
@@ -86,25 +83,22 @@ export function formatActivitySummaryDetailed(
   const maxLines = options.maxLines ?? MAX_LINES;
   const startIdx = options.startIdx;
   const deduplicatedFrom = options.deduplicatedFrom ?? startIdx;
-  const seenUserMsgIdxs = options.seenUserMsgIdxs ?? EMPTY_SEEN_USER_MSG_IDXS;
 
   // Find the last formattable message -- it's the "key message" that triggered the event
   // and gets the generous content limit.
-  const keyMessageIdx = findLastFormattableIndex(messages, startIdx, deduplicatedFrom, seenUserMsgIdxs);
+  const keyMessageIdx = findLastFormattableIndex(messages, startIdx, deduplicatedFrom);
 
-  // Pass 1: build visible lines, keeping user lines separate from capped non-user lines.
-  const userLines: Array<{ line: string; msgIdx: number }> = [];
-  const nonUserLines: Array<{ line: string; msgIdx: number }> = [];
-  const surfacedUserMsgIdxs: number[] = [];
+  // Pass 1: build visible lines after the deduplication watermark. User messages
+  // are no longer force-included beyond the normal cap; direct user-message herd
+  // events carry that context promptly.
+  const visibleLines: Array<{ line: string; msgIdx: number }> = [];
   const hiddenToolCounts = new Map<string, number>();
   let firstHiddenToolIdx: number | null = null;
   let lastHiddenToolIdx: number | null = null;
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
     const idx = startIdx + i;
-    const keepUserLine = msg.type === "user_message" && !seenUserMsgIdxs.has(idx);
-    const keepNonUserLine = msg.type !== "user_message" && idx >= deduplicatedFrom;
-    if (!keepUserLine && !keepNonUserLine) continue;
+    if (idx < deduplicatedFrom) continue;
 
     const isKeyMessage = i === keyMessageIdx;
     const formatted = formatMessage(msg, idx, isKeyMessage);
@@ -117,32 +111,26 @@ export function formatActivitySummaryDetailed(
     }
     if (formatted && formatted.lines !== null) {
       for (const line of formatted.lines) {
-        if (msg.type === "user_message") {
-          userLines.push({ line, msgIdx: idx });
-          surfacedUserMsgIdxs.push(idx);
-        } else {
-          nonUserLines.push({ line, msgIdx: idx });
-        }
+        visibleLines.push({ line, msgIdx: idx });
       }
     }
   }
 
-  const allLines: Array<{ line: string; msgIdx: number }> = [...userLines];
-
-  if (nonUserLines.length > maxLines) {
-    const keptTail = maxLines > 0 ? nonUserLines.slice(-maxLines) : [];
-    const skipped = nonUserLines.length - keptTail.length;
+  const allLines: Array<{ line: string; msgIdx: number }> = [];
+  if (visibleLines.length > maxLines) {
+    const keptTail = maxLines > 0 ? visibleLines.slice(-maxLines) : [];
+    const skipped = visibleLines.length - keptTail.length;
     if (skipped > 0 && keptTail.length > 0) {
-      const firstSkippedIdx = nonUserLines[0].msgIdx;
-      const lastSkippedIdx = nonUserLines[skipped - 1].msgIdx;
+      const firstSkippedIdx = visibleLines[0].msgIdx;
+      const lastSkippedIdx = visibleLines[skipped - 1].msgIdx;
       allLines.push({
-        line: `... ${skipped} non-user message${skipped === 1 ? "" : "s"} skipped [${firstSkippedIdx}]-[${lastSkippedIdx}]`,
+        line: `... ${skipped} message${skipped === 1 ? "" : "s"} skipped [${firstSkippedIdx}]-[${lastSkippedIdx}]`,
         msgIdx: firstSkippedIdx,
       });
     }
     allLines.push(...keptTail);
   } else {
-    allLines.push(...nonUserLines);
+    allLines.push(...visibleLines);
   }
 
   if (hiddenToolCounts.size > 0) {
@@ -158,12 +146,12 @@ export function formatActivitySummaryDetailed(
     });
   }
 
-  if (allLines.length === 0) return { text: "", surfacedUserMsgIdxs };
+  if (allLines.length === 0) return { text: "" };
 
-  // Pass 2: final guard for total output size. User lines were already preserved
-  // and non-user lines already capped, so this mostly protects pathological cases.
-  if (allLines.length <= maxLines + userLines.length + (hiddenToolCounts.size > 0 ? 1 : 0) + 1) {
-    return { text: allLines.map((l) => l.line).join("\n"), surfacedUserMsgIdxs };
+  // Pass 2: final guard for total output size. Visible lines were already capped,
+  // so this mostly protects pathological cases.
+  if (allLines.length <= maxLines + (hiddenToolCounts.size > 0 ? 1 : 0) + 1) {
+    return { text: allLines.map((l) => l.line).join("\n") };
   }
 
   const head = allLines[0];
@@ -178,7 +166,7 @@ export function formatActivitySummaryDetailed(
   result.push(`... ${skipped} message${skipped === 1 ? "" : "s"} skipped [${firstSkippedIdx}]-[${lastSkippedIdx}]`);
   for (const t of tail) result.push(t.line);
 
-  return { text: result.join("\n"), surfacedUserMsgIdxs };
+  return { text: result.join("\n") };
 }
 
 // ─── Message Formatting ──────────────────────────────────────────────────────
@@ -289,24 +277,17 @@ function formatAssistantMessage(
 
 // ─── Helpers ────────────────────────────────────────────────────────────────────
 
-const EMPTY_SEEN_USER_MSG_IDXS = new Set<number>();
-
 /** Find the index of the last formattable message in the slice.
  *  This is the "key message" that triggered the event and gets generous treatment. */
 function findLastFormattableIndex(
   messages: BrowserIncomingMessage[],
   startIdx: number,
   deduplicatedFrom: number,
-  seenUserMsgIdxs: ReadonlySet<number>,
 ): number {
   for (let i = messages.length - 1; i >= 0; i--) {
     const idx = startIdx + i;
     const msg = messages[i];
     if (!isFormattable(msg)) continue;
-    if (msg.type === "user_message") {
-      if (!seenUserMsgIdxs.has(idx)) return i;
-      continue;
-    }
     if (idx >= deduplicatedFrom) return i;
   }
   return -1;

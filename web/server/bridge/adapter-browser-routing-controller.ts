@@ -32,6 +32,7 @@ import type { BrowserTransportSessionLike, BrowserTransportSocketLike } from "./
 import type { UserDispatchTurnTarget } from "./generation-lifecycle.js";
 import { extractAskUserAnswers } from "./compaction-recovery.js";
 import { LONG_SLEEP_REMINDER_TEXT } from "./bash-sleep-policy.js";
+import { emitStoredUserMessageTakodeEvent, type UserMessageTakodeTurnTarget } from "./user-message-takode-event.js";
 export {
   hasPendingForceCompact,
   isCliSlashCommand,
@@ -1432,6 +1433,7 @@ export function ingestUserMessage(
   const commit = options?.commit !== false;
   const needsInputReminderText = buildNeedsInputReminderTextForDirectUserMessage(session, msg, deps);
   const finalize = (imageRefs?: ImageRef[]): IngestedUserMessage => {
+    const wasGenerating = session.isGenerating;
     const userHistoryEntry: Extract<BrowserIncomingMessage, { type: "user_message" }> = {
       type: "user_message",
       content: msg.content,
@@ -1454,9 +1456,9 @@ export function ingestUserMessage(
       session.lastUserMessage = (msg.content || "").slice(0, 80);
       deps.touchUserMessage(session.id);
       deps.broadcastToBrowsers(session, userHistoryEntry);
-      deps.emitTakodeEvent(session.id, "user_message", {
-        content: (msg.content || "").slice(0, 120),
-        ...(msg.agentSource ? { agentSource: msg.agentSource } : {}),
+      emitStoredUserMessageTakodeEvent(deps, session.id, userHistoryEntry, {
+        historyIndex: userMsgHistoryIdx,
+        turnTarget: wasGenerating ? "queued" : "current",
       });
     }
     return {
@@ -1465,13 +1467,27 @@ export function ingestUserMessage(
       historyIndex: userMsgHistoryIdx,
       imageRefs,
       ...(needsInputReminderText ? { needsInputReminderText } : {}),
-      wasGenerating: session.isGenerating,
+      wasGenerating,
     };
   };
   if (msg.imageRefs?.length) {
     return finalize(msg.imageRefs);
   }
   return finalize();
+}
+
+function emitUserMessageTakodeEvent(
+  session: AdapterBrowserRoutingSessionLike,
+  ingested: IngestedUserMessage,
+  deps: AdapterBrowserRoutingDeps,
+  turnTarget: UserMessageTakodeTurnTarget,
+  turnId?: string | null,
+): void {
+  emitStoredUserMessageTakodeEvent(deps, session.id, ingested.historyEntry, {
+    historyIndex: ingested.historyIndex,
+    turnTarget,
+    turnId,
+  });
 }
 export async function handleUserMessage(
   session: AdapterBrowserRoutingSessionLike,
@@ -1849,10 +1865,13 @@ export function routeAdapterBrowserMessage(
           ...(msg.takodeHerdBatch ? { takodeHerdBatch: msg.takodeHerdBatch } : {}),
           ...(msg.vscodeSelection ? { vscodeSelection: msg.vscodeSelection } : {}),
         });
-        deps.emitTakodeEvent(session.id, "user_message", {
-          content: (ingested.historyEntry.content || "").slice(0, 120),
-          ...(msg.agentSource ? { agentSource: msg.agentSource } : {}),
-        });
+        emitUserMessageTakodeEvent(
+          session,
+          ingested,
+          deps,
+          pendingTurnTarget,
+          session.codexAdapter?.getCurrentTurnId() ?? null,
+        );
       }
       const currentTurnId = session.codexAdapter?.getCurrentTurnId() ?? null;
       if (currentTurnId) {

@@ -68,7 +68,9 @@ function createMocks() {
   eventCallback = null;
   const bridge = {
     subscribeTakodeEvents: vi.fn<WsBridgeHandle["subscribeTakodeEvents"]>((sessions, cb) => {
-      eventCallback = cb;
+      eventCallback = (evt) => {
+        if (sessions.has(evt.sessionId)) cb(evt);
+      };
       return vi.fn(); // unsubscribe
     }),
     injectUserMessage: vi.fn<WsBridgeHandle["injectUserMessage"]>(() => "sent"),
@@ -329,9 +331,7 @@ describe("HerdEventDispatcher", () => {
     dispatcher.destroy();
   });
 
-  it("defers user_message to turn_end (not delivered individually)", () => {
-    // user_message events are excluded from ACTIONABLE_EVENTS — they're
-    // summarized in turn_end instead (count + IDs for peek navigation).
+  it("delivers direct human user_message events for herded workers", () => {
     const { bridge, launcher } = createMocks();
     const dispatcher = new HerdEventDispatcher(bridge, launcher);
     dispatcher.setupForOrchestrator("orch-1");
@@ -341,7 +341,100 @@ describe("HerdEventDispatcher", () => {
     triggerEvent(
       makeEvent({
         event: "user_message",
-        data: { content: "please check latest logs" },
+        data: {
+          content: "please check latest logs",
+          msg_index: 42,
+          message_id: "user-42",
+          turn_target: "current",
+        },
+      }),
+    );
+    vi.advanceTimersByTime(600);
+
+    expect(bridge.injectUserMessage).toHaveBeenCalledTimes(1);
+    const content = vi.mocked(bridge.injectUserMessage).mock.calls[0][1];
+    expect(content).toContain("user_message [User]");
+    expect(content).toContain("msg [42]");
+    expect(content).toContain("id user-42");
+    expect(content).toContain("turn current");
+    expect(content).toContain("please check latest logs");
+
+    dispatcher.destroy();
+  });
+
+  it("delivers direct human user_message events for herded reviewers", () => {
+    const { bridge, launcher } = createMocks();
+    vi.mocked(launcher.getHerdedSessions).mockReturnValue([{ sessionId: "worker-1" }, { sessionId: "reviewer-1" }]);
+    const dispatcher = new HerdEventDispatcher(bridge, launcher);
+    dispatcher.setupForOrchestrator("orch-1");
+
+    vi.mocked(bridge.isSessionIdle).mockReturnValue(true);
+
+    triggerEvent(
+      makeEvent({
+        event: "user_message",
+        sessionId: "reviewer-1",
+        sessionNum: 7,
+        sessionName: "reviewer",
+        data: { content: "please review the patch", msg_index: 12, turn_target: "queued" },
+      }),
+    );
+    vi.advanceTimersByTime(600);
+
+    expect(bridge.injectUserMessage).toHaveBeenCalledTimes(1);
+    const content = vi.mocked(bridge.injectUserMessage).mock.calls[0][1];
+    expect(content).toContain("#7 | user_message [User]");
+    expect(content).toContain("msg [12]");
+    expect(content).toContain("turn queued");
+    expect(content).toContain("please review the patch");
+
+    dispatcher.destroy();
+  });
+
+  it("does not deliver user_message events from the leader's own session or outside the herd", () => {
+    const { bridge, launcher } = createMocks();
+    const dispatcher = new HerdEventDispatcher(bridge, launcher);
+    dispatcher.setupForOrchestrator("orch-1");
+
+    vi.mocked(bridge.isSessionIdle).mockReturnValue(true);
+
+    triggerEvent(
+      makeEvent({
+        event: "user_message",
+        sessionId: "orch-1",
+        sessionNum: 1,
+        data: { content: "leader direct message" },
+      }),
+    );
+    triggerEvent(
+      makeEvent({
+        event: "user_message",
+        sessionId: "outside-1",
+        sessionNum: 9,
+        data: { content: "outside herd" },
+      }),
+    );
+    vi.advanceTimersByTime(600);
+
+    expect(bridge.injectUserMessage).not.toHaveBeenCalled();
+
+    dispatcher.destroy();
+  });
+
+  it("does not deliver injected agent user_message events as direct human steering", () => {
+    const { bridge, launcher } = createMocks();
+    const dispatcher = new HerdEventDispatcher(bridge, launcher);
+    dispatcher.setupForOrchestrator("orch-1");
+
+    vi.mocked(bridge.isSessionIdle).mockReturnValue(true);
+
+    triggerEvent(
+      makeEvent({
+        event: "user_message",
+        data: {
+          content: "leader dispatch",
+          agentSource: { sessionId: "orch-1", sessionLabel: "#1" },
+        },
       }),
     );
     vi.advanceTimersByTime(600);
@@ -1221,6 +1314,28 @@ describe("formatHerdEventBatch", () => {
     expect(result).toContain("| 45s ago");
   });
 
+  it("formats user_message with message and turn identifiers plus generous text", () => {
+    const longContent = "x".repeat(5100);
+    const events = [
+      makeEvent({
+        event: "user_message",
+        data: {
+          content: longContent,
+          msg_index: 77,
+          message_id: "user-77",
+          turn_target: "current",
+          turn_id: "turn-abc",
+        },
+      }),
+    ];
+    const result = formatHerdEventBatch(events);
+    expect(result).toContain("user_message [User]");
+    expect(result).toContain("msg [77]");
+    expect(result).toContain("id user-77");
+    expect(result).toContain("turn current turn-abc");
+    expect(result).toContain(`${"x".repeat(4999)}…`);
+  });
+
   it("formats turn_end with user message count and IDs", () => {
     const events = [
       makeEvent({
@@ -1477,7 +1592,7 @@ describe("formatHerdEventBatch with activity injection", () => {
     expect(requestedRanges[1]).toEqual({ from: 13, to: 20 });
   });
 
-  it("fetches the full range and skips activity when no unseen user or non-user content survives deduplication", () => {
+  it("fetches the full range and skips activity when no content survives deduplication", () => {
     const events = [
       makeEvent({
         event: "turn_end",
@@ -1497,15 +1612,15 @@ describe("formatHerdEventBatch with activity injection", () => {
       lastEmittedMsgTo: watermarks,
     });
 
-    // The dispatcher now fetches the full range so the formatter can decide
-    // whether any older unseen user messages still need to surface.
+    // The dispatcher fetches the full range, then the formatter applies the
+    // deduplication watermark uniformly to user and non-user messages.
     expect(getMessagesCalled).toBe(true);
     // Should still have the turn_end status line
     expect(result).toContain("turn_end");
     expect(result).not.toContain("user:");
   });
 
-  it("still surfaces an unseen user message even when it is older than the non-user dedup watermark", () => {
+  it("does not force-surface user messages older than the deduplication watermark", () => {
     const events = [
       makeEvent({
         event: "turn_end",
@@ -1514,8 +1629,6 @@ describe("formatHerdEventBatch with activity injection", () => {
       }),
     ];
     const watermarks = new Map([["worker-1", 14]]);
-    const seenUserMsgIdxs = new Map<string, Set<number>>();
-    const surfacedUserMsgIdxs = new Map<string, Set<number>>();
     const mockMessages = [
       { type: "assistant", message: { content: [{ type: "text", text: "older assistant" }] }, timestamp: Date.now() },
       { type: "user_message", content: "Unseen user below watermark", timestamp: Date.now() },
@@ -1526,16 +1639,14 @@ describe("formatHerdEventBatch with activity injection", () => {
     const result = formatHerdEventBatch(events, {
       getMessages: () => mockMessages as any,
       lastEmittedMsgTo: watermarks,
-      seenUserMsgIdxs,
-      surfacedUserMsgIdxs,
     });
 
-    expect(result).toContain('user: "Unseen user below watermark"');
+    expect(result).not.toContain('user: "Unseen user below watermark"');
     expect(result).not.toContain("older assistant");
-    expect(surfacedUserMsgIdxs.get("worker-1")).toEqual(new Set([11]));
+    expect(result).toContain("turn_end");
   });
 
-  it("does not duplicate user messages that were already surfaced in prior activity output", () => {
+  it("includes user messages at or above the deduplication watermark like ordinary activity", () => {
     const events = [
       makeEvent({
         event: "turn_end",
@@ -1543,12 +1654,10 @@ describe("formatHerdEventBatch with activity injection", () => {
         data: { duration_ms: 5000, msgRange: { from: 20, to: 24 } },
       }),
     ];
-    const watermarks = new Map([["worker-1", 22]]);
-    const seenUserMsgIdxs = new Map<string, Set<number>>([["worker-1", new Set([21])]]);
-    const surfacedUserMsgIdxs = new Map<string, Set<number>>();
+    const watermarks = new Map([["worker-1", 21]]);
     const mockMessages = [
       { type: "assistant", message: { content: [{ type: "text", text: "old assistant" }] }, timestamp: Date.now() },
-      { type: "user_message", content: "Already seen user", timestamp: Date.now() },
+      { type: "user_message", content: "Old user", timestamp: Date.now() },
       { type: "user_message", content: "Fresh unseen user", timestamp: Date.now() },
       { type: "result", data: { result: "Done", is_error: false, duration_ms: 1 } },
     ];
@@ -1556,13 +1665,10 @@ describe("formatHerdEventBatch with activity injection", () => {
     const result = formatHerdEventBatch(events, {
       getMessages: () => mockMessages as any,
       lastEmittedMsgTo: watermarks,
-      seenUserMsgIdxs,
-      surfacedUserMsgIdxs,
     });
 
-    expect(result).not.toContain('user: "Already seen user"');
+    expect(result).not.toContain('user: "Old user"');
     expect(result).toContain('user: "Fresh unseen user"');
-    expect(surfacedUserMsgIdxs.get("worker-1")).toEqual(new Set([22]));
   });
 });
 

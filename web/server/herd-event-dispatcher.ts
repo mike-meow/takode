@@ -170,11 +170,11 @@ export function isSessionIdleRuntime(
  *  actually dropped out of service. These events are distinct from transient
  *  reconnect windows because the bridge only emits them after the disconnect is
  *  considered actionable.
- *  user_message is excluded — individual messages are noisy and truncated.
- *  Instead, user message count + IDs are included in the turn_end event
- *  so the leader can peek at specific messages via [msg-id] if needed. */
+ *  user_message is included only for direct human messages to herded sessions;
+ *  onWorkerEvent filters out injected agent/system messages before delivery. */
 const ACTIONABLE_EVENTS = new Set<TakodeEventType>([
   "turn_end",
+  "user_message",
   "permission_request",
   "permission_resolved",
   "herd_reassigned",
@@ -247,8 +247,6 @@ interface HerdInbox {
   /** Per-worker: highest msgRange.to from the last delivered batch.
    *  Prevents re-injecting the same activity in consecutive turn_end events. */
   lastEmittedMsgTo: Map<string, number>;
-  /** Per-worker: user message indices that were actually surfaced in prior activity output. */
-  seenUserMsgIdxs: Map<string, Set<number>>;
 }
 
 // ─── Dispatcher ─────────────────────────────────────────────────────────────────
@@ -360,7 +358,6 @@ export class HerdEventDispatcher {
         workerIds,
         deliveryHistory: [],
         lastEmittedMsgTo: new Map(),
-        seenUserMsgIdxs: new Map(),
       };
       inbox.unsubscribe = this.wsBridge.subscribeTakodeEvents(workerIds, (evt) => this.onWorkerEvent(orchId, evt));
       this.inboxes.set(orchId, inbox);
@@ -381,6 +378,12 @@ export class HerdEventDispatcher {
   /** Called by the event subscription when a herded worker emits an event. */
   private onWorkerEvent(orchId: string, event: TakodeEvent): void {
     if (!ACTIONABLE_EVENTS.has(event.event)) return;
+
+    // Dedicated user_message herd delivery is only for direct human messages.
+    // Agent, leader, herd, and system injections carry agentSource and still
+    // flow to the target session normally, but should not interrupt the leader
+    // as human steering.
+    if (event.event === "user_message" && event.data.agentSource?.sessionId) return;
 
     // Skip events triggered by the leader's own actions (e.g. archive, answer).
     // The leader already sees the result in the tool call response.
@@ -547,12 +550,9 @@ export class HerdEventDispatcher {
     if (pending.length === 0) return 0;
 
     const events = pending.map((e) => e.event);
-    const surfacedUserMsgIdxs = new Map<string, Set<number>>();
     const renderedBatch = renderHerdEventBatch(events, {
       getMessages: (sid, from, to) => getSessionMessageSlice(this.wsBridge, sid, from, to),
       lastEmittedMsgTo: inbox.lastEmittedMsgTo,
-      seenUserMsgIdxs: inbox.seenUserMsgIdxs,
-      surfacedUserMsgIdxs,
     });
     const delivery = this.wsBridge.injectUserMessage(
       orchId,
@@ -574,7 +574,6 @@ export class HerdEventDispatcher {
 
     // Update deduplication watermarks from the events we just delivered
     updateLastEmittedMsgTo(inbox.lastEmittedMsgTo, events);
-    mergeSurfacedUserMsgIdxs(inbox.seenUserMsgIdxs, surfacedUserMsgIdxs);
 
     const lastSeq = pending[pending.length - 1].seq;
     inbox.inFlightUpTo = lastSeq;
@@ -640,12 +639,9 @@ export class HerdEventDispatcher {
 
     // Format and inject
     const events = pending.map((e) => e.event);
-    const surfacedUserMsgIdxs = new Map<string, Set<number>>();
     const renderedBatch = renderHerdEventBatch(events, {
       getMessages: (sid, from, to) => getSessionMessageSlice(this.wsBridge, sid, from, to),
       lastEmittedMsgTo: inbox.lastEmittedMsgTo,
-      seenUserMsgIdxs: inbox.seenUserMsgIdxs,
-      surfacedUserMsgIdxs,
     });
     const delivery = this.wsBridge.injectUserMessage(
       orchId,
@@ -667,7 +663,6 @@ export class HerdEventDispatcher {
 
     // Update deduplication watermarks from the events we just delivered
     updateLastEmittedMsgTo(inbox.lastEmittedMsgTo, events);
-    mergeSurfacedUserMsgIdxs(inbox.seenUserMsgIdxs, surfacedUserMsgIdxs);
 
     // Mark as in-flight (NOT confirmed yet — that happens on turn end)
     const lastSeq = pending[pending.length - 1].seq;
@@ -829,10 +824,6 @@ export interface FormatBatchOptions {
   /** Per-worker deduplication watermark: highest msgRange.to already delivered.
    *  Prevents re-injecting overlapping activity across consecutive batches. */
   lastEmittedMsgTo?: Map<string, number>;
-  /** Per-worker set of user message indices already surfaced in prior deliveries. */
-  seenUserMsgIdxs?: Map<string, Set<number>>;
-  /** Collector populated with the user message indices actually surfaced by this batch. */
-  surfacedUserMsgIdxs?: Map<string, Set<number>>;
 }
 
 export interface RenderedHerdEventBatch {
@@ -972,7 +963,7 @@ function formatSingleEvent(evt: TakodeEvent, nowTs: number, options?: FormatBatc
       return `${label} | session_archived${userInitiated}${ageSuffix}`;
     }
     case "user_message": {
-      const content = truncate(evt.data.content, 80);
+      const content = truncate(evt.data.content, 5000);
       // Show who sent the message: [User], [Agent #N name], or [Herd]
       const agentSource = evt.data.agentSource;
       let sender = "User";
@@ -981,7 +972,14 @@ function formatSingleEvent(evt: TakodeEvent, nowTs: number, options?: FormatBatc
       } else if (agentSource?.sessionId) {
         sender = agentSource.sessionLabel ? `Agent ${agentSource.sessionLabel}` : "Agent";
       }
-      return `${label} | user_message [${sender}] | "${content}"${ageSuffix}`;
+      const msgRef = typeof evt.data.msg_index === "number" ? ` | msg [${evt.data.msg_index}]` : "";
+      const messageId = typeof evt.data.message_id === "string" ? ` | id ${evt.data.message_id}` : "";
+      const turnTarget =
+        evt.data.turn_target === "current" || evt.data.turn_target === "queued"
+          ? ` | turn ${evt.data.turn_target}`
+          : "";
+      const turnId = typeof evt.data.turn_id === "string" && evt.data.turn_id ? ` ${evt.data.turn_id}` : "";
+      return `${label} | user_message [${sender}]${msgRef}${messageId}${turnTarget}${turnId} | "${content}"${ageSuffix}`;
     }
     case "notification_needs_input": {
       const summary = typeof evt.data.summary === "string" ? ` | "${truncate(evt.data.summary, 80)}"` : "";
@@ -1035,17 +1033,10 @@ function buildActivityForEvent(evt: TakodeEvent, options?: FormatBatchOptions): 
   const messages = options.getMessages(evt.sessionId, range.from, range.to);
   if (!messages || messages.length === 0) return null;
 
-  const seenUserMsgIdxs = options.seenUserMsgIdxs?.get(evt.sessionId);
   const activity = formatActivitySummaryDetailed(messages, {
     startIdx: range.from,
     deduplicatedFrom,
-    seenUserMsgIdxs,
   });
-  if (activity.surfacedUserMsgIdxs.length > 0) {
-    const collected = options.surfacedUserMsgIdxs?.get(evt.sessionId) ?? new Set<number>();
-    for (const idx of activity.surfacedUserMsgIdxs) collected.add(idx);
-    options.surfacedUserMsgIdxs?.set(evt.sessionId, collected);
-  }
   return activity.text || null;
 }
 
@@ -1059,14 +1050,6 @@ function updateLastEmittedMsgTo(watermarks: Map<string, number>, events: TakodeE
     if (range.to > current) {
       watermarks.set(evt.sessionId, range.to);
     }
-  }
-}
-
-function mergeSurfacedUserMsgIdxs(target: Map<string, Set<number>>, surfaced: Map<string, Set<number>>): void {
-  for (const [sessionId, idxs] of surfaced) {
-    const existing = target.get(sessionId) ?? new Set<number>();
-    for (const idx of idxs) existing.add(idx);
-    target.set(sessionId, existing);
   }
 }
 
