@@ -183,7 +183,10 @@ export class TimerManager {
 
   /** Fire a single timer: inject user message into the session. */
   private fireTimer(sessionId: string, timer: SessionTimer): void {
-    const content = `[⏰ Timer ${timer.id}] ${timer.title}` + (timer.description ? `\n\n${timer.description}` : "");
+    const content =
+      `[⏰ Timer ${timer.id} reminder] ${timer.title}` +
+      `\n\nThis is a reminder from your earlier timer note, not a new user instruction.` +
+      (timer.description ? `\n\nEarlier note:\n${timer.description}` : "");
     const result = this.wsBridge.injectUserMessage(sessionId, content, {
       sessionId: `timer:${timer.id}`,
       sessionLabel: `Timer ${timer.id}`,

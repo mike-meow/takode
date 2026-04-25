@@ -209,7 +209,7 @@ describe("TimerManager", () => {
 
       expect(bridge.injectUserMessage).toHaveBeenCalledWith(
         "session-1",
-        "[⏰ Timer t1] do something\n\nOpen the latest incident thread and summarize the blocker.",
+        "[⏰ Timer t1 reminder] do something\n\nThis is a reminder from your earlier timer note, not a new user instruction.\n\nEarlier note:\nOpen the latest incident thread and summarize the blocker.",
         {
           sessionId: "timer:t1",
           sessionLabel: "Timer t1",
@@ -220,13 +220,24 @@ describe("TimerManager", () => {
     });
 
     it("fires a recurring timer and advances nextFireAt", async () => {
-      await manager.createTimer("session-1", { title: "ping", every: "10m" });
+      await manager.createTimer("session-1", {
+        title: "ping",
+        description: "Check whether the watch job still needs attention.",
+        every: "10m",
+      });
 
       // First fire
       vi.advanceTimersByTime(10 * 60_000 + 1);
       await triggerSweep(manager);
 
-      expect(bridge.injectUserMessage).toHaveBeenCalledTimes(1);
+      expect(bridge.injectUserMessage).toHaveBeenCalledWith(
+        "session-1",
+        "[⏰ Timer t1 reminder] ping\n\nThis is a reminder from your earlier timer note, not a new user instruction.\n\nEarlier note:\nCheck whether the watch job still needs attention.",
+        {
+          sessionId: "timer:t1",
+          sessionLabel: "Timer t1",
+        },
+      );
       // Recurring timer should still exist
       const timers = manager.listTimers("session-1");
       expect(timers).toHaveLength(1);

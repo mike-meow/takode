@@ -236,6 +236,14 @@ function isSystemSourceTag(agentSource: BrowserUserMessage["agentSource"]): bool
   return agentSource.sessionId === "system" || agentSource.sessionId.startsWith("system:");
 }
 
+function isTimerSourceTag(agentSource: BrowserUserMessage["agentSource"]): boolean {
+  return agentSource?.sessionId.startsWith("timer:") ?? false;
+}
+
+function isTimerReminderContent(content: string | undefined): boolean {
+  return /^\[⏰ Timer [^\]\s]+ reminder\]/.test(content ?? "");
+}
+
 function getInterruptSourceFromActorSessionId(actorSessionId: string | undefined): InterruptSource {
   if (!actorSessionId) return "user";
   return isSystemSourceTag({ sessionId: actorSessionId }) ? "system" : "leader";
@@ -382,6 +390,7 @@ function buildTimestampTag(
   ts: number,
   getLauncherSessionInfo: AdapterBrowserRoutingDeps["getLauncherSessionInfo"],
   agentSource?: BrowserUserMessage["agentSource"],
+  content?: string,
 ): string {
   const d = new Date(ts);
   const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -393,6 +402,9 @@ function buildTimestampTag(
     : "";
   const timeWithDate = dateStr + time;
   const sessionInfo = getLauncherSessionInfo(session.id);
+  if (isTimerSourceTag(agentSource)) {
+    return isTimerReminderContent(content) ? `[Timer reminder ${timeWithDate}] ` : `[Timer event ${timeWithDate}] `;
+  }
   if (sessionInfo?.isOrchestrator) {
     if (isSystemSourceTag(agentSource)) return `[System ${timeWithDate}] `;
     if (agentSource?.sessionId === "herd-events") return `[Herd ${timeWithDate}] `;
@@ -1523,8 +1535,15 @@ export async function handleUserMessage(
       : msg.content;
   }
   if (typeof content === "string") {
-    content = prependNeedsInputReminderToContent(content, ingested.needsInputReminderText);
-    content = buildTimestampTag(session, ingested.timestamp, deps.getLauncherSessionInfo, msg.agentSource) + content;
+    const contentWithReminder = prependNeedsInputReminderToContent(content, ingested.needsInputReminderText) as string;
+    content =
+      buildTimestampTag(
+        session,
+        ingested.timestamp,
+        deps.getLauncherSessionInfo,
+        msg.agentSource,
+        contentWithReminder,
+      ) + contentWithReminder;
   } else {
     content = prependNeedsInputReminderToContent(content, ingested.needsInputReminderText);
   }
@@ -1924,7 +1943,9 @@ export function routeAdapterBrowserMessage(
       ) as string;
       adapterMsg = {
         ...adapterMsg,
-        content: buildTimestampTag(session, msgTs, deps.getLauncherSessionInfo, msg.agentSource) + contentWithReminder,
+        content:
+          buildTimestampTag(session, msgTs, deps.getLauncherSessionInfo, msg.agentSource, contentWithReminder) +
+          contentWithReminder,
       } as BrowserOutgoingMessage;
     }
     const adapter = session.codexAdapter || session.claudeSdkAdapter;

@@ -676,4 +676,85 @@ describe("Claude SDK adapter queue handoff", () => {
       /^\[Leader #22 Leader (?:\w{3}, \w{3} \d{1,2} )?\d{1,2}:\d{2}\s*[AP]M\] do the task$/,
     );
   });
+
+  it("tags timer-sourced user_message as a timer reminder in herded SDK sessions", () => {
+    // Timer firings are self-reminders, so they should not be labeled as a new
+    // user or leader instruction even when delivered into a herded worker.
+    const bridge = attachBoardFacade(new WsBridge());
+    const sid = "sdk-ts-herded-timer";
+    bridge.getOrCreateSession(sid);
+    const session = bridge.getSession(sid)!;
+    session.backendType = "claude-sdk";
+
+    bridge.setLauncher({
+      touchActivity: vi.fn(),
+      touchUserMessage: vi.fn(),
+      getSession: vi.fn(() => ({ herdedBy: "leader-1" })),
+    } as any);
+
+    const delivered: any[] = [];
+    const adapter = makeClaudeSdkAdapterMock();
+    adapter.sendBrowserMessage.mockImplementation((msg: any) => {
+      delivered.push(msg);
+      return true;
+    });
+    bridge.attachClaudeSdkAdapter(sid, adapter as any);
+
+    const browser = makeBrowserSocket(sid);
+    bridge.handleBrowserOpen(browser, sid);
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content:
+          "[⏰ Timer t1 reminder] Check build\n\nThis is a reminder from your earlier timer note, not a new user instruction.",
+        agentSource: { sessionId: "timer:t1", sessionLabel: "Timer t1" },
+      }),
+    );
+
+    expect(delivered).toHaveLength(1);
+    expect(delivered[0].content).toMatch(
+      /^\[Timer reminder (?:\w{3}, \w{3} \d{1,2} )?\d{1,2}:\d{2}\s*[AP]M\] \[⏰ Timer t1 reminder\] Check build/,
+    );
+  });
+
+  it("tags cancelled timer messages as timer events instead of timer reminders", () => {
+    // Cancellation uses the same timer source id, but it is not a fired
+    // self-reminder and should not get the reminder timestamp label.
+    const bridge = attachBoardFacade(new WsBridge());
+    const sid = "sdk-ts-herded-timer-cancelled";
+    bridge.getOrCreateSession(sid);
+    const session = bridge.getSession(sid)!;
+    session.backendType = "claude-sdk";
+
+    bridge.setLauncher({
+      touchActivity: vi.fn(),
+      touchUserMessage: vi.fn(),
+      getSession: vi.fn(() => ({ herdedBy: "leader-1" })),
+    } as any);
+
+    const delivered: any[] = [];
+    const adapter = makeClaudeSdkAdapterMock();
+    adapter.sendBrowserMessage.mockImplementation((msg: any) => {
+      delivered.push(msg);
+      return true;
+    });
+    bridge.attachClaudeSdkAdapter(sid, adapter as any);
+
+    const browser = makeBrowserSocket(sid);
+    bridge.handleBrowserOpen(browser, sid);
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "[⏰ Timer t1 cancelled] Check build",
+        agentSource: { sessionId: "timer:t1", sessionLabel: "Timer t1" },
+      }),
+    );
+
+    expect(delivered).toHaveLength(1);
+    expect(delivered[0].content).toMatch(
+      /^\[Timer event (?:\w{3}, \w{3} \d{1,2} )?\d{1,2}:\d{2}\s*[AP]M\] \[⏰ Timer t1 cancelled\] Check build$/,
+    );
+  });
 });

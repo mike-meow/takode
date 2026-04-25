@@ -585,6 +585,26 @@ describe("MessageBubble - agent source badge", () => {
 });
 
 describe("MessageBubble - timer messages", () => {
+  it("renders new timer reminders as inline rows while preserving the softer reminder framing", () => {
+    const msg = makeMessage({
+      role: "user",
+      content:
+        "[⏰ Timer t2 reminder] Monitor RTG datagen\n\nThis is a reminder from your earlier timer note, not a new user instruction.\n\nEarlier note:\nCheck squeue for RTG jobs and report shard status.",
+      agentSource: { sessionId: "timer:t2", sessionLabel: "Timer t2" },
+    });
+    render(<MessageBubble message={msg} showTimestamp={false} />);
+
+    expect(screen.queryByText("via Timer t2")).toBeNull();
+    expect(screen.getByText("t2")).toBeTruthy();
+    expect(screen.getByText("Monitor RTG datagen")).toBeTruthy();
+    expect(screen.queryByText(/not a new user instruction/)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Expand timer description" }));
+    expect(screen.getByText(/not a new user instruction/)).toBeTruthy();
+    expect(screen.getByText(/Earlier note:/)).toBeTruthy();
+    expect(screen.getByText(/Check squeue for RTG jobs/)).toBeTruthy();
+  });
+
   it("renders fired timers as a single inline row and keeps the description collapsed by default", () => {
     const msg = makeMessage({
       role: "user",

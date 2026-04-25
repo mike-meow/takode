@@ -442,6 +442,16 @@ function parseTimerMessageContent(content: string): ParsedTimerMessage {
     };
   }
 
+  const reminderMatch = header.match(/^\[⏰ Timer ([^\]\s]+) reminder\]\s*(.*)$/);
+  if (reminderMatch) {
+    return {
+      kind: "fired",
+      timerId: reminderMatch[1],
+      title: (reminderMatch[2] || header).trim(),
+      description,
+    };
+  }
+
   const fallbackMatch = header.match(/^\[[^\]]+\]\s*(.*)$/);
   const title = (fallbackMatch?.[1] ?? header).trim();
   return {
