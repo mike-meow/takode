@@ -723,6 +723,7 @@ Examples:
   takode board show
   takode board set q-12 --status PLANNING
   takode board set q-12 --no-code
+  takode board set q-12 --phases planning,implementation,skeptic-review --preset lightweight-code
   takode board set q-12 --status QUEUED --wait-for ${FREE_WORKER_WAIT_FOR_TOKEN}
   takode board set q-12 --worker 5 --wait-for q-7,#9
   takode board advance q-12
@@ -730,10 +731,14 @@ Examples:
   takode board rm q-12
 `;
 
-const BOARD_SET_HELP = `Usage: takode board set <quest-id> [--worker <session>] [--status <state>] [--title <title>] [--wait-for q-X,#Y,${FREE_WORKER_WAIT_FOR_TOKEN}] [--no-code|--code-change] [--json]
-       takode board add <quest-id> [--worker <session>] [--status <state>] [--title <title>] [--wait-for q-X,#Y,${FREE_WORKER_WAIT_FOR_TOKEN}] [--no-code|--code-change] [--json]
+const BOARD_SET_HELP = `Usage: takode board set <quest-id> [--worker <session>] [--status <state>] [--title <title>] [--wait-for q-X,#Y,${FREE_WORKER_WAIT_FOR_TOKEN}] [--phases <ids>] [--preset <id>] [--no-code|--code-change] [--json]
+       takode board add <quest-id> [--worker <session>] [--status <state>] [--title <title>] [--wait-for q-X,#Y,${FREE_WORKER_WAIT_FOR_TOKEN}] [--phases <ids>] [--preset <id>] [--no-code|--code-change] [--json]
 
 Add or update a board row for a quest.
+
+Quest Journey phases:
+  --phases planning,implementation,skeptic-review,reviewer-groom,porting
+  --preset <id> labels the planned phase sequence; use with --phases
 `;
 
 const BOARD_ADVANCE_HELP = `Usage: takode board advance <quest-id> [--json]
@@ -3193,6 +3198,7 @@ import {
   FREE_WORKER_WAIT_FOR_TOKEN,
   formatWaitForRefLabel,
   type BoardQueueWarning,
+  getInvalidQuestJourneyPhaseIds,
   QUEST_JOURNEY_STATES,
   QUEST_JOURNEY_HINTS,
   getWaitForRefKind,
@@ -3450,7 +3456,7 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
     const questId = args[1];
     if (!questId)
       err(
-        `Usage: takode board ${sub} <quest-id> [--worker <session>] [--status "..."] [--title "..."] [--wait-for q-X,#Y,${FREE_WORKER_WAIT_FOR_TOKEN}] [--no-code|--code-change] [--json]`,
+        `Usage: takode board ${sub} <quest-id> [--worker <session>] [--status "..."] [--title "..."] [--wait-for q-X,#Y,${FREE_WORKER_WAIT_FOR_TOKEN}] [--phases <ids>] [--preset <id>] [--no-code|--code-change] [--json]`,
       );
     if (!isValidQuestId(questId)) err(`Invalid quest ID "${questId}": must match q-NNN format (e.g., q-1, q-42)`);
     const flags = parseFlags(args.slice(2));
@@ -3461,6 +3467,27 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
     const body: Record<string, unknown> = { questId };
     if (typeof flags.status === "string") body.status = flags.status;
     if (typeof flags.title === "string") body.title = flags.title;
+    if (typeof flags.phases === "string") {
+      const phases = flags.phases
+        .split(",")
+        .map((s: string) => s.trim())
+        .filter(Boolean);
+      if (phases.length === 0) {
+        err("Invalid Quest Journey phases: provide at least one phase ID.");
+      }
+      const invalid = getInvalidQuestJourneyPhaseIds(phases);
+      if (invalid.length > 0) {
+        err(
+          `Invalid Quest Journey phase(s): ${invalid.join(", ")} -- use planning, implementation, skeptic-review, reviewer-groom, or porting`,
+        );
+      }
+      body.phases = phases;
+      if (typeof flags.preset === "string" && flags.preset.trim()) {
+        body.presetId = flags.preset.trim();
+      }
+    } else if (typeof flags.preset === "string") {
+      err("Use --preset only with --phases so the planned Quest Journey is explicit.");
+    }
     if (flags["no-code"] === true) body.noCode = true;
     if (flags["code-change"] === true) body.noCode = false;
     if (typeof flags["wait-for"] === "string") {

@@ -1188,7 +1188,7 @@ describe("work board", () => {
     );
   });
 
-  it("advanceBoardRowNoGroom rejects non-skeptic stages even for explicitly marked no-code rows", () => {
+  it("advanceBoardRowNoGroom rejects non-skeptic phases even for explicitly marked no-code rows", () => {
     const browser = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browser, "s1");
 
@@ -1331,7 +1331,7 @@ describe("work board", () => {
     expect(previews[0].content).toContain("1 quest completed");
   });
 
-  it("advanceBoardRow walks through all Quest Journey stages", () => {
+  it("advanceBoardRow walks through all built-in Quest Journey phases", () => {
     // Validates the full state machine progression
     const browser = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browser, "s1");
@@ -1360,7 +1360,63 @@ describe("work board", () => {
     expect(final!.board).toHaveLength(0);
   });
 
-  it("advanceBoardRow removes row at final stage PORTING", () => {
+  it("initializes default phase bookkeeping for the built-in full-code Quest Journey", () => {
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    bridge.upsertBoardRow("s1", { questId: "q-1", status: "PLANNING" });
+
+    expect(bridge.getBoard("s1")[0]).toEqual(
+      expect.objectContaining({
+        status: "PLANNING",
+        journey: expect.objectContaining({
+          presetId: "full-code",
+          phaseIds: ["planning", "implementation", "skeptic-review", "reviewer-groom", "porting"],
+          currentPhaseId: "planning",
+          nextLeaderAction: expect.stringContaining("planning phase skill"),
+        }),
+      }),
+    );
+  });
+
+  it("advanceBoardRow follows a custom planned phase sequence", () => {
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    bridge.upsertBoardRow("s1", {
+      questId: "q-1",
+      status: "PLANNING",
+      journey: {
+        presetId: "lightweight",
+        phaseIds: ["planning", "implementation", "porting"],
+        currentPhaseId: "planning",
+      },
+    });
+
+    const implementation = bridge.advanceBoardRow("s1", "q-1");
+    expect(implementation?.newState).toBe("IMPLEMENTING");
+    expect(implementation?.board[0].journey).toEqual(
+      expect.objectContaining({
+        phaseIds: ["planning", "implementation", "porting"],
+        currentPhaseId: "implementation",
+      }),
+    );
+
+    const porting = bridge.advanceBoardRow("s1", "q-1");
+    expect(porting?.newState).toBe("PORTING");
+    expect(porting?.board[0].journey).toEqual(
+      expect.objectContaining({
+        currentPhaseId: "porting",
+        nextLeaderAction: expect.stringContaining("port confirmation"),
+      }),
+    );
+
+    const final = bridge.advanceBoardRow("s1", "q-1");
+    expect(final?.removed).toBe(true);
+    expect(final?.previousState).toBe("PORTING");
+  });
+
+  it("advanceBoardRow removes row at final phase PORTING", () => {
     const browser = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browser, "s1");
 
@@ -1371,8 +1427,8 @@ describe("work board", () => {
     expect(result!.board).toHaveLength(0);
   });
 
-  it("advanceBoardRow sends a review notification when completing the final stage", () => {
-    // Advancing off the final board stage is the explicit completion path for
+  it("advanceBoardRow sends a review notification when completing the final phase", () => {
+    // Advancing off the final board phase is the explicit completion path for
     // Quest Journey-driven work and should notify exactly once.
     const browser = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browser, "s1");
@@ -1447,8 +1503,8 @@ describe("work board", () => {
     expect(completed[0].completedAt).toBeGreaterThan(0);
   });
 
-  it("advanceBoardRow at final stage moves item to completedBoard", () => {
-    // Advancing past PORTING (final stage) should move the row to completed
+  it("advanceBoardRow at final phase moves item to completedBoard", () => {
+    // Advancing past PORTING (final phase) should move the row to completed
     // history, not delete it.
     const browser = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browser, "s1");

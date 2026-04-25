@@ -842,6 +842,11 @@ await ensureTakodeIntegration(packageRoot);
 await ensureSkillSymlinks([
   "takode-orchestration",
   "leader-dispatch",
+  "quest-journey-planning",
+  "quest-journey-implementation",
+  "quest-journey-skeptic-review",
+  "quest-journey-reviewer-groom",
+  "quest-journey-porting",
   "self-groom",
   "reviewer-groom",
   "skeptic-review",

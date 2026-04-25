@@ -187,6 +187,56 @@ describe("takode board set --worker auto-clears waitFor", () => {
     expect(capturedBodies[0].noCode).toBe(false);
   });
 
+  it("sends planned Quest Journey phases and preset metadata", async () => {
+    const result = await runTakode(
+      [
+        "board",
+        "set",
+        "q-1",
+        "--phases",
+        "planning,implementation,skeptic-review",
+        "--preset",
+        "lightweight-code",
+        "--port",
+        String(port),
+      ],
+      {
+        ...process.env,
+        COMPANION_SESSION_ID: "leader-1",
+        COMPANION_AUTH_TOKEN: "auth-1",
+      },
+    );
+
+    expect(result.status).toBe(0);
+    expect(capturedBodies).toHaveLength(1);
+    expect(capturedBodies[0].phases).toEqual(["planning", "implementation", "skeptic-review"]);
+    expect(capturedBodies[0].presetId).toBe("lightweight-code");
+  });
+
+  it("rejects unknown planned Quest Journey phase IDs before posting", async () => {
+    const result = await runTakode(["board", "set", "q-1", "--phases", "planning,unknown", "--port", String(port)], {
+      ...process.env,
+      COMPANION_SESSION_ID: "leader-1",
+      COMPANION_AUTH_TOKEN: "auth-1",
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("Invalid Quest Journey phase");
+    expect(capturedBodies).toHaveLength(0);
+  });
+
+  it("requires --phases when setting a Quest Journey preset", async () => {
+    const result = await runTakode(["board", "set", "q-1", "--preset", "lightweight-code", "--port", String(port)], {
+      ...process.env,
+      COMPANION_SESSION_ID: "leader-1",
+      COMPANION_AUTH_TOKEN: "auth-1",
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("Use --preset only with --phases");
+    expect(capturedBodies).toHaveLength(0);
+  });
+
   it("rejects --no-code and --code-change together", async () => {
     const result = await runTakode(["board", "set", "q-1", "--no-code", "--code-change", "--port", String(port)], {
       ...process.env,

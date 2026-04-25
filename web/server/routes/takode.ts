@@ -3,7 +3,14 @@ import { access as accessAsync } from "node:fs/promises";
 import * as questStore from "../quest-store.js";
 import * as sessionNames from "../session-names.js";
 import type { HerdSessionsResponse } from "../../shared/herd-types.js";
-import { FREE_WORKER_WAIT_FOR_TOKEN, isValidQuestId, isValidWaitForRef } from "../../shared/quest-journey.js";
+import {
+  FREE_WORKER_WAIT_FOR_TOKEN,
+  getInvalidQuestJourneyPhaseIds,
+  isValidQuestId,
+  isValidWaitForRef,
+  type QuestJourneyPhaseId,
+  type QuestJourneyPlanState,
+} from "../../shared/quest-journey.js";
 import {
   buildPeekResponse,
   buildPeekDefault,
@@ -1382,6 +1389,20 @@ export function createTakodeRoutes(ctx: RouteContext) {
         : existingRow && "noCode" in existingRow
           ? existingRow.noCode
           : undefined;
+    let journey: QuestJourneyPlanState | undefined;
+    if (Array.isArray(body.phases)) {
+      const phaseIds = body.phases
+        .filter((s: unknown) => typeof s === "string" && s.trim())
+        .map((s: string) => s.trim());
+      const invalid = getInvalidQuestJourneyPhaseIds(phaseIds);
+      if (invalid.length > 0) {
+        return c.json({ error: `Invalid Quest Journey phase(s): ${invalid.join(", ")}` }, 400);
+      }
+      journey = {
+        presetId: typeof body.presetId === "string" && body.presetId.trim() ? body.presetId.trim() : "custom",
+        phaseIds: phaseIds as QuestJourneyPhaseId[],
+      };
+    }
 
     const board = bridgeSession
       ? upsertBoardRowController(
@@ -1392,6 +1413,7 @@ export function createTakodeRoutes(ctx: RouteContext) {
             worker: typeof body.worker === "string" ? body.worker : undefined,
             workerNum: typeof body.workerNum === "number" ? body.workerNum : undefined,
             noCode,
+            journey,
             status: typeof body.status === "string" ? body.status : implicitQueuedStatus,
             waitFor,
           },

@@ -15,8 +15,8 @@ This skill covers leader discipline and the step-by-step dispatch process. Invok
 - **Investigation and research are also work to delegate.** When the user says "investigate X", create a quest and dispatch a worker to investigate and report findings -- don't explore the codebase yourself.
 - **Never run `quest claim` yourself.** Workers claim quests when dispatched. This is a hard rule -- leaders coordinate, workers claim.
 - **Do not claim a quest on behalf of a worker.** The worker who will do the implementation claims and completes the quest; the leader should never become the quest owner for that work.
-- **User feedback on completed quests triggers a full rework cycle.** When a user reports issues with a completed quest, record the feedback, set the quest back to `refined`, and dispatch with a full quest journey. Never treat feedback fixes as "quick patches" that skip review. See quest-journey.md in /takode-orchestration.
-- **Fresh human feedback overrides stale in-flight work.** If new human feedback lands while the quest is still on the board or while an older review/port turn is still completing, treat that feedback as the new source of truth. Reset the board row to the earliest valid stage for the fresh rework cycle, then stop or ignore stale completion from the older scope instead of letting it advance the quest.
+- **User feedback on completed quests triggers a full rework cycle.** When a user reports issues with a completed quest, record the feedback, set the quest back to `refined`, and dispatch with a full Quest Journey. Never treat feedback fixes as "quick patches" that skip phases. See quest-journey.md in /takode-orchestration.
+- **Fresh human feedback overrides stale in-flight work.** If new human feedback lands while the quest is still on the board or while an older review/port turn is still completing, treat that feedback as the new source of truth. Reset the board row to the earliest valid phase for the fresh rework cycle, then stop or ignore stale completion from the older scope instead of letting it advance the quest.
 - **Dispatch immediately when capacity exists.** When a quest is refined and ready, check your herd count before saying "I'll dispatch later." If you have open slots, dispatch now. Don't defer without a concrete reason (e.g., waiting for user input, worker with better context is about to free up).
 - **Do not treat reclaimable completed workers as real capacity blockers.** When a quest is `QUEUED`, compare the active board to the herd. If it has no unresolved `--wait-for` blocker and the only thing keeping worker slots at `5/5` is completed or off-board work sitting in `needs_verification`, archive one of those completed workers and dispatch immediately. Alternatively, if the work would significantly benefit from the context of an existing busy worker, keep it queued only with an explicit `--wait-for #N` or `--wait-for q-N` dependency.
 - **Fresh worker by default.** Reuse is the exception, not the default. Do not reuse a worker just because it is idle, disconnected, or already available.
@@ -27,7 +27,7 @@ This skill covers leader discipline and the step-by-step dispatch process. Invok
 - **Ask, don't assume.** If the user's instruction is ambiguous or underspecified, ask a quick follow-up question before dispatching. Every interaction with the user is an opportunity to clarify. Workers can figure out implementation details themselves -- you don't need to fill in gaps with guesses.
 - **Never hallucinate user intent.** If the user says "fix the sidebar bug", don't turn it into "fix the sidebar bug by adjusting the CSS grid layout and adding a media query for mobile breakpoints". Pass through what the user said and let the worker investigate.
 - **Added details need confirmation.** If you want to add specifics to make instructions more actionable (e.g. suggesting an approach, naming specific files, or scoping the fix), confirm with the user first. An over-specified instruction based on wrong assumptions wastes more time than a brief clarifying question.
-- **Use `/quest-design` before quest creation/refinement.** Before creating a quest or refining an `idea` quest into worker-ready scope, invoke `/quest-design` and wait for user confirmation or correction. A user-approved plan that explicitly covers the quest text counts as this confirmation. Routine feedback, claims, completion, verification checks, board updates, and already-approved stage transitions do not need a separate confirmation round.
+- **Use `/quest-design` before quest creation/refinement.** Before creating a quest or refining an `idea` quest into worker-ready scope, invoke `/quest-design` and wait for user confirmation or correction. A user-approved plan that explicitly covers the quest text counts as this confirmation. Routine feedback, claims, completion, verification checks, board updates, and already-approved phase transitions do not need a separate confirmation round.
 - **Treat worker/reviewer confusion as a blocking signal.** When a herded worker or reviewer raises a clarification question, answer it from existing context if you can. If not, ask the user via plain text plus `takode notify needs-input` and keep that quest blocked until the ambiguity is resolved.
 
 ## Dispatch Steps
@@ -157,11 +157,11 @@ When sending this template through the shell, prefer `takode spawn --message-fil
 
 If the worker needs additional context (related sessions, rejected approaches, user decisions), add it to the quest description before dispatching. Workers have the same tools and skills you do -- they run `quest show q-XX` themselves.
 
-**Workers must stop after each stage boundary.** The dispatch message only authorizes planning. After plan approval, the worker implements. After implementation, the worker STOPS and waits -- it does NOT self-review, run `/reviewer-groom`, run `/self-groom`, or self-port. The leader advances the quest through review stages.
+**Workers must stop after each phase boundary.** The dispatch message only authorizes planning. After plan approval, the worker implements. After implementation, the worker STOPS and waits -- it does NOT self-review, run `/reviewer-groom`, run `/self-groom`, or self-port. The leader advances the quest through Quest Journey phases.
 
-**Make every follow-up message stage-explicit.**
-- **Initial dispatch**: planning only. The worker returns a plan and stops.
-- **Plan approval**: say "implement now, then stop and report back." Do not imply review, porting, or quest transitions are authorized.
+**Make every follow-up message phase-explicit.**
+- **Initial dispatch**: invoke the planning phase. The worker returns a plan and stops.
+- **Plan approval**: invoke the implementation phase; say "implement now, then stop and report back." Do not imply review, porting, or quest transitions are authorized.
 - **Review or rework follow-up**: say exactly what the worker should do now, then tell them to report back and wait. Tell the worker to refresh the existing quest summary/comment as a user-oriented outcome note covering what changed, why it matters, and what verification passed. Consolidate feedback-addressing details into that same comment when clear instead of adding near-duplicate quest comments. Do not imply porting is authorized.
 - **Reviewer-owned quest hygiene**: reviewers may directly fix clear quest hygiene issues they know how to fix, including stale addressed flags, missing/refreshable summaries, and verification checklist checks backed by evidence. Expect reviewers to report those fixes in ACCEPT/CHALLENGE output. Do not send the worker rework for hygiene the reviewer already fixed; do send substantive failures, critical intention mismatches, missing or dishonest work, and ambiguity back through the normal review loop.
 - **If review follow-up needs more code changes**: tell the worker to commit the current worktree state first, then make the fixes in a separate follow-up commit so the reviewer can inspect a clean diff of only the new work.
@@ -169,7 +169,7 @@ If the worker needs additional context (related sessions, rejected approaches, u
 - **Docs/skills/prompts/templates still count when tracked**: if a worker changes git-tracked docs, skill files, prompts, templates, or other text-only files, treat it as commit-producing work. It must go through normal review, porting, and `quest complete ... --commit/--commits` structured metadata after sync.
 - **Investigation/design/no-code quests**: say what artifact to produce, then tell the worker to stop and report back. This path is only for quests that produce zero git-tracked changes; do not use it for text-only tracked-file edits. Do not assume the worker should self-complete or self-transition the quest.
 
-**Use explicit phrasing when steering between stages.** Good defaults:
+**Use explicit phrasing when steering between phase boundaries.** Good defaults:
 
 ```
 Implement the approved plan, add or refresh the consolidated quest summary comment for the human reader, then stop and report back. The summary should state what changed, why it matters, and what verification passed, without turning into a review/rework timeline. If this also addresses human feedback, explain that in the same comment when it remains clear. Do not run /reviewer-groom, /self-groom, /port-changes, or change the quest status yourself.
@@ -197,7 +197,7 @@ Return a plan for approval before implementing. After you send the plan, stop an
 
 This ensures workers load the quest skill (so CLI commands work), read pending feedback before planning, and stop at the planning boundary. Feedback addressing happens during implementation, not planning.
 
-**Feedback rework resets the board cycle.** When new human feedback arrives for a quest that is already on the board, immediately reset that row to the earliest valid stage for the new cycle before doing anything else with stale worker/reviewer completions:
+**Feedback rework resets the board cycle.** When new human feedback arrives for a quest that is already on the board, immediately reset that row to the earliest valid phase for the new cycle before doing anything else with stale worker/reviewer completions:
 
 - `PLANNING` if the same worker is still the intended owner and should produce a fresh plan
 - `QUEUED` if you need to choose a worker again or the prior ownership is no longer valid

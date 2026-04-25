@@ -105,6 +105,28 @@ describe("BoardTable", () => {
     expect(screen.getByText("CUSTOM_STATUS")).toHaveClass("text-cc-muted");
   });
 
+  it("renders current Quest Journey phase when phase bookkeeping is present", () => {
+    const board: BoardRowData[] = [
+      {
+        questId: "q-1",
+        status: "IMPLEMENTING",
+        journey: {
+          presetId: "full-code",
+          phaseIds: ["planning", "implementation", "skeptic-review", "reviewer-groom", "porting"],
+          currentPhaseId: "implementation",
+        },
+        updatedAt: 1,
+      },
+    ];
+
+    render(<BoardTable board={board} />);
+
+    expect(screen.getByText("Implementation")).toHaveAttribute(
+      "title",
+      expect.stringContaining("Planning -> Implementation -> Skeptic Review"),
+    );
+  });
+
   it("orders active rows by journey status priority first", () => {
     const ordered = orderBoardRows([
       { questId: "q-1", status: "PORTING", updatedAt: 1 },

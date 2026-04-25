@@ -710,6 +710,52 @@ describe("Takode server-authoritative auth", () => {
     });
   });
 
+  it("stores lightweight planned phases on board rows", async () => {
+    setupTakodeSessions();
+
+    const res = await app.request("/api/sessions/orch-1/board", {
+      method: "POST",
+      headers: authHeaders("orch-1", "tok-1"),
+      body: JSON.stringify({
+        questId: "q-9",
+        status: "PLANNING",
+        phases: ["planning", "implementation", "porting"],
+        presetId: "lightweight",
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      board: [
+        {
+          questId: "q-9",
+          status: "PLANNING",
+          journey: {
+            presetId: "lightweight",
+            phaseIds: ["planning", "implementation", "porting"],
+            currentPhaseId: "planning",
+            nextLeaderAction: expect.stringContaining("planning phase skill"),
+          },
+        },
+      ],
+    });
+  });
+
+  it("rejects unknown planned phase IDs", async () => {
+    setupTakodeSessions();
+
+    const res = await app.request("/api/sessions/orch-1/board", {
+      method: "POST",
+      headers: authHeaders("orch-1", "tok-1"),
+      body: JSON.stringify({ questId: "q-9", status: "PLANNING", phases: ["planning", "human-verification"] }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({
+      error: expect.stringContaining("human-verification"),
+    });
+  });
+
   it("completes a true zero-code board row via advance-no-groom from skeptic review", async () => {
     setupTakodeSessions();
     bridge._sessions["orch-1"].board = new Map([

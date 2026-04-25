@@ -392,7 +392,7 @@ describe("getOrchestratorGuardrails", () => {
     // Core leader behaviors remain inline
     expect(guardrails).toContain("Create a quest for any non-trivial work");
     expect(guardrails).toContain("Never implement non-trivial changes yourself");
-    // Quest Journey stage table kept inline as quick reference
+    // Quest Journey phase table kept inline as quick reference
     expect(guardrails).toContain("Quest Journey");
     expect(guardrails).toContain("QUEUED");
     expect(guardrails).toContain("IMPLEMENTING");
@@ -406,9 +406,9 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("/leader-dispatch");
     expect(guardrails).toContain("quest-journey.md");
     expect(guardrails).toContain("board-usage.md");
-    // Leader discipline: wait for user answer, no skipping stages
+    // Leader discipline: wait for user answer, no skipping phases
     expect(guardrails).toContain("WAIT for their answer");
-    expect(guardrails).toContain("Never skip quest journey stages");
+    expect(guardrails).toContain("Never skip Quest Journey phases");
     expect(guardrails).toContain("Do not use sleep-based waits");
     expect(guardrails).toContain("repeated `takode peek` / `takode scan` checks");
     expect(guardrails).toContain("wait for the next herd event");
@@ -420,7 +420,7 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("quest feedback list --json");
     expect(guardrails).toContain("quest feedback list/latest/show");
     expect(guardrails).toContain("`commitShas`");
-    expect(guardrails).toContain("Make every worker instruction stage-explicit");
+    expect(guardrails).toContain("Make every worker instruction phase-explicit");
     expect(guardrails).toContain("Initial dispatch authorizes **planning only**");
     expect(guardrails).toContain("Fresh human feedback resets the active cycle");
     expect(guardrails).toContain("do not let stale old-scope completions advance the quest");
@@ -472,7 +472,7 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).not.toContain("Maintain at most 5 sessions");
     // Worker selection details now in /leader-dispatch skill
     expect(guardrails).not.toContain("Queue if the best worker is busy");
-    // Full stage transitions now in quest-journey.md
+    // Full phase transitions now in quest-journey.md
     expect(guardrails).not.toContain("QUEUED -> PLANNING");
   });
 
@@ -483,7 +483,7 @@ describe("getOrchestratorGuardrails", () => {
     // Skill references for detailed workflows
     expect(guardrails).toContain("/leader-dispatch");
     expect(guardrails).toContain("quest-journey.md");
-    // Quest Journey stage table inline as quick reference
+    // Quest Journey phase table inline as quick reference
     expect(guardrails).toContain("Quest Journey");
     expect(guardrails).toContain("Skeptic Review");
     // CLI reference delegated to skill
@@ -493,7 +493,7 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("archiving reviewers does not free worker-slot capacity");
     expect(guardrails).toContain("Do not use sleep-based waits");
     expect(guardrails).toContain("wait for the next herd event");
-    expect(guardrails).toContain("Make every worker instruction stage-explicit");
+    expect(guardrails).toContain("Make every worker instruction phase-explicit");
     expect(guardrails).toContain("Initial dispatch authorizes **planning only**");
     expect(guardrails).toContain("Leaders do not own worker quests");
     expect(guardrails).toContain("worker doing the job claims and completes the quest");

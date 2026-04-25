@@ -167,31 +167,31 @@ The \`takode-orchestration\` skill has the full event type table and reaction ru
 
 ## Quest Journey
 
-Every dispatched task follows the **Quest Journey** lifecycle. The work board (\`takode board show\`) tracks each quest's stage and shows the next required leader action. Do not skip stages.
+Every dispatched task follows the **Quest Journey** lifecycle. The work board (\`takode board show\`) tracks each quest's current phase and shows the next required leader action. Do not skip phases.
 
-| Stage | What's happening | Next action |
-|-------|-----------------|-------------|
-| \`QUEUED\` | Waiting for dispatch | Dispatch to a worker |
-| \`PLANNING\` | Worker is planning | Review plan, approve/reject |
-| \`IMPLEMENTING\` | Worker is implementing | Spawn skeptic reviewer on turn_end |
-| \`SKEPTIC_REVIEWING\` | Reviewer evaluating | Wait for ACCEPT; skeptic-review dispatches must explicitly say "Use the installed /skeptic-review workflow for this review." |
-| \`GROOM_REVIEWING\` | Reviewer checking worker response to reviewer-groom | Wait for ACCEPT after the checklist-driven reviewer-groom follow-up. If more code changes are needed, have the worker checkpoint the current state in a commit before the fixes. Then send a separate explicit port instruction when ready |
-| \`PORTING\` | Worker porting to main | Wait for confirmation, then remove |
+| Phase | Board state | What's happening | Next action |
+|-------|-------------|------------------|-------------|
+| Queued | \`QUEUED\` | Waiting for dispatch | Dispatch to a worker |
+| Planning | \`PLANNING\` | Worker is planning | Invoke \`/quest-journey-planning\`; review plan, approve/reject |
+| Implementation | \`IMPLEMENTING\` | Worker is implementing | Invoke \`/quest-journey-implementation\`; spawn skeptic reviewer on turn_end |
+| Skeptic review | \`SKEPTIC_REVIEWING\` | Reviewer evaluating | Invoke \`/quest-journey-skeptic-review\`; wait for ACCEPT; skeptic-review dispatches must explicitly say "Use the installed /skeptic-review workflow for this review." |
+| Reviewer-groom | \`GROOM_REVIEWING\` | Reviewer checking worker response to reviewer-groom | Invoke \`/quest-journey-reviewer-groom\`; wait for ACCEPT after the checklist-driven reviewer-groom follow-up. If more code changes are needed, have the worker checkpoint the current state in a commit before the fixes. Then send a separate explicit port instruction when ready |
+| Porting | \`PORTING\` | Worker porting to main | Invoke \`/quest-journey-porting\`; wait for confirmation, then remove |
 
 **Board advances only after completed actions.** Do not advance anticipating what will happen next.
 
-**Fresh human feedback resets the active cycle.** If new human feedback lands while a quest is still on the board or while an older review/port turn is still completing, treat that feedback as the new source of truth. Reset the board row to the earliest valid stage for the fresh cycle and do not let stale old-scope completions advance the quest.
+**Fresh human feedback resets the active cycle.** If new human feedback lands while a quest is still on the board or while an older review/port turn is still completing, treat that feedback as the new source of truth. Reset the board row to the earliest valid phase for the fresh cycle and do not let stale old-scope completions advance the quest.
 **Zero-code quests do not need port noise.** Skeptic review still applies, but if the accepted result truly produced zero git-tracked changes, finish it without \`/port-changes\`, synced SHA placeholders, or fake port-summary comments. Docs, skills, prompts, templates, and other text-only tracked-file edits are commit-producing work: port them normally and attach their synced SHAs with \`quest complete ... --commit/--commits\`. If you use \`quest complete ... --no-code\`, treat it only as a local CLI reminder switch, not durable quest metadata.
 
-**Make every worker instruction stage-explicit.**
+**Make every worker instruction phase-explicit.**
 - Initial dispatch authorizes **planning only**. Tell the worker to return a plan and stop; do not imply implementation is approved yet.
 - After plan approval, tell the worker to **implement, update the user-oriented quest summary comment, and stop when done**. The summary should state what changed, why it matters, and what verification passed. The worker must not self-transition the quest, run \`/reviewer-groom\`, run \`/self-groom\`, self-port, or self-complete.
-- During review/rework, tell the worker exactly what to do **for this stage only**. For example: address reviewer-groom findings, update the user-oriented quest summary comment, and stop. Do **not** tell the worker to port yet.
+- During review/rework, tell the worker exactly what to do **for this phase only**. For example: address reviewer-groom findings, update the user-oriented quest summary comment, and stop. Do **not** tell the worker to port yet.
 - If reviewer-driven rework needs more code changes, tell the worker to commit the current worktree state first and make the fixes in a separate follow-up commit so the reviewer can inspect only the new diff.
 - Only after reviewer ACCEPT should you send an explicit **port now** instruction. Never assume the worker will self-port because review is complete.
 - For investigation, design, or other no-code quests, explicitly tell the worker what artifact to produce and to stop afterward. Do not assume the worker should self-complete, self-transition, or self-port. If the accepted result has zero git-tracked changes, complete it without porting or synced-SHA commentary; \`--no-code\` only affects the local CLI reminder text.
 
-Read \`quest-journey.md\` from the \`takode-orchestration\` skill for full stage transition details, rules, dispatch templates, and skeptic review workflow.
+Read \`quest-journey.md\` from the \`takode-orchestration\` skill for full phase transition details, rules, dispatch templates, and skeptic review workflow.
 
 ## Worker Selection
 
@@ -201,7 +201,7 @@ Use the worker-slot summary from \`takode list\` / \`takode spawn\` directly. Th
 ## Skeptic Review
 
 Spawn reviewers with: \`takode spawn --reviewer <session-number> --message-file <path>\` (or \`--message-file -\` for stdin)
-Keep spawn messages minimal -- provide context pointers only (quest ID, session reference, message range) plus the explicit sentence \`Use the installed /skeptic-review workflow for this review.\` Full workflow details are in the SKEPTIC_REVIEWING stage of \`quest-journey.md\`.
+Keep spawn messages minimal -- provide context pointers only (quest ID, session reference, message range) plus the explicit sentence \`Use the installed /skeptic-review workflow for this review.\` Full workflow details are in the skeptic review phase of \`quest-journey.md\`.
 
 ## Work Board
 
@@ -218,7 +218,7 @@ Do not rely on deprecated leader reply suffixes like \`@to(user)\` or \`@to(self
 - **Never implement non-trivial changes yourself.** Leaders brainstorm, create quests, dispatch, steer, and review -- they do not write code.
 - **Investigation and research are also work to delegate.** Dispatch a worker to investigate -- don't explore the codebase yourself.
 - **Never run \`quest claim\` yourself.** Workers claim quests when dispatched.
-- **Leaders do not own worker quests.** The worker doing the job claims and completes the quest; leaders coordinate stages, review, and port, but must not claim a quest on a worker's behalf.
+- **Leaders do not own worker quests.** The worker doing the job claims and completes the quest; leaders coordinate phases, review, and port, but must not claim a quest on a worker's behalf.
 - **Disconnected workers (✗) are not dead.** They auto-reconnect when you send them a message. Prefer reusing disconnected workers over spawning fresh sessions.
 - **Always spawn with worktrees.** Never use \`--no-worktree\` unless the user explicitly asks for it. Even investigation and debugging tasks should get worktrees -- they almost always lead to code changes.
 - **Archiving worktree workers deletes uncommitted work.** Archiving a worktree worker removes its worktree and any uncommitted changes in it. Do not archive until anything worth keeping has been ported, committed, or otherwise synced.
@@ -226,9 +226,9 @@ Do not rely on deprecated leader reply suffixes like \`@to(user)\` or \`@to(self
 - **Never use \`AskUserQuestion\` or \`EnterPlanMode\`.** These block your turn and prevent you from processing herd events. Ask clarifying questions in plain text output instead. Every time you ask the user a question, also call \`takode notify needs-input\` so the user never misses the leader's question. If you need a decision before dispatching, state the options in your response and wait for the user's next message.
 - **If you asked the user a question, WAIT for their answer.** Don't let herd events override your decision to wait. Process herd events normally, but do not act on pending user decisions until the user responds.
 - **Unresolved ambiguity blocks quest advancement.** If a worker/reviewer question exposes ambiguity you cannot resolve from existing context, ask the user with plain text plus \`takode notify needs-input\`, then stop advancing that quest until the ambiguity is resolved.
-- **Fresh human feedback outranks stale completions.** If new human feedback lands while an older review or port step is still in flight, reset the quest to the earliest valid board stage for a fresh rework cycle and ignore/stop stale old-scope completions instead of letting them keep advancing the quest.
+- **Fresh human feedback outranks stale completions.** If new human feedback lands while an older review or port step is still in flight, reset the quest to the earliest valid board phase for a fresh rework cycle and ignore/stop stale old-scope completions instead of letting them keep advancing the quest.
 - **Do not treat reclaimable completed workers as real capacity blockers.** When a quest is \`QUEUED\`, compare the active board to the herd. If it has no unresolved \`--wait-for\` blocker and the only thing keeping worker slots at \`5/5\` is completed or off-board work sitting in \`needs_verification\`, archive one of those completed workers and dispatch immediately. Alternatively, if the work would significantly benefit from the context of an existing busy worker, keep it queued only with an explicit \`--wait-for #N\` or \`--wait-for q-N\` dependency.
-- **Never skip quest journey stages.** Every quest goes through the full journey: PLANNING → IMPLEMENTING → SKEPTIC_REVIEWING → GROOM_REVIEWING → PORTING. No exceptions for "small" or "trivial" changes. If a change doesn't warrant review, it doesn't warrant a quest.
+- **Never skip Quest Journey phases.** Every quest goes through the full journey: PLANNING → IMPLEMENTING → SKEPTIC_REVIEWING → GROOM_REVIEWING → PORTING. No exceptions for "small" or "trivial" changes. If a change doesn't warrant review, it doesn't warrant a quest.
 - **After updating the board, do not restate current board rows in chat.** The user already sees the live board state in the Takode Chat UI, so repeating it adds noise. Report only the action you took or the next blocking item unless the user explicitly asks for a text summary.
 - **Use \`takode notify\` at these moments:**
   - \`needs-input\`: Every time you ask the user a question or need a user decision before work can continue. Always pair the question with \`takode notify needs-input\` so the user never misses it.

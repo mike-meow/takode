@@ -21,7 +21,7 @@ Read these files or invoke these skills when performing the corresponding operat
 | Workflow | When to use | Source |
 |----------|------------|--------|
 | **Dispatching work** | Before choosing a worker and sending a quest | Invoke `/leader-dispatch` |
-| **Quest Journey** | Advancing a quest through its lifecycle, including reviewer-owned groom review | [quest-journey.md](quest-journey.md) |
+| **Quest Journey** | Advancing a quest through its phase-based lifecycle, including reviewer-owned groom review | [quest-journey.md](quest-journey.md) |
 | **Work board** | Managing the quest board | [board-usage.md](board-usage.md) |
 
 ## Key Principles
@@ -29,16 +29,16 @@ Read these files or invoke these skills when performing the corresponding operat
 - **Quests are the unit of work.** Create a quest for any non-trivial task before dispatching.
 - **Never implement non-trivial changes yourself.** Leaders brainstorm, create quests, dispatch, steer, and review -- they do not write code. Investigation and research are also work to delegate.
 - **Never run `quest claim` yourself.** Workers claim quests when dispatched. Leaders coordinate, workers claim.
-- **Leaders do not become the quest owner for implementation work.** The worker doing the job claims and completes the quest; the leader only dispatches, reviews, and coordinates later stages.
+- **Leaders do not become the quest owner for implementation work.** The worker doing the job claims and completes the quest; the leader only dispatches, reviews, and coordinates later phase boundaries.
 - **Use `/quest-design` before quest creation/refinement.** Before creating a quest or refining an `idea` quest into worker-ready scope, invoke `/quest-design` and wait for user confirmation or correction. A user-approved plan that explicitly covers the quest text counts as this confirmation. Routine feedback, claims, completion, verification checks, board updates, and already-approved lifecycle transitions do not need another round.
 - **Before dispatching any quest, *ALWAYS* invoke `/leader-dispatch`.** The dispatch message to the worker must use the standardized template. Do not add extra context, file paths, or investigation instructions -- add any extra information into the quest itself before dispatching.
 - **Events are push-based.** Herd events arrive as `[Herd]` user messages when idle. No polling.
 - **Reference, don't relay.** Point to source messages instead of paraphrasing.
 - **Workers have the same tools you do.** Give them the quest ID; they run `quest show` themselves.
 - **One task at a time per worker.** Mid-task steering is fine; unrelated new tasks queue.
-- **User feedback triggers full rework.** When a user reports issues with a completed quest, record feedback, set the quest back to `refined`, and dispatch for a full quest journey. Never skip review steps for "small" fixes. New human feedback becomes the source of truth for that quest: reset the board to the earliest valid stage for the fresh cycle and do not let stale in-flight review/port completions from the older scope keep advancing it. See [quest-journey.md](quest-journey.md).
+- **User feedback triggers full rework.** When a user reports issues with a completed quest, record feedback, set the quest back to `refined`, and dispatch for a full quest journey. Never skip review steps for "small" fixes. New human feedback becomes the source of truth for that quest: reset the board to the earliest valid phase for the fresh cycle and do not let stale in-flight review/port completions from the older scope keep advancing it. See [quest-journey.md](quest-journey.md).
 - **Don't echo board state as prose.** `takode board` commands display the board in the terminal with a special UI, and the user already sees the live board state in the Takode Chat UI. Never repeat current board rows as markdown tables or summaries -- just run the command and move on unless the user explicitly asks for a text summary.
-- **Do not skip quest journey stages for git-tracked changes.** The normal lifecycle is PLANNING → IMPLEMENTING → SKEPTIC_REVIEWING → GROOM_REVIEWING → PORTING for code changes and for git-tracked docs, skills, prompts, templates, or other text-only edits. These tracked-file changes require normal review, porting, and `quest complete ... --commit/--commits` metadata after sync. The only explicit exception is a true zero-code quest with zero git-tracked changes that has passed skeptic review and was explicitly marked with `takode board set <quest-id> --no-code`; only then may leaders use `takode board advance-no-groom <quest-id>` to skip reviewer-groom and porting.
+- **Do not skip Quest Journey phases for git-tracked changes.** The built-in full-code Quest Journey is planning → implementation → skeptic review → reviewer-groom → porting, represented on the board as PLANNING → IMPLEMENTING → SKEPTIC_REVIEWING → GROOM_REVIEWING → PORTING. These tracked-file changes require normal review, porting, and `quest complete ... --commit/--commits` metadata after sync. The only explicit exception is a true zero-code quest with zero git-tracked changes that has passed skeptic review and was explicitly marked with `takode board set <quest-id> --no-code`; only then may leaders use `takode board advance-no-groom <quest-id>` to skip reviewer-groom and porting.
 - **Never use `AskUserQuestion` or `EnterPlanMode`.** These block your turn and prevent herd event processing. Ask clarifying questions in plain text output instead. Every time you ask the user a question, also call `takode notify needs-input` so the user never misses the leader's question.
 - **Use `takode notify` at these moments:** `needs-input` every time you ask the user a question or need a decision before work can continue, because that keeps the user from missing the leader's question; `review` only for significant non-quest deliverables that are ready for the user's eyes, not for quest completion.
 - **Prefer plain-text inspection by default.** When using `takode info`, `takode peek`, `takode scan`, or `quest show` to read for judgment, scanability, or general situational awareness, use the normal plain-text output first. It is usually more token-efficient and easier to reason about than `--json`.
@@ -86,7 +86,7 @@ Three distinct operations -- never confuse them:
 
 ## User Notifications
 
-Tie `takode notify` calls to Quest Journey events:
+Tie `takode notify` calls to Quest Journey phase events:
 - **`takode notify needs-input "need decision on auth approach for q-42"`**: every time you ask the user a question or need a decision before work can continue. Always pair the question with `takode notify needs-input` so the user never misses the leader's question.
 - **Do not call `takode notify review` for quest completion**: when a work board item is completed, Takode already fires the review notification automatically. Sending another one creates duplicate quest-completion notifications.
 
@@ -395,7 +395,7 @@ When referencing sessions, use session numbers (`#107`) which are stable -- name
 
 A `✗ disconnected` session just means its CLI process was killed (usually by the idle manager). The session history, worktree, and quest claim are fully intact. **Do not avoid disconnected sessions** -- if one is the right fit for a task, use it. `takode send` auto-relaunches the CLI before delivering the message, so no extra reconnect step is needed.
 
-If a quest is still active on the board and its worker or reviewer is `idle` or `disconnected`, treat that as a potential stall signal rather than an automatic wait state. Check the quest stage and send the next legal instruction if progress has stalled; `takode send` will auto-relaunch disconnected sessions. Idle or disconnected sessions with active timers may still be healthy, so use timer visibility in `takode` outputs as part of that judgment rather than assuming every idle/disconnected row is stalled.
+If a quest is still active on the board and its worker or reviewer is `idle` or `disconnected`, treat that as a potential stall signal rather than an automatic wait state. Check the quest phase and send the next legal instruction if progress has stalled; `takode send` will auto-relaunch disconnected sessions. Idle or disconnected sessions with active timers may still be healthy, so use timer visibility in `takode` outputs as part of that judgment rather than assuming every idle/disconnected row is stalled.
 
 ## Archiving Sessions
 
@@ -409,7 +409,7 @@ Maintain at most **5 worker slots** in your herd. Reviewers can be herded for ro
 - **Mixed backends work seamlessly.** The `takode` CLI talks to the Companion server, not to any backend directly. You can orchestrate both Claude Code and Codex sessions from either backend.
 - **Coordinate with quests.** Use the `quest` CLI alongside `takode` for task tracking. Always create a quest for non-trivial work before dispatching.
 - **Board immediately.** When you intend to manage a quest (dispatch, review, port), put it on the work board right away (`takode board set`), even if it's QUEUED with `--wait-for`. The board is the tracking mechanism -- never rely on memory for follow-up dispatch. Exception: if the user only asked you to create/file the quest without dispatching, just create it and wait for their go-ahead.
-- **Reconcile active rows after restarts/context reloads.** After a server restart, context compaction, or any manual state refresh, immediately compare `takode board show` and `takode list`. If an active board row has an `idle` or `disconnected` worker/reviewer, decide whether the quest is genuinely waiting or whether you need to send the next-stage instruction now.
+- **Reconcile active rows after restarts/context reloads.** After a server restart, context compaction, or any manual state refresh, immediately compare `takode board show` and `takode list`. If an active board row has an `idle` or `disconnected` worker/reviewer, decide whether the quest is genuinely waiting or whether you need to send the next-phase instruction now.
 - **Batch related messages.** If you need to send context + instructions to a worker, send it as one message rather than multiple.
 - **Don't interrupt idle workers.** `takode interrupt` halts the worker's current turn. Only use it to redirect active work. Workers that finished a quest are already idle -- don't interrupt them unnecessarily.
 - **Say "interrupt", not "stop".** When communicating with the user, prefer "interrupt" over "stop" to avoid confusion with archiving. "Interrupted #5" is unambiguous; "stopped #5" could imply the session was shut down.

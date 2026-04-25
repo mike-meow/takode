@@ -21,6 +21,22 @@ describe("boardSummary", () => {
     expect(boardSummary(board, 0)).toEqual([{ text: "2 Executing Plan", className: "text-green-400" }]);
   });
 
+  it("summarises current Quest Journey phases when phase bookkeeping exists", () => {
+    const board: BoardRowData[] = [
+      {
+        questId: "q-1",
+        status: "IMPLEMENTING",
+        journey: {
+          presetId: "full-code",
+          phaseIds: ["planning", "implementation", "skeptic-review", "reviewer-groom", "porting"],
+          currentPhaseId: "implementation",
+        },
+        updatedAt: 1,
+      },
+    ];
+    expect(boardSummary(board, 0)).toEqual([{ text: "1 Implementation", className: "text-green-400" }]);
+  });
+
   it("summarises multiple statuses with distinct colors", () => {
     const board: BoardRowData[] = [
       { questId: "q-1", status: "PORTING", updatedAt: 1 },

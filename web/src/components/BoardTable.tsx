@@ -11,8 +11,10 @@ import { navigateToSession } from "../utils/routing.js";
 import {
   QUEST_JOURNEY_STATES,
   formatWaitForRefLabel,
+  getQuestJourneyPhase,
   getQuestJourneyPresentation,
   getWaitForRefKind,
+  type QuestJourneyPlanState,
 } from "../../shared/quest-journey.js";
 import { QuestHoverCard } from "./QuestHoverCard.js";
 import { SessionHoverCard } from "./SessionHoverCard.js";
@@ -24,6 +26,7 @@ export interface BoardRowData {
   title?: string;
   worker?: string;
   workerNum?: number;
+  journey?: QuestJourneyPlanState;
   status?: string;
   waitFor?: string[];
   createdAt?: number;
@@ -335,13 +338,19 @@ function WaitForRef({ depRef }: { depRef: string }) {
   return <span className="text-cc-muted">{formatWaitForRefLabel(depRef)}</span>;
 }
 
-function StatusCell({ status }: { status?: string }) {
+function StatusCell({ row }: { row: BoardRowData }) {
+  const status = row.status;
   if (!status) return <span className="text-cc-muted">{"\u2014"}</span>;
 
   const presentation = getQuestJourneyPresentation(status);
+  const currentPhase = getQuestJourneyPhase(row.journey?.currentPhaseId);
+  const plannedPhases = row.journey?.phaseIds.map((phaseId) => getQuestJourneyPhase(phaseId)?.label ?? phaseId);
+  const title = plannedPhases?.length
+    ? `Quest Journey phases: ${plannedPhases.join(" -> ")}${currentPhase ? `; current phase: ${currentPhase.label}` : ""}`
+    : undefined;
   return (
-    <span className={`block max-w-full truncate ${presentation?.textClassName ?? "text-cc-muted"}`}>
-      {presentation?.label ?? status}
+    <span title={title} className={`block max-w-full truncate ${presentation?.textClassName ?? "text-cc-muted"}`}>
+      {currentPhase?.label ?? presentation?.label ?? status}
     </span>
   );
 }
@@ -389,7 +398,7 @@ export const BoardTable = memo(function BoardTable({
                 )}
               </td>
               <td className="px-3 py-1.5 max-w-[250px]">
-                <StatusCell status={row.status} />
+                <StatusCell row={row} />
               </td>
               <td className="px-3 py-1.5 text-cc-fg max-w-[200px] truncate">{row.title || "\u2014"}</td>
               <td className="px-3 py-1.5 whitespace-nowrap">

@@ -3,9 +3,14 @@ import {
   FREE_WORKER_WAIT_FOR_TOKEN,
   formatQuestJourneyText,
   formatWaitForRefLabel,
+  getQuestJourneyPhase,
+  getQuestJourneyPhaseForState,
   getWaitForRefKind,
   isValidQuestId,
   isValidWaitForRef,
+  normalizeQuestJourneyPlan,
+  QUEST_JOURNEY_PHASES,
+  DEFAULT_QUEST_JOURNEY_PHASE_IDS,
   QUEST_JOURNEY_HINTS,
 } from "./quest-journey.js";
 
@@ -74,5 +79,49 @@ describe("QUEST_JOURNEY_HINTS", () => {
   it("documents the explicit no-code skip-groom path at skeptic review", () => {
     expect(QUEST_JOURNEY_HINTS.SKEPTIC_REVIEWING).toContain("advance-no-groom");
     expect(QUEST_JOURNEY_HINTS.SKEPTIC_REVIEWING).toContain("explicitly marked");
+  });
+});
+
+describe("Quest Journey phases", () => {
+  it("represents the existing fixed journey as built-in phases without human verification", () => {
+    expect(DEFAULT_QUEST_JOURNEY_PHASE_IDS).toEqual([
+      "planning",
+      "implementation",
+      "skeptic-review",
+      "reviewer-groom",
+      "porting",
+    ]);
+    expect(QUEST_JOURNEY_PHASES.map((phase) => phase.skill)).toEqual([
+      "quest-journey-planning",
+      "quest-journey-implementation",
+      "quest-journey-skeptic-review",
+      "quest-journey-reviewer-groom",
+      "quest-journey-porting",
+    ]);
+    expect(QUEST_JOURNEY_PHASES.map((phase) => phase.id)).not.toContain("human-verification");
+  });
+
+  it("maps board states to current phases and next leader actions", () => {
+    expect(getQuestJourneyPhaseForState("IMPLEMENTING")?.id).toBe("implementation");
+    expect(getQuestJourneyPhase("reviewer-groom")?.state).toBe("GROOM_REVIEWING");
+    expect(normalizeQuestJourneyPlan(undefined, "PORTING")).toEqual(
+      expect.objectContaining({
+        phaseIds: DEFAULT_QUEST_JOURNEY_PHASE_IDS,
+        currentPhaseId: "porting",
+        nextLeaderAction: expect.stringContaining("port confirmation"),
+      }),
+    );
+  });
+
+  it("keeps custom planned phases while deriving the current phase from board state", () => {
+    expect(
+      normalizeQuestJourneyPlan({ presetId: "lightweight", phaseIds: ["planning", "implementation"] }, "PLANNING"),
+    ).toEqual(
+      expect.objectContaining({
+        presetId: "lightweight",
+        phaseIds: ["planning", "implementation"],
+        currentPhaseId: "planning",
+      }),
+    );
   });
 });

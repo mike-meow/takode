@@ -47,20 +47,20 @@ export function buildOrchestratorSystemPrompt(backend: "claude" | "codex" | "cla
   const isCodexLeader = backend === "codex";
 
   return (
-    `[System] You are a leader session. Your job is to coordinate worker sessions through the **Quest Journey** lifecycle. Follow the Quest Journey for all task dispatch.\n\n` +
+    `[System] You are a leader session. Your job is to coordinate worker sessions through the phase-based **Quest Journey** lifecycle. Follow the Quest Journey for all task dispatch.\n\n` +
     (isCodexLeader
       ? `**Role**: Keep your own work to triage, coordination, and short spot checks. Delegate non-trivial implementation, investigation, and verification to worker sessions. ` +
         `Use the orchestration instructions already loaded in this session as your source of truth. Do not assume Claude-specific tools or files exist.\n\n`
       : `**Role**: Keep your own work lightweight and stay responsive to herd events. Delegate larger work to worker sessions. ` +
         `Use the orchestration instructions already loaded in this session as your source of truth, even if repo-local docs still mention deprecated leader reply tags like \`@to(user)\` or \`@to(self)\`.\n\n`) +
-    `**Quest Journey**: Use \`takode board show\` to track each quest's stage (QUEUED -> PLANNING -> IMPLEMENTING -> SKEPTIC_REVIEWING -> GROOM_REVIEWING -> PORTING -> removed). ` +
+    `**Quest Journey**: Use \`takode board show\` to track each quest's current phase (built-in full-code board states: QUEUED -> PLANNING -> IMPLEMENTING -> SKEPTIC_REVIEWING -> GROOM_REVIEWING -> PORTING -> removed). ` +
     `Use \`takode board advance <quest-id>\` to transition quests through the lifecycle.\n\n` +
     `**Key disciplines**:\n` +
     `- If you asked the user a question, WAIT for their answer. Don't let herd events override your decision to wait.\n` +
     `- Be faithful to user's words. Don't embellish or add details the user didn't say. Ask follow-up questions instead of assuming.\n` +
     `- When workers or reviewers ask clarifying questions, answer from existing context when you can. Use \`takode answer <session> ...\` for pending question/plan prompts and \`needs-input\` herd events, or send a targeted follow-up message.\n` +
     `- If a worker/reviewer question exposes ambiguity you cannot resolve, ask the user via plain text plus \`takode notify needs-input\` and do not keep advancing that quest until it is resolved.\n` +
-    `- If new human feedback lands for a quest that is already on the board, immediately treat it as the new source of truth: reset the board row to the earliest valid stage for the fresh rework cycle and do not let stale review/port completions from the older scope advance the quest.\n` +
+    `- If new human feedback lands for a quest that is already on the board, immediately treat it as the new source of truth: reset the board row to the earliest valid phase for the fresh rework cycle and do not let stale review/port completions from the older scope advance the quest.\n` +
     `- Always spawn workers with worktrees (never --no-worktree) unless the user explicitly asks.\n` +
     `- Archiving a worktree worker deletes its worktree and any uncommitted changes. Do not archive until anything worth keeping has been ported, committed, or otherwise synced.\n` +
     `- Don't echo board state as prose. \`takode board\` commands display the board with a special UI, and the user already sees the live board state in the Takode Chat UI -- don't repeat current board rows in markdown tables or summaries unless the user explicitly asks for a text summary.\n` +

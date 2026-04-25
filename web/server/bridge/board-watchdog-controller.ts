@@ -1,7 +1,11 @@
 import {
+  DEFAULT_QUEST_JOURNEY_PHASE_IDS,
   FREE_WORKER_WAIT_FOR_TOKEN,
   formatWaitForRefLabel,
+  getQuestJourneyPhase,
+  getQuestJourneyPhaseForState,
   getWaitForRefKind,
+  normalizeQuestJourneyPlan,
   type BoardQueueWarning,
 } from "../../shared/quest-journey.js";
 import { HERD_WORKER_SLOT_LIMIT } from "../../shared/takode-constants.js";
@@ -220,13 +224,16 @@ export function upsertBoardRow(
     incoming !== undefined ? incoming || undefined : prior;
   const clearingWorker = row.worker !== undefined && !row.worker;
   const now = Date.now();
+  const status = mergeStr(row.status, existing?.status);
+  const baseJourney = row.journey ?? existing?.journey;
   const merged: BoardRow = {
     questId: row.questId,
     title: mergeStr(row.title, existing?.title),
     worker: mergeStr(row.worker, existing?.worker),
     workerNum: clearingWorker ? undefined : (row.workerNum ?? existing?.workerNum),
     noCode: row.noCode !== undefined ? row.noCode : existing?.noCode,
-    status: mergeStr(row.status, existing?.status),
+    journey: normalizeQuestJourneyPlan(baseJourney, status),
+    status,
     waitFor: row.waitFor !== undefined ? (row.waitFor.length > 0 ? row.waitFor : undefined) : existing?.waitFor,
     createdAt: existing?.createdAt ?? now,
     updatedAt: row.updatedAt ?? now,
@@ -310,6 +317,38 @@ export function advanceBoardRow(
 
   const currentIdx = states.indexOf(row.status ?? "");
   const previousState = row.status;
+  const plannedPhaseIds = row.journey?.phaseIds?.length ? row.journey.phaseIds : DEFAULT_QUEST_JOURNEY_PHASE_IDS;
+  const currentPhaseId =
+    row.journey?.currentPhaseId && plannedPhaseIds.includes(row.journey.currentPhaseId)
+      ? row.journey.currentPhaseId
+      : getQuestJourneyPhaseForState(row.status)?.id;
+  const currentPhaseIdx = currentPhaseId ? plannedPhaseIds.indexOf(currentPhaseId) : -1;
+
+  if (currentPhaseIdx >= 0 && currentPhaseIdx >= plannedPhaseIds.length - 1) {
+    const { board } = completeBoardRow(session, questId, deps);
+    return { board, removed: true, previousState, newState: undefined };
+  }
+
+  if (row.status === "QUEUED" || currentPhaseIdx >= 0) {
+    const nextPhaseId = plannedPhaseIds[currentPhaseIdx + 1] ?? plannedPhaseIds[0];
+    const nextPhase = getQuestJourneyPhase(nextPhaseId);
+    if (nextPhase) {
+      row.status = nextPhase.state;
+      row.journey = normalizeQuestJourneyPlan(
+        {
+          presetId: row.journey?.presetId,
+          phaseIds: plannedPhaseIds,
+          currentPhaseId: nextPhase.id,
+        },
+        nextPhase.state,
+      );
+      if (row.status !== "QUEUED") row.waitFor = undefined;
+      row.updatedAt = Date.now();
+      session.board.set(questId, row);
+      const board = commitBoard(session, deps);
+      return { board, removed: false, previousState, newState: row.status };
+    }
+  }
 
   if (currentIdx >= states.length - 1) {
     const { board } = completeBoardRow(session, questId, deps);
@@ -317,6 +356,7 @@ export function advanceBoardRow(
   }
 
   row.status = currentIdx === -1 ? states[0] : states[currentIdx + 1];
+  row.journey = normalizeQuestJourneyPlan(row.journey, row.status);
   if (row.status !== "QUEUED") row.waitFor = undefined;
   row.updatedAt = Date.now();
   session.board.set(questId, row);
@@ -631,7 +671,7 @@ function buildQueuedBoardWarning(
     title,
     kind: "dispatchable",
     summary,
-    action: "Dispatch it now or replace QUEUED with the next active board stage.",
+    action: "Dispatch it now or replace QUEUED with the next active Quest Journey phase.",
   };
 }
 

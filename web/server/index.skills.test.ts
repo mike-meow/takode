@@ -20,6 +20,11 @@ describe("index startup skill registration", () => {
     expect(registered).not.toContain("cron-scheduling");
     expect(registered).toContain("takode-orchestration");
     expect(registered).toContain("leader-dispatch");
+    expect(registered).toContain("quest-journey-planning");
+    expect(registered).toContain("quest-journey-implementation");
+    expect(registered).toContain("quest-journey-skeptic-review");
+    expect(registered).toContain("quest-journey-reviewer-groom");
+    expect(registered).toContain("quest-journey-porting");
     expect(registered).toContain("self-groom");
     expect(registered).toContain("reviewer-groom");
     expect(registered).toContain("skeptic-review");

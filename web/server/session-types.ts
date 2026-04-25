@@ -428,7 +428,7 @@ export type BrowserOutgoingMessage =
 
 // Quest Journey state machine -- canonical source in shared/quest-journey.ts
 export { QUEST_JOURNEY_STATES, QUEST_JOURNEY_HINTS } from "../shared/quest-journey.js";
-export type { QuestJourneyState } from "../shared/quest-journey.js";
+export type { QuestJourneyPlanState, QuestJourneyState } from "../shared/quest-journey.js";
 
 /** A single row on the leader's work board. */
 export interface BoardRow {
@@ -441,7 +441,9 @@ export interface BoardRow {
   workerNum?: number;
   /** True when the leader explicitly marked this row as a zero-code / no-code quest. */
   noCode?: boolean;
-  /** Quest Journey state -- each state = a leader action that just happened. */
+  /** Active Quest Journey phase plan for this board row. */
+  journey?: import("../shared/quest-journey.js").QuestJourneyPlanState;
+  /** Legacy board state for compatibility; derived from the current Quest Journey phase. */
   status?: string;
   /** Quest IDs (q-N) or session numbers (#N) this quest is blocked on. */
   waitFor?: string[];
