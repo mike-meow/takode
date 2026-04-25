@@ -248,8 +248,8 @@ export function TreeViewGroup({
     );
   }
 
-  /** Count worker sessions by visual status for the herd summary bar. */
-  function computeWorkerSummary(workers: SessionItemType[]): StatusCounts {
+  /** Count child sessions by visual status for the herd summary bar. */
+  function computeChildSessionSummary(sessions: SessionItemType[]): StatusCounts {
     let running = 0;
     let permission = 0;
     let unread = 0;
@@ -269,21 +269,27 @@ export function TreeViewGroup({
       else if (status === "permission") permission++;
       else if (status === "completed_unread") unread++;
     };
-    for (const w of workers) countSession(w);
+    for (const session of sessions) countSession(session);
     return { running, permission, unread };
   }
 
   function renderTreeNode(node: TreeNode) {
     const hasWorkers = node.workers.length > 0;
     const hasReviewersOnly = !hasWorkers && node.reviewers.length > 0;
-    const workerSummary = hasWorkers ? computeWorkerSummary(node.workers) : undefined;
+    const childSessions = hasWorkers ? [...node.workers, ...node.reviewers] : [];
+    const childSummary = hasWorkers ? computeChildSessionSummary(childSessions) : undefined;
 
     // Herded nodes (leader with workers): collapsible container pattern
     if (hasWorkers) {
       const isExpanded = expandedHerdNodes.has(node.leader.id);
-      const totalMembers = node.workers.length;
-      const idleCount = totalMembers - (workerSummary!.running + workerSummary!.permission + workerSummary!.unread);
+      const totalMembers = childSessions.length;
+      const idleCount = totalMembers - (childSummary!.running + childSummary!.permission + childSummary!.unread);
       const leaderReviewer = node.reviewers.find((r) => r.reviewerOf === node.leader.sessionNum);
+      const reviewerCount = node.reviewers.length;
+      const memberLabel =
+        reviewerCount > 0
+          ? `${node.workers.length} worker${node.workers.length !== 1 ? "s" : ""}, ${reviewerCount} reviewer${reviewerCount !== 1 ? "s" : ""}`
+          : `${node.workers.length} worker${node.workers.length !== 1 ? "s" : ""}`;
 
       return (
         <div
@@ -295,18 +301,17 @@ export function TreeViewGroup({
 
           {/* Herd summary bar -- always visible, toggles expand/collapse */}
           <button
+            data-testid={`herd-summary-${node.leader.id}`}
             onClick={(e) => {
               e.stopPropagation();
               toggleHerdNodeExpand(node.leader.id);
             }}
             className="w-full flex items-center gap-1.5 px-3 py-1 border-t border-cc-border/30 text-[10px] text-cc-muted hover:bg-cc-hover/50 transition-colors cursor-pointer"
-            title={isExpanded ? "Collapse workers" : "Expand workers"}
+            title={isExpanded ? "Collapse sessions" : "Expand sessions"}
           >
-            <span className="text-cc-muted/50 shrink-0">
-              {node.workers.length} worker{node.workers.length !== 1 ? "s" : ""}
-            </span>
+            <span className="text-cc-muted/50 shrink-0">{memberLabel}</span>
             <span className="ml-auto flex items-center gap-1.5">
-              <StatusCountDots counts={workerSummary!} />
+              <StatusCountDots counts={childSummary!} />
               {idleCount > 0 && (
                 <span className="flex items-center gap-0.5 text-cc-muted/50">
                   {idleCount}

@@ -1487,6 +1487,60 @@ describe("Sidebar", { timeout: 10000 }, () => {
     expect(greenDots.length).toBeGreaterThanOrEqual(1);
   });
 
+  it("leader herd summary includes reviewers in counts and status dots", () => {
+    // Regression coverage for the compact leader card summary: reviewer
+    // sessions are rendered as inline chips, but their count and live status
+    // still need to be visible in the always-shown herd summary row.
+    const leaderSession = makeSession("leader-1", { cwd: "/home/user/myapp" });
+    const workerSession = makeSession("worker-1", { cwd: "/home/user/myapp" });
+    const reviewerSession = makeSession("reviewer-1", { cwd: "/home/user/myapp" });
+    const leaderSdk = makeSdkSession("leader-1", {
+      isOrchestrator: true,
+      sessionNum: 10,
+      cwd: "/home/user/myapp",
+      createdAt: 1700000000000,
+    });
+    const workerSdk = makeSdkSession("worker-1", {
+      herdedBy: "leader-1",
+      sessionNum: 11,
+      cwd: "/home/user/myapp",
+      createdAt: 1700000001000,
+    });
+    const reviewerSdk = makeSdkSession("reviewer-1", {
+      reviewerOf: 11,
+      sessionNum: 12,
+      cwd: "/home/user/myapp",
+      createdAt: 1700000002000,
+    });
+    mockState = createMockState({
+      sessions: new Map([
+        ["leader-1", leaderSession],
+        ["worker-1", workerSession],
+        ["reviewer-1", reviewerSession],
+      ]),
+      sdkSessions: [leaderSdk, workerSdk, reviewerSdk],
+      sessionNames: new Map([
+        ["leader-1", "Leader Session"],
+        ["worker-1", "Worker Session"],
+        ["reviewer-1", "Reviewer Session"],
+      ]),
+      sessionStatus: new Map([["reviewer-1", "running"]]),
+      cliConnected: new Map([["reviewer-1", true]]),
+      treeGroups: [{ id: "team-alpha", name: "Takode" }],
+      treeAssignments: new Map([["leader-1", "team-alpha"]]),
+    });
+
+    render(<Sidebar />);
+
+    const summary = screen.getByTestId("herd-summary-leader-1");
+    expect(within(summary).getByText("1 worker, 1 reviewer")).toBeInTheDocument();
+    const runningIndicator = Array.from(summary.querySelectorAll(".text-cc-success")).find(
+      (el) => el.textContent?.trim() === "1",
+    );
+    expect(runningIndicator).toBeTruthy();
+    expect(runningIndicator?.querySelector(".bg-cc-success.rounded-full")).toBeInTheDocument();
+  });
+
   it("collapsing a tree group hides its sessions", () => {
     const session = makeSession("s1", { cwd: "/home/user/myapp", model: "hidden-model" });
     const sdk = makeSdkSession("s1", { cwd: "/home/user/myapp" });
