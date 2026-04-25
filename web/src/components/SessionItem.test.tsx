@@ -811,12 +811,11 @@ describe("SessionItem rename input", () => {
     expect(onConfirmRename).not.toHaveBeenCalled();
   });
 
-  // Bug fix: double-click rename flashed away because the onBlur fired
-  // before the useEffect could focus the input (mouseup blur race).
-  it("ignores blur events immediately after entering edit mode", () => {
+  // Blur on the rename input should confirm the rename (user clicked away).
+  // The double-click flash-away bug is fixed at the Sidebar level by skipping
+  // focusComposer when a rename is active (editingSessionIdRef guard).
+  it("confirms rename on blur", () => {
     const onConfirmRename = vi.fn();
-    // Render with editing already active (simulates the state right after
-    // double-click sets editingSessionId).
     renderSessionItem({
       editingSessionId: "s1",
       editingName: "hello",
@@ -826,10 +825,9 @@ describe("SessionItem rename input", () => {
     });
 
     const input = screen.getByDisplayValue("hello");
-    // Fire blur immediately — within the 200ms grace window
     fireEvent.blur(input);
 
-    expect(onConfirmRename).not.toHaveBeenCalled();
+    expect(onConfirmRename).toHaveBeenCalled();
   });
 
   it("confirms rename on Enter key", () => {
