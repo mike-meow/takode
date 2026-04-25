@@ -907,7 +907,7 @@ describe("Codex resumed-turn recovery", () => {
     }
   });
 
-  it("finalizes older connected bash tools once a later tool completes", async () => {
+  it("finalizes older connected bash tools once a later tool completes after the watchdog window", async () => {
     vi.useFakeTimers();
     try {
       const sid = "s-connected-tool-superseded";
@@ -960,6 +960,9 @@ describe("Codex resumed-turn recovery", () => {
 
       browser.send.mockClear();
       vi.advanceTimersByTime(1000);
+      // Superseded tools are only orphan-finalized after the normal recovery
+      // window; fresh earlier tools may still be running or have delayed results.
+      bridge.getSession(sid)!.toolStartTimes.set("cmd_old", Date.now() - 121_000);
 
       adapter.emitBrowserMessage({
         type: "assistant",
@@ -1074,7 +1077,7 @@ describe("Codex resumed-turn recovery", () => {
     expect(bridge.getSession(sid)?.toolStartTimes.has("cmd_silent")).toBe(false);
   });
 
-  it("prefers retained terminal transcript when superseded codex bash tool lacks a final result", async () => {
+  it("prefers retained terminal transcript when aged superseded codex bash tool lacks a final result", async () => {
     const sid = "s-superseded-terminal-transcript";
     const adapter = makeCodexAdapterMock();
     bridge.attachCodexAdapter(sid, adapter as any);
@@ -1137,7 +1140,9 @@ describe("Codex resumed-turn recovery", () => {
       timestamp: Date.now(),
       tool_start_times: { cmd_new: Date.now() },
     });
-    bridge.getSession(sid)!.toolStartTimes.set("cmd_old", Date.now() - 1_000);
+    // Keep the retained transcript path covered while matching production
+    // recovery semantics: superseded finalization only runs after the watchdog age.
+    bridge.getSession(sid)!.toolStartTimes.set("cmd_old", Date.now() - 121_000);
     bridge.getSession(sid)!.toolStartTimes.set("cmd_new", Date.now());
 
     browser.send.mockClear();

@@ -563,6 +563,11 @@ export async function sendHistorySync(
 ): Promise<void> {
   const synced = await sendHistorySyncAttempt(session, ws, knownFrozenCount, knownFrozenHash);
   if (!synced && knownFrozenCount > 0) {
+    console.warn(
+      `[history-sync] Falling back to full history sync for session ${sessionTag(session.id)} ` +
+        `(knownFrozenCount=${normalizeKnownFrozenCount(knownFrozenCount)}, ` +
+        `serverHistoryLength=${session.messageHistory.length}, frozenCount=${session.frozenCount})`,
+    );
     await sendHistorySyncAttempt(session, ws, 0, undefined);
   }
 }
@@ -581,7 +586,8 @@ async function sendHistorySyncAttempt(
   if (normalizedKnownFrozenCount > frozenPrefix.renderedCount) {
     console.warn(
       `[history-sync] Invalid known_frozen_count=${normalizedKnownFrozenCount} ` +
-        `for session ${sessionTag(session.id)} authoritativeFrozen=${frozenPrefix.renderedCount}; refusing sync`,
+        `for session ${sessionTag(session.id)} authoritativeFrozen=${frozenPrefix.renderedCount} ` +
+        `serverHistoryLength=${session.messageHistory.length} frozenCount=${frozenCount}; refusing incremental sync`,
     );
     return false;
   }
@@ -591,7 +597,9 @@ async function sendHistorySyncAttempt(
     if (expectedPrefix.hash !== knownFrozenHash) {
       console.warn(
         `[history-sync] Frozen prefix hash mismatch for session ${sessionTag(session.id)} ` +
-          `(count=${normalizedKnownFrozenCount}) expected=${expectedPrefix.hash} actual=${knownFrozenHash}; refusing sync`,
+          `(count=${normalizedKnownFrozenCount}, authoritativeFrozen=${frozenPrefix.renderedCount}, ` +
+          `serverHistoryLength=${session.messageHistory.length}, frozenCount=${frozenCount}) ` +
+          `expected=${expectedPrefix.hash} actual=${knownFrozenHash}; refusing incremental sync`,
       );
       return false;
     }

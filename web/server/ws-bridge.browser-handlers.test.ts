@@ -1020,6 +1020,7 @@ describe("Browser handlers", () => {
     expect(historySync.frozen_base_count).toBe(0);
     // The mismatch/invalid-count warning should still be logged
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("[history-sync]"));
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Falling back to full history sync"));
     expect(calls.some((c: any) => c.type === "state_snapshot")).toBe(true);
     warnSpy.mockRestore();
   });
@@ -1104,6 +1105,7 @@ describe("Browser handlers", () => {
     expect(historySync).toBeDefined();
     expect(historySync.frozen_base_count).toBe(0);
     expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("[history-sync]"));
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("Falling back to full history sync"));
     expect(calls.some((c: any) => c.type === "state_snapshot")).toBe(true);
     warnSpy.mockRestore();
   });

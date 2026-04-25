@@ -102,6 +102,7 @@ export function emitSyntheticToolResultPreview(
   const totalSize = Buffer.byteLength(content, "utf-8");
   const isTruncated = content.length > previewLimit;
   const startedAt = session.toolStartTimes.get(toolUseId);
+  const ageMs = startedAt != null ? Math.max(0, Date.now() - startedAt) : undefined;
   const durationSeconds = startedAt != null ? Math.round((Date.now() - startedAt) / 100) / 10 : undefined;
   session.toolStartTimes.delete(toolUseId);
   session.toolProgressOutput.delete(toolUseId);
@@ -127,7 +128,8 @@ export function emitSyntheticToolResultPreview(
   deps.broadcastToBrowsers(session, browserMsg);
   deps.persistSession(session);
   console.warn(
-    `[ws-bridge] Synthesized tool_result_preview for orphaned tool ${toolUseId} in session ${sessionTag(session.id)} (${reason})`,
+    `[ws-bridge] Synthesized tool_result_preview for orphaned tool ${toolUseId} in session ${sessionTag(session.id)} ` +
+      `(${reason}; ageMs=${ageMs ?? "unknown"}; bytes=${totalSize}; retainedOutput=${retainedOutput ? "yes" : "no"})`,
   );
 }
 export function finalizeSupersededCodexTerminalTools(
@@ -139,9 +141,11 @@ export function finalizeSupersededCodexTerminalTools(
   if (completedToolStartTimes.length === 0) return;
 
   const newestCompletedToolStart = Math.max(...completedToolStartTimes);
+  const now = Date.now();
   for (const [toolUseId, startedAt] of [...session.toolStartTimes.entries()]) {
     if (!(startedAt < newestCompletedToolStart)) continue;
     if (getToolUseNameInHistory(session, toolUseId) !== "Bash") continue;
+    if (now - startedAt < deps.codexToolResultWatchdogMs) continue;
     emitSyntheticToolResultPreview(
       session,
       toolUseId,
