@@ -880,12 +880,12 @@ async function cmdClaim(): Promise<void> {
 }
 
 async function cmdComplete(): Promise<void> {
-  validateFlags(["items", "items-file", "commit", "commits", "no-code", "json"]);
+  validateFlags(["items", "items-file", "commit", "commits", "no-code", "session", "json"]);
   const id = positional(0);
   if (!id) {
     die(
       'Usage: quest complete <questId> [--items "check1,check2" | --items-file <path>|-] ' +
-        '[--no-code] [--commit <sha>] [--commits "sha1,sha2"]',
+        '[--no-code] [--session <sid>] [--commit <sha>] [--commits "sha1,sha2"]',
     );
   }
 
@@ -904,6 +904,10 @@ async function cmdComplete(): Promise<void> {
   const itemsFile = option("items-file");
   if (inlineItems !== undefined && itemsFile !== undefined) {
     die("Use either --items or --items-file, not both");
+  }
+  const targetSessionId = option("session")?.trim();
+  if (flag("session") && !targetSessionId) {
+    die("--session requires a session id");
   }
 
   let items: { text: string; checked: boolean }[] = [];
@@ -933,6 +937,7 @@ async function cmdComplete(): Promise<void> {
         headers: companionAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           verificationItems: items,
+          ...(targetSessionId ? { sessionId: targetSessionId } : {}),
           ...(commitShas.length > 0 ? { commitShas } : {}),
         }),
         signal: AbortSignal.timeout(5000),
@@ -960,7 +965,13 @@ async function cmdComplete(): Promise<void> {
 
   // Fallback: direct filesystem (no browser notification)
   try {
-    const quest = await completeQuest(id, items, commitShas.length > 0 ? { commitShas } : undefined);
+    const quest = await completeQuest(
+      id,
+      items,
+      commitShas.length > 0 || targetSessionId
+        ? { commitShas, ...(targetSessionId ? { sessionId: targetSessionId } : {}) }
+        : undefined,
+    );
     if (!quest) die(`Quest ${id} not found`);
     await notifyServer();
     if (jsonOutput) {
@@ -1505,7 +1516,7 @@ Commands:
   create [<title> | --title "..." | --title-file <path>|-] [--desc "..." | --desc-file <path>|-] [--tags "t1,t2"] [--image <path>] [--images "p1,p2"] [--json]
                                                          Create a quest
   claim  <id> [--session <sid>] [--json]                 Claim for session
-  complete <id> [--items "c1,c2" | --items-file <path>|-] [--commit <sha>] [--commits "s1,s2"] [--json]
+  complete <id> [--items "c1,c2" | --items-file <path>|-] [--session <sid>] [--commit <sha>] [--commits "s1,s2"] [--json]
                                                          Submit for verification
   done   <id> [--notes "..." | --notes-file <path>|-] [--cancelled] [--json]
                                                          Mark as done/cancelled

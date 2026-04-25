@@ -778,3 +778,85 @@ describe("POST /api/quests/:questId/claim", () => {
     ).toHaveLength(1);
   });
 });
+
+describe("POST /api/quests/:questId/complete", () => {
+  function companionAuthHeaders(sessionId: string, token: string): Record<string, string> {
+    return {
+      "x-companion-session-id": sessionId,
+      "x-companion-auth-token": token,
+      "Content-Type": "application/json",
+    };
+  }
+
+  it("allows an authenticated leader to complete on behalf of a worker session", async () => {
+    vi.spyOn(questStore, "completeQuest").mockResolvedValueOnce({
+      id: "q-1-v4",
+      questId: "q-1",
+      title: "Quest",
+      status: "needs_verification",
+      sessionId: "worker-1",
+      createdAt: Date.now(),
+      claimedAt: Date.now(),
+      description: "Ready",
+      verificationItems: [{ text: "Verify handoff", checked: false }],
+      verificationInboxUnread: true,
+    } as any);
+    launcher.getSession.mockImplementation((sid: string) => {
+      if (sid === "leader-1") {
+        return { sessionId: "leader-1", state: "running", cwd: "/test", archived: false, isOrchestrator: true };
+      }
+      if (sid === "worker-1") {
+        return { sessionId: "worker-1", state: "running", cwd: "/test", archived: false };
+      }
+      return undefined;
+    });
+    launcher.verifySessionAuthToken.mockImplementation(
+      (sid: string, token: string) => sid === "leader-1" && token === "leader-token",
+    );
+
+    const res = await app.request("/api/quests/q-1/complete", {
+      method: "POST",
+      headers: companionAuthHeaders("leader-1", "leader-token"),
+      body: JSON.stringify({
+        sessionId: "worker-1",
+        verificationItems: [{ text: "Verify handoff", checked: false }],
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(questStore.completeQuest).toHaveBeenCalledWith("q-1", [{ text: "Verify handoff", checked: false }], {
+      commitShas: undefined,
+      sessionId: "worker-1",
+    });
+  });
+
+  it("rejects non-leader completion for a different authenticated session", async () => {
+    // Workers may complete their own quests, but only leaders can submit a
+    // different worker's session id in the handoff payload.
+    const completeSpy = vi.spyOn(questStore, "completeQuest");
+    launcher.getSession.mockImplementation((sid: string) => {
+      if (sid === "session-1") {
+        return { sessionId: "session-1", state: "running", cwd: "/test", archived: false };
+      }
+      if (sid === "session-2") {
+        return { sessionId: "session-2", state: "running", cwd: "/test", archived: false };
+      }
+      return undefined;
+    });
+    launcher.verifySessionAuthToken.mockImplementation(
+      (sid: string, token: string) => sid === "session-1" && token === "tok-1",
+    );
+
+    const res = await app.request("/api/quests/q-1/complete", {
+      method: "POST",
+      headers: companionAuthHeaders("session-1", "tok-1"),
+      body: JSON.stringify({
+        sessionId: "session-2",
+        verificationItems: [{ text: "Verify handoff", checked: false }],
+      }),
+    });
+
+    expect(res.status).toBe(403);
+    expect(completeSpy).not.toHaveBeenCalled();
+  });
+});

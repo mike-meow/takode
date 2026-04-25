@@ -393,12 +393,28 @@ export function createQuestRoutes(ctx: RouteContext) {
   });
 
   api.post("/quests/:questId/complete", async (c) => {
+    const auth = authenticateCompanionCallerOptional(c);
+    if (auth && "response" in auth) return auth.response;
     const body = await c.req.json().catch(() => ({}));
     const items = body.verificationItems as import("../quest-types.js").QuestVerificationItem[] | undefined;
     if (!items || !Array.isArray(items)) return c.json({ error: "verificationItems array is required" }, 400);
+    const rawSessionId = body.sessionId as string | undefined;
+    const bodySessionId = typeof rawSessionId === "string" ? rawSessionId.trim() : "";
+    const authSessionId = auth ? auth.callerId : "";
+    const authIsOrchestrator = auth ? auth.caller.isOrchestrator : false;
+    if (authSessionId && bodySessionId && bodySessionId !== authSessionId && !authIsOrchestrator) {
+      return c.json({ error: "sessionId does not match authenticated caller" }, 403);
+    }
+    const sessionId = bodySessionId || authSessionId;
+    if (sessionId && !launcher.getSession(sessionId)) {
+      return c.json({ error: "sessionId does not belong to a known companion session" }, 400);
+    }
     try {
       const commitShas = Array.isArray(body.commitShas) ? body.commitShas : undefined;
-      const quest = await questStore.completeQuest(c.req.param("questId"), items, { commitShas });
+      const quest = await questStore.completeQuest(c.req.param("questId"), items, {
+        commitShas,
+        ...(sessionId ? { sessionId } : {}),
+      });
       if (!quest) return c.json({ error: "Quest not found" }, 404);
       broadcastQuestUpdate(wsBridge);
       // Update session's quest status so browsers can show "pending review" badge

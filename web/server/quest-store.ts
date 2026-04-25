@@ -723,11 +723,12 @@ export async function claimQuest(
 export async function completeQuest(
   questId: string,
   items: QuestVerificationItem[],
-  opts?: { commitShas?: string[] },
+  opts?: { commitShas?: string[]; sessionId?: string },
 ): Promise<QuestmasterTask | null> {
   return transitionQuest(questId, {
     status: "needs_verification",
     verificationItems: items,
+    ...(opts?.sessionId ? { sessionId: opts.sessionId } : {}),
     ...(opts?.commitShas?.length ? { commitShas: opts.commitShas } : {}),
   });
 }

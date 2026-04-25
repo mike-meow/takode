@@ -535,6 +535,26 @@ describe("completeQuest", () => {
     expect(completed?.status).toBe("needs_verification");
     expect(completed?.commitShas).toEqual(["beef1234", "deadbeefcafebabe"]);
   });
+
+  it("uses an explicit worker session when a leader completes a refined quest", async () => {
+    // Leader sessions can submit a worker-owned quest after removing it from the board.
+    // The handoff must still persist the worker session so the quest is reviewable.
+    await questStore.createQuest({ title: "Leader handoff" });
+    await questStore.transitionQuest("q-1", {
+      status: "refined",
+      description: "Ready",
+    });
+
+    const completed = await questStore.completeQuest("q-1", [{ text: "Verify handoff", checked: false }], {
+      sessionId: "worker-1",
+    });
+
+    expect(completed?.status).toBe("needs_verification");
+    if (completed?.status === "needs_verification") {
+      expect(completed.sessionId).toBe("worker-1");
+      expect(completed.verificationItems).toEqual([{ text: "Verify handoff", checked: false }]);
+    }
+  });
 });
 
 describe("markDone", () => {

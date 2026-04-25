@@ -68,7 +68,7 @@ quest history <id> [--json]                                   Show version histo
 quest tags   [--json]                                         List all existing tags with counts
 quest create [<title> | --title "..." | --title-file <path>|-] [--desc "..." | --desc-file <path>|-] [--tags "t1,t2"] [--image <path>] [--images "p1,p2"] [--json] Create a quest (auto-assigns ID)
 quest claim  <id> [--session <sid>] [--json]                  Claim for your session
-quest complete <id> [--items "c1,c2" | --items-file <path>|-] [--no-code] [--commit <sha>] [--commits "c1,c2"] [--json]  Submit for verification
+quest complete <id> [--items "c1,c2" | --items-file <path>|-] [--no-code] [--session <sid>] [--commit <sha>] [--commits "c1,c2"] [--json]  Submit for verification
 quest done   <id> [--notes "..." | --notes-file <path>|-] [--cancelled] [--json]      Mark as done/cancelled
 quest cancel <id> [--notes "reason" | --notes-file <path>|-] [--json]                Cancel from any status
 quest transition <id> --status <s> [--desc "..." | --desc-file <path>|-] [--json]    Change status
@@ -193,6 +193,7 @@ printf '%s\n' 'Port summary: commit abc123 ...' 'Treat `foo $(bar)` as literal t
 | `--items "i1,i2"` | Comma-separated verification checklist items |
 | `--items-file <path>` | Read verification items from a file, or use `-` to read from stdin. Supports one item per line or a JSON array of strings / `{ "text": "..." }` objects |
 | `--no-code` | Local CLI reminder switch for zero-code / artifact-only handoffs; it suppresses port-noise reminders but does not persist quest metadata |
+| `--session <sid>` | Complete on behalf of a specific worker session. Leader sessions should use this when submitting a worker-owned quest for verification. |
 | `--commit <sha>` | Attach one synced commit SHA (repeatable) |
 | `--commits "s1,s2"` | Attach multiple synced commit SHAs in order |
 | `--json` | Output JSON |

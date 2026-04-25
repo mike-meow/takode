@@ -94,6 +94,7 @@ describe("quest CLI help", () => {
     expect(result.stdout).toContain("quest create --title-file title.txt --desc-file body.md");
     expect(result.stdout).toContain("quest edit q-1 --desc-file body.md");
     expect(result.stdout).toContain("quest feedback q-1 --text-file note.md");
+    expect(result.stdout).toContain('complete <id> [--items "c1,c2" | --items-file <path>|-] [--session <sid>]');
     expect(result.stdout).toContain("quest complete q-1 --items-file items.txt");
     expect(result.stdout).toContain("quest done q-1 --notes-file closeout.md");
 
@@ -1668,6 +1669,70 @@ describe("quest CLI completion reminder", () => {
       expect(seenBodies[0]).toMatchObject({
         verificationItems: [{ text: "Visual check", checked: false }],
         commitShas: ["abc1234", "deadbeef"],
+      });
+    } finally {
+      server.close();
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("forwards an explicit worker session during HTTP completion", async () => {
+    // Leader sessions use this payload to complete a worker-owned quest without
+    // losing the worker session context required by the quest store.
+    const tmp = mkdtempSync(join(tmpdir(), "quest-complete-session-http-"));
+    const authDir = getSessionAuthDir(tmp);
+    mkdirSync(authDir, { recursive: true });
+    const authPath = centralAuthPath(tmp, tmp);
+    const seenBodies: JsonObject[] = [];
+
+    const server = createServer(async (req, res) => {
+      if (req.method === "POST" && req.url === "/api/quests/q-1/complete") {
+        seenBodies.push(await readJson(req));
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            questId: "q-1",
+            title: "Quest",
+            status: "needs_verification",
+            sessionId: "worker-1",
+            verificationItems: [{ text: "Visual check", checked: false }],
+          }),
+        );
+        return;
+      }
+      if (req.method === "POST" && req.url === "/api/quests/_notify") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true }));
+        return;
+      }
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    });
+    server.listen(0);
+    await once(server, "listening");
+    const port = (server.address() as AddressInfo).port;
+
+    writeFileSync(
+      authPath,
+      JSON.stringify({ sessionId: "leader-1", authToken: "leader-token", port, serverId: "test-server-id" }),
+      "utf-8",
+    );
+
+    try {
+      const result = await runQuest(
+        ["complete", "q-1", "--items", "Visual check", "--session", "worker-1", "--json"],
+        {
+          ...process.env,
+          COMPANION_PORT: String(port),
+          HOME: tmp,
+        },
+        tmp,
+      );
+
+      expect(result.status).toBe(0);
+      expect(seenBodies[0]).toMatchObject({
+        sessionId: "worker-1",
+        verificationItems: [{ text: "Visual check", checked: false }],
       });
     } finally {
       server.close();
