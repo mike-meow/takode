@@ -34,6 +34,8 @@ function loadExtensionHarness(options = {}) {
   const pollCommandsCalls = [];
   const postMessageCalls = [];
   const createdPanels = [];
+  const executeCommandCalls = [];
+  const openTextDocumentCalls = [];
   let selectionSyncOptions = null;
   const activeEditor = createEditor("/workspace/project/web/src/App.tsx");
   const originalFetch = global.fetch;
@@ -100,7 +102,10 @@ function loadExtensionHarness(options = {}) {
         handlers.configuration = cb;
         return { dispose() {} };
       },
-      openTextDocument: async () => activeEditor.document,
+      openTextDocument: async (uri) => {
+        openTextDocumentCalls.push(uri);
+        return activeEditor.document;
+      },
     },
     window: {
       activeTextEditor: activeEditor,
@@ -156,6 +161,9 @@ function loadExtensionHarness(options = {}) {
         handlers.commands.set(name, cb);
         return { dispose() {} };
       },
+      executeCommand: async (...args) => {
+        executeCommandCalls.push(args);
+      },
     },
     Uri: {
       parse: (value) => ({ toString: () => value }),
@@ -177,6 +185,8 @@ function loadExtensionHarness(options = {}) {
       constructor(start, end) {
         this.start = start;
         this.end = end;
+        this.active = end;
+        this.isEmpty = start.line === end.line && start.character === end.character;
       }
     },
     ViewColumn: { Beside: 2, Active: 1 },
@@ -251,6 +261,8 @@ function loadExtensionHarness(options = {}) {
     pollCommandsCalls,
     postMessageCalls,
     createdPanels,
+    executeCommandCalls,
+    openTextDocumentCalls,
     fetchCalls,
     getSelectionSyncOptions: () => selectionSyncOptions,
     restore,
@@ -364,6 +376,64 @@ test("background selection sync keeps publishing after the Takode panel is close
       lineCount: 1,
     });
     assert.equal(harness.postMessageCalls.length > 0, true);
+  } finally {
+    harness.restore();
+  }
+});
+
+test("panel directory open requests use VS Code folder open instead of text document open", async () => {
+  const harness = loadExtensionHarness();
+  try {
+    const context = { subscriptions: [] };
+    harness.extension.activate(context);
+
+    const openPanel = harness.handlers.commands.get("takodePrototype.openPanel");
+    assert.equal(typeof openPanel, "function");
+    openPanel();
+    assert.equal(typeof harness.handlers.panelMessage, "function");
+
+    harness.handlers.panelMessage({
+      type: "openFile",
+      absolutePath: "/workspace/project",
+      targetKind: "directory",
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.deepEqual(harness.openTextDocumentCalls, []);
+    assert.equal(harness.executeCommandCalls.length, 1);
+    assert.deepEqual(harness.executeCommandCalls[0], [
+      "vscode.openFolder",
+      { fsPath: "/workspace/project" },
+      true,
+    ]);
+  } finally {
+    harness.restore();
+  }
+});
+
+test("panel file open requests still open text documents and select the requested range", async () => {
+  const harness = loadExtensionHarness();
+  try {
+    const context = { subscriptions: [] };
+    harness.extension.activate(context);
+
+    const openPanel = harness.handlers.commands.get("takodePrototype.openPanel");
+    assert.equal(typeof openPanel, "function");
+    openPanel();
+    assert.equal(typeof harness.handlers.panelMessage, "function");
+
+    harness.handlers.panelMessage({
+      type: "openFile",
+      absolutePath: "/workspace/project/web/src/App.tsx",
+      line: 42,
+      column: 7,
+    });
+    await new Promise((resolve) => setImmediate(resolve));
+
+    assert.deepEqual(harness.executeCommandCalls, []);
+    assert.deepEqual(harness.openTextDocumentCalls, [{ fsPath: "/workspace/project/web/src/App.tsx" }]);
+    assert.equal(harness.activeEditor.selection.start.line, 41);
+    assert.equal(harness.activeEditor.selection.start.character, 6);
   } finally {
     harness.restore();
   }

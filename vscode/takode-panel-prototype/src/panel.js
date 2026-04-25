@@ -357,6 +357,7 @@ function buildPanelHtml({ baseUrl, resolvedBaseUrl = baseUrl, cspSource, nonce }
           vscode.postMessage({
             type: "openFile",
             absolutePath: event.data.payload.absolutePath,
+            targetKind: event.data.payload.targetKind,
             line: event.data.payload.line,
             column: event.data.payload.column,
             endLine: event.data.payload.endLine,

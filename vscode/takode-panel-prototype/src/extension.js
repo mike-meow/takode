@@ -243,9 +243,14 @@ async function openFileInPanelEditor(request) {
   }
 
   lastWindowActivityAt = Date.now();
+  const uri = vscode.Uri.file(request.absolutePath);
+  if (request.targetKind === "directory") {
+    await vscode.commands.executeCommand("vscode.openFolder", uri, true);
+    return;
+  }
+
   const line = Math.max(1, Number(request.line) || 1);
   const column = Math.max(1, Number(request.column) || 1);
-  const uri = vscode.Uri.file(request.absolutePath);
   const document = await vscode.workspace.openTextDocument(uri);
   const editor = await vscode.window.showTextDocument(document, {
     preview: false,

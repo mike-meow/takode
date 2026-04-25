@@ -300,6 +300,7 @@ test("command polling executes remote open-file requests and posts results", asy
               sourceId: "vscode-window:test",
               target: {
                 absolutePath: "/workspace/project/src/app.ts",
+                targetKind: "directory",
                 line: 9,
                 column: 2,
               },
@@ -324,6 +325,7 @@ test("command polling executes remote open-file requests and posts results", asy
 
   assert.deepEqual(opened, [{
     absolutePath: "/workspace/project/src/app.ts",
+    targetKind: "directory",
     line: 9,
     column: 2,
   }]);
