@@ -7,6 +7,8 @@ const mockQueuePendingSession = vi.fn();
 const mockGetGlobalNewSessionDefaults = vi.fn();
 const mockGetGroupNewSessionDefaults = vi.fn();
 const mockSaveGroupNewSessionDefaults = vi.fn();
+const mockGetRecentDirs = vi.fn();
+const mockScopedSetItem = vi.fn();
 
 const mockApi = {
   getHome: vi.fn(),
@@ -35,7 +37,7 @@ vi.mock("../api.js", () => ({
 }));
 
 vi.mock("../utils/recent-dirs.js", () => ({
-  getRecentDirs: () => ["/tmp/project"],
+  getRecentDirs: (...args: unknown[]) => mockGetRecentDirs(...args),
 }));
 
 vi.mock("../utils/pending-creation.js", () => ({
@@ -44,7 +46,7 @@ vi.mock("../utils/pending-creation.js", () => ({
 
 vi.mock("../utils/scoped-storage.js", () => ({
   scopedGetItem: vi.fn(() => ""),
-  scopedSetItem: vi.fn(),
+  scopedSetItem: (...args: unknown[]) => mockScopedSetItem(...args),
 }));
 
 vi.mock("../utils/new-session-defaults.js", () => ({
@@ -76,6 +78,7 @@ describe("NewSessionModal", () => {
       model: "",
       mode: "agent",
       askPermission: true,
+      sessionRole: "worker",
       envSlug: "",
       cwd: "",
       useWorktree: true,
@@ -87,6 +90,7 @@ describe("NewSessionModal", () => {
       model: "",
       mode: "agent",
       askPermission: true,
+      sessionRole: "worker",
       envSlug: "",
       cwd: "",
       useWorktree: true,
@@ -104,6 +108,7 @@ describe("NewSessionModal", () => {
     mockApi.getRepoInfo.mockRejectedValue(new Error("not a repo"));
     mockApi.listBranches.mockResolvedValue([]);
     mockApi.gitPull.mockResolvedValue({ success: true });
+    mockGetRecentDirs.mockReturnValue(["/tmp/project"]);
     mockApi.listCliSessions.mockImplementation((backend?: "claude" | "codex") =>
       Promise.resolve({
         sessions:
@@ -150,6 +155,7 @@ describe("NewSessionModal", () => {
       model: "",
       mode: "agent",
       askPermission: true,
+      sessionRole: "worker",
       envSlug: "",
       cwd: "/tmp/tree-saved-folder",
       useWorktree: true,
@@ -188,8 +194,61 @@ describe("NewSessionModal", () => {
         backend: "claude",
         cwd: "/tmp/tree-saved-folder",
         treeGroupId: "team-alpha",
+        recentDirsKey: "tree-group:team-alpha",
       }),
     );
+  });
+
+  it("loads tree-group recent dirs through the explicit group key", async () => {
+    mockGetGroupNewSessionDefaults.mockReturnValue({
+      backend: "claude",
+      model: "",
+      mode: "agent",
+      askPermission: true,
+      sessionRole: "worker",
+      envSlug: "",
+      cwd: "",
+      useWorktree: true,
+      codexInternetAccess: true,
+      codexReasoningEffort: "high",
+    });
+    mockGetRecentDirs.mockImplementation((key?: string) =>
+      key === "tree-group:team-alpha" ? ["/tmp/team-alpha-repo"] : ["/tmp/global-repo"],
+    );
+
+    // The tree group open path should use the group's recent list, not the
+    // global recent list, so locations remain isolated after reload/restart.
+    render(
+      <NewSessionModal
+        open={true}
+        onClose={() => {}}
+        treeGroupId="team-alpha"
+        newSessionDefaultsKey="tree-group:team-alpha"
+      />,
+    );
+
+    expect(await screen.findByText("team-alpha-repo")).toBeInTheDocument();
+    expect(screen.queryByText("global-repo")).not.toBeInTheDocument();
+    expect(mockGetRecentDirs).toHaveBeenCalledWith("tree-group:team-alpha");
+  });
+
+  it("does not write group-scoped selections into global defaults before create", async () => {
+    const user = userEvent.setup();
+
+    // Group settings are saved under the group key on create; intermediate UI
+    // changes should not overwrite the global New Session defaults.
+    render(
+      <NewSessionModal
+        open={true}
+        onClose={() => {}}
+        treeGroupId="team-alpha"
+        newSessionDefaultsKey="tree-group:team-alpha"
+      />,
+    );
+
+    await user.click(await screen.findByRole("button", { name: "Codex" }));
+
+    expect(mockScopedSetItem).not.toHaveBeenCalledWith("cc-backend", "codex");
   });
 
   it("shows the Codex config default in the model picker when using Default", async () => {
@@ -199,6 +258,7 @@ describe("NewSessionModal", () => {
       model: "",
       mode: "agent",
       askPermission: true,
+      sessionRole: "worker",
       envSlug: "",
       cwd: "",
       useWorktree: true,
@@ -221,6 +281,7 @@ describe("NewSessionModal", () => {
       model: "",
       mode: "agent",
       askPermission: true,
+      sessionRole: "worker",
       envSlug: "",
       cwd: "",
       useWorktree: true,

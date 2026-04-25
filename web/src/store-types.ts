@@ -29,6 +29,7 @@ export interface PendingSession {
   cwd: string | null;
   groupKey?: string | null;
   treeGroupId?: string | null;
+  recentDirsKey?: string | null;
   createdAt: number;
 }
 

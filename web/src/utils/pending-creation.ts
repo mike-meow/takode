@@ -43,6 +43,7 @@ export function queuePendingSession(params: {
   createOpts: CreateSessionOpts;
   cwd?: string | null;
   treeGroupId?: string;
+  recentDirsKey?: string;
 }): string {
   const pendingId = createPendingId();
   useStore.getState().addPendingSession({
@@ -56,6 +57,7 @@ export function queuePendingSession(params: {
     cwd: params.cwd ?? params.createOpts.cwd ?? null,
     groupKey: null,
     treeGroupId: params.treeGroupId ?? null,
+    recentDirsKey: params.recentDirsKey ?? null,
     createdAt: Date.now(),
   });
 
@@ -123,7 +125,7 @@ async function _runCreation(pendingId: string, pending: PendingSession, signal: 
     });
 
     // Add cwd to recent dirs if applicable
-    if (pending.cwd) addRecentDir(pending.cwd);
+    if (pending.cwd) addRecentDir(pending.cwd, pending.recentDirsKey ?? undefined);
 
     // Assign to tree group if one was specified (non-default)
     if (pending.treeGroupId && pending.treeGroupId !== "default") {

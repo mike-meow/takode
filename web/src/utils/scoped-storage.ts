@@ -43,6 +43,7 @@ const SCOPED_KEYS = [
   "cc-worktree",
   "cc-branch",
   "cc-new-session-groups",
+  "cc-recent-dirs-groups",
   "cc-diff-base",
   "cc-recent-dirs",
   "cc-questmaster-view",

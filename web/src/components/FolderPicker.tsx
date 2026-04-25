@@ -5,11 +5,12 @@ import { getRecentDirs, addRecentDir } from "../utils/recent-dirs.js";
 
 interface FolderPickerProps {
   initialPath: string;
+  recentDirsKey?: string;
   onSelect: (path: string) => void;
   onClose: () => void;
 }
 
-export function FolderPicker({ initialPath, onSelect, onClose }: FolderPickerProps) {
+export function FolderPicker({ initialPath, recentDirsKey, onSelect, onClose }: FolderPickerProps) {
   const [browsePath, setBrowsePath] = useState("");
   const [browseDirs, setBrowseDirs] = useState<DirEntry[]>([]);
   const [browseLoading, setBrowseLoading] = useState(false);
@@ -18,7 +19,7 @@ export function FolderPicker({ initialPath, onSelect, onClose }: FolderPickerPro
   const [filter, setFilter] = useState("");
   const [showHidden, setShowHidden] = useState(false);
   const [focusIndex, setFocusIndex] = useState(-1);
-  const [recentDirs] = useState<string[]>(() => getRecentDirs());
+  const [recentDirs] = useState<string[]>(() => getRecentDirs(recentDirsKey));
   const listRef = useRef<HTMLDivElement>(null);
   const filterRef = useRef<HTMLInputElement>(null);
 
@@ -50,7 +51,7 @@ export function FolderPicker({ initialPath, onSelect, onClose }: FolderPickerPro
   }, [showHidden]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function selectDir(path: string) {
-    addRecentDir(path);
+    addRecentDir(path, recentDirsKey);
     onSelect(path);
     onClose();
   }
