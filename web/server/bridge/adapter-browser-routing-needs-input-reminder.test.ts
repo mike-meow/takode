@@ -1,0 +1,298 @@
+import { describe, expect, it, vi } from "vitest";
+import {
+  handleUserMessage,
+  routeAdapterBrowserMessage,
+  type AdapterBrowserRoutingDeps,
+  type AdapterBrowserRoutingSessionLike,
+} from "./adapter-browser-routing-controller.js";
+import { commitPendingCodexInputs } from "./codex-recovery-orchestrator.js";
+import type {
+  BrowserIncomingMessage,
+  BrowserOutgoingMessage,
+  PermissionRequest,
+  SessionNotification,
+} from "../session-types.js";
+
+function makeSession(notifications: SessionNotification[] = []): AdapterBrowserRoutingSessionLike {
+  return {
+    id: "leader-session",
+    backendType: "claude",
+    state: {
+      askPermission: true,
+      backend_error: null,
+      backend_state: "connected",
+      codex_rate_limits: undefined,
+      codex_image_send_stage: null,
+      codex_reasoning_effort: undefined,
+      codex_token_details: undefined,
+      context_used_percent: 0,
+      cwd: "/tmp/session",
+      is_compacting: false,
+      model: "sonnet",
+      num_turns: 0,
+      permissionMode: "acceptEdits",
+      session_id: "cli-leader-session",
+      slash_commands: [],
+      total_cost_usd: 0,
+      uiMode: "agent",
+    },
+    messageHistory: [],
+    notifications,
+    pendingPermissions: new Map<string, PermissionRequest>(),
+    evaluatingAborts: new Map(),
+    pendingMessages: [],
+    pendingCodexTurns: [],
+    pendingCodexInputs: [],
+    forceCompactPending: false,
+    isGenerating: false,
+    lastUserMessageDateTag: "",
+    lastOutboundUserNdjson: null,
+    consecutiveAdapterFailures: 0,
+    codexAdapter: null,
+    claudeSdkAdapter: null,
+  };
+}
+
+function makeDeps(options: { isOrchestrator?: boolean } = {}): AdapterBrowserRoutingDeps {
+  let nextId = 0;
+  return {
+    sendToCLI: vi.fn(() => "current" as const),
+    broadcastToBrowsers: vi.fn(),
+    emitTakodeEvent: vi.fn(),
+    persistSession: vi.fn(),
+    sessionNotificationDeps: {
+      isHerdedWorkerSession: vi.fn(() => false),
+      broadcastToBrowsers: vi.fn(),
+      persistSession: vi.fn(),
+      scheduleNotification: vi.fn(),
+      cancelPermissionNotification: vi.fn(),
+    },
+    onAgentPaused: vi.fn(),
+    getCurrentTurnTriggerSource: vi.fn(() => "user" as const),
+    abortAutoApproval: vi.fn(),
+    preInterrupt: vi.fn(),
+    touchUserMessage: vi.fn(),
+    formatVsCodeSelectionPrompt: vi.fn(() => ""),
+    getCliSessionId: vi.fn(() => "cli-leader-session"),
+    nextUserMessageId: vi.fn(() => `user-${++nextId}`),
+    markRunningFromUserDispatch: vi.fn(() => "current" as const),
+    trackUserMessageForTurn: vi.fn(),
+    setGenerating: vi.fn(),
+    broadcastStatusChange: vi.fn(),
+    setCodexImageSendStage: vi.fn(),
+    notifyImageSendFailure: vi.fn(),
+    isHerdEventSource: vi.fn((agentSource) => agentSource?.sessionId === "herd-events"),
+    onSessionActivityStateChanged: vi.fn(),
+    markTurnInterrupted: vi.fn(),
+    armCodexFreshTurnRequirement: vi.fn(),
+    clearCodexFreshTurnRequirement: vi.fn(),
+    addPendingCodexInput: vi.fn(),
+    getCancelablePendingCodexInputs: vi.fn(() => []),
+    removePendingCodexInput: vi.fn(() => null),
+    clearQueuedTurnLifecycleEntries: vi.fn(),
+    queueCodexPendingStartBatch: vi.fn(),
+    rebuildQueuedCodexPendingStartBatch: vi.fn(),
+    trySteerPendingCodexInputs: vi.fn(() => false),
+    sendToBrowser: vi.fn(),
+    getLauncherSessionInfo: vi.fn(() => ({ isOrchestrator: options.isOrchestrator === true })),
+    requestCodexIntentionalRelaunch: vi.fn(),
+    onPermissionModeChanged: vi.fn(),
+    sendControlRequest: vi.fn(),
+    requestCodexAutoRecovery: vi.fn(() => false),
+    requestCliRelaunch: vi.fn(),
+    injectUserMessage: vi.fn((): "sent" => "sent"),
+    handleSetModel: vi.fn(),
+    handleCodexSetModel: vi.fn(),
+    handleSetPermissionMode: vi.fn(),
+    handleCodexSetPermissionMode: vi.fn(),
+    handleCodexSetReasoningEffort: vi.fn(),
+    handleSetAskPermission: vi.fn(),
+    handleInterruptFallback: vi.fn(),
+  };
+}
+
+function needsInput(id: string, summary: string, timestamp: number, done = false): SessionNotification {
+  return {
+    id,
+    category: "needs-input",
+    summary,
+    timestamp,
+    messageId: null,
+    done,
+  };
+}
+
+function review(id: string, summary: string, timestamp: number): SessionNotification {
+  return {
+    id,
+    category: "review",
+    summary,
+    timestamp,
+    messageId: null,
+    done: false,
+  };
+}
+
+function userMessage(overrides: Partial<Extract<BrowserOutgoingMessage, { type: "user_message" }>> = {}) {
+  return {
+    type: "user_message" as const,
+    content: "Fresh user message",
+    ...overrides,
+  };
+}
+
+function sentCliContent(deps: AdapterBrowserRoutingDeps): string {
+  const raw = vi.mocked(deps.sendToCLI).mock.calls[0]?.[1];
+  expect(raw).toBeTypeOf("string");
+  return JSON.parse(raw as string).message.content;
+}
+
+describe("direct user needs-input reminders", () => {
+  it("injects a reminder before direct user messages with pending same-session needs-input notifications", async () => {
+    // Validates both visible browser history ordering and backend delivery text.
+    const session = makeSession([
+      needsInput("n-1", "Oldest pending question", 100),
+      needsInput("n-2", "Resolved question", 200, true),
+      needsInput("n-3", "Third newest pending question", 300),
+      review("n-4", "Review-only notification", 400),
+      needsInput("n-5", "Second newest pending question", 500),
+      needsInput("n-6", "Newest pending question", 600),
+    ]);
+    const deps = makeDeps({ isOrchestrator: true });
+
+    await handleUserMessage(session, userMessage(), deps);
+
+    expect(session.messageHistory).toHaveLength(2);
+    expect(session.messageHistory[0]?.type).toBe("user_message");
+    expect(
+      (session.messageHistory[0] as Extract<BrowserIncomingMessage, { type: "user_message" }>).agentSource,
+    ).toEqual({
+      sessionId: "system:needs-input-reminder",
+      sessionLabel: "Needs Input Reminder",
+    });
+    expect(session.messageHistory[1]).toMatchObject({ type: "user_message", content: "Fresh user message" });
+    expect(session.messageHistory[0]).toMatchObject({
+      content: expect.stringContaining("Unresolved same-session needs-input notifications: 4. Showing newest 3."),
+    });
+    expect(session.messageHistory[0]).toMatchObject({ content: expect.stringContaining("6. Newest pending question") });
+    expect(session.messageHistory[0]).toMatchObject({
+      content: expect.stringContaining("5. Second newest pending question"),
+    });
+    expect(session.messageHistory[0]).toMatchObject({
+      content: expect.stringContaining("3. Third newest pending question"),
+    });
+    expect(session.messageHistory[0]).toMatchObject({
+      content: expect.not.stringContaining("1. Oldest pending question"),
+    });
+    expect(session.messageHistory[0]).toMatchObject({ content: expect.not.stringContaining("Resolved question") });
+    expect(session.messageHistory[0]).toMatchObject({
+      content: expect.not.stringContaining("Review-only notification"),
+    });
+
+    const cliContent = sentCliContent(deps);
+    expect(cliContent.indexOf("[Needs-input reminder]")).toBeLessThan(cliContent.indexOf("Fresh user message"));
+    expect(cliContent).toContain("Unresolved same-session needs-input notifications: 4. Showing newest 3.");
+  });
+
+  it("does not inject a reminder when the current leader session has no pending needs-input notifications", async () => {
+    // The helper must not inspect unrelated sessions or global state; only this session's inbox matters.
+    const unrelatedSession = makeSession([needsInput("n-9", "Other session question", 900)]);
+    expect(unrelatedSession.notifications).toHaveLength(1);
+    const session = makeSession([]);
+    const deps = makeDeps({ isOrchestrator: true });
+
+    await handleUserMessage(session, userMessage(), deps);
+
+    expect(session.messageHistory).toHaveLength(1);
+    expect(session.messageHistory[0]).toMatchObject({ type: "user_message", content: "Fresh user message" });
+    expect(sentCliContent(deps)).not.toContain("[Needs-input reminder]");
+  });
+
+  it("stops listing notifications after they are resolved", async () => {
+    // Resolved notifications stay in the inbox for history, but reminders only surface unresolved items.
+    const session = makeSession([
+      needsInput("n-1", "Already resolved", 100, true),
+      needsInput("n-2", "Still pending", 200),
+    ]);
+    const deps = makeDeps({ isOrchestrator: true });
+
+    await handleUserMessage(session, userMessage(), deps);
+
+    expect(session.messageHistory[0]).toMatchObject({
+      content: expect.stringContaining("Unresolved same-session needs-input notifications: 1."),
+    });
+    expect(session.messageHistory[0]).toMatchObject({ content: expect.stringContaining("2. Still pending") });
+    expect(session.messageHistory[0]).toMatchObject({ content: expect.not.stringContaining("Already resolved") });
+  });
+
+  it("does not inject before herd or other programmatic messages", async () => {
+    // Programmatic messages carry agentSource and must not trigger the direct-user reminder path.
+    const session = makeSession([needsInput("n-1", "Pending question", 100)]);
+    const deps = makeDeps({ isOrchestrator: true });
+
+    await handleUserMessage(
+      session,
+      userMessage({ agentSource: { sessionId: "herd-events", sessionLabel: "Herd Events" } }),
+      deps,
+    );
+
+    expect(session.messageHistory).toHaveLength(1);
+    expect(session.messageHistory[0]).toMatchObject({
+      type: "user_message",
+      content: "Fresh user message",
+      agentSource: { sessionId: "herd-events", sessionLabel: "Herd Events" },
+    });
+    expect(sentCliContent(deps)).not.toContain("[Needs-input reminder]");
+  });
+
+  it("keeps the behavior scoped to orchestrator sessions", async () => {
+    // A non-leader session can have notifications, but this reminder is leader-only.
+    const session = makeSession([needsInput("n-1", "Pending question", 100)]);
+    const deps = makeDeps({ isOrchestrator: false });
+
+    await handleUserMessage(session, userMessage(), deps);
+
+    expect(session.messageHistory).toHaveLength(1);
+    expect(sentCliContent(deps)).not.toContain("[Needs-input reminder]");
+  });
+
+  it("carries direct-user reminders through Codex pending inputs until the user message is committed", () => {
+    // Codex queues browser messages before backend acknowledgement, so the reminder travels with the pending input.
+    const session = makeSession([needsInput("n-1", "Pending question", 100)]);
+    session.backendType = "codex";
+    const deps = makeDeps({ isOrchestrator: true });
+    deps.addPendingCodexInput = vi.fn((targetSession, input) => {
+      targetSession.pendingCodexInputs.push(input);
+    });
+
+    const routed = routeAdapterBrowserMessage(session, userMessage(), null, deps);
+
+    expect(routed).toBe(true);
+    expect(session.messageHistory).toHaveLength(0);
+    expect(session.pendingCodexInputs).toHaveLength(1);
+    expect(session.pendingCodexInputs[0]).toMatchObject({
+      content: "Fresh user message",
+      needsInputReminderText: expect.stringContaining("[Needs-input reminder]"),
+      deliveryContent: expect.stringContaining("[Needs-input reminder]"),
+    });
+    expect(session.pendingCodexInputs[0]?.deliveryContent).toContain("\n\nFresh user message");
+
+    commitPendingCodexInputs(session as any, [session.pendingCodexInputs[0]!.id], {
+      broadcastPendingCodexInputs: vi.fn(),
+      broadcastToBrowsers: vi.fn(),
+      persistSession: vi.fn(),
+      touchUserMessage: vi.fn(),
+      onUserMessage: vi.fn(),
+    } as any);
+
+    expect(session.messageHistory).toHaveLength(2);
+    expect(session.messageHistory[0]).toMatchObject({
+      content: expect.stringContaining("[Needs-input reminder]"),
+      agentSource: {
+        sessionId: "system:needs-input-reminder",
+        sessionLabel: "Needs Input Reminder",
+      },
+    });
+    expect(session.messageHistory[1]).toMatchObject({ type: "user_message", content: "Fresh user message" });
+  });
+});

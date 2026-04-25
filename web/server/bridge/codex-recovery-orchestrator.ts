@@ -10,6 +10,7 @@ import type {
 } from "../session-types.js";
 import { sessionTag } from "../session-tag.js";
 import type { UserDispatchTurnTarget } from "./generation-lifecycle.js";
+import { buildNeedsInputReminderHistoryEntry } from "./adapter-browser-routing-needs-input-reminder.js";
 import {
   armCodexFreshTurnRequirement as armCodexFreshTurnRequirementState,
   clearCodexFreshTurnRequirement as clearCodexFreshTurnRequirementState,
@@ -945,6 +946,15 @@ function commitPendingCodexInput(
   if (idx < 0) return null;
   const pending = session.pendingCodexInputs[idx];
   session.pendingCodexInputs.splice(idx, 1);
+  if (pending.needsInputReminderText) {
+    const reminderHistoryEntry = buildNeedsInputReminderHistoryEntry(
+      pending.needsInputReminderText,
+      pending.timestamp,
+      pending.id,
+    );
+    session.messageHistory.push(reminderHistoryEntry);
+    deps.broadcastToBrowsers(session, reminderHistoryEntry);
+  }
   const userHistoryEntry: Extract<BrowserIncomingMessage, { type: "user_message" }> = {
     type: "user_message",
     content: pending.content,

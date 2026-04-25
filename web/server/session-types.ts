@@ -330,6 +330,7 @@ export interface PendingCodexInput {
   imageRefs?: import("./image-store.js").ImageRef[];
   draftImages?: PendingCodexInputImageDraft[];
   deliveryContent?: string;
+  needsInputReminderText?: string;
   agentSource?: { sessionId: string; sessionLabel?: string };
   takodeHerdBatch?: TakodeHerdBatchSnapshot;
   vscodeSelection?: VsCodeSelectionMetadata;
