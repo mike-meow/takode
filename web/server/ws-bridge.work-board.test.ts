@@ -1431,7 +1431,7 @@ describe("work board", () => {
           presetId: "full-code",
           phaseIds: ["planning", "implement", "code-review", "port"],
           currentPhaseId: "planning",
-          nextLeaderAction: expect.stringContaining("planning phase skill"),
+          nextLeaderAction: expect.stringContaining("planning leader brief"),
         }),
       }),
     );

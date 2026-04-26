@@ -2,6 +2,15 @@
  * Quest Journey state machine constants.
  * Shared between server (session-types.ts) and CLI (takode.ts).
  */
+import bookkeepingPhase from "./quest-journey-phases/bookkeeping/phase.json";
+import codeReviewPhase from "./quest-journey-phases/code-review/phase.json";
+import executePhase from "./quest-journey-phases/execute/phase.json";
+import explorePhase from "./quest-journey-phases/explore/phase.json";
+import implementPhase from "./quest-journey-phases/implement/phase.json";
+import mentalSimulationPhase from "./quest-journey-phases/mental-simulation/phase.json";
+import outcomeReviewPhase from "./quest-journey-phases/outcome-review/phase.json";
+import planningPhase from "./quest-journey-phases/planning/phase.json";
+import portPhase from "./quest-journey-phases/port/phase.json";
 
 /** Regex pattern for valid quest IDs: q-NNN (case-insensitive). */
 export const QUEST_ID_PATTERN = /^q-\d+$/i;
@@ -66,83 +75,37 @@ export type QuestJourneyState = (typeof QUEST_JOURNEY_STATES)[number];
 
 /**
  * Reusable Quest Journey phases. Phases are the user-facing units leaders
- * assemble into a Quest Journey; each built-in phase has a matching skill.
+ * assemble into a Quest Journey and are backed by canonical phase.json files.
  */
-export const QUEST_JOURNEY_PHASES = [
-  {
-    id: "planning",
-    state: "PLANNING",
-    label: "Planning",
-    skill: "quest-journey-planning",
-    nextAction: "invoke the planning phase skill; wait for the worker plan, then approve or redirect",
-  },
-  {
-    id: "explore",
-    state: "EXPLORING",
-    label: "Explore",
-    skill: "quest-journey-explore",
-    nextAction:
-      "invoke the explore phase skill; wait for the evidence summary, then decide whether to revise the Journey or advance",
-  },
-  {
-    id: "implement",
-    state: "IMPLEMENTING",
-    label: "Implement",
-    skill: "quest-journey-implement",
-    nextAction:
-      "invoke the implement phase skill; wait for the worker report, then choose the next review or bookkeeping phase",
-  },
-  {
-    id: "code-review",
-    state: "CODE_REVIEWING",
-    label: "Code Review",
-    skill: "quest-journey-code-review",
-    nextAction: "invoke the code-review phase skill; wait for the reviewer result, then either send rework or advance",
-  },
-  {
-    id: "mental-simulation",
-    state: "MENTAL_SIMULATING",
-    label: "Mental Simulation",
-    skill: "quest-journey-mental-simulation",
-    nextAction:
-      "invoke the mental-simulation phase skill; wait for the scenario review, then decide whether the Journey needs revision",
-  },
-  {
-    id: "execute",
-    state: "EXECUTING",
-    label: "Execute",
-    skill: "quest-journey-execute",
-    nextAction:
-      "invoke the execute phase skill; track monitor and stop conditions, then wait for the execution report before advancing",
-  },
-  {
-    id: "outcome-review",
-    state: "OUTCOME_REVIEWING",
-    label: "Outcome Review",
-    skill: "quest-journey-outcome-review",
-    nextAction:
-      "invoke the outcome-review phase skill; wait for evidence about external results, then decide whether to continue, revise, or conclude",
-  },
-  {
-    id: "bookkeeping",
-    state: "BOOKKEEPING",
-    label: "Bookkeeping",
-    skill: "quest-journey-bookkeeping",
-    nextAction:
-      "invoke the bookkeeping phase skill; record the durable shared state update, then advance when the facts and handoff state are current",
-  },
-  {
-    id: "port",
-    state: "PORTING",
-    label: "Port",
-    skill: "quest-journey-port",
-    nextAction:
-      "invoke the port phase skill; wait for sync confirmation and post-port verification, then remove the row",
-  },
-] as const;
+export type QuestJourneyAssigneeRole = "worker" | "reviewer";
 
-export type QuestJourneyPhase = (typeof QUEST_JOURNEY_PHASES)[number];
-export type QuestJourneyPhaseId = QuestJourneyPhase["id"];
+export interface QuestJourneyPhase {
+  id: string;
+  label: string;
+  boardState: QuestJourneyState;
+  assigneeRole: QuestJourneyAssigneeRole;
+  contract: string;
+  nextLeaderAction: string;
+  aliases: string[];
+}
+
+function defineQuestJourneyPhase(phase: QuestJourneyPhase & { aliases?: string[] }): QuestJourneyPhase {
+  return { ...phase, aliases: [...(phase.aliases ?? [])] };
+}
+
+export const QUEST_JOURNEY_PHASES: readonly QuestJourneyPhase[] = [
+  defineQuestJourneyPhase(planningPhase as QuestJourneyPhase & { aliases?: string[] }),
+  defineQuestJourneyPhase(explorePhase as QuestJourneyPhase & { aliases?: string[] }),
+  defineQuestJourneyPhase(implementPhase as QuestJourneyPhase & { aliases?: string[] }),
+  defineQuestJourneyPhase(codeReviewPhase as QuestJourneyPhase & { aliases?: string[] }),
+  defineQuestJourneyPhase(mentalSimulationPhase as QuestJourneyPhase & { aliases?: string[] }),
+  defineQuestJourneyPhase(executePhase as QuestJourneyPhase & { aliases?: string[] }),
+  defineQuestJourneyPhase(outcomeReviewPhase as QuestJourneyPhase & { aliases?: string[] }),
+  defineQuestJourneyPhase(bookkeepingPhase as QuestJourneyPhase & { aliases?: string[] }),
+  defineQuestJourneyPhase(portPhase as QuestJourneyPhase & { aliases?: string[] }),
+];
+
+export type QuestJourneyPhaseId = (typeof QUEST_JOURNEY_PHASES)[number]["id"];
 
 export const DEFAULT_QUEST_JOURNEY_PRESET_ID = "full-code";
 export const DEFAULT_QUEST_JOURNEY_PHASE_IDS = [
@@ -152,14 +115,9 @@ export const DEFAULT_QUEST_JOURNEY_PHASE_IDS = [
   "port",
 ] as const satisfies readonly QuestJourneyPhaseId[];
 
-const QUEST_JOURNEY_PHASE_ALIAS_MAP = {
-  implementation: "implement",
-  "skeptic-review": "code-review",
-  "reviewer-groom": "code-review",
-  porting: "port",
-  "state-update": "bookkeeping",
-  "stream-update": "bookkeeping",
-} as const satisfies Record<string, QuestJourneyPhaseId>;
+const QUEST_JOURNEY_PHASE_ALIAS_MAP: Record<string, QuestJourneyPhaseId> = Object.fromEntries(
+  QUEST_JOURNEY_PHASES.flatMap((phase) => phase.aliases.map((alias) => [alias, phase.id])),
+) as Record<string, QuestJourneyPhaseId>;
 
 const QUEST_JOURNEY_STATE_ALIAS_MAP = {
   SKEPTIC_REVIEWING: "CODE_REVIEWING",
@@ -188,7 +146,7 @@ export const QUEST_JOURNEY_PHASE_BY_ID: Record<QuestJourneyPhaseId, QuestJourney
 ) as Record<QuestJourneyPhaseId, QuestJourneyPhase>;
 
 export const QUEST_JOURNEY_PHASE_ID_BY_STATE: Record<QuestJourneyState, QuestJourneyPhaseId> = Object.fromEntries(
-  QUEST_JOURNEY_PHASES.map((phase) => [phase.state, phase.id]),
+  QUEST_JOURNEY_PHASES.map((phase) => [phase.boardState, phase.id]),
 ) as Record<QuestJourneyState, QuestJourneyPhaseId>;
 
 function dedupeAdjacentPhaseIds(phaseIds: readonly QuestJourneyPhaseId[]): QuestJourneyPhaseId[] {
@@ -260,7 +218,7 @@ export function normalizeQuestJourneyPlan(
     presetId: plan?.presetId ?? DEFAULT_QUEST_JOURNEY_PRESET_ID,
     phaseIds: [...nonEmptyPhaseIds],
     ...(currentPhaseId ? { currentPhaseId } : {}),
-    nextLeaderAction: currentPhase?.nextAction ?? plan?.nextLeaderAction,
+    nextLeaderAction: currentPhase?.nextLeaderAction ?? plan?.nextLeaderAction,
     ...(plan?.revisionReason ? { revisionReason: plan.revisionReason } : {}),
     ...(plan?.revisedAt ? { revisedAt: plan.revisedAt } : {}),
     ...(typeof plan?.revisionCount === "number" ? { revisionCount: plan.revisionCount } : {}),
@@ -303,15 +261,15 @@ export function formatQuestJourneyText(text: string): string {
 /** Next-action hints for Quest Journey states, including legacy aliases. */
 export const QUEST_JOURNEY_HINTS: Record<string, string> = {
   QUEUED: "dispatch to a worker",
-  PLANNING: QUEST_JOURNEY_PHASE_BY_ID.planning.nextAction,
-  EXPLORING: QUEST_JOURNEY_PHASE_BY_ID.explore.nextAction,
-  IMPLEMENTING: QUEST_JOURNEY_PHASE_BY_ID.implement.nextAction,
-  CODE_REVIEWING: QUEST_JOURNEY_PHASE_BY_ID["code-review"].nextAction,
-  MENTAL_SIMULATING: QUEST_JOURNEY_PHASE_BY_ID["mental-simulation"].nextAction,
-  EXECUTING: QUEST_JOURNEY_PHASE_BY_ID.execute.nextAction,
-  OUTCOME_REVIEWING: QUEST_JOURNEY_PHASE_BY_ID["outcome-review"].nextAction,
-  BOOKKEEPING: QUEST_JOURNEY_PHASE_BY_ID.bookkeeping.nextAction,
-  PORTING: QUEST_JOURNEY_PHASE_BY_ID.port.nextAction,
-  SKEPTIC_REVIEWING: QUEST_JOURNEY_PHASE_BY_ID["code-review"].nextAction,
-  GROOM_REVIEWING: QUEST_JOURNEY_PHASE_BY_ID["code-review"].nextAction,
+  PLANNING: QUEST_JOURNEY_PHASE_BY_ID.planning.nextLeaderAction,
+  EXPLORING: QUEST_JOURNEY_PHASE_BY_ID.explore.nextLeaderAction,
+  IMPLEMENTING: QUEST_JOURNEY_PHASE_BY_ID.implement.nextLeaderAction,
+  CODE_REVIEWING: QUEST_JOURNEY_PHASE_BY_ID["code-review"].nextLeaderAction,
+  MENTAL_SIMULATING: QUEST_JOURNEY_PHASE_BY_ID["mental-simulation"].nextLeaderAction,
+  EXECUTING: QUEST_JOURNEY_PHASE_BY_ID.execute.nextLeaderAction,
+  OUTCOME_REVIEWING: QUEST_JOURNEY_PHASE_BY_ID["outcome-review"].nextLeaderAction,
+  BOOKKEEPING: QUEST_JOURNEY_PHASE_BY_ID.bookkeeping.nextLeaderAction,
+  PORTING: QUEST_JOURNEY_PHASE_BY_ID.port.nextLeaderAction,
+  SKEPTIC_REVIEWING: QUEST_JOURNEY_PHASE_BY_ID["code-review"].nextLeaderAction,
+  GROOM_REVIEWING: QUEST_JOURNEY_PHASE_BY_ID["code-review"].nextLeaderAction,
 };

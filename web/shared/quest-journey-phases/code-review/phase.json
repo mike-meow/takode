@@ -1,0 +1,9 @@
+{
+  "id": "code-review",
+  "label": "Code Review",
+  "boardState": "CODE_REVIEWING",
+  "assigneeRole": "reviewer",
+  "contract": "Review tracked code or tracked artifacts for correctness, maintainability, tests, security, and regression risk.",
+  "nextLeaderAction": "read the code-review leader brief, then wait for the reviewer result and either send rework or advance",
+  "aliases": ["skeptic-review", "reviewer-groom"]
+}

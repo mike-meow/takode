@@ -118,23 +118,28 @@ describe("Quest Journey phases", () => {
       "bookkeeping",
       "port",
     ]);
-    expect(QUEST_JOURNEY_PHASES.map((phase) => phase.skill)).toEqual([
-      "quest-journey-planning",
-      "quest-journey-explore",
-      "quest-journey-implement",
-      "quest-journey-code-review",
-      "quest-journey-mental-simulation",
-      "quest-journey-execute",
-      "quest-journey-outcome-review",
-      "quest-journey-bookkeeping",
-      "quest-journey-port",
+    expect(QUEST_JOURNEY_PHASES.map((phase) => phase.boardState)).toEqual([
+      "PLANNING",
+      "EXPLORING",
+      "IMPLEMENTING",
+      "CODE_REVIEWING",
+      "MENTAL_SIMULATING",
+      "EXECUTING",
+      "OUTCOME_REVIEWING",
+      "BOOKKEEPING",
+      "PORTING",
     ]);
+    expect(QUEST_JOURNEY_PHASES.find((phase) => phase.id === "code-review")?.aliases).toEqual([
+      "skeptic-review",
+      "reviewer-groom",
+    ]);
+    expect(QUEST_JOURNEY_PHASES.find((phase) => phase.id === "port")?.aliases).toEqual(["porting"]);
   });
 
   it("maps board states to current phases and next leader actions", () => {
     expect(getQuestJourneyPhaseForState("IMPLEMENTING")?.id).toBe("implement");
     expect(getQuestJourneyPhaseForState("SKEPTIC_REVIEWING")?.id).toBe("code-review");
-    expect(getQuestJourneyPhase("bookkeeping")?.state).toBe("BOOKKEEPING");
+    expect(getQuestJourneyPhase("bookkeeping")?.boardState).toBe("BOOKKEEPING");
     expect(normalizeQuestJourneyPlan(undefined, "PORTING")).toEqual(
       expect.objectContaining({
         phaseIds: DEFAULT_QUEST_JOURNEY_PHASE_IDS,

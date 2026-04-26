@@ -399,6 +399,9 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("IMPLEMENTING");
     expect(guardrails).toContain("Code Review");
     expect(guardrails).toContain("BOOKKEEPING");
+    expect(guardrails).toContain("~/.companion/quest-journey-phases/<phase-id>/");
+    expect(guardrails).toContain("`planning/leader.md`");
+    expect(guardrails).toContain("`planning/assignee.md`");
     expect(guardrails).toContain("board-owned active state for the quest");
     expect(guardrails).toContain("Work Board");
     // Spawn backend default note
@@ -496,6 +499,9 @@ describe("getOrchestratorGuardrails", () => {
     // Quest Journey phase table inline as quick reference
     expect(guardrails).toContain("Quest Journey");
     expect(guardrails).toContain("Code Review");
+    expect(guardrails).toContain("~/.companion/quest-journey-phases/<phase-id>/");
+    expect(guardrails).toContain("`planning/leader.md`");
+    expect(guardrails).toContain("`planning/assignee.md`");
     // CLI reference delegated to skill
     expect(guardrails).toContain("takode-orchestration");
     expect(guardrails).toContain("default to your own backend type");

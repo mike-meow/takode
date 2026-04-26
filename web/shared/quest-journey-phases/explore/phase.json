@@ -1,0 +1,9 @@
+{
+  "id": "explore",
+  "label": "Explore",
+  "boardState": "EXPLORING",
+  "assigneeRole": "worker",
+  "contract": "Gather unknown information without making the target-state change.",
+  "nextLeaderAction": "read the explore leader brief, then wait for the evidence summary and decide whether to revise the Journey or advance",
+  "aliases": []
+}

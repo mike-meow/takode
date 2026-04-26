@@ -89,8 +89,10 @@ describe("buildInjectedSystemPromptForDebug", () => {
     expect(result).toContain("Use `/leader-dispatch` before dispatching a fresh or newly refined quest");
     expect(result).toContain("board-owned active state for the quest");
     expect(result).toContain("Initial Journey approval comes before dispatch");
-    expect(result).toContain("| Built-in phase | Board state | Skill | Next leader action |");
-    expect(result).toContain("`/quest-journey-planning`");
+    expect(result).toContain("| Built-in phase | Board state | Leader brief | Assignee brief | Next leader action |");
+    expect(result).toContain("~/.companion/quest-journey-phases/<phase-id>/");
+    expect(result).toContain("`planning/leader.md`");
+    expect(result).toContain("`planning/assignee.md`");
     expect(result).not.toContain("Every dispatched task follows the **Quest Journey** lifecycle");
     expect(result).not.toContain("Every quest goes through the full journey");
   });

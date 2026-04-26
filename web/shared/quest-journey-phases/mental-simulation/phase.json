@@ -1,0 +1,9 @@
+{
+  "id": "mental-simulation",
+  "label": "Mental Simulation",
+  "boardState": "MENTAL_SIMULATING",
+  "assigneeRole": "reviewer",
+  "contract": "Replay a design, workflow, or implementation against concrete scenarios.",
+  "nextLeaderAction": "read the mental-simulation leader brief, then wait for the scenario review and decide whether the Journey needs revision",
+  "aliases": []
+}

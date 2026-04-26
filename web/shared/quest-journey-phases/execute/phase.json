@@ -1,0 +1,9 @@
+{
+  "id": "execute",
+  "label": "Execute",
+  "boardState": "EXECUTING",
+  "assigneeRole": "worker",
+  "contract": "Run high-stakes, long-running, costly, or externally consequential operations.",
+  "nextLeaderAction": "read the execute leader brief, track monitor and stop conditions, then wait for the execution report before advancing",
+  "aliases": []
+}

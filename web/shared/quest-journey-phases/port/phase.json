@@ -1,0 +1,9 @@
+{
+  "id": "port",
+  "label": "Port",
+  "boardState": "PORTING",
+  "assigneeRole": "worker",
+  "contract": "Sync accepted tracked changes back to the main repo.",
+  "nextLeaderAction": "read the port leader brief, then wait for sync confirmation and post-port verification before removing the row",
+  "aliases": ["porting"]
+}

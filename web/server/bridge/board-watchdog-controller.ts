@@ -373,7 +373,7 @@ export function advanceBoardRow(
     const nextPhaseId = plannedPhaseIds[currentPhaseIdx + 1] ?? plannedPhaseIds[0];
     const nextPhase = getQuestJourneyPhase(nextPhaseId);
     if (nextPhase) {
-      row.status = nextPhase.state;
+      row.status = nextPhase.boardState;
       row.journey = normalizeBoardRowJourneyPlan(
         {
           noCode: row.noCode,
@@ -386,7 +386,7 @@ export function advanceBoardRow(
             revisionCount: row.journey?.revisionCount,
           },
         },
-        nextPhase.state,
+        nextPhase.boardState,
       );
       if (row.status !== "QUEUED") row.waitFor = undefined;
       row.updatedAt = Date.now();

@@ -1395,7 +1395,7 @@ export function createTakodeRoutes(ctx: RouteContext) {
         return c.json({ error: `Invalid Quest Journey phase(s): ${invalid.join(", ")}` }, 400);
       }
       const typedPhaseIds = normalizeQuestJourneyPhaseIds(phaseIds) as QuestJourneyPhaseId[];
-      firstPlannedPhaseState = getQuestJourneyPhase(typedPhaseIds[0])?.state;
+      firstPlannedPhaseState = getQuestJourneyPhase(typedPhaseIds[0])?.boardState;
       const existingPhaseIds = normalizeQuestJourneyPhaseIds(existingRow?.journey?.phaseIds ?? []);
       const phasesChanged =
         typedPhaseIds.length !== existingPhaseIds.length ||

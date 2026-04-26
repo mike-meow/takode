@@ -1,0 +1,9 @@
+{
+  "id": "outcome-review",
+  "label": "Outcome Review",
+  "boardState": "OUTCOME_REVIEWING",
+  "assigneeRole": "reviewer",
+  "contract": "Judge external or non-code outcomes such as metrics, logs, artifacts, prompt behavior, or UX trial notes.",
+  "nextLeaderAction": "read the outcome-review leader brief, then wait for external-result evidence and decide whether to continue, revise, or conclude",
+  "aliases": []
+}

@@ -10,17 +10,24 @@ Before the first dispatch, leaders should use `/leader-dispatch` to propose the 
 
 ## Built-In Phase Library
 
-| Phase | Skill | Board state | Contract | Next action |
-|-------|-------|-------------|----------|-------------|
-| Planning | `/quest-journey-planning` | `PLANNING` | Align goal, constraints, success criteria, escalation triggers, and next-phase plan | Review the plan, then approve, reject, or revise |
-| Explore | `/quest-journey-explore` | `EXPLORING` | Gather unknown information without making the target-state change | Read the evidence summary, then choose the next phase |
-| Implement | `/quest-journey-implement` | `IMPLEMENTING` | Make approved code/docs/prompts/config/artifact changes and low-risk local actions | Wait for the worker report, then choose the next review or bookkeeping phase |
-| Code Review | `/quest-journey-code-review` | `CODE_REVIEWING` | Review tracked code/artifact correctness, maintainability, tests, security, and regression risk | Wait for reviewer acceptance or findings |
-| Mental Simulation | `/quest-journey-mental-simulation` | `MENTAL_SIMULATING` | Replay a design/workflow/implementation against concrete scenarios | Read the scenario review, then accept or revise |
-| Execute | `/quest-journey-execute` | `EXECUTING` | Run high-stakes, long-running, costly, or externally consequential operations | Monitor until the execution report is ready |
-| Outcome Review | `/quest-journey-outcome-review` | `OUTCOME_REVIEWING` | Judge external/non-code outcomes such as metrics, logs, artifacts, prompt behavior, or UX trial notes | Read the outcome review, then accept, revise, or rework |
-| Bookkeeping | `/quest-journey-bookkeeping` | `BOOKKEEPING` | Record durable shared external state such as quest updates, stream updates, artifact locations, handoff facts, and superseded facts | Advance once the shared state is current |
-| Port | `/quest-journey-port` | `PORTING` | Sync accepted tracked changes back to the main repo | Wait for sync confirmation and post-port verification |
+Built-in phase directories are seeded into `~/.companion/quest-journey-phases/<phase-id>/` with:
+- `phase.json`: semantic/runtime metadata such as board state, aliases, role, contract, and next leader action
+- `leader.md`: the leader-facing brief for that phase
+- `assignee.md`: the brief the leader should point the worker or reviewer to for that phase
+
+Leaders should read `leader.md` themselves and point the target session to the matching `assignee.md`. Do not rely on globally installed phase skills as the primary mechanism.
+
+| Phase | Board state | Leader brief | Assignee brief | Contract | Next leader action |
+|-------|-------------|--------------|----------------|----------|--------------------|
+| Planning | `PLANNING` | `planning/leader.md` | `planning/assignee.md` | Align goal, constraints, success criteria, escalation triggers, and next-phase plan | read the planning leader brief, send the planning-only instruction, then wait for the worker plan |
+| Explore | `EXPLORING` | `explore/leader.md` | `explore/assignee.md` | Gather unknown information without making the target-state change | read the explore leader brief, then wait for the evidence summary and decide whether to revise the Journey or advance |
+| Implement | `IMPLEMENTING` | `implement/leader.md` | `implement/assignee.md` | Make approved code/docs/prompts/config/artifact changes and low-risk local actions | read the implement leader brief, then wait for the worker report and choose the next review or bookkeeping phase |
+| Code Review | `CODE_REVIEWING` | `code-review/leader.md` | `code-review/assignee.md` | Review tracked code or tracked artifacts for correctness, maintainability, tests, security, and regression risk | read the code-review leader brief, then wait for the reviewer result and either send rework or advance |
+| Mental Simulation | `MENTAL_SIMULATING` | `mental-simulation/leader.md` | `mental-simulation/assignee.md` | Replay a design, workflow, or implementation against concrete scenarios | read the mental-simulation leader brief, then wait for the scenario review and decide whether the Journey needs revision |
+| Execute | `EXECUTING` | `execute/leader.md` | `execute/assignee.md` | Run high-stakes, long-running, costly, or externally consequential operations | read the execute leader brief, track monitor and stop conditions, then wait for the execution report before advancing |
+| Outcome Review | `OUTCOME_REVIEWING` | `outcome-review/leader.md` | `outcome-review/assignee.md` | Judge external or non-code outcomes such as metrics, logs, artifacts, prompt behavior, or UX trial notes | read the outcome-review leader brief, then wait for external-result evidence and decide whether to continue, revise, or conclude |
+| Bookkeeping | `BOOKKEEPING` | `bookkeeping/leader.md` | `bookkeeping/assignee.md` | Record durable shared external state such as quest updates, stream updates, artifact locations, handoff facts, and superseded facts | read the bookkeeping leader brief, record the durable shared state update, then advance when the facts and handoff state are current |
+| Port | `PORTING` | `port/leader.md` | `port/assignee.md` | Sync accepted tracked changes back to the main repo | read the port leader brief, then wait for sync confirmation and post-port verification before removing the row |
 
 ## Default Preset
 
@@ -60,6 +67,7 @@ Rules:
 
 - **Authorize one phase at a time.**
 - **Initial Journey approval happens before dispatch.** Use `/leader-dispatch` to propose the starting phases and wait for approval.
+- **Read `leader.md`; point assignees to `assignee.md`.** Do not treat globally installed phase skills as the primary phase mechanism.
 - **Initial dispatch = planning only.**
 - **Quest ownership stays with the worker.**
 - **Worker planning refines a leader-approved Journey.** It may recommend revisions, but the board-owned Journey remains authoritative until the leader changes it.

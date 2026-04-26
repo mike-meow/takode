@@ -1,0 +1,9 @@
+{
+  "id": "bookkeeping",
+  "label": "Bookkeeping",
+  "boardState": "BOOKKEEPING",
+  "assigneeRole": "worker",
+  "contract": "Record durable shared external state such as quest updates, stream updates, artifact locations, handoff facts, and superseded facts.",
+  "nextLeaderAction": "read the bookkeeping leader brief, record the durable shared state update, then advance when the facts and handoff state are current",
+  "aliases": ["state-update", "stream-update"]
+}

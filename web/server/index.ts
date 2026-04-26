@@ -53,6 +53,7 @@ import {
 import * as envManager from "./env-manager.js";
 import { ensureQuestmasterIntegration } from "./quest-integration.js";
 import { ensureTakodeIntegration } from "./takode-integration.js";
+import { ensureBuiltInQuestJourneyPhaseData } from "./quest-journey-phases.js";
 import { ensureSkillSymlinks } from "./skill-symlink.js";
 import { recreateWorktreeIfMissing } from "./migration.js";
 import { access } from "node:fs/promises";
@@ -871,22 +872,10 @@ await timerManager.startAll();
 // ── Questmaster CLI integration ─────────────────────────────────────────────
 await ensureQuestmasterIntegration(port, packageRoot);
 await ensureTakodeIntegration(packageRoot);
+await ensureBuiltInQuestJourneyPhaseData({ packageRoot });
 await ensureSkillSymlinks([
   "takode-orchestration",
   "leader-dispatch",
-  "quest-journey-planning",
-  "quest-journey-explore",
-  "quest-journey-implement",
-  "quest-journey-code-review",
-  "quest-journey-mental-simulation",
-  "quest-journey-execute",
-  "quest-journey-outcome-review",
-  "quest-journey-bookkeeping",
-  "quest-journey-port",
-  "quest-journey-implementation",
-  "quest-journey-skeptic-review",
-  "quest-journey-reviewer-groom",
-  "quest-journey-porting",
   "self-groom",
   "reviewer-groom",
   "skeptic-review",

@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import type { BackendType } from "./session-types.js";
 import { TAKODE_LINK_SYNTAX_INSTRUCTIONS } from "./link-syntax.js";
 import { QUEST_JOURNEY_PHASES } from "../shared/quest-journey.js";
+import { getQuestJourneyPhaseDisplayRoot } from "./quest-journey-phases.js";
 
 export function getClaudeSdkDebugLogPath(port: number, sessionId: string): string {
   return join(homedir(), ".companion", "logs", `claude-sdk-${port}-${sessionId}.log`);
@@ -150,12 +151,12 @@ function getCodexOrchestratorGuardrailCopy(): OrchestratorGuardrailCopy {
 
 function renderBuiltInQuestJourneyPhaseTable(): string {
   const rows = QUEST_JOURNEY_PHASES.map((phase) => {
-    return `| ${phase.label} | \`${phase.state}\` | \`/${phase.skill}\` | ${phase.nextAction} |`;
+    return `| ${phase.label} | \`${phase.boardState}\` | \`${phase.id}/leader.md\` | \`${phase.id}/assignee.md\` | ${phase.nextLeaderAction} |`;
   });
 
   return [
-    "| Built-in phase | Board state | Skill | Next leader action |",
-    "|----------------|-------------|-------|--------------------|",
+    "| Built-in phase | Board state | Leader brief | Assignee brief | Next leader action |",
+    "|----------------|-------------|--------------|----------------|--------------------|",
     ...rows,
   ].join("\n");
 }
@@ -195,6 +196,8 @@ The \`takode-orchestration\` skill has the full event type table and reaction ru
 Every dispatched task follows a **Quest Journey** assembled from phases. The work board (\`takode board show\`) tracks the planned phases, current phase, and next required leader action. While a quest is on the board, that current planned Journey is board-owned active state for the quest. Do not skip planned phases.
 
 \`QUEUED\` is a pre-phase waiting state for work that is intentionally blocked before dispatch. Once active, the built-in full-code Quest Journey uses these phases:
+
+Built-in phase directories are seeded into \`${getQuestJourneyPhaseDisplayRoot()}/<phase-id>/\` with \`phase.json\`, \`leader.md\`, and \`assignee.md\`. Read the leader brief yourself and point the target worker or reviewer to the corresponding assignee brief path instead of relying on globally installed phase skills.
 
 ${renderBuiltInQuestJourneyPhaseTable()}
 
