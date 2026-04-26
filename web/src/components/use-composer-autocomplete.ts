@@ -25,6 +25,7 @@ import {
   buildQuestLinkInsertText,
   buildSessionLinkInsertText,
   computeRecentAutocompleteBoosts,
+  overlayCurrentAutocompleteBoosts,
   detectReferenceTrigger,
   getSessionSuggestionPreview,
   toAppMentionInsertText,
@@ -277,13 +278,17 @@ export function useComposerAutocomplete({
     detectSlashQuery(text, cursorPos);
   }, [detectSlashQuery, textareaRef, text]);
 
+  const recencySkillNames = useMemo(
+    () => [...sessionView.skills, ...sessionView.skillMetadata.map((skill) => skill.name)],
+    [sessionView.skillMetadata, sessionView.skills],
+  );
+  const historyAutocompleteBoosts = useMemo(
+    () => computeRecentAutocompleteBoosts(messages, recencySkillNames),
+    [messages, recencySkillNames],
+  );
   const recentAutocompleteBoosts = useMemo(
-    () =>
-      computeRecentAutocompleteBoosts(messages, text, [
-        ...sessionView.skills,
-        ...sessionView.skillMetadata.map((skill) => skill.name),
-      ]),
-    [messages, sessionView.skillMetadata, sessionView.skills, text],
+    () => overlayCurrentAutocompleteBoosts(historyAutocompleteBoosts, text, recencySkillNames),
+    [historyAutocompleteBoosts, recencySkillNames, text],
   );
 
   const filteredCommands = useMemo(() => {

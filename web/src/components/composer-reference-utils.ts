@@ -33,6 +33,7 @@ export interface RecentAutocompleteBoosts {
   questBoosts: Map<string, number>;
   sessionBoosts: Map<number, number>;
   skillBoosts: Map<string, number>;
+  nextRecencyWeight: number;
 }
 
 function getPathTail(path: string | null | undefined): string | null {
@@ -97,43 +98,83 @@ function collectRecentAutocompleteMatches(
   return { questMatches, sessionMatches, skillMatches };
 }
 
+function normalizeSkillNames(skillNames: Iterable<string>): Set<string> {
+  return new Set(Array.from(skillNames, (skillName) => skillName.trim().toLowerCase()).filter(Boolean));
+}
+
+function cloneRecentAutocompleteBoosts(boosts: RecentAutocompleteBoosts): RecentAutocompleteBoosts {
+  return {
+    questBoosts: new Map(boosts.questBoosts),
+    sessionBoosts: new Map(boosts.sessionBoosts),
+    skillBoosts: new Map(boosts.skillBoosts),
+    nextRecencyWeight: boosts.nextRecencyWeight,
+  };
+}
+
+function applyAutocompleteMatches(
+  boosts: RecentAutocompleteBoosts,
+  recencyWeight: number,
+  matches: ReturnType<typeof collectRecentAutocompleteMatches>,
+): void {
+  const { questMatches, sessionMatches, skillMatches } = matches;
+
+  for (const questId of questMatches) {
+    boosts.questBoosts.set(questId, recencyWeight);
+  }
+  for (const sessionNum of sessionMatches) {
+    if (!Number.isFinite(sessionNum)) continue;
+    boosts.sessionBoosts.set(sessionNum, recencyWeight);
+  }
+  for (const skillName of skillMatches) {
+    boosts.skillBoosts.set(skillName, recencyWeight);
+  }
+}
+
 export function computeRecentAutocompleteBoosts(
   messages: ChatMessage[],
-  currentInput = "",
   skillNames: Iterable<string> = [],
 ): RecentAutocompleteBoosts {
-  const questBoosts = new Map<string, number>();
-  const sessionBoosts = new Map<number, number>();
-  const skillBoosts = new Map<string, number>();
-  const normalizedSkillNames = new Set(
-    Array.from(skillNames, (skillName) => skillName.trim().toLowerCase()).filter(Boolean),
-  );
-  const contents = messages
-    .map((message) => message?.content ?? "")
-    .concat(currentInput)
-    .filter(Boolean);
+  const boosts: RecentAutocompleteBoosts = {
+    questBoosts: new Map<string, number>(),
+    sessionBoosts: new Map<number, number>(),
+    skillBoosts: new Map<string, number>(),
+    nextRecencyWeight: 1,
+  };
+  const normalizedSkillNames = normalizeSkillNames(skillNames);
+  const contents = messages.map((message) => message?.content ?? "").filter(Boolean);
 
   for (let index = contents.length - 1; index >= 0; index -= 1) {
     const content = contents[index]!;
     const recencyWeight = index + 1;
-    const { questMatches, sessionMatches, skillMatches } = collectRecentAutocompleteMatches(
-      content,
-      normalizedSkillNames,
-    );
-
-    for (const questId of questMatches) {
-      if (!questBoosts.has(questId)) questBoosts.set(questId, recencyWeight);
+    const matches = collectRecentAutocompleteMatches(content, normalizedSkillNames);
+    for (const questId of matches.questMatches) {
+      if (!boosts.questBoosts.has(questId)) boosts.questBoosts.set(questId, recencyWeight);
     }
-    for (const sessionNum of sessionMatches) {
-      if (!Number.isFinite(sessionNum) || sessionBoosts.has(sessionNum)) continue;
-      sessionBoosts.set(sessionNum, recencyWeight);
+    for (const sessionNum of matches.sessionMatches) {
+      if (!Number.isFinite(sessionNum) || boosts.sessionBoosts.has(sessionNum)) continue;
+      boosts.sessionBoosts.set(sessionNum, recencyWeight);
     }
-    for (const skillName of skillMatches) {
-      if (!skillBoosts.has(skillName)) skillBoosts.set(skillName, recencyWeight);
+    for (const skillName of matches.skillMatches) {
+      if (!boosts.skillBoosts.has(skillName)) boosts.skillBoosts.set(skillName, recencyWeight);
     }
   }
 
-  return { questBoosts, sessionBoosts, skillBoosts };
+  boosts.nextRecencyWeight = contents.length + 1;
+  return boosts;
+}
+
+export function overlayCurrentAutocompleteBoosts(
+  historyBoosts: RecentAutocompleteBoosts,
+  currentInput: string,
+  skillNames: Iterable<string> = [],
+): RecentAutocompleteBoosts {
+  if (!currentInput.trim()) return historyBoosts;
+
+  const boosts = cloneRecentAutocompleteBoosts(historyBoosts);
+  const normalizedSkillNames = normalizeSkillNames(skillNames);
+  const matches = collectRecentAutocompleteMatches(currentInput, normalizedSkillNames);
+  applyAutocompleteMatches(boosts, historyBoosts.nextRecencyWeight, matches);
+  return boosts;
 }
 
 export function computeRecentReferenceBoosts(
@@ -143,7 +184,10 @@ export function computeRecentReferenceBoosts(
   questBoosts: Map<string, number>;
   sessionBoosts: Map<number, number>;
 } {
-  const { questBoosts, sessionBoosts } = computeRecentAutocompleteBoosts(messages, currentInput);
+  const { questBoosts, sessionBoosts } = overlayCurrentAutocompleteBoosts(
+    computeRecentAutocompleteBoosts(messages),
+    currentInput,
+  );
   return { questBoosts, sessionBoosts };
 }
 

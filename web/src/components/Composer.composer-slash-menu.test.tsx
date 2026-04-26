@@ -636,6 +636,26 @@ describe("Composer slash menu", () => {
     expect(screen.getByText("/status")).toBeTruthy();
   });
 
+  it("keeps built-in slash commands ahead of skills even when the draft mentions a recent skill", () => {
+    setupMockStore({
+      session: {
+        backend_type: "codex",
+        slash_commands: [],
+        skills: ["review"],
+      },
+    });
+    const { container } = render(<Composer sessionId="s1" />);
+    const textarea = container.querySelector("textarea")! as HTMLTextAreaElement;
+    const value = "Reuse /review and then /";
+
+    fireEvent.change(textarea, { target: { value, selectionStart: value.length } });
+
+    const suggestions = Array.from(container.querySelectorAll("[data-cmd-index]"));
+    expect(suggestions.length).toBeGreaterThan(1);
+    expect(within(suggestions[0] as HTMLElement).getByText("/plan")).toBeTruthy();
+    expect(suggestions.some((item) => within(item as HTMLElement).queryByText("/review"))).toBe(true);
+  });
+
   it("sends /status as a normal Codex user message", () => {
     setupMockStore({
       session: {
