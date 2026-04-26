@@ -36,6 +36,19 @@ interface MockStoreState {
     contextUsedPercent?: number;
     codexTokenDetails?: { modelContextWindow?: number };
     claudeTokenDetails?: { modelContextWindow?: number };
+    codexLeaderRecycleLineage?: {
+      cliSessionIds: string[];
+      recycleEvents: Array<{
+        trigger: "threshold" | "manual_compact";
+        requestedAt: number;
+        tokenUsage?: { contextTokensUsed?: number };
+      }>;
+    };
+    codexLeaderRecyclePending?: {
+      eventIndex: number;
+      trigger: "threshold" | "manual_compact";
+      requestedAt: number;
+    } | null;
     sessionNum?: number | null;
     herdedBy?: string;
     isOrchestrator?: boolean;
@@ -97,6 +110,7 @@ vi.mock("../ws.js", () => ({
 vi.mock("../api.js", () => ({
   api: {
     getSettings: vi.fn(),
+    listSessions: vi.fn(),
   },
 }));
 
@@ -113,6 +127,8 @@ describe("SessionInfoPopover", () => {
     vi.mocked(api.getSettings).mockResolvedValue({ editorConfig: { editor: "cursor" } } as Awaited<
       ReturnType<typeof api.getSettings>
     >);
+    vi.mocked(api.listSessions).mockReset();
+    vi.mocked(api.listSessions).mockResolvedValue([]);
     vi.mocked(openPathWithEditorPreference).mockReset();
     vi.mocked(openPathWithEditorPreference).mockResolvedValue(true);
   });
@@ -449,6 +465,81 @@ describe("SessionInfoPopover", () => {
 
     expect(screen.getByText("73% context")).toBeInTheDocument();
     expect(screen.getByText("258 K tokens")).toBeInTheDocument();
+  });
+
+  it("shows Codex leader recycle lineage and pending recycle state", () => {
+    resetStore([]);
+    storeState.sdkSessions = [
+      {
+        sessionId: "s1",
+        cwd: "/repo",
+        backendType: "codex",
+        isOrchestrator: true,
+        codexLeaderRecyclePending: {
+          eventIndex: 1,
+          trigger: "manual_compact",
+          requestedAt: 1_746_000_000_000,
+        },
+        codexLeaderRecycleLineage: {
+          cliSessionIds: ["thread-a", "thread-b"],
+          recycleEvents: [
+            {
+              trigger: "threshold",
+              requestedAt: 1_745_999_000_000,
+              tokenUsage: { contextTokensUsed: 270_000 },
+            },
+            {
+              trigger: "manual_compact",
+              requestedAt: 1_746_000_000_000,
+              tokenUsage: { contextTokensUsed: 180_000 },
+            },
+          ],
+        },
+      },
+    ];
+
+    render(<SessionInfoPopover sessionId="s1" onClose={() => {}} />);
+
+    const section = screen.getByTestId("codex-leader-recycle-lineage");
+    expect(within(section).getByText("Pending manual /compact recycle")).toBeInTheDocument();
+    expect(within(section).getByText("thread-a")).toBeInTheDocument();
+    expect(within(section).getByText("thread-b")).toBeInTheDocument();
+    expect(within(section).getByText("Threshold recycle")).toBeInTheDocument();
+    expect(within(section).getByText("Manual /compact recycle")).toBeInTheDocument();
+    expect(within(section).getByText(/270K context/)).toBeInTheDocument();
+    expect(within(section).getByText(/180K context/)).toBeInTheDocument();
+  });
+
+  it("loads Codex leader recycle lineage from listSessions when sdkSessions are missing", async () => {
+    resetStore([]);
+    storeState.sdkSessions = [];
+    vi.mocked(api.listSessions).mockResolvedValue([
+      {
+        sessionId: "s1",
+        cwd: "/repo",
+        backendType: "codex",
+        isOrchestrator: true,
+        codexLeaderRecycleLineage: {
+          cliSessionIds: ["thread-a", "thread-b"],
+          recycleEvents: [
+            {
+              trigger: "manual_compact",
+              requestedAt: 1_746_000_000_000,
+              tokenUsage: { contextTokensUsed: 180_000 },
+            },
+          ],
+        },
+        codexLeaderRecyclePending: null,
+      },
+    ] as Awaited<ReturnType<typeof api.listSessions>>);
+
+    render(<SessionInfoPopover sessionId="s1" onClose={() => {}} />);
+
+    const section = await screen.findByTestId("codex-leader-recycle-lineage");
+    expect(within(section).getByText("thread-a")).toBeInTheDocument();
+    expect(within(section).getByText("thread-b")).toBeInTheDocument();
+    expect(within(section).getByText("Manual /compact recycle")).toBeInTheDocument();
+    expect(within(section).getByText(/180K context/)).toBeInTheDocument();
   });
 
   it("shows turns, context, and context window for Claude SDK sessions (no cost)", () => {

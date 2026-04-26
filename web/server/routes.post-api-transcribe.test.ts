@@ -124,6 +124,8 @@ vi.mock("./settings-manager.js", () => ({
     sleepInhibitorEnabled: false,
     sleepInhibitorDurationMinutes: 5,
     questmasterViewMode: "cards",
+    codexLeaderContextWindowOverrideTokens: 1_000_000,
+    codexLeaderRecycleThresholdTokens: 260_000,
     updatedAt: 0,
   })),
   updateSettings: vi.fn((patch) => ({
@@ -564,6 +566,8 @@ describe("POST /api/transcribe", () => {
       defaultClaudeBackend: "claude",
       sleepInhibitorEnabled: false,
       sleepInhibitorDurationMinutes: 5,
+      codexLeaderContextWindowOverrideTokens: 1_000_000,
+      codexLeaderRecycleThresholdTokens: 260_000,
       updatedAt: 123,
     });
     vi.mocked(fetch).mockResolvedValueOnce(
@@ -627,6 +631,8 @@ describe("POST /api/transcribe", () => {
       defaultClaudeBackend: "claude",
       sleepInhibitorEnabled: false,
       sleepInhibitorDurationMinutes: 5,
+      codexLeaderContextWindowOverrideTokens: 1_000_000,
+      codexLeaderRecycleThresholdTokens: 260_000,
       updatedAt: 123,
     });
     vi.mocked(fetch).mockResolvedValueOnce(
@@ -692,6 +698,8 @@ describe("POST /api/transcribe", () => {
       defaultClaudeBackend: "claude",
       sleepInhibitorEnabled: false,
       sleepInhibitorDurationMinutes: 5,
+      codexLeaderContextWindowOverrideTokens: 1_000_000,
+      codexLeaderRecycleThresholdTokens: 260_000,
       updatedAt: 123,
     });
     vi.mocked(fetch).mockResolvedValueOnce(
@@ -746,6 +754,8 @@ describe("POST /api/transcribe", () => {
       defaultClaudeBackend: "claude",
       sleepInhibitorEnabled: false,
       sleepInhibitorDurationMinutes: 5,
+      codexLeaderContextWindowOverrideTokens: 1_000_000,
+      codexLeaderRecycleThresholdTokens: 260_000,
       updatedAt: 123,
     });
     vi.mocked(sessionNames.getName).mockReturnValue("Voice edit session");

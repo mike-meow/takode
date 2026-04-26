@@ -756,6 +756,7 @@ export interface SessionState {
   total_lines_removed: number;
   // Codex-specific token details (forwarded from thread/tokenUsage/updated)
   codex_token_details?: {
+    contextTokensUsed?: number;
     inputTokens: number;
     outputTokens: number;
     cachedInputTokens: number;
@@ -809,6 +810,31 @@ export interface SessionNotification {
   /** Assistant message ID for jump-to-message links (null if no message was anchored) */
   messageId: string | null;
   done: boolean;
+}
+
+export type CodexLeaderRecycleTrigger = "threshold" | "manual_compact";
+
+export interface CodexLeaderRecycleTokenSnapshot {
+  contextTokensUsed?: number;
+  contextUsedPercent?: number;
+  modelContextWindow?: number;
+  inputTokens?: number;
+  cachedInputTokens?: number;
+  outputTokens?: number;
+  reasoningOutputTokens?: number;
+}
+
+export interface CodexLeaderRecycleEvent {
+  trigger: CodexLeaderRecycleTrigger;
+  requestedAt: number;
+  previousCliSessionId?: string;
+  nextCliSessionId?: string;
+  tokenUsage?: CodexLeaderRecycleTokenSnapshot;
+}
+
+export interface CodexLeaderRecycleLineage {
+  cliSessionIds: string[];
+  recycleEvents: CodexLeaderRecycleEvent[];
 }
 
 // ─── MCP Types ───────────────────────────────────────────────────────────────

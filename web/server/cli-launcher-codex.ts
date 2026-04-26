@@ -32,6 +32,7 @@ export class MissingCodexBinaryError extends Error {}
 interface CodexLaunchInfo {
   cwd: string;
   cliSessionId?: string;
+  isOrchestrator?: boolean;
 }
 
 interface CodexLaunchOptions {
@@ -45,6 +46,7 @@ interface CodexLaunchOptions {
   containerId?: string;
   env?: Record<string, string>;
   resumeCliSessionId?: string;
+  codexLeaderContextWindowOverrideTokens?: number;
 }
 
 export interface CodexSpawnSpec {
@@ -206,6 +208,34 @@ function upsertBooleanSettingInSection(configToml: string, sectionHeader: string
     out[keyIndex] = renderedLine;
   }
   return out.join("\n") + (endsWithNewline ? "\n" : "");
+}
+
+function upsertTopLevelNumberSetting(configToml: string, key: string, value: number): string {
+  const endsWithNewline = configToml.endsWith("\n");
+  const lines = configToml.split("\n");
+  if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+
+  const renderedLine = `${key} = ${Math.floor(value)}`;
+  const keyPattern = new RegExp(`^\\s*${escapeRegExp(key)}\\s*=`);
+  let insertAt = lines.length;
+
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    if (/^\s*\[[^\]]+\]\s*$/.test(lines[i])) {
+      insertAt = i;
+      break;
+    }
+    if (keyPattern.test(lines[i])) {
+      const out = [...lines];
+      out[i] = renderedLine;
+      return out.join("\n") + (endsWithNewline || configToml.length === 0 ? "\n" : "");
+    }
+  }
+
+  const out = [...lines];
+  out.splice(insertAt, 0, renderedLine);
+  return out.join("\n") + (endsWithNewline || configToml.length === 0 ? "\n" : "");
 }
 
 async function readFilePrefix(path: string, maxBytes = 4096): Promise<string> {
@@ -411,7 +441,11 @@ async function prepareCodexHome(codexHome: string, resumeCliSessionId?: string):
   }
 }
 
-async function ensureCodexSessionConfig(codexHome: string, envVars: string[]): Promise<void> {
+async function ensureCodexSessionConfig(
+  codexHome: string,
+  envVars: string[],
+  options?: { leaderContextWindowOverrideTokens?: number },
+): Promise<void> {
   const configPath = join(codexHome, "config.toml");
   let current = "";
   try {
@@ -422,6 +456,11 @@ async function ensureCodexSessionConfig(codexHome: string, envVars: string[]): P
 
   let next = upsertBooleanSettingInSection(current, codexFeaturesHeader, codexMultiAgentFeature, true);
   next = upsertShellEnvironmentIncludeOnly(next, ["PATH", ...envVars]);
+  const leaderContextWindowOverrideTokens = options?.leaderContextWindowOverrideTokens;
+  if (leaderContextWindowOverrideTokens && leaderContextWindowOverrideTokens > 0) {
+    next = upsertTopLevelNumberSetting(next, "model_context_window", leaderContextWindowOverrideTokens);
+    next = upsertTopLevelNumberSetting(next, "model_auto_compact_token_limit", leaderContextWindowOverrideTokens);
+  }
   if (next !== current) {
     await writeFile(configPath, next, "utf-8");
   }
@@ -499,7 +538,10 @@ export async function prepareCodexSpawn(
 
   if (!isContainerized) {
     await prepareCodexHome(codexHome, options.resumeCliSessionId || info.cliSessionId);
-    await ensureCodexSessionConfig(codexHome, shellEnvVars);
+    await ensureCodexSessionConfig(codexHome, shellEnvVars, {
+      leaderContextWindowOverrideTokens:
+        info.isOrchestrator === true ? options.codexLeaderContextWindowOverrideTokens : undefined,
+    });
   }
 
   if (isContainerized) {

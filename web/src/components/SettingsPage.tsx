@@ -82,6 +82,10 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
   const [logFile, setLogFile] = useState("");
   const [binSaving, setBinSaving] = useState(false);
   const [binError, setBinError] = useState("");
+  const [codexLeaderContextWindowOverrideTokens, setCodexLeaderContextWindowOverrideTokens] = useState(1_000_000);
+  const [codexLeaderRecycleThresholdTokens, setCodexLeaderRecycleThresholdTokens] = useState(260_000);
+  const [codexLeaderSettingsSaving, setCodexLeaderSettingsSaving] = useState(false);
+  const [codexLeaderSettingsError, setCodexLeaderSettingsError] = useState("");
   const [claudeTest, setClaudeTest] = useState<{
     ok: boolean;
     resolvedPath?: string;
@@ -100,6 +104,7 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
   const [editorSaving, setEditorSaving] = useState(false);
   const [editorError, setEditorError] = useState("");
   const binDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const codexLeaderSettingsDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Session lifecycle state
   const [maxKeepAlive, setMaxKeepAlive] = useState(0);
@@ -225,6 +230,8 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
       .then((s) => {
         setClaudeBin(s.claudeBinary || "");
         setCodexBin(s.codexBinary || "");
+        setCodexLeaderContextWindowOverrideTokens(s.codexLeaderContextWindowOverrideTokens ?? 1_000_000);
+        setCodexLeaderRecycleThresholdTokens(s.codexLeaderRecycleThresholdTokens ?? 260_000);
         setDefaultClaudeBackend(s.defaultClaudeBackend || "claude");
         setLogFile(s.logFile || "");
         setMaxKeepAlive(s.maxKeepAlive || 0);
@@ -406,6 +413,26 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
         setBinError(err instanceof Error ? err.message : String(err));
       } finally {
         setBinSaving(false);
+      }
+    }, 800);
+  }
+
+  function debouncedSaveCodexLeaderSettings(newWindow: number, newThreshold: number) {
+    if (codexLeaderSettingsDebounceRef.current) clearTimeout(codexLeaderSettingsDebounceRef.current);
+    codexLeaderSettingsDebounceRef.current = setTimeout(async () => {
+      setCodexLeaderSettingsSaving(true);
+      setCodexLeaderSettingsError("");
+      try {
+        const res = await api.updateSettings({
+          codexLeaderContextWindowOverrideTokens: newWindow,
+          codexLeaderRecycleThresholdTokens: newThreshold,
+        });
+        setCodexLeaderContextWindowOverrideTokens(res.codexLeaderContextWindowOverrideTokens ?? newWindow);
+        setCodexLeaderRecycleThresholdTokens(res.codexLeaderRecycleThresholdTokens ?? newThreshold);
+      } catch (err: unknown) {
+        setCodexLeaderSettingsError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setCodexLeaderSettingsSaving(false);
       }
     }, 800);
   }
@@ -824,6 +851,52 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
                 )}
               </div>
 
+              <div hidden={settingsSearch.rowHidden("cli", "codex-leader-context-window")}>
+                <label className="block text-sm font-medium mb-1.5" htmlFor="codex-leader-context-window">
+                  Codex Leader Context Window
+                </label>
+                <input
+                  id="codex-leader-context-window"
+                  type="number"
+                  min={1}
+                  step={1000}
+                  value={codexLeaderContextWindowOverrideTokens}
+                  onChange={(e) => {
+                    const next = Math.max(1, Number(e.target.value) || 1);
+                    setCodexLeaderContextWindowOverrideTokens(next);
+                    debouncedSaveCodexLeaderSettings(next, codexLeaderRecycleThresholdTokens);
+                  }}
+                  className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted focus:outline-none focus:border-cc-primary/60"
+                />
+                <p className="mt-1.5 text-xs text-cc-muted">
+                  Applied only to new and relaunched Codex leader sessions. Takode writes this into the session-local
+                  Codex config so provider auto-compaction stays above the Takode recycle threshold.
+                </p>
+              </div>
+
+              <div hidden={settingsSearch.rowHidden("cli", "codex-leader-recycle-threshold")}>
+                <label className="block text-sm font-medium mb-1.5" htmlFor="codex-leader-recycle-threshold">
+                  Codex Leader Recycle Threshold
+                </label>
+                <input
+                  id="codex-leader-recycle-threshold"
+                  type="number"
+                  min={1}
+                  step={1000}
+                  value={codexLeaderRecycleThresholdTokens}
+                  onChange={(e) => {
+                    const next = Math.max(1, Number(e.target.value) || 1);
+                    setCodexLeaderRecycleThresholdTokens(next);
+                    debouncedSaveCodexLeaderSettings(codexLeaderContextWindowOverrideTokens, next);
+                  }}
+                  className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted focus:outline-none focus:border-cc-primary/60"
+                />
+                <p className="mt-1.5 text-xs text-cc-muted">
+                  When tracked Codex leader context usage crosses this many tokens, Takode recycles the underlying Codex
+                  thread in place and reuses the same Takode session.
+                </p>
+              </div>
+
               <div hidden={settingsSearch.rowHidden("cli", "default-backend")}>
                 <label className="block text-sm font-medium mb-1.5">Default Claude Backend</label>
                 <div className="flex items-center bg-cc-hover/50 rounded-lg p-0.5 w-fit">
@@ -894,8 +967,15 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
                   {editorError}
                 </div>
               )}
+              {codexLeaderSettingsError && (
+                <div className="px-3 py-2 rounded-lg bg-cc-error/10 border border-cc-error/20 text-xs text-cc-error">
+                  {codexLeaderSettingsError}
+                </div>
+              )}
 
-              {(binSaving || editorSaving) && <p className="text-xs text-cc-muted">Saving...</p>}
+              {(binSaving || editorSaving || codexLeaderSettingsSaving) && (
+                <p className="text-xs text-cc-muted">Saving...</p>
+              )}
 
               <button
                 type="button"

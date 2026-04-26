@@ -453,6 +453,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
         cwd: initialCwd,
         claudeBinary: body.claudeBinary || binarySettings.claudeBinary || undefined,
         codexBinary: body.codexBinary || binarySettings.codexBinary || undefined,
+        codexLeaderContextWindowOverrideTokens: binarySettings.codexLeaderContextWindowOverrideTokens,
         env: envVars,
         backendType: backend,
         resumeCliSessionId: body.resumeCliSessionId,
@@ -781,6 +782,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
       cwd: initialCwd,
       claudeBinary: body.claudeBinary || binarySettings.claudeBinary || undefined,
       codexBinary: body.codexBinary || binarySettings.codexBinary || undefined,
+      codexLeaderContextWindowOverrideTokens: binarySettings.codexLeaderContextWindowOverrideTokens,
       codexInternetAccess: backend === "codex" && body.codexInternetAccess === true,
       codexSandbox: resolveCodexSandboxForInitialMode(backend, initialModeState),
       codexReasoningEffort,
@@ -1694,8 +1696,17 @@ export function createSessionsRoutes(ctx: RouteContext) {
     if (!id) return c.json({ error: "Session not found" }, 404);
     const info = launcher.getSession(id);
     if (!info) return c.json({ error: "Session not found" }, 404);
+    if (info.backendType === "codex") {
+      if (!info.isOrchestrator) {
+        return c.json({ error: "Force compact is only supported for Codex leaders" }, 400);
+      }
+      const recycle = await wsBridge.recycleCodexLeaderSession(id, "manual_compact");
+      if (!recycle.ok) {
+        return c.json({ error: recycle.error || "Failed to recycle Codex leader session" }, 503);
+      }
+      return c.json({ ok: true });
+    }
     if (!info.cliSessionId) return c.json({ error: "No CLI session to resume" }, 400);
-    if (info.backendType === "codex") return c.json({ error: "Force compact not supported for Codex" }, 400);
 
     const queued = wsBridge.queueForceCompactForRelaunch(id);
     if (!queued.ok) return c.json({ error: queued.error }, 400);

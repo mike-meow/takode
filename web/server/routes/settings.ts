@@ -179,6 +179,8 @@ export function createSettingsRoutes(ctx: RouteContext) {
       sleepInhibitorEnabled: settings.sleepInhibitorEnabled,
       sleepInhibitorDurationMinutes: settings.sleepInhibitorDurationMinutes,
       questmasterViewMode: normalizeQuestmasterViewMode(settings.questmasterViewMode),
+      codexLeaderContextWindowOverrideTokens: settings.codexLeaderContextWindowOverrideTokens,
+      codexLeaderRecycleThresholdTokens: settings.codexLeaderRecycleThresholdTokens,
       ...(extras?.includeRuntimeInfo
         ? {
             restartSupported: !!process.env.COMPANION_SUPERVISED,
@@ -335,6 +337,22 @@ export function createSettingsRoutes(ctx: RouteContext) {
     ) {
       return c.json({ error: 'questmasterViewMode must be "cards" or "compact"' }, 400);
     }
+    if (
+      body.codexLeaderContextWindowOverrideTokens !== undefined &&
+      (typeof body.codexLeaderContextWindowOverrideTokens !== "number" ||
+        body.codexLeaderContextWindowOverrideTokens < 1 ||
+        !Number.isInteger(body.codexLeaderContextWindowOverrideTokens))
+    ) {
+      return c.json({ error: "codexLeaderContextWindowOverrideTokens must be a positive integer" }, 400);
+    }
+    if (
+      body.codexLeaderRecycleThresholdTokens !== undefined &&
+      (typeof body.codexLeaderRecycleThresholdTokens !== "number" ||
+        body.codexLeaderRecycleThresholdTokens < 1 ||
+        !Number.isInteger(body.codexLeaderRecycleThresholdTokens))
+    ) {
+      return c.json({ error: "codexLeaderRecycleThresholdTokens must be a positive integer" }, 400);
+    }
 
     // Check that at least one known field is present
     const knownFields = [
@@ -359,6 +377,8 @@ export function createSettingsRoutes(ctx: RouteContext) {
       "sleepInhibitorEnabled",
       "sleepInhibitorDurationMinutes",
       "questmasterViewMode",
+      "codexLeaderContextWindowOverrideTokens",
+      "codexLeaderRecycleThresholdTokens",
     ];
     if (!knownFields.some((f) => body[f] !== undefined)) {
       return c.json({ error: "At least one settings field is required" }, 400);
@@ -400,6 +420,12 @@ export function createSettingsRoutes(ctx: RouteContext) {
         body.questmasterViewMode === "cards" || body.questmasterViewMode === "compact"
           ? body.questmasterViewMode
           : undefined,
+      codexLeaderContextWindowOverrideTokens:
+        typeof body.codexLeaderContextWindowOverrideTokens === "number"
+          ? body.codexLeaderContextWindowOverrideTokens
+          : undefined,
+      codexLeaderRecycleThresholdTokens:
+        typeof body.codexLeaderRecycleThresholdTokens === "number" ? body.codexLeaderRecycleThresholdTokens : undefined,
     });
 
     return c.json(buildSettingsResponse(settings));

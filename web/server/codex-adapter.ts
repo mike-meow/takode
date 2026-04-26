@@ -40,7 +40,7 @@ import type {
   TurnStartedAwareAdapter,
   TurnStartFailedAwareAdapter,
 } from "./bridge/adapter-interface.js";
-import { computeContextUsedPercent, type TokenUsage } from "./bridge/context-usage.js";
+import { computeContextTokensUsed, computeContextUsedPercent, type TokenUsage } from "./bridge/context-usage.js";
 import { getDefaultModelForBackend } from "../shared/backend-defaults.js";
 import { CODEX_LOCAL_SLASH_COMMANDS } from "../shared/codex-slash-commands.js";
 
@@ -1237,7 +1237,20 @@ export class CodexAdapter
         input_tokens: last.inputTokens || 0,
         cache_read_input_tokens: last.cachedInputTokens || 0,
       };
+      const contextTokensUsed = computeContextTokensUsed(usage);
       const pct = computeContextUsedPercent(usage, contextWindow);
+      if (typeof contextTokensUsed === "number") {
+        updates.codex_token_details = {
+          ...(updates.codex_token_details ?? {
+            inputTokens: total?.inputTokens || 0,
+            outputTokens: total?.outputTokens || 0,
+            cachedInputTokens: total?.cachedInputTokens || 0,
+            reasoningOutputTokens: total?.reasoningOutputTokens || 0,
+            modelContextWindow: contextWindow || 0,
+          }),
+          contextTokensUsed,
+        };
+      }
       if (typeof pct === "number") {
         updates.context_used_percent = pct;
       }
@@ -1246,6 +1259,7 @@ export class CodexAdapter
     // Forward cumulative token breakdown for display in the UI
     if (total) {
       updates.codex_token_details = {
+        contextTokensUsed: updates.codex_token_details?.contextTokensUsed,
         inputTokens: total.inputTokens || 0,
         outputTokens: total.outputTokens || 0,
         cachedInputTokens: total.cachedInputTokens || 0,

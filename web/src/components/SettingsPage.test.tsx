@@ -143,6 +143,8 @@ beforeEach(() => {
     pushoverBaseUrl: "",
     claudeBinary: "",
     codexBinary: "",
+    codexLeaderContextWindowOverrideTokens: 1_000_000,
+    codexLeaderRecycleThresholdTokens: 260_000,
     maxKeepAlive: 0,
     heavyRepoModeEnabled: false,
     editorConfig: { editor: "none" },
@@ -157,6 +159,8 @@ beforeEach(() => {
     pushoverBaseUrl: "",
     claudeBinary: "",
     codexBinary: "",
+    codexLeaderContextWindowOverrideTokens: 1_000_000,
+    codexLeaderRecycleThresholdTokens: 260_000,
     maxKeepAlive: 0,
     heavyRepoModeEnabled: false,
     editorConfig: { editor: "none" },
@@ -753,6 +757,65 @@ describe("SettingsPage", () => {
     expect(settingsSection("Appearance & Display")).not.toBeVisible();
     expect(within(cliSection).getByLabelText("Editor")).toBeVisible();
     expect(within(cliSection).getByLabelText("Claude Code")).not.toBeVisible();
+  });
+
+  it("loads and saves the Codex leader recycle controls", async () => {
+    mockApi.getSettings.mockResolvedValue({
+      serverName: "",
+      serverId: "test-id",
+      pushoverConfigured: false,
+      pushoverEnabled: true,
+      pushoverEventFilters: { needsInput: true, review: true, error: true },
+      pushoverDelaySeconds: 30,
+      pushoverBaseUrl: "",
+      claudeBinary: "",
+      codexBinary: "",
+      codexLeaderContextWindowOverrideTokens: 1_100_000,
+      codexLeaderRecycleThresholdTokens: 275_000,
+      maxKeepAlive: 0,
+      heavyRepoModeEnabled: false,
+      editorConfig: { editor: "none" },
+    });
+    mockApi.updateSettings.mockResolvedValue({
+      serverName: "",
+      serverId: "test-id",
+      pushoverConfigured: false,
+      pushoverEnabled: true,
+      pushoverEventFilters: { needsInput: true, review: true, error: true },
+      pushoverDelaySeconds: 30,
+      pushoverBaseUrl: "",
+      claudeBinary: "",
+      codexBinary: "",
+      codexLeaderContextWindowOverrideTokens: 1_200_000,
+      codexLeaderRecycleThresholdTokens: 280_000,
+      maxKeepAlive: 0,
+      heavyRepoModeEnabled: false,
+      editorConfig: { editor: "none" },
+    });
+
+    render(<SettingsPage />);
+    await waitForSettingsPage();
+
+    const cliSection = settingsSection("CLI & Backends");
+    const windowInput = within(cliSection).getByLabelText("Codex Leader Context Window") as HTMLInputElement;
+    const thresholdInput = within(cliSection).getByLabelText("Codex Leader Recycle Threshold") as HTMLInputElement;
+
+    expect(windowInput.value).toBe("1100000");
+    expect(thresholdInput.value).toBe("275000");
+
+    vi.useFakeTimers();
+    try {
+      fireEvent.change(windowInput, { target: { value: "1200000" } });
+      fireEvent.change(thresholdInput, { target: { value: "280000" } });
+      await vi.advanceTimersByTimeAsync(900);
+
+      expect(mockApi.updateSettings).toHaveBeenLastCalledWith({
+        codexLeaderContextWindowOverrideTokens: 1_200_000,
+        codexLeaderRecycleThresholdTokens: 280_000,
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("shows an empty state when no settings match", async () => {

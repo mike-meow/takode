@@ -386,6 +386,8 @@ export interface AppSettings {
   sleepInhibitorEnabled: boolean;
   sleepInhibitorDurationMinutes: number;
   questmasterViewMode: QuestmasterViewMode;
+  codexLeaderContextWindowOverrideTokens: number;
+  codexLeaderRecycleThresholdTokens: number;
   restartSupported: boolean;
   logFile?: string | null;
   claudeDefaultModel?: string;
@@ -943,6 +945,8 @@ export const api = {
     sleepInhibitorEnabled?: boolean;
     sleepInhibitorDurationMinutes?: number;
     questmasterViewMode?: QuestmasterViewMode;
+    codexLeaderContextWindowOverrideTokens?: number;
+    codexLeaderRecycleThresholdTokens?: number;
   }) => put<AppSettings>("/settings", data),
   testBinary: (binary: string) =>
     post<{ ok: boolean; resolvedPath?: string; version?: string }>("/settings/test-binary", { binary }),

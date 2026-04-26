@@ -15,6 +15,8 @@ type CodexBrowserMessageAdapterLike = {
 };
 
 export interface CodexAdapterBrowserMessageDeps {
+  getCodexLeaderRecycleThresholdTokens: () => number;
+  getLauncherSessionInfo: (sessionId: string) => { isOrchestrator?: boolean } | null | undefined;
   touchActivity: (sessionId: string) => void;
   clearOptimisticRunningTimer: (session: CodexBrowserMessageSessionLike, reason: string) => void;
   setCodexImageSendStage: (
@@ -72,6 +74,10 @@ export interface CodexAdapterBrowserMessageDeps {
     session: CodexBrowserMessageSessionLike,
     permission: PermissionRequest,
   ) => Promise<void> | void;
+  requestCodexLeaderRecycle: (
+    session: CodexBrowserMessageSessionLike,
+    trigger: "manual_compact" | "threshold",
+  ) => Promise<{ ok: boolean; error?: string }>;
 }
 
 export async function handleCodexAdapterBrowserMessage(
@@ -100,6 +106,23 @@ export async function handleCodexAdapterBrowserMessage(
     outgoing = { ...msg, session: sanitized as unknown as typeof msg.session } as BrowserIncomingMessage;
     deps.cacheSlashCommandState(session, sanitized);
     deps.refreshGitInfoThenRecomputeDiff(session, { notifyPoller: true });
+    const launcherInfo = deps.getLauncherSessionInfo(session.id);
+    const recycleThresholdTokens = deps.getCodexLeaderRecycleThresholdTokens();
+    const contextTokensUsed = session.state.codex_token_details?.contextTokensUsed;
+    if (
+      launcherInfo?.isOrchestrator &&
+      typeof contextTokensUsed === "number" &&
+      recycleThresholdTokens > 0 &&
+      contextTokensUsed >= recycleThresholdTokens
+    ) {
+      const recycle = await deps.requestCodexLeaderRecycle(session, "threshold");
+      if (!recycle.ok) {
+        deps.broadcastToBrowsers(session, {
+          type: "error",
+          message: recycle.error || "Failed to recycle Codex leader session",
+        });
+      }
+    }
     deps.persistSession(session);
   } else if (msg.type === "status_change") {
     const wasCompacting = session.state.is_compacting;

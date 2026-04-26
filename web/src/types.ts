@@ -265,6 +265,31 @@ export interface SdkSessionInfo {
   codexTokenDetails?: SessionState["codex_token_details"];
   /** Last server-reported Claude token details for this session. */
   claudeTokenDetails?: SessionState["claude_token_details"];
+  /** Codex leader recycle lineage persisted across fresh-thread swaps. */
+  codexLeaderRecycleLineage?: {
+    cliSessionIds: string[];
+    recycleEvents: Array<{
+      trigger: "threshold" | "manual_compact";
+      requestedAt: number;
+      previousCliSessionId?: string;
+      nextCliSessionId?: string;
+      tokenUsage?: {
+        contextTokensUsed?: number;
+        contextUsedPercent?: number;
+        modelContextWindow?: number;
+        inputTokens?: number;
+        cachedInputTokens?: number;
+        outputTokens?: number;
+        reasoningOutputTokens?: number;
+      };
+    }>;
+  };
+  /** Pending Codex leader recycle waiting for the replacement thread. */
+  codexLeaderRecyclePending?: {
+    eventIndex: number;
+    trigger: "threshold" | "manual_compact";
+    requestedAt: number;
+  } | null;
   /** The Companion-injected system prompt constructed at launch time (for debugging). */
   injectedSystemPrompt?: string;
   /** Session number of the parent session this reviewer is reviewing (reviewer lifecycle) */

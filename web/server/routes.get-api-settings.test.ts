@@ -124,6 +124,8 @@ vi.mock("./settings-manager.js", () => ({
     sleepInhibitorEnabled: false,
     sleepInhibitorDurationMinutes: 5,
     questmasterViewMode: "cards",
+    codexLeaderContextWindowOverrideTokens: 1_000_000,
+    codexLeaderRecycleThresholdTokens: 260_000,
     updatedAt: 0,
   })),
   updateSettings: vi.fn((patch) => ({
@@ -565,6 +567,8 @@ describe("GET /api/settings", () => {
       defaultClaudeBackend: "claude",
       sleepInhibitorEnabled: false,
       sleepInhibitorDurationMinutes: 5,
+      codexLeaderContextWindowOverrideTokens: 1_000_000,
+      codexLeaderRecycleThresholdTokens: 260_000,
       updatedAt: 123,
     });
 
@@ -599,6 +603,8 @@ describe("GET /api/settings", () => {
       sleepInhibitorEnabled: false,
       sleepInhibitorDurationMinutes: 5,
       questmasterViewMode: "cards",
+      codexLeaderContextWindowOverrideTokens: 1_000_000,
+      codexLeaderRecycleThresholdTokens: 260_000,
       restartSupported: expect.any(Boolean),
       logFile: expect.any(Object), // null or string depending on logger init
       claudeDefaultModel: expect.any(String),
@@ -635,6 +641,8 @@ describe("GET /api/settings", () => {
       defaultClaudeBackend: "claude",
       sleepInhibitorEnabled: false,
       sleepInhibitorDurationMinutes: 5,
+      codexLeaderContextWindowOverrideTokens: 1_000_000,
+      codexLeaderRecycleThresholdTokens: 260_000,
       updatedAt: 123,
     });
 
@@ -669,6 +677,8 @@ describe("GET /api/settings", () => {
       sleepInhibitorEnabled: false,
       sleepInhibitorDurationMinutes: 5,
       questmasterViewMode: "cards",
+      codexLeaderContextWindowOverrideTokens: 1_000_000,
+      codexLeaderRecycleThresholdTokens: 260_000,
       restartSupported: expect.any(Boolean),
       logFile: expect.any(Object), // null or string depending on logger init
       claudeDefaultModel: expect.any(String),
@@ -706,6 +716,8 @@ describe("GET /api/settings", () => {
       defaultClaudeBackend: "claude",
       sleepInhibitorEnabled: false,
       sleepInhibitorDurationMinutes: 5,
+      codexLeaderContextWindowOverrideTokens: 1_000_000,
+      codexLeaderRecycleThresholdTokens: 260_000,
       updatedAt: 0,
     });
 
@@ -752,6 +764,8 @@ describe("GET /api/settings", () => {
       defaultClaudeBackend: "claude",
       sleepInhibitorEnabled: false,
       sleepInhibitorDurationMinutes: 5,
+      codexLeaderContextWindowOverrideTokens: 1_000_000,
+      codexLeaderRecycleThresholdTokens: 260_000,
       updatedAt: 123,
     });
 

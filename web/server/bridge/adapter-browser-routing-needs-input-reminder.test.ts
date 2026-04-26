@@ -99,6 +99,7 @@ function makeDeps(options: { isOrchestrator?: boolean } = {}): AdapterBrowserRou
     onPermissionModeChanged: vi.fn(),
     sendControlRequest: vi.fn(),
     requestCodexAutoRecovery: vi.fn(() => false),
+    requestCodexLeaderRecycle: vi.fn(async () => ({ ok: true as const })),
     requestCliRelaunch: vi.fn(),
     injectUserMessage: vi.fn((): "sent" => "sent"),
     handleSetModel: vi.fn(),

@@ -5,6 +5,7 @@ import { deriveAttachmentPaths, formatAttachmentPathAnnotation } from "../attach
 import type { ImageRef } from "../image-store.js";
 import { inferContextWindowFromModel } from "./context-usage.js";
 import {
+  appendLocalSlashCommandHistory,
   handleCliSlashCommand,
   handleCodexStatusCommand,
   handleForceCompact,
@@ -216,6 +217,10 @@ export interface AdapterBrowserRoutingDeps {
     onResponse?: ControlResponseHandler,
   ) => void;
   requestCodexAutoRecovery: (session: AdapterBrowserRoutingSessionLike, reason: string) => boolean;
+  requestCodexLeaderRecycle: (
+    session: AdapterBrowserRoutingSessionLike,
+    trigger: "manual_compact" | "threshold",
+  ) => Promise<{ ok: boolean; error?: string }>;
   requestCliRelaunch?: (sessionId: string) => void;
   injectUserMessage: (
     sessionId: string,
@@ -637,11 +642,26 @@ export async function routeBrowserMessage(
     msg.type === "user_message" &&
     typeof msg.content === "string" &&
     msg.content.trim().toLowerCase() === "/compact" &&
-    !msg.imageRefs?.length &&
-    session.backendType !== "codex"
+    !msg.imageRefs?.length
   ) {
-    handleForceCompact(session, deps);
-    return;
+    if (session.backendType === "codex") {
+      const launcherInfo = deps.getLauncherSessionInfo(session.id);
+      if (launcherInfo?.isOrchestrator) {
+        appendLocalSlashCommandHistory(session, "/compact", deps);
+        const recycle = await deps.requestCodexLeaderRecycle(session, "manual_compact");
+        if (!recycle.ok) {
+          deps.broadcastToBrowsers(session, {
+            type: "error",
+            message: recycle.error || "Failed to recycle Codex leader session",
+          });
+        }
+        deps.persistSession(session);
+        return;
+      }
+    } else {
+      handleForceCompact(session, deps);
+      return;
+    }
   }
 
   if (

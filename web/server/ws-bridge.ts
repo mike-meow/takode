@@ -29,6 +29,7 @@ import type {
   VsCodeSelectionState,
   VsCodeWindowState,
   VsCodeOpenFileCommand,
+  CodexLeaderRecycleTrigger,
   TakodeEvent,
   TakodeEventDataByType,
   TakodeEventType,
@@ -246,6 +247,7 @@ import {
   refreshWorktreeGitStateForSnapshot as refreshWorktreeGitStateForSnapshotController,
   recomputeDiffIfDirty as recomputeDiffIfDirtyController,
 } from "./bridge/session-git-state.js";
+import { getSettings } from "./settings-manager.js";
 import type {
   BackendAdapter,
   CompactRequestedAwareAdapter,
@@ -1993,6 +1995,8 @@ export class WsBridge {
       backendConnected: (targetSession: unknown) => backendConnectedController(targetSession as Session),
       requestCodexAutoRecovery: (targetSession: unknown, reason: string) =>
         this.requestCodexAutoRecovery(targetSession as Session, reason),
+      requestCodexLeaderRecycle: async (targetSession: unknown, trigger: "manual_compact" | "threshold") =>
+        this.recycleCodexLeaderSession((targetSession as Session).id, trigger),
       requestCliRelaunch: this.onCLIRelaunchNeeded
         ? (sessionId: string) => this.onCLIRelaunchNeeded?.(sessionId)
         : undefined,
@@ -2175,6 +2179,8 @@ export class WsBridge {
     const codexRecoveryDeps = this.getCodexRecoveryOrchestratorDeps();
     return {
       ...runtime,
+      getCodexLeaderRecycleThresholdTokens: () => getSettings().codexLeaderRecycleThresholdTokens,
+      getLauncherSessionInfo: (sessionId: string) => this.launcher?.getSession(sessionId),
       touchActivity: (sessionId: string) => this.launcher?.touchActivity(sessionId),
       clearOptimisticRunningTimer: (targetSession: unknown, reason: string) =>
         clearOptimisticRunningTimerLifecycle(targetSession as Session),
@@ -2236,6 +2242,8 @@ export class WsBridge {
       maybeFlushQueuedCodexMessages: codexRecoveryDeps.maybeFlushQueuedCodexMessages,
       handleCodexPermissionRequest: (targetSession: unknown, permission: PermissionRequest) =>
         handleCodexPermissionRequestController(targetSession as Session, permission, this.getBrowserRoutingDeps()),
+      requestCodexLeaderRecycle: async (targetSession: unknown, trigger: "manual_compact" | "threshold") =>
+        this.recycleCodexLeaderSession((targetSession as Session).id, trigger),
     };
   }
 
@@ -2413,6 +2421,8 @@ export class WsBridge {
         ),
       requestCodexAutoRecovery: (targetSession: unknown, reason: string) =>
         this.requestCodexAutoRecovery(targetSession as Session, reason),
+      requestCodexLeaderRecycle: async (targetSession: unknown, trigger: "manual_compact" | "threshold") =>
+        this.recycleCodexLeaderSession((targetSession as Session).id, trigger),
       requestCliRelaunch: this.onCLIRelaunchNeeded
         ? (sessionId: string) => this.onCLIRelaunchNeeded?.(sessionId)
         : undefined,
@@ -2492,6 +2502,7 @@ export class WsBridge {
           this.onCLISessionId(sessionId, cliSessionId);
         }
       },
+      completeCodexLeaderRecycle: (sessionId: string) => this.launcher?.completeCodexLeaderRecycle(sessionId),
       hydrateCodexResumedHistory: (targetSession: unknown, snapshot: unknown) =>
         hydrateCodexResumedHistoryController(
           targetSession as Session,
@@ -2540,12 +2551,83 @@ export class WsBridge {
       adapterFailureResetWindowMs: ADAPTER_FAILURE_RESET_WINDOW_MS,
       maxAdapterRelaunchFailures: MAX_ADAPTER_RELAUNCH_FAILURES,
       hasCliRelaunchCallback: !!this.onCLIRelaunchNeeded,
+      injectUserMessage: (
+        sessionId: string,
+        content: string,
+        agentSource?: { sessionId: string; sessionLabel?: string },
+      ) => this.injectUserMessage(sessionId, content, agentSource),
     };
     return codexRecoveryDeps;
   }
 
   private hasPendingForceCompact(session: Session): boolean {
     return hasPendingForceCompactController(session);
+  }
+
+  async recycleCodexLeaderSession(
+    sessionId: string,
+    trigger: CodexLeaderRecycleTrigger,
+  ): Promise<{ ok: true } | { ok: false; error: string }> {
+    const session = this.sessions.get(sessionId);
+    if (!session) return { ok: false, error: "Session not found" };
+    if (session.backendType !== "codex") return { ok: false, error: "Session is not a Codex session" };
+    const launcherInfo = this.launcher?.getSession(sessionId);
+    if (!launcherInfo) return { ok: false, error: "Session not found" };
+    if (!launcherInfo.isOrchestrator) return { ok: false, error: "Recycle is only supported for Codex leaders" };
+    if (launcherInfo.codexLeaderRecyclePending) return { ok: true };
+    if (!this.launcher) return { ok: false, error: "Launcher unavailable" };
+
+    const tokenDetails = session.state.codex_token_details;
+    const tokenUsage =
+      tokenDetails || typeof session.state.context_used_percent === "number"
+        ? {
+            contextTokensUsed: tokenDetails?.contextTokensUsed,
+            contextUsedPercent: session.state.context_used_percent,
+            modelContextWindow: tokenDetails?.modelContextWindow,
+            inputTokens: tokenDetails?.inputTokens,
+            cachedInputTokens: tokenDetails?.cachedInputTokens,
+            outputTokens: tokenDetails?.outputTokens,
+            reasoningOutputTokens: tokenDetails?.reasoningOutputTokens,
+          }
+        : undefined;
+
+    const prepared = this.launcher.prepareCodexLeaderRecycle(sessionId, { trigger, tokenUsage });
+    if (!prepared.ok) {
+      return { ok: false, error: prepared.error || "Failed to prepare Codex leader recycle" };
+    }
+
+    clearAllCodexToolResultWatchdogsController(session);
+    session.pendingMessages = [];
+    session.forceCompactPending = false;
+    session.pendingCodexTurns = [];
+    session.pendingCodexInputs = [];
+    session.pendingCodexRollback = null;
+    session.pendingCodexRollbackError = null;
+    session.pendingCodexRollbackWaiter = null;
+    session.pendingPermissions.clear();
+    session.pendingQuestCommands.clear();
+    session.codexFreshTurnRequiredUntilTurnId = null;
+    session.lastOutboundUserNdjson = null;
+    session.state.is_compacting = false;
+    replaceQueuedTurnLifecycleEntriesLifecycle(session, []);
+    session.interruptedDuringTurn = true;
+    session.interruptSourceDuringTurn = "system";
+    session.intentionalCodexRelaunchUntil = Date.now() + CODEX_INTENTIONAL_RELAUNCH_GUARD_MS;
+    session.intentionalCodexRelaunchReason = `leader_recycle:${trigger}`;
+    session.relaunchPending = true;
+    setGeneratingLifecycle(this.getGenerationLifecycleDeps(), session, false, "codex_leader_recycle");
+    this.persistSession(session);
+
+    const relaunch = await this.launcher.relaunch(sessionId);
+    if (!relaunch.ok) {
+      this.launcher.completeCodexLeaderRecycle(sessionId);
+      session.intentionalCodexRelaunchUntil = null;
+      session.intentionalCodexRelaunchReason = null;
+      session.relaunchPending = false;
+      this.persistSession(session);
+      return { ok: false, error: relaunch.error || "Failed to relaunch Codex leader session" };
+    }
+    return { ok: true };
   }
 
   queueForceCompactForRelaunch(sessionId: string): { ok: true } | { ok: false; error: string } {

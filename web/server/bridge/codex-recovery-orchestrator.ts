@@ -11,6 +11,7 @@ import type {
 import { sessionTag } from "../session-tag.js";
 import type { UserDispatchTurnTarget } from "./generation-lifecycle.js";
 import { buildNeedsInputReminderHistoryEntry } from "./adapter-browser-routing-needs-input-reminder.js";
+import { LEADER_COMPACTION_RECOVERY_PROMPT } from "./compaction-recovery.js";
 import {
   armCodexFreshTurnRequirement as armCodexFreshTurnRequirementState,
   clearCodexFreshTurnRequirement as clearCodexFreshTurnRequirementState,
@@ -99,6 +100,7 @@ export interface CodexRecoveryOrchestratorDeps {
 export interface CodexAdapterRecoveryLifecycleDeps extends CodexRecoveryOrchestratorDeps {
   clearCodexDisconnectGraceTimer: (session: CodexRecoveryOrchestratorSessionLike, reason: string) => void;
   setCliSessionIdFromMeta: (sessionId: string, cliSessionId: string) => void;
+  completeCodexLeaderRecycle: (sessionId: string) => void;
   hydrateCodexResumedHistory: (session: CodexRecoveryOrchestratorSessionLike, snapshot: unknown) => number;
   setBackendState: (session: CodexRecoveryOrchestratorSessionLike, state: string, error: string | null) => void;
   refreshGitInfoThenRecomputeDiff: (
@@ -143,6 +145,11 @@ export interface CodexAdapterRecoveryLifecycleDeps extends CodexRecoveryOrchestr
   adapterFailureResetWindowMs: number;
   maxAdapterRelaunchFailures: number;
   hasCliRelaunchCallback: boolean;
+  injectUserMessage: (
+    sessionId: string,
+    content: string,
+    agentSource?: { sessionId: string; sessionLabel?: string },
+  ) => void;
 }
 
 export interface CodexAttachLifecycleDeps {
@@ -645,6 +652,7 @@ export function registerCodexAdapterRecoveryLifecycle(
     if (meta.cliSessionId) {
       deps.setCliSessionIdFromMeta(session.id, meta.cliSessionId);
     }
+    const recyclePending = deps.getLauncherSessionInfo(session.id)?.codexLeaderRecyclePending;
     const pendingRollback = (session as any).pendingCodexRollback;
     if (meta.resumeSnapshot && !pendingRollback) {
       deps.hydrateCodexResumedHistory(session, meta.resumeSnapshot);
@@ -662,6 +670,13 @@ export function registerCodexAdapterRecoveryLifecycle(
     }
     if (meta.cwd) session.state.cwd = meta.cwd;
     (session.state as any).backend_type = "codex";
+    if (recyclePending) {
+      deps.injectUserMessage(session.id, LEADER_COMPACTION_RECOVERY_PROMPT, {
+        sessionId: "system",
+        sessionLabel: "System",
+      });
+      deps.completeCodexLeaderRecycle(session.id);
+    }
     if (pendingRollback) {
       (session as any).pendingCodexRollbackError = null;
       void adapter

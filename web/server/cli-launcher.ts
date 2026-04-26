@@ -6,7 +6,13 @@ import { mkdir, access, readFile, writeFile } from "node:fs/promises";
 const execPromise = promisify(execCb);
 import type { Subprocess } from "bun";
 import type { SessionStore } from "./session-store.js";
-import type { BackendType } from "./session-types.js";
+import type {
+  BackendType,
+  CodexLeaderRecycleEvent,
+  CodexLeaderRecycleLineage,
+  CodexLeaderRecycleTokenSnapshot,
+  CodexLeaderRecycleTrigger,
+} from "./session-types.js";
 import { assertNever } from "./session-types.js";
 import type { RecorderManager } from "./recorder.js";
 import { CodexAdapter } from "./codex-adapter.js";
@@ -22,6 +28,19 @@ import { prepareWorktreeSessionArtifacts } from "./cli-launcher-worktree.js";
 import { sessionTag } from "./session-tag.js";
 import type { HerdChangeEvent, HerdSessionsResponse } from "../shared/herd-types.js";
 import { getSessionAuthDir, getSessionAuthPath } from "../shared/session-auth.js";
+
+function appendUniqueCliSessionId(
+  lineage: CodexLeaderRecycleLineage | undefined,
+  cliSessionId: string,
+): CodexLeaderRecycleLineage {
+  const current = lineage ?? { cliSessionIds: [], recycleEvents: [] };
+  if (!cliSessionId) return current;
+  if (current.cliSessionIds.includes(cliSessionId)) return current;
+  return {
+    ...current,
+    cliSessionIds: [...current.cliSessionIds, cliSessionId],
+  };
+}
 
 /** Check if a file exists (async equivalent of existsSync). */
 async function fileExists(path: string): Promise<boolean> {
@@ -133,6 +152,14 @@ export interface SdkSessionInfo {
   lastUserMessageAt?: number;
   /** The CLI's internal session ID (from system.init), used for --resume */
   cliSessionId?: string;
+  /** Codex leader recycle lineage across fresh-thread swaps within one Takode session. */
+  codexLeaderRecycleLineage?: CodexLeaderRecycleLineage;
+  /** Pending Codex leader recycle awaiting a fresh replacement thread and recovery prompt. */
+  codexLeaderRecyclePending?: {
+    eventIndex: number;
+    trigger: CodexLeaderRecycleTrigger;
+    requestedAt: number;
+  } | null;
   archived?: boolean;
   /** Epoch ms when this session was archived */
   archivedAt?: number;
@@ -164,6 +191,8 @@ export interface SdkSessionInfo {
   codexSandbox?: "workspace-write" | "danger-full-access";
   /** Reasoning effort selected for Codex sessions (e.g. low/medium/high). */
   codexReasoningEffort?: string;
+  /** Optional per-session Codex home override, reused across relaunches. */
+  codexHome?: string;
   /** If this session was spawned by a cron job */
   cronJobId?: string;
   /** Human-readable name of the cron job that spawned this session */
@@ -234,6 +263,8 @@ export interface LaunchOptions {
   codexReasoningEffort?: string;
   /** Optional override for CODEX_HOME used by Codex sessions. */
   codexHome?: string;
+  /** Codex leader-only effective context window override for session-local config. */
+  codexLeaderContextWindowOverrideTokens?: number;
   /** Docker container ID — when set, CLI runs inside container via docker exec */
   containerId?: string;
   /** Docker container name */
@@ -275,7 +306,13 @@ export class CliLauncher {
     | null = null;
   private onBeforeRelaunch: ((sessionId: string, backendType: BackendType) => void) | null = null;
   private exitHandlers: ((sessionId: string, exitCode: number | null) => void)[] = [];
-  private settingsGetter: (() => { claudeBinary: string; codexBinary: string }) | null = null;
+  private settingsGetter:
+    | (() => {
+        claudeBinary: string;
+        codexBinary: string;
+        codexLeaderContextWindowOverrideTokens?: number;
+      })
+    | null = null;
   /** Callback to resolve env profile variables by slug (set by server bootstrap). */
   private envResolver: ((slug: string) => Promise<Record<string, string> | null>) | null = null;
 
@@ -334,7 +371,9 @@ export class CliLauncher {
   }
 
   /** Attach a settings getter so relaunch() can read current binary settings. */
-  setSettingsGetter(fn: () => { claudeBinary: string; codexBinary: string }): void {
+  setSettingsGetter(
+    fn: () => { claudeBinary: string; codexBinary: string; codexLeaderContextWindowOverrideTokens?: number },
+  ): void {
     this.settingsGetter = fn;
   }
 
@@ -612,6 +651,7 @@ export class CliLauncher {
       info.codexInternetAccess = options.codexInternetAccess === true;
       info.codexSandbox = options.codexSandbox;
       info.codexReasoningEffort = options.codexReasoningEffort;
+      info.codexHome = options.codexHome;
     }
 
     // Store container metadata if provided
@@ -842,6 +882,8 @@ export class CliLauncher {
             codexSandbox: info.codexSandbox,
             codexInternetAccess: info.codexInternetAccess,
             codexReasoningEffort: info.codexReasoningEffort,
+            codexHome: info.codexHome,
+            codexLeaderContextWindowOverrideTokens: binSettings.codexLeaderContextWindowOverrideTokens,
             containerId: info.containerId,
             containerName: info.containerName,
             containerImage: info.containerImage,
@@ -1211,7 +1253,20 @@ export class CliLauncher {
     let spawnCwd: string | undefined;
     let sandboxMode: "workspace-write" | "danger-full-access";
     try {
-      const spawnSpec = await prepareCodexSpawn(sessionId, info, options);
+      const spawnSpec = await prepareCodexSpawn(
+        sessionId,
+        {
+          cwd: info.cwd,
+          cliSessionId: info.cliSessionId,
+          isOrchestrator: info.isOrchestrator,
+        },
+        {
+          ...options,
+          codexLeaderContextWindowOverrideTokens: info.isOrchestrator
+            ? options.codexLeaderContextWindowOverrideTokens
+            : undefined,
+        },
+      );
       spawnCmd = spawnSpec.spawnCmd;
       spawnEnv = spawnSpec.spawnEnv;
       spawnCwd = spawnSpec.spawnCwd;
@@ -1383,8 +1438,54 @@ export class CliLauncher {
     const session = this.sessions.get(sessionId);
     if (session) {
       session.cliSessionId = cliSessionId;
+      session.codexLeaderRecycleLineage = appendUniqueCliSessionId(session.codexLeaderRecycleLineage, cliSessionId);
+      const pendingRecycle = session.codexLeaderRecyclePending;
+      if (pendingRecycle) {
+        const recycleEvents = session.codexLeaderRecycleLineage?.recycleEvents ?? [];
+        const recycleEvent = recycleEvents[pendingRecycle.eventIndex];
+        if (recycleEvent && !recycleEvent.nextCliSessionId) {
+          recycleEvent.nextCliSessionId = cliSessionId;
+        }
+      }
       this.persistState();
     }
+  }
+
+  prepareCodexLeaderRecycle(
+    sessionId: string,
+    options: { trigger: CodexLeaderRecycleTrigger; tokenUsage?: CodexLeaderRecycleTokenSnapshot },
+  ): { ok: boolean; error?: string } {
+    const session = this.sessions.get(sessionId);
+    if (!session) return { ok: false, error: "Session not found" };
+    if (session.backendType !== "codex") return { ok: false, error: "Session is not a Codex session" };
+    if (!session.isOrchestrator) return { ok: false, error: "Session is not a Codex leader" };
+    if (session.codexLeaderRecyclePending) return { ok: true };
+
+    const previousCliSessionId = session.cliSessionId;
+    const recycleEvent: CodexLeaderRecycleEvent = {
+      trigger: options.trigger,
+      requestedAt: Date.now(),
+      previousCliSessionId,
+      ...(options.tokenUsage ? { tokenUsage: options.tokenUsage } : {}),
+    };
+    const normalizedLineage = appendUniqueCliSessionId(session.codexLeaderRecycleLineage, previousCliSessionId || "");
+    normalizedLineage.recycleEvents.push(recycleEvent);
+    session.codexLeaderRecycleLineage = normalizedLineage;
+    session.codexLeaderRecyclePending = {
+      eventIndex: normalizedLineage.recycleEvents.length - 1,
+      trigger: options.trigger,
+      requestedAt: recycleEvent.requestedAt,
+    };
+    session.cliSessionId = undefined;
+    this.persistState();
+    return { ok: true };
+  }
+
+  completeCodexLeaderRecycle(sessionId: string): void {
+    const session = this.sessions.get(sessionId);
+    if (!session?.codexLeaderRecyclePending) return;
+    session.codexLeaderRecyclePending = null;
+    this.persistState();
   }
 
   /**

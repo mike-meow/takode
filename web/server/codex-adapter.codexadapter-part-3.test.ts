@@ -1480,6 +1480,7 @@ describe("CodexAdapter", () => {
     // inputTokens (85k), so OpenAI semantics applies: use inputTokens directly.
     // 85000 / 258400 ≈ 33%
     expect(lastUpdate.session.context_used_percent).toBe(33);
+    expect(lastUpdate.session.codex_token_details?.contextTokensUsed).toBe(85_000);
 
     // codex_token_details should still show cumulative totals
     expect(lastUpdate.session.codex_token_details?.inputTokens).toBe(1_150_000);

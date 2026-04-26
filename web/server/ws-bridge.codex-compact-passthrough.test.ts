@@ -3,8 +3,16 @@ import { vi } from "vitest";
 const mockExecSync = vi.hoisted(() => vi.fn());
 const mockExec = vi.hoisted(() => vi.fn());
 const mockShouldSettingsRuleApprove = vi.hoisted(() => vi.fn().mockResolvedValue(null));
+const mockGetSettings = vi.hoisted(() =>
+  vi.fn(() => ({
+    codexLeaderRecycleThresholdTokens: 260_000,
+  })),
+);
 vi.mock("node:child_process", () => ({ execSync: mockExecSync, exec: mockExec }));
 vi.mock("node:crypto", () => ({ randomUUID: () => "test-uuid" }));
+vi.mock("./settings-manager.js", () => ({
+  getSettings: mockGetSettings,
+}));
 // Mock settings rule loading so real user ~/.claude/settings.json rules don't
 // interfere with tests. Tests that need specific rules override this per-call.
 vi.mock("./bridge/settings-rule-matcher.js", async (importOriginal) => {
@@ -630,5 +638,102 @@ describe("Codex /compact passthrough", () => {
       expect(compactVariationMsg).toBeDefined();
       expect(getCodexStartPendingInputs(compactVariationMsg)[0]?.content).toBe(content);
     }
+  });
+
+  it("recycles Codex leaders on /compact instead of forwarding to the adapter", async () => {
+    const browser = makeBrowserSocket("leader-compact");
+    const adapter = makeCodexAdapterMock();
+    const launcher = {
+      getSession: vi.fn((sessionId: string) =>
+        sessionId === "leader-compact"
+          ? {
+              sessionId,
+              backendType: "codex",
+              isOrchestrator: true,
+              cliSessionId: "thread-leader",
+              codexLeaderRecyclePending: null,
+            }
+          : null,
+      ),
+      prepareCodexLeaderRecycle: vi.fn(() => ({ ok: true })),
+      relaunch: vi.fn(async () => ({ ok: true })),
+      completeCodexLeaderRecycle: vi.fn(),
+      touchActivity: vi.fn(),
+      touchUserMessage: vi.fn(),
+    };
+    bridge.setLauncher(launcher as any);
+    bridge.attachCodexAdapter("leader-compact", adapter as any);
+    emitCodexSessionReady(adapter, { cliSessionId: "thread-leader" });
+    bridge.handleBrowserOpen(browser, "leader-compact");
+
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "/compact",
+      }),
+    );
+
+    expect(adapter.sendBrowserMessage).not.toHaveBeenCalled();
+    expect(launcher.prepareCodexLeaderRecycle).toHaveBeenCalledWith(
+      "leader-compact",
+      expect.objectContaining({ trigger: "manual_compact" }),
+    );
+    expect(launcher.relaunch).toHaveBeenCalledWith("leader-compact");
+
+    const session = bridge.getSession("leader-compact")!;
+    const userMsgs = session.messageHistory.filter((m: any) => m.type === "user_message");
+    expect(userMsgs).toHaveLength(1);
+    expect((userMsgs[0] as any).content).toBe("/compact");
+  });
+
+  it("recycles Codex leaders when tracked context tokens cross the threshold", async () => {
+    const browser = makeBrowserSocket("leader-threshold");
+    const adapter = makeCodexAdapterMock();
+    const launcher = {
+      getSession: vi.fn((sessionId: string) =>
+        sessionId === "leader-threshold"
+          ? {
+              sessionId,
+              backendType: "codex",
+              isOrchestrator: true,
+              cliSessionId: "thread-threshold",
+              codexLeaderRecyclePending: null,
+            }
+          : null,
+      ),
+      prepareCodexLeaderRecycle: vi.fn(() => ({ ok: true })),
+      relaunch: vi.fn(async () => ({ ok: true })),
+      completeCodexLeaderRecycle: vi.fn(),
+      touchActivity: vi.fn(),
+      touchUserMessage: vi.fn(),
+    };
+    bridge.setLauncher(launcher as any);
+    bridge.attachCodexAdapter("leader-threshold", adapter as any);
+    emitCodexSessionReady(adapter, { cliSessionId: "thread-threshold" });
+    bridge.handleBrowserOpen(browser, "leader-threshold");
+
+    adapter.emitBrowserMessage({
+      type: "session_update",
+      session: {
+        context_used_percent: 27,
+        codex_token_details: {
+          contextTokensUsed: 270_000,
+          inputTokens: 1,
+          outputTokens: 1,
+          cachedInputTokens: 1,
+          reasoningOutputTokens: 0,
+          modelContextWindow: 1_000_000,
+        },
+      },
+    });
+
+    await flushAsync();
+
+    expect(launcher.prepareCodexLeaderRecycle).toHaveBeenCalledWith(
+      "leader-threshold",
+      expect.objectContaining({ trigger: "threshold" }),
+    );
+    expect(launcher.relaunch).toHaveBeenCalledWith("leader-threshold");
   });
 });

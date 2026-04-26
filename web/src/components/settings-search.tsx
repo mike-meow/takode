@@ -78,6 +78,14 @@ export const SETTINGS_SECTIONS: SettingsSectionMeta[] = [
     items: [
       { id: "claude", text: "Claude Code binary path command auto-detect" },
       { id: "codex", text: "Codex binary path command auto-detect" },
+      {
+        id: "codex-leader-context-window",
+        text: "Codex leader context window override orchestration recycle compaction tokens 1M",
+      },
+      {
+        id: "codex-leader-recycle-threshold",
+        text: "Codex leader recycle threshold orchestration compaction tokens 260k",
+      },
       { id: "default-backend", text: "Default Backend Claude CLI Claude SDK backend" },
       { id: "log-file", text: "Log File server runtime logs" },
       { id: "editor", text: "File Link Editor VSCode local remote Cursor none editor", aliases: ["vscode"] },

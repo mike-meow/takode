@@ -78,22 +78,7 @@ export function handleCliSlashCommand(
   deps: AdapterBrowserRoutingDeps,
 ): void {
   console.log(`[ws-bridge] CLI slash command intercepted for session ${sessionTag(session.id)}: ${command}`);
-  const ts = Date.now();
-  const wasGenerating = session.isGenerating;
-  const userHistoryEntry: Extract<BrowserIncomingMessage, { type: "user_message" }> = {
-    type: "user_message",
-    content: command,
-    timestamp: ts,
-    id: deps.nextUserMessageId(ts),
-  };
-  session.messageHistory.push(userHistoryEntry);
-  session.lastUserMessage = command;
-  deps.touchUserMessage(session.id);
-  deps.broadcastToBrowsers(session, userHistoryEntry);
-  emitStoredUserMessageTakodeEvent(deps, session.id, userHistoryEntry, {
-    historyIndex: session.messageHistory.length - 1,
-    turnTarget: wasGenerating ? "queued" : "current",
-  });
+  appendLocalSlashCommandHistory(session, command, deps);
   if (session.claudeSdkAdapter) {
     const accepted = session.claudeSdkAdapter.sendBrowserMessage({
       type: "user_message",
@@ -116,6 +101,33 @@ export function handleCliSlashCommand(
   deps.setGenerating(session, true, "cli_slash_command");
   deps.broadcastStatusChange(session, "running");
   deps.persistSession(session);
+}
+
+export function appendLocalSlashCommandHistory(
+  session: AdapterBrowserRoutingSessionLike,
+  command: string,
+  deps: Pick<
+    AdapterBrowserRoutingDeps,
+    "broadcastToBrowsers" | "nextUserMessageId" | "touchUserMessage" | "emitTakodeEvent"
+  >,
+): Extract<BrowserIncomingMessage, { type: "user_message" }> {
+  const ts = Date.now();
+  const wasGenerating = session.isGenerating;
+  const userHistoryEntry: Extract<BrowserIncomingMessage, { type: "user_message" }> = {
+    type: "user_message",
+    content: command,
+    timestamp: ts,
+    id: deps.nextUserMessageId(ts),
+  };
+  session.messageHistory.push(userHistoryEntry);
+  session.lastUserMessage = command;
+  deps.touchUserMessage(session.id);
+  deps.broadcastToBrowsers(session, userHistoryEntry);
+  emitStoredUserMessageTakodeEvent(deps as AdapterBrowserRoutingDeps, session.id, userHistoryEntry, {
+    historyIndex: session.messageHistory.length - 1,
+    turnTarget: wasGenerating ? "queued" : "current",
+  });
+  return userHistoryEntry;
 }
 
 function formatStatusTokenCount(count: number): string {

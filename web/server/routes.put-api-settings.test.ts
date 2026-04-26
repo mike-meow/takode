@@ -124,6 +124,8 @@ vi.mock("./settings-manager.js", () => ({
     sleepInhibitorEnabled: false,
     sleepInhibitorDurationMinutes: 5,
     questmasterViewMode: "cards",
+    codexLeaderContextWindowOverrideTokens: 1_000_000,
+    codexLeaderRecycleThresholdTokens: 260_000,
     updatedAt: 0,
   })),
   updateSettings: vi.fn((patch) => ({
@@ -156,6 +158,8 @@ vi.mock("./settings-manager.js", () => ({
     sleepInhibitorEnabled: patch.sleepInhibitorEnabled ?? false,
     sleepInhibitorDurationMinutes: patch.sleepInhibitorDurationMinutes ?? 5,
     questmasterViewMode: patch.questmasterViewMode ?? "cards",
+    codexLeaderContextWindowOverrideTokens: patch.codexLeaderContextWindowOverrideTokens ?? 1_000_000,
+    codexLeaderRecycleThresholdTokens: patch.codexLeaderRecycleThresholdTokens ?? 260_000,
     updatedAt: Date.now(),
   })),
   getServerName: vi.fn(() => ""),
@@ -565,6 +569,8 @@ describe("PUT /api/settings", () => {
       defaultClaudeBackend: "claude",
       sleepInhibitorEnabled: false,
       sleepInhibitorDurationMinutes: 5,
+      codexLeaderContextWindowOverrideTokens: 1_000_000,
+      codexLeaderRecycleThresholdTokens: 260_000,
       updatedAt: 456,
     });
 
@@ -596,6 +602,8 @@ describe("PUT /api/settings", () => {
       sleepInhibitorEnabled: undefined,
       sleepInhibitorDurationMinutes: undefined,
       questmasterViewMode: undefined,
+      codexLeaderContextWindowOverrideTokens: undefined,
+      codexLeaderRecycleThresholdTokens: undefined,
     });
     const json = await res.json();
     expect(json).toEqual({
@@ -625,6 +633,8 @@ describe("PUT /api/settings", () => {
       sleepInhibitorEnabled: false,
       sleepInhibitorDurationMinutes: 5,
       questmasterViewMode: "cards",
+      codexLeaderContextWindowOverrideTokens: 1_000_000,
+      codexLeaderRecycleThresholdTokens: 260_000,
     });
   });
 
@@ -658,6 +668,8 @@ describe("PUT /api/settings", () => {
       defaultClaudeBackend: "claude",
       sleepInhibitorEnabled: false,
       sleepInhibitorDurationMinutes: 5,
+      codexLeaderContextWindowOverrideTokens: 1_000_000,
+      codexLeaderRecycleThresholdTokens: 260_000,
       updatedAt: 456,
     });
 
@@ -689,6 +701,8 @@ describe("PUT /api/settings", () => {
       sleepInhibitorEnabled: undefined,
       sleepInhibitorDurationMinutes: undefined,
       questmasterViewMode: undefined,
+      codexLeaderContextWindowOverrideTokens: undefined,
+      codexLeaderRecycleThresholdTokens: undefined,
       herdLeaderFirstEnabled: undefined,
     });
   });
@@ -723,6 +737,8 @@ describe("PUT /api/settings", () => {
       defaultClaudeBackend: "claude",
       sleepInhibitorEnabled: false,
       sleepInhibitorDurationMinutes: 5,
+      codexLeaderContextWindowOverrideTokens: 1_000_000,
+      codexLeaderRecycleThresholdTokens: 260_000,
       updatedAt: 789,
     });
 
@@ -754,6 +770,8 @@ describe("PUT /api/settings", () => {
       sleepInhibitorEnabled: undefined,
       sleepInhibitorDurationMinutes: undefined,
       questmasterViewMode: undefined,
+      codexLeaderContextWindowOverrideTokens: undefined,
+      codexLeaderRecycleThresholdTokens: undefined,
     });
   });
 
@@ -787,6 +805,8 @@ describe("PUT /api/settings", () => {
       defaultClaudeBackend: "claude",
       sleepInhibitorEnabled: false,
       sleepInhibitorDurationMinutes: 5,
+      codexLeaderContextWindowOverrideTokens: 1_000_000,
+      codexLeaderRecycleThresholdTokens: 260_000,
       updatedAt: Date.now(),
     });
     vi.mocked(settingsManager.getServerName).mockReturnValue("My Backend");
@@ -894,6 +914,8 @@ describe("PUT /api/settings", () => {
       sleepInhibitorEnabled: undefined,
       sleepInhibitorDurationMinutes: undefined,
       questmasterViewMode: undefined,
+      codexLeaderContextWindowOverrideTokens: undefined,
+      codexLeaderRecycleThresholdTokens: undefined,
     });
   });
 
@@ -926,6 +948,8 @@ describe("PUT /api/settings", () => {
       defaultClaudeBackend: "claude",
       sleepInhibitorEnabled: false,
       sleepInhibitorDurationMinutes: 5,
+      codexLeaderContextWindowOverrideTokens: 1_000_000,
+      codexLeaderRecycleThresholdTokens: 260_000,
       updatedAt: Date.now(),
     });
 
@@ -1032,6 +1056,8 @@ describe("PUT /api/settings", () => {
       defaultClaudeBackend: "claude",
       sleepInhibitorEnabled: false,
       sleepInhibitorDurationMinutes: 5,
+      codexLeaderContextWindowOverrideTokens: 1_000_000,
+      codexLeaderRecycleThresholdTokens: 260_000,
       updatedAt: Date.now(),
     });
 
@@ -1076,6 +1102,8 @@ describe("PUT /api/settings", () => {
       defaultClaudeBackend: "claude",
       sleepInhibitorEnabled: false,
       sleepInhibitorDurationMinutes: 5,
+      codexLeaderContextWindowOverrideTokens: 1_000_000,
+      codexLeaderRecycleThresholdTokens: 260_000,
       updatedAt: Date.now(),
     });
 
@@ -1156,6 +1184,8 @@ describe("PUT /api/settings", () => {
       defaultClaudeBackend: "claude",
       sleepInhibitorEnabled: false,
       sleepInhibitorDurationMinutes: 5,
+      codexLeaderContextWindowOverrideTokens: 1_000_000,
+      codexLeaderRecycleThresholdTokens: 260_000,
       updatedAt: 123,
     });
     vi.mocked(settingsManager.updateSettings).mockReturnValue({
@@ -1187,6 +1217,8 @@ describe("PUT /api/settings", () => {
       defaultClaudeBackend: "claude",
       sleepInhibitorEnabled: false,
       sleepInhibitorDurationMinutes: 5,
+      codexLeaderContextWindowOverrideTokens: 1_000_000,
+      codexLeaderRecycleThresholdTokens: 260_000,
       updatedAt: 456,
     });
 
@@ -1257,6 +1289,8 @@ describe("PUT /api/settings", () => {
       defaultClaudeBackend: "claude",
       sleepInhibitorEnabled: false,
       sleepInhibitorDurationMinutes: 5,
+      codexLeaderContextWindowOverrideTokens: 1_000_000,
+      codexLeaderRecycleThresholdTokens: 260_000,
       updatedAt: Date.now(),
     });
 
@@ -1308,6 +1342,8 @@ describe("PUT /api/settings", () => {
       defaultClaudeBackend: "claude",
       sleepInhibitorEnabled: false,
       sleepInhibitorDurationMinutes: 5,
+      codexLeaderContextWindowOverrideTokens: 1_000_000,
+      codexLeaderRecycleThresholdTokens: 260_000,
       updatedAt: 123,
     });
     vi.mocked(settingsManager.updateSettings).mockReturnValue({
@@ -1343,6 +1379,8 @@ describe("PUT /api/settings", () => {
       defaultClaudeBackend: "claude",
       sleepInhibitorEnabled: false,
       sleepInhibitorDurationMinutes: 5,
+      codexLeaderContextWindowOverrideTokens: 1_000_000,
+      codexLeaderRecycleThresholdTokens: 260_000,
       updatedAt: 456,
     });
 

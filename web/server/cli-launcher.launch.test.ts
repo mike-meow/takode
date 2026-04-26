@@ -853,6 +853,97 @@ describe("launch", () => {
     }
   });
 
+  it("applies the context-window override only to Codex leaders", async () => {
+    mockResolveBinary.mockReturnValue("/opt/fake/codex");
+    const customHome = mkdtempSync(join(tmpdir(), "codex-home-test-"));
+    const sessionHome = join(customHome, "test-session-id");
+    const configPath = join(sessionHome, "config.toml");
+    const { readFileSync: realReadFileSync } = require("node:fs");
+
+    try {
+      mockSpawn.mockReturnValueOnce(createMockCodexProc());
+      const workerInfo = await launcher.launch({
+        backendType: "codex",
+        cwd: "/tmp/project",
+        codexSandbox: "workspace-write",
+        codexHome: customHome,
+        codexLeaderContextWindowOverrideTokens: 1_000_000,
+      });
+      await waitForSpawnCalls(1);
+
+      let config = realReadFileSync(configPath, "utf-8");
+      expect(config).not.toContain("model_context_window = 1000000");
+      expect(config).not.toContain("model_auto_compact_token_limit = 1000000");
+
+      (launcher.getSession(workerInfo.sessionId) as any).isOrchestrator = true;
+      launcher.setSettingsGetter(() => ({
+        claudeBinary: "",
+        codexBinary: "/opt/fake/codex",
+        codexLeaderContextWindowOverrideTokens: 1_000_000,
+      }));
+      mockSpawn.mockReturnValueOnce(createMockCodexProc(12346));
+      const relaunch = await launcher.relaunch(workerInfo.sessionId);
+      expect(relaunch.ok).toBe(true);
+      await waitForSpawnCalls(2);
+
+      config = realReadFileSync(configPath, "utf-8");
+      expect(config).toContain("model_context_window = 1000000");
+      expect(config).toContain("model_auto_compact_token_limit = 1000000");
+    } finally {
+      rmSync(customHome, { recursive: true, force: true });
+    }
+  });
+
+  it("records Codex leader recycle lineage across fresh-thread swaps", async () => {
+    mockResolveBinary.mockReturnValue("/opt/fake/codex");
+    mockSpawn.mockReturnValueOnce(createMockCodexProc());
+
+    const info = await launcher.launch({
+      backendType: "codex",
+      cwd: "/tmp/project",
+      codexSandbox: "workspace-write",
+    });
+    await waitForSpawnCalls(1);
+
+    const session = launcher.getSession(info.sessionId)!;
+    session.isOrchestrator = true;
+    launcher.setCLISessionId(info.sessionId, "thread-a");
+
+    const prepared = launcher.prepareCodexLeaderRecycle(info.sessionId, {
+      trigger: "threshold",
+      tokenUsage: {
+        contextTokensUsed: 270_000,
+        contextUsedPercent: 27,
+      },
+    });
+
+    expect(prepared.ok).toBe(true);
+    expect(session.codexLeaderRecyclePending).toEqual(
+      expect.objectContaining({
+        eventIndex: 0,
+        trigger: "threshold",
+      }),
+    );
+    expect(session.codexLeaderRecycleLineage?.cliSessionIds).toEqual(["thread-a"]);
+    expect(session.codexLeaderRecycleLineage?.recycleEvents).toEqual([
+      expect.objectContaining({
+        trigger: "threshold",
+        previousCliSessionId: "thread-a",
+        tokenUsage: expect.objectContaining({
+          contextTokensUsed: 270_000,
+          contextUsedPercent: 27,
+        }),
+      }),
+    ]);
+
+    launcher.setCLISessionId(info.sessionId, "thread-b");
+    expect(session.codexLeaderRecycleLineage?.cliSessionIds).toEqual(["thread-a", "thread-b"]);
+    expect(session.codexLeaderRecycleLineage?.recycleEvents[0]?.nextCliSessionId).toBe("thread-b");
+
+    launcher.completeCodexLeaderRecycle(info.sessionId);
+    expect(session.codexLeaderRecyclePending).toBeNull();
+  });
+
   it("refreshes auth.json from the legacy Codex home even when the session copy already exists", async () => {
     mockResolveBinary.mockReturnValue("/opt/fake/codex");
     mockSpawn.mockReturnValueOnce(createMockCodexProc());

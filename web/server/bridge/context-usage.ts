@@ -4,6 +4,21 @@ function clampPercent(value: number): number {
   return Math.max(0, Math.min(100, value));
 }
 
+export function computeContextTokensUsed(usage: TokenUsage): number | undefined {
+  const inputTokens = Number(usage.input_tokens || 0);
+  const cacheCreation = Number(usage.cache_creation_input_tokens || 0);
+  const cacheRead = Number(usage.cache_read_input_tokens || 0);
+  const totalCache = cacheCreation + cacheRead;
+
+  let usedInContext: number;
+  if (totalCache > 0 && totalCache <= inputTokens) {
+    usedInContext = inputTokens;
+  } else {
+    usedInContext = inputTokens + totalCache;
+  }
+  return usedInContext > 0 ? usedInContext : undefined;
+}
+
 export function inferContextWindowFromModel(model: string | undefined): number | undefined {
   if (!model) return undefined;
   const normalized = model.toLowerCase();
@@ -41,18 +56,8 @@ export interface TokenUsage {
 }
 
 export function computeContextUsedPercent(usage: TokenUsage, contextWindow: number): number | undefined {
-  const inputTokens = Number(usage.input_tokens || 0);
-  const cacheCreation = Number(usage.cache_creation_input_tokens || 0);
-  const cacheRead = Number(usage.cache_read_input_tokens || 0);
-  const totalCache = cacheCreation + cacheRead;
-
-  let usedInContext: number;
-  if (totalCache > 0 && totalCache <= inputTokens) {
-    usedInContext = inputTokens;
-  } else {
-    usedInContext = inputTokens + totalCache;
-  }
-  if (usedInContext <= 0) return undefined;
+  const usedInContext = computeContextTokensUsed(usage);
+  if (usedInContext == null || usedInContext <= 0) return undefined;
 
   const pct = Math.round((usedInContext / contextWindow) * 100);
   return clampPercent(pct);

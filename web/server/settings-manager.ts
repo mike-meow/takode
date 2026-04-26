@@ -54,6 +54,10 @@ export interface CompanionSettings {
   sleepInhibitorDurationMinutes: number;
   /** Preferred Questmaster list layout. Optional for backward-compatible tests/mocks. */
   questmasterViewMode?: QuestmasterViewMode;
+  /** Codex leader-only effective context window override for Takode-managed sessions. */
+  codexLeaderContextWindowOverrideTokens: number;
+  /** Codex leader-only in-place recycle trigger based on tracked context tokens used. */
+  codexLeaderRecycleThresholdTokens: number;
   updatedAt: number;
 }
 
@@ -146,6 +150,8 @@ let settings: CompanionSettings = {
   sleepInhibitorEnabled: false,
   sleepInhibitorDurationMinutes: 5,
   questmasterViewMode: "cards",
+  codexLeaderContextWindowOverrideTokens: 1_000_000,
+  codexLeaderRecycleThresholdTokens: 260_000,
   updatedAt: 0,
 };
 let secrets: CompanionSecrets = {
@@ -339,6 +345,14 @@ function normalize(raw: Partial<CompanionSettings> | null | undefined): Companio
       raw?.questmasterViewMode === "compact" || raw?.questmasterViewMode === "cards"
         ? raw.questmasterViewMode
         : "cards",
+    codexLeaderContextWindowOverrideTokens:
+      typeof raw?.codexLeaderContextWindowOverrideTokens === "number" && raw.codexLeaderContextWindowOverrideTokens >= 1
+        ? Math.floor(raw.codexLeaderContextWindowOverrideTokens)
+        : 1_000_000,
+    codexLeaderRecycleThresholdTokens:
+      typeof raw?.codexLeaderRecycleThresholdTokens === "number" && raw.codexLeaderRecycleThresholdTokens >= 1
+        ? Math.floor(raw.codexLeaderRecycleThresholdTokens)
+        : 260_000,
     updatedAt: typeof raw?.updatedAt === "number" ? raw.updatedAt : 0,
   };
 }
@@ -436,6 +450,8 @@ export function updateSettings(
       | "sleepInhibitorEnabled"
       | "sleepInhibitorDurationMinutes"
       | "questmasterViewMode"
+      | "codexLeaderContextWindowOverrideTokens"
+      | "codexLeaderRecycleThresholdTokens"
     >
   >,
 ): CompanionSettings {
