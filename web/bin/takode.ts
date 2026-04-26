@@ -985,9 +985,10 @@ type TakodeMessageSourceLike = {
 };
 
 type TakodeUserMessageSourceKind = "user" | "herd" | "agent";
+type TakodeUserContentSurface = "scan" | "peek" | "read";
 
 const TAKODE_SCAN_USER_CONTENT_LIMITS: Record<TakodeUserMessageSourceKind, number> = {
-  user: 320,
+  user: 2000,
   herd: 90,
   agent: 180,
 };
@@ -996,6 +997,12 @@ const TAKODE_PEEK_USER_CONTENT_LIMITS: Record<TakodeUserMessageSourceKind, numbe
   user: TAKODE_PEEK_CONTENT_LIMIT,
   herd: 180,
   agent: 280,
+};
+
+const TAKODE_READ_USER_CONTENT_LIMITS: Record<TakodeUserMessageSourceKind, number> = {
+  user: 2000,
+  herd: 180,
+  agent: 320,
 };
 
 function takodeUserMessageSourceKind(msg: TakodeMessageSourceLike): TakodeUserMessageSourceKind {
@@ -1011,9 +1018,33 @@ function userSourceLabel(msg: TakodeMessageSourceLike): string {
   return `agent${msg.agent?.sessionLabel ? ` ${formatInlineText(msg.agent.sessionLabel)}` : ""}`;
 }
 
-function formatTakodeUserContent(content: string, msg: TakodeMessageSourceLike, surface: "scan" | "peek"): string {
-  const limits = surface === "scan" ? TAKODE_SCAN_USER_CONTENT_LIMITS : TAKODE_PEEK_USER_CONTENT_LIMITS;
+function takodeUserContentLimits(surface: TakodeUserContentSurface): Record<TakodeUserMessageSourceKind, number> {
+  if (surface === "scan") return TAKODE_SCAN_USER_CONTENT_LIMITS;
+  if (surface === "peek") return TAKODE_PEEK_USER_CONTENT_LIMITS;
+  return TAKODE_READ_USER_CONTENT_LIMITS;
+}
+
+function formatTakodeUserContent(
+  content: string,
+  msg: TakodeMessageSourceLike,
+  surface: TakodeUserContentSurface,
+): string {
+  const limits = takodeUserContentLimits(surface);
   return formatQuotedContent(content, limits[takodeUserMessageSourceKind(msg)]);
+}
+
+function truncateTakodeUserContent(
+  content: string,
+  msg: TakodeMessageSourceLike,
+  surface: TakodeUserContentSurface,
+): { content: string; remainingChars: number; truncated: boolean } {
+  const limit = takodeUserContentLimits(surface)[takodeUserMessageSourceKind(msg)];
+  if (content.length <= limit) return { content, remainingChars: 0, truncated: false };
+  return {
+    content: content.slice(0, limit),
+    remainingChars: content.length - limit,
+    truncated: true,
+  };
 }
 
 /** Collapse consecutive tool calls with the same name into groups.
@@ -2161,6 +2192,10 @@ async function handleRead(base: string, args: string[]): Promise<void> {
     limit: number;
     content: string;
     contentBlocks?: { type: string }[];
+    rawMessage?: {
+      type?: string;
+      agentSource?: { sessionId: string; sessionLabel?: string };
+    };
   };
 
   const time = formatTime(d.ts);
@@ -2168,19 +2203,28 @@ async function handleRead(base: string, args: string[]): Promise<void> {
     d.totalLines > d.limit
       ? ` (lines ${d.offset + 1}-${d.offset + d.limit} of ${d.totalLines})`
       : ` (${d.totalLines} lines)`;
-  const typeLabel =
-    d.type === "assistant" && d.contentBlocks?.some((b) => b.type === "tool_use") ? "assistant (tools)" : d.type;
+  const userMessageSource =
+    d.type === "user_message" || d.rawMessage?.type === "user_message" ? { agent: d.rawMessage?.agentSource } : null;
+  const typeLabel = userMessageSource
+    ? userSourceLabel(userMessageSource)
+    : d.type === "assistant" && d.contentBlocks?.some((b) => b.type === "tool_use")
+      ? "assistant (tools)"
+      : d.type;
   console.log(`[msg ${d.idx}] ${formatInlineText(typeLabel)} -- ${time}${lineInfo}`);
   console.log("\u2500".repeat(60));
 
   // Print with line numbers (like the Read tool)
-  const lines = d.content.split("\n");
+  const visibleContent = userMessageSource ? truncateTakodeUserContent(d.content, userMessageSource, "read") : null;
+  const lines = (visibleContent?.content ?? d.content).split("\n");
   for (let i = 0; i < lines.length; i++) {
     const lineNum = String(d.offset + i + 1).padStart(4);
     console.log(`${lineNum}  ${formatInlineText(lines[i] ?? "")}`);
   }
 
-  if (d.offset + lines.length < d.totalLines) {
+  if (visibleContent?.truncated) {
+    console.log("");
+    console.log(`... ${visibleContent.remainingChars} more chars hidden. Use --json for full content.`);
+  } else if (d.offset + lines.length < d.totalLines) {
     console.log("");
     console.log(
       `... ${d.totalLines - d.offset - lines.length} more lines. Use --offset ${d.offset + d.limit} to continue.`,

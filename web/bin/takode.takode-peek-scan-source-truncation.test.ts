@@ -40,9 +40,19 @@ function makeLongContent(prefix: string, fillerLength: number, marker: string): 
   return `${prefix}${"x".repeat(fillerLength)} ${marker} ${"y".repeat(40)}`;
 }
 
+function makeWindowedContent(
+  prefix: string,
+  visiblePadding: number,
+  visibleMarker: string,
+  hiddenPadding: number,
+  hiddenMarker: string,
+): string {
+  return `${prefix}${"x".repeat(visiblePadding)} ${visibleMarker} ${"y".repeat(hiddenPadding)} ${hiddenMarker} ${"z".repeat(40)}`;
+}
+
 describe("takode peek/scan source-aware truncation", () => {
-  it("keeps scan especially aggressive for herd prompts while preserving user and agent source labels", async () => {
-    const userContent = makeLongContent("human-summary ", 180, "USER_SCAN_KEEP");
+  it("gives scan human user prompts a generous window while keeping herd prompts aggressive", async () => {
+    const userContent = makeWindowedContent("human-summary ", 1880, "USER_SCAN_KEEP", 220, "USER_SCAN_HIDE");
     const herdContent = makeLongContent("herd-summary ", 180, "HERD_SCAN_HIDE");
     const agentContent = makeLongContent("agent-summary ", 120, "AGENT_SCAN_KEEP");
 
@@ -132,6 +142,7 @@ describe("takode peek/scan source-aware truncation", () => {
       expect(result.stdout).toContain("herd:");
       expect(result.stdout).toContain("agent System:");
       expect(result.stdout).toContain("USER_SCAN_KEEP");
+      expect(result.stdout).not.toContain("USER_SCAN_HIDE");
       expect(result.stdout).toContain("AGENT_SCAN_KEEP");
       expect(result.stdout).not.toContain("HERD_SCAN_HIDE");
     } finally {
@@ -217,6 +228,99 @@ describe("takode peek/scan source-aware truncation", () => {
       expect(result.stdout).toContain("USER_PEEK_KEEP");
       expect(result.stdout).toContain("AGENT_PEEK_KEEP");
       expect(result.stdout).not.toContain("HERD_PEEK_HIDE");
+    } finally {
+      server.close();
+    }
+  });
+
+  it("gives takode read a generous human user window while keeping herd reads shorter and labeled", async () => {
+    const userContent = makeWindowedContent("read-user ", 1888, "READ_USER_KEEP", 220, "READ_USER_HIDE");
+    const herdContent = makeWindowedContent("read-herd ", 120, "READ_HERD_KEEP", 120, "READ_HERD_HIDE");
+
+    const server = createServer((req, res) => {
+      const method = req.method || "";
+      const url = req.url || "";
+
+      if (method === "GET" && url === "/api/takode/me") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ sessionId: "leader-read-source", isOrchestrator: false }));
+        return;
+      }
+
+      if (method === "GET" && url === "/api/sessions/153/messages/0") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            idx: 0,
+            type: "user_message",
+            ts: Date.now() - 30_000,
+            totalLines: 1,
+            offset: 0,
+            limit: 200,
+            content: userContent,
+            rawMessage: {
+              type: "user_message",
+              content: userContent,
+              timestamp: Date.now() - 30_000,
+            },
+          }),
+        );
+        return;
+      }
+
+      if (method === "GET" && url === "/api/sessions/153/messages/1") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            idx: 1,
+            type: "user_message",
+            ts: Date.now() - 20_000,
+            totalLines: 1,
+            offset: 0,
+            limit: 200,
+            content: herdContent,
+            rawMessage: {
+              type: "user_message",
+              content: herdContent,
+              timestamp: Date.now() - 20_000,
+              agentSource: { sessionId: "herd-events", sessionLabel: "Herd Events" },
+            },
+          }),
+        );
+        return;
+      }
+
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    });
+
+    server.listen(0);
+    await once(server, "listening");
+    const port = (server.address() as AddressInfo).port;
+
+    try {
+      const userResult = await runTakode(["read", "153", "0", "--port", String(port)], {
+        ...process.env,
+        COMPANION_SESSION_ID: "leader-read-source",
+        COMPANION_AUTH_TOKEN: "auth-read-source",
+      });
+      const herdResult = await runTakode(["read", "153", "1", "--port", String(port)], {
+        ...process.env,
+        COMPANION_SESSION_ID: "leader-read-source",
+        COMPANION_AUTH_TOKEN: "auth-read-source",
+      });
+
+      expect(userResult.status).toBe(0);
+      expect(userResult.stdout).toContain("[msg 0] user --");
+      expect(userResult.stdout).toContain("READ_USER_KEEP");
+      expect(userResult.stdout).not.toContain("READ_USER_HIDE");
+      expect(userResult.stdout).toContain("more chars hidden");
+
+      expect(herdResult.status).toBe(0);
+      expect(herdResult.stdout).toContain("[msg 1] herd --");
+      expect(herdResult.stdout).toContain("READ_HERD_KEEP");
+      expect(herdResult.stdout).not.toContain("READ_HERD_HIDE");
+      expect(herdResult.stdout).toContain("more chars hidden");
     } finally {
       server.close();
     }
