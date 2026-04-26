@@ -15,7 +15,12 @@ import {
   QUEST_JOURNEY_PHASES,
   DEFAULT_QUEST_JOURNEY_PHASE_IDS,
   QUEST_JOURNEY_HINTS,
+  type QuestJourneyPhaseId,
 } from "./quest-journey.js";
+
+const VALID_PHASE_IDS = ["planning", "mental-simulation", "port"] as const satisfies readonly QuestJourneyPhaseId[];
+// @ts-expect-error compile-time guard: invalid phase ids must not widen to string
+const INVALID_PHASE_IDS = ["planning", "not-a-phase"] as const satisfies readonly QuestJourneyPhaseId[];
 
 describe("isValidQuestId", () => {
   it.each(["q-1", "q-42", "q-999", "Q-1"])("accepts valid quest ID: %j", (id) => {

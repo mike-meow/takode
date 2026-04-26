@@ -78,9 +78,22 @@ export type QuestJourneyState = (typeof QUEST_JOURNEY_STATES)[number];
  * assemble into a Quest Journey and are backed by canonical phase.json files.
  */
 export type QuestJourneyAssigneeRole = "worker" | "reviewer";
+const QUEST_JOURNEY_PHASE_IDS = [
+  "planning",
+  "explore",
+  "implement",
+  "code-review",
+  "mental-simulation",
+  "execute",
+  "outcome-review",
+  "bookkeeping",
+  "port",
+] as const;
+
+export type QuestJourneyPhaseId = (typeof QUEST_JOURNEY_PHASE_IDS)[number];
 
 export interface QuestJourneyPhase {
-  id: string;
+  id: QuestJourneyPhaseId;
   label: string;
   boardState: QuestJourneyState;
   assigneeRole: QuestJourneyAssigneeRole;
@@ -89,23 +102,55 @@ export interface QuestJourneyPhase {
   aliases: string[];
 }
 
-function defineQuestJourneyPhase(phase: QuestJourneyPhase & { aliases?: string[] }): QuestJourneyPhase {
-  return { ...phase, aliases: [...(phase.aliases ?? [])] };
+type QuestJourneyPhaseFile = {
+  id: string;
+  label: string;
+  boardState: string;
+  assigneeRole: string;
+  contract: string;
+  nextLeaderAction: string;
+  aliases?: string[];
+};
+
+function parseQuestJourneyState(value: string): QuestJourneyState {
+  if ((QUEST_JOURNEY_STATES as readonly string[]).includes(value)) {
+    return value as QuestJourneyState;
+  }
+  throw new Error(`Quest Journey phase metadata mismatch: unknown board state ${value}`);
+}
+
+function parseQuestJourneyAssigneeRole(value: string): QuestJourneyAssigneeRole {
+  if (value === "worker" || value === "reviewer") return value;
+  throw new Error(`Quest Journey phase metadata mismatch: unknown assignee role ${value}`);
+}
+
+function defineQuestJourneyPhase<Id extends QuestJourneyPhaseId>(
+  expectedId: Id,
+  phase: QuestJourneyPhaseFile,
+): QuestJourneyPhase & { id: Id } {
+  if (phase.id !== expectedId) {
+    throw new Error(`Quest Journey phase metadata mismatch: expected ${expectedId}, got ${phase.id}`);
+  }
+  return {
+    ...phase,
+    id: expectedId,
+    boardState: parseQuestJourneyState(phase.boardState),
+    assigneeRole: parseQuestJourneyAssigneeRole(phase.assigneeRole),
+    aliases: [...(phase.aliases ?? [])],
+  };
 }
 
 export const QUEST_JOURNEY_PHASES: readonly QuestJourneyPhase[] = [
-  defineQuestJourneyPhase(planningPhase as QuestJourneyPhase & { aliases?: string[] }),
-  defineQuestJourneyPhase(explorePhase as QuestJourneyPhase & { aliases?: string[] }),
-  defineQuestJourneyPhase(implementPhase as QuestJourneyPhase & { aliases?: string[] }),
-  defineQuestJourneyPhase(codeReviewPhase as QuestJourneyPhase & { aliases?: string[] }),
-  defineQuestJourneyPhase(mentalSimulationPhase as QuestJourneyPhase & { aliases?: string[] }),
-  defineQuestJourneyPhase(executePhase as QuestJourneyPhase & { aliases?: string[] }),
-  defineQuestJourneyPhase(outcomeReviewPhase as QuestJourneyPhase & { aliases?: string[] }),
-  defineQuestJourneyPhase(bookkeepingPhase as QuestJourneyPhase & { aliases?: string[] }),
-  defineQuestJourneyPhase(portPhase as QuestJourneyPhase & { aliases?: string[] }),
+  defineQuestJourneyPhase("planning", planningPhase),
+  defineQuestJourneyPhase("explore", explorePhase),
+  defineQuestJourneyPhase("implement", implementPhase),
+  defineQuestJourneyPhase("code-review", codeReviewPhase),
+  defineQuestJourneyPhase("mental-simulation", mentalSimulationPhase),
+  defineQuestJourneyPhase("execute", executePhase),
+  defineQuestJourneyPhase("outcome-review", outcomeReviewPhase),
+  defineQuestJourneyPhase("bookkeeping", bookkeepingPhase),
+  defineQuestJourneyPhase("port", portPhase),
 ];
-
-export type QuestJourneyPhaseId = (typeof QUEST_JOURNEY_PHASES)[number]["id"];
 
 export const DEFAULT_QUEST_JOURNEY_PRESET_ID = "full-code";
 export const DEFAULT_QUEST_JOURNEY_PHASE_IDS = [

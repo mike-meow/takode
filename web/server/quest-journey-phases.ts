@@ -142,7 +142,5 @@ export async function loadQuestJourneyPhase(
 export async function loadBuiltInQuestJourneyPhases(
   options?: QuestJourneyPhasePathOptions,
 ): Promise<LoadedQuestJourneyPhase[]> {
-  return Promise.all(
-    QUEST_JOURNEY_PHASES.map((phase) => loadQuestJourneyPhase(phase.id as QuestJourneyPhaseId, options)),
-  );
+  return Promise.all(QUEST_JOURNEY_PHASES.map((phase) => loadQuestJourneyPhase(phase.id, options)));
 }
