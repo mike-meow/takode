@@ -12,6 +12,8 @@ Leader actions:
 - Approve the initial Journey before this phase begins and keep that Journey on the board.
 - Tell the worker to load the quest skill, read and claim the quest, return a plan, then stop.
 - Put or keep the board row in `PLANNING`.
+- Review the returned plan yourself first. Default to leader-owned approval when the plan stays within the approved Journey and does not introduce significant ambiguity, scope change, Journey revision, user-visible tradeoff, or another blocking issue.
+- Escalate back to the user only when one of those issues genuinely needs user approval.
 
 Worker-visible boundary:
 - The worker may inspect context and propose a plan within the current board-carried Journey.

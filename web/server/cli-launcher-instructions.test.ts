@@ -59,6 +59,8 @@ describe("getOrchestratorGuardrails", () => {
     expect(result).toContain("orchestrator agent");
     expect(result).toContain("/quest-design");
     expect(result).toContain("initial Journey proposal-and-approval contract");
+    expect(result).toContain("Planning approval is leader-owned by default");
+    expect(result).toContain("Escalate planning back to the user only");
     expect(result).toContain("commit the current worktree state first");
     expect(result).toContain("separate follow-up commit");
   });
@@ -68,6 +70,8 @@ describe("getOrchestratorGuardrails", () => {
     expect(result).toContain("orchestrator leader session");
     expect(result).toContain("/quest-design");
     expect(result).toContain("initial Journey proposal-and-approval");
+    expect(result).toContain("Planning approval is leader-owned by default");
+    expect(result).toContain("Escalate planning back to the user only");
     expect(result).toContain("commit the current worktree state first");
   });
 });
@@ -89,6 +93,9 @@ describe("buildInjectedSystemPromptForDebug", () => {
     expect(result).toContain("Use `/leader-dispatch` before dispatching a fresh or newly refined quest");
     expect(result).toContain("board-owned active state for the quest");
     expect(result).toContain("Initial Journey approval comes before dispatch");
+    expect(result).toContain("not a routine second user-approval gate");
+    expect(result).toContain("Planning approval is leader-owned by default");
+    expect(result).toContain("significant ambiguity, scope change, Journey revision, user-visible tradeoff");
     expect(result).toContain("| Built-in phase | Board state | Leader brief | Assignee brief | Next leader action |");
     expect(result).toContain("~/.companion/quest-journey-phases/<phase-id>/");
     expect(result).toContain("`planning/leader.md`");

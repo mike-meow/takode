@@ -6,7 +6,7 @@ The active planned Journey is board-owned state associated with the quest while 
 
 `QUEUED` is a board state, not a phase. Once active, leaders choose the phase sequence that matches the risk boundary and evidence needed next.
 
-Before the first dispatch, leaders should use `/leader-dispatch` to propose the planned initial Journey and get approval. The worker planning phase then refines execution inside that approved Journey and may recommend revisions; it is not the first time phases are proposed.
+Before the first dispatch, leaders should use `/leader-dispatch` to propose the planned initial Journey and get approval. The worker planning phase then refines execution inside that approved Journey and may recommend revisions; it is not the first time phases are proposed. After the worker returns a plan, the leader normally approves it and advances without a routine second user-approval round. Escalate back to the user only for significant ambiguity, scope change, Journey revision, user-visible tradeoff, or another real blocking issue.
 
 ## Built-In Phase Library
 
@@ -19,7 +19,7 @@ Leaders should read `leader.md` themselves and point the target session to the m
 
 | Phase | Board state | Leader brief | Assignee brief | Contract | Next leader action |
 |-------|-------------|--------------|----------------|----------|--------------------|
-| Planning | `PLANNING` | `planning/leader.md` | `planning/assignee.md` | Align goal, constraints, success criteria, escalation triggers, and next-phase plan | read the planning leader brief, send the planning-only instruction, then wait for the worker plan |
+| Planning | `PLANNING` | `planning/leader.md` | `planning/assignee.md` | Align goal, constraints, success criteria, escalation triggers, and next-phase plan | read the planning leader brief, send the planning-only instruction, then review the worker plan for leader approval or necessary user escalation |
 | Explore | `EXPLORING` | `explore/leader.md` | `explore/assignee.md` | Gather unknown information without making the target-state change | read the explore leader brief, then wait for the evidence summary and decide whether to revise the Journey or advance |
 | Implement | `IMPLEMENTING` | `implement/leader.md` | `implement/assignee.md` | Make approved code/docs/prompts/config/artifact changes and low-risk local actions | read the implement leader brief, then wait for the worker report and choose the next review or bookkeeping phase |
 | Code Review | `CODE_REVIEWING` | `code-review/leader.md` | `code-review/assignee.md` | Review tracked code or tracked artifacts for correctness, maintainability, tests, security, and regression risk | read the code-review leader brief, then wait for the reviewer result and either send rework or advance |
@@ -71,6 +71,8 @@ Rules:
 - **Initial dispatch = planning only.**
 - **Quest ownership stays with the worker.**
 - **Worker planning refines a leader-approved Journey.** It may recommend revisions, but the board-owned Journey remains authoritative until the leader changes it.
+- **Planning approval is leader-owned by default.** Once the user has approved the initial Journey plus scheduling plan, the leader normally approves the returned worker plan and dispatches the next phase.
+- **Escalate planning back to the user only for real blockers.** Significant ambiguity, scope change, Journey revision, user-visible tradeoff, or another blocking issue can require fresh user approval.
 - **Plan approval authorizes exactly one next phase.** For example: implement now, then stop and report back.
 - **Workers must stop at phase boundaries.** They do not self-review, self-port, or self-transition.
 - **Porting requires an explicit instruction.**

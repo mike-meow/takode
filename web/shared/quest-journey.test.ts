@@ -145,6 +145,8 @@ describe("Quest Journey phases", () => {
     expect(getQuestJourneyPhaseForState("IMPLEMENTING")?.id).toBe("implement");
     expect(getQuestJourneyPhaseForState("SKEPTIC_REVIEWING")?.id).toBe("code-review");
     expect(getQuestJourneyPhase("bookkeeping")?.boardState).toBe("BOOKKEEPING");
+    expect(getQuestJourneyPhase("planning")?.nextLeaderAction).toContain("leader approval");
+    expect(getQuestJourneyPhase("planning")?.nextLeaderAction).toContain("user escalation");
     expect(normalizeQuestJourneyPlan(undefined, "PORTING")).toEqual(
       expect.objectContaining({
         phaseIds: DEFAULT_QUEST_JOURNEY_PHASE_IDS,

@@ -430,6 +430,10 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("Initial dispatch authorizes **planning only**");
     expect(guardrails).toContain("Initial Journey approval comes before dispatch");
     expect(guardrails).toContain("The worker planning phase then refines execution inside that approved Journey");
+    expect(guardrails).toContain("not a routine second user-approval gate");
+    expect(guardrails).toContain("Planning approval is leader-owned by default");
+    expect(guardrails).toContain("Escalate planning back to the user only");
+    expect(guardrails).toContain("significant ambiguity, scope change, Journey revision, user-visible tradeoff");
     expect(guardrails).toContain("Fresh human feedback resets the active cycle");
     expect(guardrails).toContain("do not let stale old-scope completions advance the quest");
     expect(guardrails).toContain("Zero-tracked-change quests still use explicit Journey phases");
@@ -512,6 +516,9 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("Make every worker instruction phase-explicit");
     expect(guardrails).toContain("Initial dispatch authorizes **planning only**");
     expect(guardrails).toContain("Initial Journey approval comes before dispatch");
+    expect(guardrails).toContain("not a routine second user-approval gate");
+    expect(guardrails).toContain("Planning approval is leader-owned by default");
+    expect(guardrails).toContain("Escalate planning back to the user only");
     expect(guardrails).toContain("board-owned active state for the quest");
     expect(guardrails).toContain("Initial pre-dispatch approval is a combined contract");
     expect(guardrails).toContain("expected worker choice or fresh-spawn intent");
