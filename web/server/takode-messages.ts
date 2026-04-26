@@ -75,7 +75,7 @@ export interface TakodePeekTurnSummary {
   success?: boolean;
   /** Truncated result or last assistant text for the collapsed one-liner */
   result: string;
-  /** Truncated user message that started this turn */
+  /** User message preview that started this turn */
   user: string;
   /** Source of the user message if injected programmatically */
   agent?: { sessionId: string; sessionLabel?: string };
@@ -1287,7 +1287,10 @@ export function buildPeekTurnScan(
       subagentToolUseIds,
       toolResultPreviews,
     });
-    const userPreview = startMsg.type === "user_message" ? truncate(startMsg.content || "", 80) : "";
+    // Preserve the raw turn-start user text for scan mode so the CLI can apply
+    // its own source-aware truncation policy. An eager server-side 80-char
+    // clamp defeats the larger human-user window on `takode scan`.
+    const userPreview = startMsg.type === "user_message" ? startMsg.content || "" : "";
 
     return {
       turn: turnNum,

@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { buildPeekTurnScan } from "../server/takode-messages.ts";
 
 async function runTakode(
   args: string[],
@@ -55,6 +56,52 @@ describe("takode peek/scan source-aware truncation", () => {
     const userContent = makeWindowedContent("human-summary ", 1880, "USER_SCAN_KEEP", 220, "USER_SCAN_HIDE");
     const herdContent = makeLongContent("herd-summary ", 180, "HERD_SCAN_HIDE");
     const agentContent = makeLongContent("agent-summary ", 120, "AGENT_SCAN_KEEP");
+    const now = Date.now();
+    const history = [
+      { type: "user_message", content: userContent, timestamp: now - 90_000 },
+      {
+        type: "assistant",
+        timestamp: now - 75_000,
+        message: { content: [{ type: "text", text: "user turn done" }] },
+      },
+      {
+        type: "result",
+        timestamp: now - 60_000,
+        data: { duration_ms: 30_000, is_error: false, result: "user turn done" },
+      },
+      {
+        type: "user_message",
+        content: herdContent,
+        timestamp: now - 60_000,
+        agentSource: { sessionId: "herd-events", sessionLabel: "Herd Events" },
+      },
+      {
+        type: "assistant",
+        timestamp: now - 50_000,
+        message: { content: [{ type: "text", text: "herd turn done" }] },
+      },
+      {
+        type: "result",
+        timestamp: now - 40_000,
+        data: { duration_ms: 20_000, is_error: false, result: "herd turn done" },
+      },
+      {
+        type: "user_message",
+        content: agentContent,
+        timestamp: now - 30_000,
+        agentSource: { sessionId: "session-7", sessionLabel: "System" },
+      },
+      {
+        type: "assistant",
+        timestamp: now - 20_000,
+        message: { content: [{ type: "text", text: "agent turn done" }] },
+      },
+      {
+        type: "result",
+        timestamp: now - 10_000,
+        data: { duration_ms: 20_000, is_error: false, result: "agent turn done" },
+      },
+    ] as any[];
 
     const server = createServer((req, res) => {
       const method = req.method || "";
@@ -75,48 +122,7 @@ describe("takode peek/scan source-aware truncation", () => {
             name: "Scan Worker",
             status: "idle",
             quest: null,
-            mode: "turn_scan",
-            totalTurns: 3,
-            totalMessages: 9,
-            from: 0,
-            count: 3,
-            turns: [
-              {
-                turn: 0,
-                si: 0,
-                ei: 2,
-                start: Date.now() - 90_000,
-                end: Date.now() - 60_000,
-                dur: 30_000,
-                stats: { tools: 0, messages: 3, subagents: 0 },
-                user: userContent,
-                result: "user turn done",
-              },
-              {
-                turn: 1,
-                si: 3,
-                ei: 5,
-                start: Date.now() - 60_000,
-                end: Date.now() - 40_000,
-                dur: 20_000,
-                stats: { tools: 0, messages: 3, subagents: 0 },
-                user: herdContent,
-                result: "herd turn done",
-                agent: { sessionId: "herd-events" },
-              },
-              {
-                turn: 2,
-                si: 6,
-                ei: 8,
-                start: Date.now() - 30_000,
-                end: Date.now() - 10_000,
-                dur: 20_000,
-                stats: { tools: 0, messages: 3, subagents: 0 },
-                user: agentContent,
-                result: "agent turn done",
-                agent: { sessionId: "session-7", sessionLabel: "System" },
-              },
-            ],
+            ...buildPeekTurnScan(history, { fromTurn: 0, turnCount: 3 }),
           }),
         );
         return;

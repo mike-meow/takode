@@ -606,6 +606,16 @@ describe("buildPeekTurnScan", () => {
     expect(result.turns).toEqual([]);
     expect(result.compactionEvents).toBeUndefined();
   });
+
+  it("preserves long turn-start user text so scan can apply its own truncation policy", () => {
+    const longUser = `human prompt ${"x".repeat(1200)} USER_SCAN_KEEP ${"y".repeat(900)}`;
+    const history: BrowserIncomingMessage[] = [userMsg(longUser, 1000), assistantMsg("reply", 2000), resultMsg(3000)];
+
+    const result = buildPeekTurnScan(history, { fromTurn: 0, turnCount: 1 });
+    expect(result.turns).toHaveLength(1);
+    expect(result.turns[0].user).toContain("USER_SCAN_KEEP");
+    expect(result.turns[0].user.length).toBeGreaterThan(1500);
+  });
 });
 
 // ─── buildReadResponse ────────────────────────────────────────────────────────
