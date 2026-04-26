@@ -1,6 +1,6 @@
 import { mkdtempSync, rmSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 import sharp from "sharp";
 
@@ -38,6 +38,24 @@ afterEach(() => {
 
 function questDir(): string {
   return join(tempDir, ".companion", "questmaster");
+}
+
+async function importQuestStoreWithReadSpy(reads: string[]): Promise<typeof import("./quest-store.js")> {
+  vi.resetModules();
+  mockHomedir.set(tempDir);
+  vi.doMock("node:fs/promises", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("node:fs/promises")>();
+    return {
+      ...actual,
+      readFile: vi.fn(async (...args: Parameters<typeof actual.readFile>) => {
+        reads.push(String(args[0]));
+        return actual.readFile(...args);
+      }),
+    };
+  });
+  const module = await import("./quest-store.js");
+  vi.doUnmock("node:fs/promises");
+  return module;
 }
 
 // ===========================================================================
@@ -199,6 +217,37 @@ describe("getQuest", () => {
     expect(await questStore.getQuest("q-999")).toBeNull();
   });
 
+  it("falls back to the latest readable version when a newer matching file is corrupt", async () => {
+    await questStore.createQuest({ title: "Stable" });
+    await writeFile(join(questDir(), "q-1-v2.json"), "{not json", "utf-8");
+
+    const q = await questStore.getQuest("q-1");
+    expect(q?.id).toBe("q-1-v1");
+    expect(q?.title).toBe("Stable");
+  });
+
+  it("reads only the latest matching version file for single-quest lookups", async () => {
+    const reads: string[] = [];
+    const instrumentedStore = await importQuestStoreWithReadSpy(reads);
+
+    await instrumentedStore.createQuest({ title: "Primary" });
+    await instrumentedStore.transitionQuest("q-1", {
+      status: "refined",
+      description: "Details",
+    });
+    await instrumentedStore.createQuest({ title: "Unrelated" });
+
+    reads.length = 0;
+    const q = await instrumentedStore.getQuest("q-1");
+    expect(q?.id).toBe("q-1-v2");
+
+    const questReads = reads
+      .filter((path) => path.endsWith(".json"))
+      .map((path) => basename(path))
+      .filter((name) => name.startsWith("q-"));
+    expect(questReads).toEqual(["q-1-v2.json"]);
+  });
+
   it("normalizes legacy done ownership (sessionId -> previousOwnerSessionIds)", async () => {
     const legacy = {
       id: "q-1-v1",
@@ -268,6 +317,30 @@ describe("getQuestHistory", () => {
 
   it("returns empty array for non-existent questId", async () => {
     expect(await questStore.getQuestHistory("q-999")).toEqual([]);
+  });
+
+  it("reads only matching version files when loading one quest history", async () => {
+    const reads: string[] = [];
+    const instrumentedStore = await importQuestStoreWithReadSpy(reads);
+
+    await instrumentedStore.createQuest({ title: "Primary" });
+    await instrumentedStore.transitionQuest("q-1", {
+      status: "refined",
+      description: "Step 1",
+    });
+    await instrumentedStore.claimQuest("q-1", "session-abc");
+    await instrumentedStore.createQuest({ title: "Unrelated" });
+
+    reads.length = 0;
+    const history = await instrumentedStore.getQuestHistory("q-1");
+    expect(history.map((quest) => quest.id)).toEqual(["q-1-v1", "q-1-v2", "q-1-v3"]);
+
+    const questReads = reads
+      .filter((path) => path.endsWith(".json"))
+      .map((path) => basename(path))
+      .filter((name) => name.startsWith("q-"))
+      .sort();
+    expect(questReads).toEqual(["q-1-v1.json", "q-1-v2.json", "q-1-v3.json"]);
   });
 });
 

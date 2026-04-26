@@ -299,9 +299,59 @@ async function readQuest(id: string): Promise<QuestmasterTask | null> {
   }
 }
 
+async function readQuestAtPath(path: string): Promise<QuestmasterTask | null> {
+  try {
+    const raw = await readFile(path, "utf-8");
+    return normalizeQuestOwnership(JSON.parse(raw) as QuestmasterTask);
+  } catch {
+    return null;
+  }
+}
+
 async function writeQuest(quest: QuestmasterTask): Promise<void> {
   await ensureDir();
   await writeFile(filePath(quest.id), JSON.stringify(normalizeQuestOwnership(quest), null, 2), "utf-8");
+}
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+async function listQuestVersionFiles(questId: string): Promise<{ file: string; version: number }[]> {
+  await ensureDir();
+  const matcher = new RegExp(`^${escapeRegExp(questId)}-v(\\d+)\\.json$`);
+  try {
+    const files = await readdir(QUESTMASTER_DIR);
+    return files
+      .map((file) => {
+        const match = file.match(matcher);
+        if (!match) return null;
+        return { file, version: Number(match[1]) };
+      })
+      .filter((entry): entry is { file: string; version: number } => entry !== null);
+  } catch {
+    return [];
+  }
+}
+
+async function readQuestHistoryForId(questId: string): Promise<QuestmasterTask[]> {
+  const versionFiles = await listQuestVersionFiles(questId);
+  if (versionFiles.length === 0) return [];
+  const versions = await Promise.all(
+    versionFiles.sort((a, b) => a.version - b.version).map(({ file }) => readQuestAtPath(join(QUESTMASTER_DIR, file))),
+  );
+  return versions.filter((quest): quest is QuestmasterTask => quest !== null);
+}
+
+async function readLatestQuestVersionForId(questId: string): Promise<QuestmasterTask | null> {
+  const versionFiles = await listQuestVersionFiles(questId);
+  if (versionFiles.length === 0) return null;
+  const candidates = versionFiles.sort((a, b) => b.version - a.version);
+  for (const { file } of candidates) {
+    const quest = await readQuestAtPath(join(QUESTMASTER_DIR, file));
+    if (quest) return quest;
+  }
+  return null;
 }
 
 /** Read all version files, grouped by questId. */
@@ -352,10 +402,7 @@ export async function listQuests(): Promise<QuestmasterTask[]> {
 
 /** Get the latest version of a quest by questId. */
 export async function getQuest(questId: string): Promise<QuestmasterTask | null> {
-  const groups = await readAllVersions();
-  const versions = groups.get(questId);
-  if (!versions || versions.length === 0) return null;
-  return latestVersion(versions);
+  return readLatestQuestVersionForId(questId);
 }
 
 /** Get a specific version by full version id (e.g., "q-1-v3"). */
@@ -365,10 +412,7 @@ export async function getQuestVersion(id: string): Promise<QuestmasterTask | nul
 
 /** Get all versions of a quest, ordered oldest → newest. */
 export async function getQuestHistory(questId: string): Promise<QuestmasterTask[]> {
-  const groups = await readAllVersions();
-  const versions = groups.get(questId);
-  if (!versions) return [];
-  return versions.sort((a, b) => a.version - b.version);
+  return readQuestHistoryForId(questId);
 }
 
 /** Create a new quest. Returns the initial version. */
@@ -425,8 +469,12 @@ export async function createQuest(input: QuestCreateInput): Promise<QuestmasterT
 }
 
 /** Same-stage edit. Mutates the latest version in place, no new version. */
-export async function patchQuest(questId: string, patch: QuestPatchInput): Promise<QuestmasterTask | null> {
-  const current = await getQuest(questId);
+export async function patchQuest(
+  questId: string,
+  patch: QuestPatchInput,
+  options?: { current?: QuestmasterTask | null },
+): Promise<QuestmasterTask | null> {
+  const current = options?.current && options.current.questId === questId ? options.current : await getQuest(questId);
   if (!current) return null;
 
   const markVerificationInboxUnread = shouldMarkVerificationInboxUnreadFromFeedbackPatch(current, patch.feedback);

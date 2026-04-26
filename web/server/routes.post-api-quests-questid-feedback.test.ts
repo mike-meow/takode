@@ -737,8 +737,9 @@ describe("POST /api/quests/:questId/feedback", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(patchSpy).toHaveBeenCalledWith(
-      "q-1",
+    const [questId, patchArg, optionsArg] = patchSpy.mock.calls[0] ?? [];
+    expect(questId).toBe("q-1");
+    expect(patchArg).toEqual(
       expect.objectContaining({
         feedback: [
           expect.objectContaining({ author: "human", text: "Please verify spacing" }),
@@ -749,6 +750,11 @@ describe("POST /api/quests/:questId/feedback", () => {
             text: "Summary: revised summary",
           }),
         ],
+      }),
+    );
+    expect(optionsArg).toEqual(
+      expect.objectContaining({
+        current: expect.objectContaining({ questId: "q-1", id: "q-1-v3" }),
       }),
     );
     const feedback = (patchSpy.mock.calls[0]?.[1] as { feedback: Array<{ text: string }> }).feedback;

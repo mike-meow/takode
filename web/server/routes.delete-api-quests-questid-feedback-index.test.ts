@@ -572,10 +572,16 @@ describe("DELETE /api/quests/:questId/feedback/:index", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(patchSpy).toHaveBeenCalledWith(
-      "q-1",
+    const [questId, patchArg, optionsArg] = patchSpy.mock.calls[0] ?? [];
+    expect(questId).toBe("q-1");
+    expect(patchArg).toEqual(
       expect.objectContaining({
         feedback: [expect.objectContaining({ author: "human", text: "Please verify spacing" })],
+      }),
+    );
+    expect(optionsArg).toEqual(
+      expect.objectContaining({
+        current: expect.objectContaining({ questId: "q-1", id: "q-1-v3" }),
       }),
     );
   });
