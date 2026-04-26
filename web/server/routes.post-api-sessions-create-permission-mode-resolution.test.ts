@@ -582,6 +582,8 @@ describe("POST /api/sessions/create permission mode resolution", () => {
   });
 
   it("uses 'suggest' permission mode for codex sessions when askPermission is true", async () => {
+    // Guarded Codex agent mode should ask on untrusted actions and keep the
+    // workspace sandbox instead of silently escalating to full access.
     const res = await app.request("/api/sessions/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -589,7 +591,9 @@ describe("POST /api/sessions/create permission mode resolution", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(launcher.launch).toHaveBeenCalledWith(expect.objectContaining({ permissionMode: "suggest" }));
+    expect(launcher.launch).toHaveBeenCalledWith(
+      expect.objectContaining({ permissionMode: "suggest", codexSandbox: "workspace-write" }),
+    );
     expect(bridge.applyInitialSessionState).toHaveBeenCalledWith(
       "session-1",
       expect.objectContaining({ cwd: "/test", askPermission: true, uiMode: "agent" }),
@@ -597,6 +601,9 @@ describe("POST /api/sessions/create permission mode resolution", () => {
   });
 
   it("uses 'bypassPermissions' permission mode for codex sessions when askPermission is false", async () => {
+    // Regression coverage for q-688: the shield-off Codex affordance must
+    // launch with full access, otherwise operations such as git rebase can be
+    // blocked by workspace sandbox writes inside .git/.
     const res = await app.request("/api/sessions/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -604,7 +611,9 @@ describe("POST /api/sessions/create permission mode resolution", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(launcher.launch).toHaveBeenCalledWith(expect.objectContaining({ permissionMode: "bypassPermissions" }));
+    expect(launcher.launch).toHaveBeenCalledWith(
+      expect.objectContaining({ permissionMode: "bypassPermissions", codexSandbox: "danger-full-access" }),
+    );
     expect(bridge.applyInitialSessionState).toHaveBeenCalledWith(
       "session-1",
       expect.objectContaining({ cwd: "/test", askPermission: false, uiMode: "agent" }),
@@ -627,6 +636,7 @@ describe("POST /api/sessions/create permission mode resolution", () => {
       expect.objectContaining({
         backendType: "codex",
         permissionMode: "bypassPermissions",
+        codexSandbox: "danger-full-access",
       }),
     );
     expect(bridge.applyInitialSessionState).toHaveBeenCalledWith(
@@ -636,6 +646,8 @@ describe("POST /api/sessions/create permission mode resolution", () => {
   });
 
   it("keeps codex plan mode when askPermission is false", async () => {
+    // Explicit plan mode stays sandboxed even when permission prompts are
+    // disabled, because plan is still a guarded/non-executing UI mode.
     const res = await app.request("/api/sessions/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -647,6 +659,7 @@ describe("POST /api/sessions/create permission mode resolution", () => {
       expect.objectContaining({
         backendType: "codex",
         permissionMode: "plan",
+        codexSandbox: "workspace-write",
       }),
     );
     expect(bridge.applyInitialSessionState).toHaveBeenCalledWith(

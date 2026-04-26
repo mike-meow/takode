@@ -193,6 +193,14 @@ export function createSessionsRoutes(ctx: RouteContext) {
     resumeCliSessionId?: string;
   }
 
+  const resolveCodexSandboxForInitialMode = (
+    backend: SessionBackend,
+    initialModeState: ReturnType<RouteContext["resolveInitialModeState"]>,
+  ): LaunchOptions["codexSandbox"] => {
+    if (backend !== "codex") return undefined;
+    return initialModeState.permissionMode === "bypassPermissions" ? "danger-full-access" : "workspace-write";
+  };
+
   const markOrchestratorSession = (sessionId: string, backend: SessionBackend) =>
     markOrchestratorSessionAfterConnect({ launcher, wsBridge }, sessionId, buildOrchestratorSystemPrompt(backend));
 
@@ -651,7 +659,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
       claudeBinary: body.claudeBinary || binarySettings.claudeBinary || undefined,
       codexBinary: body.codexBinary || binarySettings.codexBinary || undefined,
       codexInternetAccess: backend === "codex" && body.codexInternetAccess === true,
-      codexSandbox: backend === "codex" && body.codexInternetAccess === true ? "danger-full-access" : "workspace-write",
+      codexSandbox: resolveCodexSandboxForInitialMode(backend, initialModeState),
       codexReasoningEffort,
       allowedTools: body.allowedTools,
       env: envVars,
