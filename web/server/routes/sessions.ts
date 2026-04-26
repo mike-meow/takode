@@ -315,6 +315,16 @@ export function createSessionsRoutes(ctx: RouteContext) {
     });
   };
 
+  const shouldMigrateSourceGroupStreamsOnReassign = (
+    treeState: Awaited<ReturnType<typeof treeGroupStore.getState>>,
+    sessionId: string,
+    sourceGroupId: string,
+  ): boolean =>
+    !Object.entries(treeState.assignments).some(
+      ([candidateSessionId, candidateGroupId]) =>
+        candidateSessionId !== sessionId && candidateGroupId === sourceGroupId,
+    );
+
   const applySessionPostLaunch = async (
     session: Awaited<ReturnType<CliLauncher["launch"]>>,
     sessionConfig: SessionConfig,
@@ -1401,7 +1411,11 @@ export function createSessionsRoutes(ctx: RouteContext) {
       return c.json({ error: "Group not found" }, 404);
     }
     const sourceGroupId = await getCurrentSessionTreeGroupId(sessionId);
-    if (sourceGroupId) {
+    if (
+      sourceGroupId &&
+      sourceGroupId !== groupId &&
+      shouldMigrateSourceGroupStreamsOnReassign(treeState, sessionId, sourceGroupId)
+    ) {
       await migrateStreamsForTreeGroupChange(
         sourceGroupId,
         groupId,
