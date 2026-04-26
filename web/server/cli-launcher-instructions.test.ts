@@ -57,6 +57,8 @@ describe("getOrchestratorGuardrails", () => {
   it("returns claude-flavored guardrails by default", () => {
     const result = getOrchestratorGuardrails();
     expect(result).toContain("orchestrator agent");
+    expect(result).toContain("/quest-design");
+    expect(result).toContain("initial Journey proposal-and-approval contract");
     expect(result).toContain("commit the current worktree state first");
     expect(result).toContain("separate follow-up commit");
   });
@@ -64,6 +66,8 @@ describe("getOrchestratorGuardrails", () => {
   it("returns codex-flavored guardrails for codex backend", () => {
     const result = getOrchestratorGuardrails("codex");
     expect(result).toContain("orchestrator leader session");
+    expect(result).toContain("/quest-design");
+    expect(result).toContain("initial Journey proposal-and-approval");
     expect(result).toContain("commit the current worktree state first");
   });
 });
@@ -81,6 +85,10 @@ describe("buildInjectedSystemPromptForDebug", () => {
     expect(result).toContain("Worktree Session");
     expect(result).toContain("Takode -- Cross-Session Orchestration");
     expect(result).toContain("Every dispatched task follows a **Quest Journey** assembled from phases");
+    expect(result).toContain("Use `/quest-design` before creating or materially refining quest text");
+    expect(result).toContain("Use `/leader-dispatch` before dispatching a fresh or newly refined quest");
+    expect(result).toContain("board-owned active state for the quest");
+    expect(result).toContain("Initial Journey approval comes before dispatch");
     expect(result).toContain("| Built-in phase | Board state | Skill | Next leader action |");
     expect(result).toContain("`/quest-journey-planning`");
     expect(result).not.toContain("Every dispatched task follows the **Quest Journey** lifecycle");

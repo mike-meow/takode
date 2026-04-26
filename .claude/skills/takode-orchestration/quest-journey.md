@@ -2,7 +2,11 @@
 
 Every dispatched task follows a **Quest Journey** assembled from built-in phases. The work board (`takode board show`) tracks the current phase, remaining phases, and next required leader action.
 
+The active planned Journey is board-owned state associated with the quest while that quest is on the board. Quest creation or refinement defines the quest text; it does not freeze the active Journey.
+
 `QUEUED` is a board state, not a phase. Once active, leaders choose the phase sequence that matches the risk boundary and evidence needed next.
+
+Before the first dispatch, leaders should use `/leader-dispatch` to propose the planned initial Journey and get approval. The worker planning phase then refines execution inside that approved Journey and may recommend revisions; it is not the first time phases are proposed.
 
 ## Built-In Phase Library
 
@@ -55,8 +59,10 @@ Rules:
 ## Phase-Explicit Worker Steering
 
 - **Authorize one phase at a time.**
+- **Initial Journey approval happens before dispatch.** Use `/leader-dispatch` to propose the starting phases and wait for approval.
 - **Initial dispatch = planning only.**
 - **Quest ownership stays with the worker.**
+- **Worker planning refines a leader-approved Journey.** It may recommend revisions, but the board-owned Journey remains authoritative until the leader changes it.
 - **Plan approval authorizes exactly one next phase.** For example: implement now, then stop and report back.
 - **Workers must stop at phase boundaries.** They do not self-review, self-port, or self-transition.
 - **Porting requires an explicit instruction.**

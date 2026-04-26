@@ -27,7 +27,8 @@ This skill covers leader discipline and the step-by-step dispatch process. Invok
 - **Ask, don't assume.** If the user's instruction is ambiguous or underspecified, ask a quick follow-up question before dispatching. Every interaction with the user is an opportunity to clarify. Workers can figure out implementation details themselves -- you don't need to fill in gaps with guesses.
 - **Never hallucinate user intent.** If the user says "fix the sidebar bug", don't turn it into "fix the sidebar bug by adjusting the CSS grid layout and adding a media query for mobile breakpoints". Pass through what the user said and let the worker investigate.
 - **Added details need confirmation.** If you want to add specifics to make instructions more actionable (e.g. suggesting an approach, naming specific files, or scoping the fix), confirm with the user first. An over-specified instruction based on wrong assumptions wastes more time than a brief clarifying question.
-- **Use `/quest-design` before quest creation/refinement.** Before creating a quest or refining an `idea` quest into worker-ready scope, invoke `/quest-design` and wait for user confirmation or correction. A user-approved plan that explicitly covers the quest text counts as this confirmation. Routine feedback, claims, completion, verification checks, board updates, and already-approved phase transitions do not need a separate confirmation round.
+- **Use `/quest-design` before quest creation/refinement.** Before creating a quest or refining an `idea` quest into worker-ready scope, invoke `/quest-design` and wait for user confirmation or correction. A user-approved plan that explicitly covers the quest text counts as this confirmation. Routine feedback, claims, completion, verification checks, board updates, and already-approved phase transitions do not need a separate confirmation round. `/quest-design` confirms quest understanding and finalizes quest text; it does not own initial Journey proposal.
+- **`/leader-dispatch` owns the initial Journey proposal.** Before dispatching a fresh or newly refined quest, present the planned initial Journey to the user, wait for approval, and only then dispatch the worker into `PLANNING`.
 - **Treat worker/reviewer confusion as a blocking signal.** When a herded worker or reviewer raises a clarification question, answer it from existing context if you can. If not, ask the user via plain text plus `takode notify needs-input` and keep that quest blocked until the ambiguity is resolved.
 
 ## Dispatch Steps
@@ -140,11 +141,28 @@ printf '%s\n' 'Port summary: commit abc123 ...' 'Treat `foo $(bar)` as literal t
 
 Default to your own backend type unless the user specifies otherwise.
 
-### 5. Check Herd Limit
+### 5. Propose the Initial Journey
+
+Before dispatching a fresh or newly refined quest, present the planned initial Journey to the user and wait for approval.
+
+This is the `/leader-dispatch` contract:
+- `/quest-design` confirms quest understanding and finalizes the quest text.
+- `/leader-dispatch` proposes the initial board-owned Journey for execution.
+
+The proposal should:
+- name the built-in phases you intend to put on the board first
+- explain why that initial Journey fits the quest's risk boundary and evidence needs
+- make it explicit that the first worker dispatch will enter `PLANNING` only after approval
+
+Do not spawn a worker, send the standard dispatch message, or set an active board row until the user approves that initial Journey. If the user changes scope, risk, or evidence needs, revise the proposed Journey and wait again.
+
+Once approved, the board row becomes the active shared record of that quest's current planned Journey while it remains on the board.
+
+### 6. Check Herd Limit
 
 Maintain at most **5 worker slots** in your herd. Reviewer sessions do **not** use worker slots. Before spawning, check `takode list` and read the worker-slot summary directly -- do **not** rely on the raw total session count or subtract reviewers yourself. Archiving reviewers does **not** free worker-slot capacity. **Never archive proactively.** Only archive when you are at the 5-worker-slot limit AND need to spawn a new worker. Idle and disconnected worker sessions retain valuable context -- keep them until you actually need the slot. **Archiving a worktree worker deletes its worktree and any uncommitted changes**, so do not archive until anything worth keeping has been ported, committed, or otherwise synced. When you must archive, choose the worker least likely to be reused -- typically the one whose work is most complete, least related to upcoming tasks, or oldest.
 
-### 6. Send Standardized Dispatch Message
+### 7. Send Standardized Dispatch Message
 
 **Use this exact template. Do not add extra context, file paths, or investigation instructions.**
 
@@ -156,6 +174,8 @@ Return a plan for approval before implementing. After you send the plan, stop an
 When sending this template through the shell, prefer `takode spawn --message-file -` or `takode spawn --message-file <path>` over inline `--message` if you might include shell-like text or multi-line additions.
 
 If the worker needs additional context (related sessions, rejected approaches, user decisions), add it to the quest description before dispatching. Workers have the same tools and skills you do -- they run `quest show q-XX` themselves.
+
+This dispatch happens only after the user has approved the initial Journey from Step 5. The worker's planning phase refines execution inside that approved Journey; it is not the first time phases are being proposed.
 
 **Workers must stop after each phase boundary.** The dispatch message only authorizes planning. After plan approval, the worker implements. After implementation, the worker STOPS and waits -- it does NOT self-review, run review skills on its own, run `/self-groom`, or self-port. The leader advances the quest through Quest Journey phases.
 
@@ -208,7 +228,7 @@ Do not let a stale review acceptance, stale port confirmation, or any other old-
 
 **Forward user screenshots.** When the user provides screenshots alongside a task request, attach them to the quest via `quest feedback q-XX --image <path>` before dispatching. If no quest exists (e.g. ad-hoc investigation), send the image file path to the worker via `takode send` so they can Read it. `takode spawn` does not support images -- always use a follow-up message or quest attachment.
 
-### 7. Update the Board
+### 8. Update the Board
 
 ```bash
 takode board set <quest-id> --worker <N> --status PLANNING

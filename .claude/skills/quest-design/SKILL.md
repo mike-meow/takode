@@ -8,6 +8,7 @@ description: "Confirm quest intent before creating a new quest or refining an id
 Use this skill before creating a quest or refining an `idea` quest into a worker-ready quest.
 
 The goal is to give the user one concise chance to correct the agent's understanding before quest text is written.
+Initial Quest Journey proposal and approval belong to `/leader-dispatch`, not `/quest-design`.
 
 ## Scope
 

@@ -388,6 +388,7 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("takode-orchestration");
     expect(guardrails).toContain("leader-dispatch");
     expect(guardrails).toContain("quest");
+    expect(guardrails).toContain("/quest-design");
     expect(guardrails).toContain("sub-agent");
     // Core leader behaviors remain inline
     expect(guardrails).toContain("Create a quest for any non-trivial work");
@@ -398,6 +399,7 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("IMPLEMENTING");
     expect(guardrails).toContain("Code Review");
     expect(guardrails).toContain("BOOKKEEPING");
+    expect(guardrails).toContain("board-owned active state for the quest");
     expect(guardrails).toContain("Work Board");
     // Spawn backend default note
     expect(guardrails).toContain("default to your own backend type");
@@ -423,6 +425,8 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("`commitShas`");
     expect(guardrails).toContain("Make every worker instruction phase-explicit");
     expect(guardrails).toContain("Initial dispatch authorizes **planning only**");
+    expect(guardrails).toContain("Initial Journey approval comes before dispatch");
+    expect(guardrails).toContain("The worker planning phase then refines execution inside that approved Journey");
     expect(guardrails).toContain("Fresh human feedback resets the active cycle");
     expect(guardrails).toContain("do not let stale old-scope completions advance the quest");
     expect(guardrails).toContain("Zero-tracked-change quests still use explicit Journey phases");
@@ -484,6 +488,7 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("Delegate all major work");
     // Skill references for detailed workflows
     expect(guardrails).toContain("/leader-dispatch");
+    expect(guardrails).toContain("/quest-design");
     expect(guardrails).toContain("quest-journey.md");
     // Quest Journey phase table inline as quick reference
     expect(guardrails).toContain("Quest Journey");
@@ -497,6 +502,8 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("wait for the next herd event");
     expect(guardrails).toContain("Make every worker instruction phase-explicit");
     expect(guardrails).toContain("Initial dispatch authorizes **planning only**");
+    expect(guardrails).toContain("Initial Journey approval comes before dispatch");
+    expect(guardrails).toContain("board-owned active state for the quest");
     expect(guardrails).toContain("Leaders do not own worker quests");
     expect(guardrails).toContain("worker doing the job claims and completes the quest");
     expect(guardrails).toContain("Archiving a worktree worker removes its worktree and any uncommitted changes");

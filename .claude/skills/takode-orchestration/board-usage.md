@@ -2,6 +2,8 @@
 
 The work board (`takode board show`) is your primary coordination tool. It tracks the active Quest Journey phase for each quest, the remaining planned phases, and what action is required next.
 
+While a quest is on the board, the current planned Journey shown there is board-owned active state for that quest. Quest creation or refinement defines the quest text, but the board carries the live Journey the leader is currently running.
+
 ## Commands
 
 ### `takode board show`
