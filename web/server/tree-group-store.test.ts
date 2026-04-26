@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -165,6 +165,56 @@ describe("tree-group-store", () => {
     expect(state.groups).toHaveLength(2);
     expect(state.groups[1].name).toBe("Persistent");
     expect(state.assignments["s1"]).toBe(state.groups[1].id);
+  });
+
+  it("scopes group definitions and assignments by server id", async () => {
+    // Different Takode server instances must not share session groups merely
+    // because they run under the same user account.
+    const scopedDir = join(tempDir, "scoped");
+    const legacyPath = join(tempDir, "legacy-tree-groups.json");
+    _resetForTest(undefined, { serverId: "server-a", port: 3457, scopedDir, legacyPath });
+    const group = await createGroup("Server A");
+    await assignSession("session-a", group.id);
+    await _flushForTest();
+
+    _resetForTest(undefined, { serverId: "server-b", port: 3457, scopedDir, legacyPath });
+    const serverB = await getState();
+    expect(serverB.groups).toEqual([{ id: "default", name: "Default" }]);
+    expect(await getGroupForSession("session-a")).toBeUndefined();
+
+    _resetForTest(undefined, { serverId: "server-a", port: 3457, scopedDir, legacyPath });
+    const serverA = await getState();
+    expect(serverA.groups.map((g) => g.name)).toEqual(["Default", "Server A"]);
+    expect(serverA.assignments["session-a"]).toBe(group.id);
+  });
+
+  it("preserves legacy production groups without leaking them to dev server scopes", async () => {
+    // Legacy installs stored all groups in ~/.companion/tree-groups.json. The
+    // default production port may read that file as a compatibility fallback,
+    // but dev/alternate server scopes must start isolated.
+    const scopedDir = join(tempDir, "scoped");
+    const legacyPath = join(tempDir, "legacy-tree-groups.json");
+    await writeFile(
+      legacyPath,
+      JSON.stringify({
+        groups: [
+          { id: "default", name: "Default" },
+          { id: "prod-group", name: "Production Group" },
+        ],
+        assignments: { "prod-session": "prod-group" },
+        nodeOrder: {},
+      }),
+    );
+
+    _resetForTest(undefined, { serverId: "prod-server", port: 3456, scopedDir, legacyPath });
+    const prod = await getState();
+    expect(prod.groups.map((g) => g.name)).toEqual(["Default", "Production Group"]);
+    expect(prod.assignments["prod-session"]).toBe("prod-group");
+
+    _resetForTest(undefined, { serverId: "dev-server", port: 3457, scopedDir, legacyPath });
+    const dev = await getState();
+    expect(dev.groups).toEqual([{ id: "default", name: "Default" }]);
+    expect(dev.assignments).toEqual({});
   });
 
   it("sanitizes corrupt data on load", async () => {

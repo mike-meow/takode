@@ -2,6 +2,8 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
+import { DEFAULT_PORT_DEV, DEFAULT_PORT_PROD } from "./constants.js";
+import { getServerId } from "./settings-manager.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -17,13 +19,18 @@ export interface TreeGroupState {
 }
 
 const DEFAULT_GROUP: TreeGroup = { id: "default", name: "Default" };
-const DEFAULT_PATH = join(homedir(), ".companion", "tree-groups.json");
+const LEGACY_PATH = join(homedir(), ".companion", "tree-groups.json");
+const DEFAULT_SCOPED_DIR = join(homedir(), ".companion", "tree-groups");
 
 // ─── Module state ────────────────────────────────────────────────────────────
 
 let state: TreeGroupState = { groups: [DEFAULT_GROUP], assignments: {}, nodeOrder: {} };
 let loaded = false;
-let filePath = DEFAULT_PATH;
+let explicitFilePath: string | undefined;
+let scopedDir = DEFAULT_SCOPED_DIR;
+let legacyPath = LEGACY_PATH;
+let configuredServerId: string | undefined;
+let configuredPort: number | undefined;
 let pendingWrite: Promise<void> = Promise.resolve();
 
 // ─── Sanitization ────────────────────────────────────────────────────────────
@@ -92,19 +99,53 @@ function sanitizeNodeOrder(input: unknown, validGroupIds: Set<string>): Record<s
 
 // ─── Load / Persist ──────────────────────────────────────────────────────────
 
+function sanitizeServerIdForPath(serverId: string): string {
+  return serverId.trim().replace(/[^a-zA-Z0-9_.-]/g, "_") || "local";
+}
+
+function currentPort(): number {
+  if (configuredPort !== undefined) return configuredPort;
+  const envPort = Number(process.env.PORT);
+  if (Number.isFinite(envPort) && envPort > 0) return envPort;
+  return process.env.NODE_ENV === "production" ? DEFAULT_PORT_PROD : DEFAULT_PORT_DEV;
+}
+
+function currentServerId(): string {
+  return configuredServerId || getServerId();
+}
+
+function currentFilePath(): string {
+  if (explicitFilePath) return explicitFilePath;
+  return join(scopedDir, `${sanitizeServerIdForPath(currentServerId())}.json`);
+}
+
+function shouldUseLegacyFallback(): boolean {
+  return !explicitFilePath && currentPort() === DEFAULT_PORT_PROD;
+}
+
 async function ensureLoaded(): Promise<void> {
   if (loaded) return;
   try {
-    const raw = await readFile(filePath, "utf-8");
+    const raw = await readFile(currentFilePath(), "utf-8");
     state = sanitizeState(JSON.parse(raw));
-  } catch {
-    state = { groups: [{ ...DEFAULT_GROUP }], assignments: {}, nodeOrder: {} };
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" && shouldUseLegacyFallback()) {
+      try {
+        const raw = await readFile(legacyPath, "utf-8");
+        state = sanitizeState(JSON.parse(raw));
+      } catch {
+        state = { groups: [{ ...DEFAULT_GROUP }], assignments: {}, nodeOrder: {} };
+      }
+    } else {
+      state = { groups: [{ ...DEFAULT_GROUP }], assignments: {}, nodeOrder: {} };
+    }
   }
   loaded = true;
 }
 
 function persist(): void {
-  const path = filePath;
+  const path = currentFilePath();
   const data = JSON.stringify(state, null, 2);
   pendingWrite = pendingWrite
     .then(async () => {
@@ -222,6 +263,13 @@ export async function getGroupForSession(sessionId: string): Promise<string | un
   return state.assignments[sessionId];
 }
 
+export function initTreeGroupStoreForServer(options: { serverId: string; port: number }): void {
+  configuredServerId = options.serverId;
+  configuredPort = options.port;
+  explicitFilePath = undefined;
+  loaded = false;
+}
+
 // ─── Test helpers ────────────────────────────────────────────────────────────
 
 /** Wait for pending async writes to complete. Test-only. */
@@ -230,9 +278,16 @@ export function _flushForTest(): Promise<void> {
 }
 
 /** Reset internal state and optionally override file path (for tests). */
-export function _resetForTest(customPath?: string): void {
+export function _resetForTest(
+  customPath?: string,
+  options?: { serverId?: string; port?: number; scopedDir?: string; legacyPath?: string },
+): void {
   state = { groups: [{ ...DEFAULT_GROUP }], assignments: {}, nodeOrder: {} };
   loaded = false;
-  filePath = customPath || DEFAULT_PATH;
+  explicitFilePath = customPath;
+  configuredServerId = options?.serverId;
+  configuredPort = options?.port;
+  scopedDir = options?.scopedDir || DEFAULT_SCOPED_DIR;
+  legacyPath = options?.legacyPath || LEGACY_PATH;
   pendingWrite = Promise.resolve();
 }

@@ -70,6 +70,7 @@ const packageRoot = process.env.__COMPANION_PACKAGE_ROOT || resolve(__dirname, "
 
 import { DEFAULT_PORT_DEV, DEFAULT_PORT_PROD, RESTART_EXIT_CODE } from "./constants.js";
 import { createLogger, flushServerLogger, initServerLogger } from "./server-logger.js";
+import { initTreeGroupStoreForServer } from "./tree-group-store.js";
 
 const defaultPort = process.env.NODE_ENV === "production" ? DEFAULT_PORT_PROD : DEFAULT_PORT_DEV;
 const port = Number(process.env.PORT) || defaultPort;
@@ -80,6 +81,7 @@ const serverLog = createLogger("server");
 
 await initWithPort(port);
 const serverId = getServerId();
+initTreeGroupStoreForServer({ serverId, port });
 const sessionStore = new SessionStore(undefined, port);
 const wsBridge = new WsBridge();
 const launcher = new CliLauncher(port, { serverId });

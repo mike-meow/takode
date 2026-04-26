@@ -188,6 +188,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
     fixedName?: string;
     /** Session number of the parent worker this reviewer is reviewing */
     reviewerOf?: number;
+    treeGroupId?: string;
     worktreeInfo?: WorktreeSessionInfo;
     containerInfo?: ContainerInfo;
     resumeCliSessionId?: string;
@@ -204,7 +205,24 @@ export function createSessionsRoutes(ctx: RouteContext) {
   const markOrchestratorSession = (sessionId: string, backend: SessionBackend) =>
     markOrchestratorSessionAfterConnect({ launcher, wsBridge }, sessionId, buildOrchestratorSystemPrompt(backend));
 
-  const applySessionPostLaunch = (
+  /** Helper: broadcast current tree group state to all browsers. */
+  async function broadcastTreeGroups() {
+    const tgs = await treeGroupStore.getState();
+    wsBridge.broadcastGlobal({
+      type: "tree_groups_update",
+      treeGroups: tgs.groups,
+      treeAssignments: tgs.assignments,
+      treeNodeOrder: tgs.nodeOrder,
+    } as any);
+  }
+
+  const normalizeTreeGroupId = (value: unknown): string | undefined => {
+    if (typeof value !== "string") return undefined;
+    const trimmed = value.trim();
+    return trimmed || undefined;
+  };
+
+  const applySessionPostLaunch = async (
     session: Awaited<ReturnType<CliLauncher["launch"]>>,
     sessionConfig: SessionConfig,
   ) => {
@@ -261,6 +279,11 @@ export function createSessionsRoutes(ctx: RouteContext) {
     } else {
       const existingNames = new Set(Object.values(sessionNames.getAllNames()));
       sessionNames.setName(session.sessionId, generateUniqueSessionName(existingNames));
+    }
+
+    if (sessionConfig.treeGroupId && sessionConfig.treeGroupId !== "default") {
+      await treeGroupStore.assignSession(session.sessionId, sessionConfig.treeGroupId);
+      await broadcastTreeGroups();
     }
 
     if (sessionConfig.createdBy) {
@@ -347,6 +370,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
         envSlug: body.envSlug,
         createdBy: body.createdBy,
         resumeCliSessionId: body.resumeCliSessionId,
+        treeGroupId: normalizeTreeGroupId(body.treeGroupId),
       };
     }
 
@@ -682,6 +706,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
       noAutoName: body.noAutoName === true,
       fixedName: typeof body.fixedName === "string" ? body.fixedName.trim() : undefined,
       reviewerOf: typeof body.reviewerOf === "number" ? body.reviewerOf : undefined,
+      treeGroupId: normalizeTreeGroupId(body.treeGroupId),
       worktreeInfo,
       containerInfo,
     };
@@ -712,7 +737,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
 
       const sessionConfig = await prepareSession(body, applyDefaultClaudeBackend(backend));
       const session = await launcher.launch(sessionConfig.launchOptions);
-      applySessionPostLaunch(session, sessionConfig);
+      await applySessionPostLaunch(session, sessionConfig);
       return c.json(session);
     } catch (e: unknown) {
       if (e instanceof SessionPreparationError) {
@@ -773,7 +798,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
           },
           () => launcher.launch(sessionConfig.launchOptions),
         );
-        applySessionPostLaunch(session, sessionConfig);
+        await applySessionPostLaunch(session, sessionConfig);
 
         await emitProgress(
           stream,
@@ -1225,16 +1250,6 @@ export function createSessionsRoutes(ctx: RouteContext) {
   });
   // ─── Tree Groups (herd-centric grouping) ─────────────────────────────
 
-  /** Helper: broadcast current tree group state to all browsers. */
-  async function broadcastTreeGroups() {
-    const tgs = await treeGroupStore.getState();
-    wsBridge.broadcastGlobal({
-      type: "tree_groups_update",
-      treeGroups: tgs.groups,
-      treeAssignments: tgs.assignments,
-      treeNodeOrder: tgs.nodeOrder,
-    } as any);
-  }
   api.get("/tree-groups", async (c) => {
     const state = await treeGroupStore.getState();
     return c.json(state);

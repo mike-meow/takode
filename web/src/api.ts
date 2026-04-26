@@ -202,6 +202,8 @@ export interface CreateSessionOpts {
   askPermission?: boolean;
   /** Session role: "orchestrator" gets TAKODE_ROLE + TAKODE_API_PORT env vars */
   role?: "worker" | "orchestrator";
+  /** Server-side session group assignment for durable group membership. */
+  treeGroupId?: string;
   /** CLI session ID to resume (from an external CLI session, e.g. VS Code or terminal) */
   resumeCliSessionId?: string;
 }

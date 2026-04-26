@@ -192,6 +192,7 @@ describe("NewSessionModal", () => {
     expect(mockQueuePendingSession).toHaveBeenCalledWith(
       expect.objectContaining({
         backend: "claude",
+        createOpts: expect.objectContaining({ treeGroupId: "team-alpha" }),
         cwd: "/tmp/tree-saved-folder",
         treeGroupId: "team-alpha",
         recentDirsKey: "tree-group:team-alpha",

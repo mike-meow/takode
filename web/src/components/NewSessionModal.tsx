@@ -390,6 +390,7 @@ export function NewSessionModal({
       assistantMode: undefined,
       askPermission,
       role: sessionRole === "leader" ? ("orchestrator" as const) : undefined,
+      treeGroupId: treeGroupId || undefined,
     };
 
     const defaultsGroupKey = (defaultsKey || gitRepoInfo?.repoRoot || cwdSnapshot || "").trim();
@@ -469,6 +470,7 @@ export function NewSessionModal({
       envSlug: selectedEnv || undefined,
       resumeCliSessionId: resumeSessionId,
       askPermission,
+      treeGroupId: treeGroupId || undefined,
     };
 
     onClose();
@@ -477,6 +479,7 @@ export function NewSessionModal({
       backend,
       createOpts,
       cwd: cwd || null,
+      treeGroupId: treeGroupId || undefined,
       recentDirsKey: defaultsKey || undefined,
     });
   }
