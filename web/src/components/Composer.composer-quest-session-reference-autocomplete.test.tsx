@@ -727,4 +727,50 @@ describe("Composer quest/session reference autocomplete", () => {
     expect(suggestions).toHaveLength(2);
     expect(within(suggestions[0] as HTMLElement).getByText("#12")).toBeTruthy();
   });
+
+  it("treats the current input as fresher than prior quest references", () => {
+    setupMockStore({
+      quests: [
+        makeQuest({ questId: "q-12", title: "Older referenced quest" }),
+        makeQuest({ questId: "q-88", title: "Current input quest" }),
+      ],
+      messages: [makeMessage({ id: "m1", content: "Earlier reference to [q-12](quest:q-12)" })],
+    });
+    const { container } = render(<Composer sessionId="s1" />);
+    const textarea = container.querySelector("textarea")! as HTMLTextAreaElement;
+    const value = "Compare [q-88](quest:q-88) with q-";
+
+    fireEvent.change(textarea, {
+      target: { value, selectionStart: value.length },
+    });
+
+    const suggestions = Array.from(container.querySelectorAll("[data-reference-index]"));
+    expect(suggestions).toHaveLength(2);
+    expect(within(suggestions[0] as HTMLElement).getByText("q-88")).toBeTruthy();
+  });
+
+  it("treats the current input as fresher than prior session references", () => {
+    setupMockStore({
+      sdkSessions: [
+        makeSdkSession({ sessionId: "worker-old", sessionNum: 12, lastActivityAt: 10 }),
+        makeSdkSession({ sessionId: "worker-current", sessionNum: 88, lastActivityAt: 1000 }),
+      ],
+      sessionNames: new Map([
+        ["worker-old", "Earlier session"],
+        ["worker-current", "Current input session"],
+      ]),
+      messages: [makeMessage({ id: "m1", content: "Earlier sync with [#12](session:12)" })],
+    });
+    const { container } = render(<Composer sessionId="s1" />);
+    const textarea = container.querySelector("textarea")! as HTMLTextAreaElement;
+    const value = "Loop in [#88](session:88) and Ping #";
+
+    fireEvent.change(textarea, {
+      target: { value, selectionStart: value.length },
+    });
+
+    const suggestions = Array.from(container.querySelectorAll("[data-reference-index]"));
+    expect(suggestions).toHaveLength(2);
+    expect(within(suggestions[0] as HTMLElement).getByText("#88")).toBeTruthy();
+  });
 });

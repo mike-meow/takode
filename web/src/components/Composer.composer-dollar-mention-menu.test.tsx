@@ -683,6 +683,25 @@ describe("Composer dollar mention menu", () => {
     expect(mockSendToSession).not.toHaveBeenCalled();
   });
 
+  it("treats the current input as fresher than prior dollar skill mentions", () => {
+    setupMockStore({
+      session: {
+        backend_type: "codex",
+        skills: ["review", "recap"],
+      },
+      messages: [makeMessage({ id: "m1", content: "Earlier use $review to inspect the diff." })],
+    });
+    const { container } = render(<Composer sessionId="s1" />);
+    const textarea = container.querySelector("textarea")! as HTMLTextAreaElement;
+    const value = "Reuse $recap and then $r";
+
+    fireEvent.change(textarea, { target: { value, selectionStart: value.length } });
+
+    const suggestions = Array.from(container.querySelectorAll("[data-dollar-index]"));
+    expect(suggestions).toHaveLength(2);
+    expect(within(suggestions[0] as HTMLElement).getByText("$recap")).toBeTruthy();
+  });
+
   it("inserts an app mention link when selecting an app", () => {
     // Validates app mentions serialize to the `app://` markdown form understood by Codex.
     setupMockStore({

@@ -794,4 +794,25 @@ describe("Composer slash menu", () => {
 
     expect(textarea.value).toBe("/confirm later");
   });
+
+  it("treats the current input as fresher than prior skill mentions", () => {
+    setupMockStore({
+      session: {
+        slash_commands: [],
+        skills: ["review", "recap"],
+      },
+      messages: [makeMessage({ id: "m1", content: "Earlier run /review after the tests." })],
+    });
+    const { container } = render(<Composer sessionId="s1" />);
+    const textarea = container.querySelector("textarea")! as HTMLTextAreaElement;
+    const value = "Reuse /recap and then /r";
+
+    fireEvent.change(textarea, {
+      target: { value, selectionStart: value.length },
+    });
+
+    const suggestions = Array.from(container.querySelectorAll("[data-cmd-index]"));
+    expect(suggestions).toHaveLength(2);
+    expect(within(suggestions[0] as HTMLElement).getByText("/recap")).toBeTruthy();
+  });
 });

@@ -29,6 +29,12 @@ export interface ReferenceTriggerMatch {
   replacementStart: number;
 }
 
+export interface RecentAutocompleteBoosts {
+  questBoosts: Map<string, number>;
+  sessionBoosts: Map<number, number>;
+  skillBoosts: Map<string, number>;
+}
+
 function getPathTail(path: string | null | undefined): string | null {
   const trimmed = path?.trim();
   if (!trimmed) return null;
@@ -51,34 +57,69 @@ export function getSessionSuggestionPreview(session: SdkSessionInfo, sessionName
   return getPathTail(session.cwd) || `Session ${session.sessionNum ?? ""}`.trim();
 }
 
-export function computeRecentReferenceBoosts(messages: ChatMessage[]): {
-  questBoosts: Map<string, number>;
-  sessionBoosts: Map<number, number>;
+function collectRecentAutocompleteMatches(
+  content: string,
+  normalizedSkillNames: ReadonlySet<string>,
+): {
+  questMatches: Set<string>;
+  sessionMatches: Set<number>;
+  skillMatches: Set<string>;
 } {
+  const questMatches = new Set<string>();
+  const sessionMatches = new Set<number>();
+  const skillMatches = new Set<string>();
+
+  for (const match of content.matchAll(/\bquest:(q-\d+)\b/gi)) {
+    questMatches.add(match[1]!.toLowerCase());
+  }
+  for (const match of content.matchAll(/(?:^|[^A-Za-z0-9])(q-\d+)\b/gi)) {
+    questMatches.add(match[1]!.toLowerCase());
+  }
+  for (const match of content.matchAll(/\bsession:(?:\/\/)?(\d+)(?::\d+)?\b/gi)) {
+    sessionMatches.add(Number.parseInt(match[1]!, 10));
+  }
+  for (const match of content.matchAll(/(?:^|[^A-Za-z0-9])#(\d+)\b/g)) {
+    sessionMatches.add(Number.parseInt(match[1]!, 10));
+  }
+
+  for (const match of content.matchAll(/(?:^|[\s([{])(\/|\$)([A-Za-z][A-Za-z0-9._:-]*)(?=$|[^A-Za-z0-9._:-])/g)) {
+    const prefix = match[1]!;
+    const token = match[2]!.toLowerCase();
+    const normalizedSkillName = prefix === "/" ? `/${token}` : token;
+    if (normalizedSkillNames.has(token)) skillMatches.add(token);
+    if (normalizedSkillNames.has(normalizedSkillName)) skillMatches.add(normalizedSkillName);
+  }
+  for (const match of content.matchAll(/(?:^|[\s([{])\/\/([A-Za-z][A-Za-z0-9._:-]*)(?=$|[^A-Za-z0-9._:-])/g)) {
+    const normalizedSkillName = `/${match[1]!.toLowerCase()}`;
+    if (normalizedSkillNames.has(normalizedSkillName)) skillMatches.add(normalizedSkillName);
+  }
+
+  return { questMatches, sessionMatches, skillMatches };
+}
+
+export function computeRecentAutocompleteBoosts(
+  messages: ChatMessage[],
+  currentInput = "",
+  skillNames: Iterable<string> = [],
+): RecentAutocompleteBoosts {
   const questBoosts = new Map<string, number>();
   const sessionBoosts = new Map<number, number>();
+  const skillBoosts = new Map<string, number>();
+  const normalizedSkillNames = new Set(
+    Array.from(skillNames, (skillName) => skillName.trim().toLowerCase()).filter(Boolean),
+  );
+  const contents = messages
+    .map((message) => message?.content ?? "")
+    .concat(currentInput)
+    .filter(Boolean);
 
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    const content = message?.content ?? "";
-    if (!content) continue;
-
+  for (let index = contents.length - 1; index >= 0; index -= 1) {
+    const content = contents[index]!;
     const recencyWeight = index + 1;
-    const questMatches = new Set<string>();
-    const sessionMatches = new Set<number>();
-
-    for (const match of content.matchAll(/\bquest:(q-\d+)\b/gi)) {
-      questMatches.add(match[1]!.toLowerCase());
-    }
-    for (const match of content.matchAll(/(?:^|[^A-Za-z0-9])(q-\d+)\b/gi)) {
-      questMatches.add(match[1]!.toLowerCase());
-    }
-    for (const match of content.matchAll(/\bsession:(?:\/\/)?(\d+)(?::\d+)?\b/gi)) {
-      sessionMatches.add(Number.parseInt(match[1]!, 10));
-    }
-    for (const match of content.matchAll(/(?:^|[^A-Za-z0-9])#(\d+)\b/g)) {
-      sessionMatches.add(Number.parseInt(match[1]!, 10));
-    }
+    const { questMatches, sessionMatches, skillMatches } = collectRecentAutocompleteMatches(
+      content,
+      normalizedSkillNames,
+    );
 
     for (const questId of questMatches) {
       if (!questBoosts.has(questId)) questBoosts.set(questId, recencyWeight);
@@ -87,8 +128,22 @@ export function computeRecentReferenceBoosts(messages: ChatMessage[]): {
       if (!Number.isFinite(sessionNum) || sessionBoosts.has(sessionNum)) continue;
       sessionBoosts.set(sessionNum, recencyWeight);
     }
+    for (const skillName of skillMatches) {
+      if (!skillBoosts.has(skillName)) skillBoosts.set(skillName, recencyWeight);
+    }
   }
 
+  return { questBoosts, sessionBoosts, skillBoosts };
+}
+
+export function computeRecentReferenceBoosts(
+  messages: ChatMessage[],
+  currentInput = "",
+): {
+  questBoosts: Map<string, number>;
+  sessionBoosts: Map<number, number>;
+} {
+  const { questBoosts, sessionBoosts } = computeRecentAutocompleteBoosts(messages, currentInput);
   return { questBoosts, sessionBoosts };
 }
 

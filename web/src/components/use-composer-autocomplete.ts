@@ -24,7 +24,7 @@ import {
   REFERENCE_MENU_LIMIT,
   buildQuestLinkInsertText,
   buildSessionLinkInsertText,
-  computeRecentReferenceBoosts,
+  computeRecentAutocompleteBoosts,
   detectReferenceTrigger,
   getSessionSuggestionPreview,
   toAppMentionInsertText,
@@ -61,6 +61,36 @@ const EMPTY_SESSION_NAMES = new Map<string, string>();
 
 function closeMenuRef(ref: RefObject<HTMLDivElement | null>, target: EventTarget | null): boolean {
   return !!ref.current && !ref.current.contains(target as Node);
+}
+
+function sortAutocompleteCommands(
+  commands: CommandItem[],
+  query: string,
+  skillBoosts: ReadonlyMap<string, number>,
+  skillGroupOrder: "before" | "after",
+): CommandItem[] {
+  const normalizedQuery = query.toLowerCase();
+  const nonSkillGroup = skillGroupOrder === "before" ? 1 : 0;
+  const skillGroup = skillGroupOrder === "before" ? 0 : 1;
+
+  return [...commands]
+    .map((command, index) => ({
+      command,
+      index,
+      group: command.type === "skill" ? skillGroup : nonSkillGroup,
+      recentBoost: command.type === "skill" ? (skillBoosts.get(command.name.trim().toLowerCase()) ?? 0) : 0,
+    }))
+    .sort((left, right) => {
+      if (left.group !== right.group) return left.group - right.group;
+      if (left.group === nonSkillGroup) return left.index - right.index;
+
+      const leftExact = Number(normalizedQuery !== "" && left.command.name.toLowerCase() === normalizedQuery);
+      const rightExact = Number(normalizedQuery !== "" && right.command.name.toLowerCase() === normalizedQuery);
+      if (leftExact !== rightExact) return rightExact - leftExact;
+      if (left.recentBoost !== right.recentBoost) return right.recentBoost - left.recentBoost;
+      return left.index - right.index;
+    })
+    .map((entry) => entry.command);
 }
 
 export function useComposerAutocomplete({
@@ -247,13 +277,22 @@ export function useComposerAutocomplete({
     detectSlashQuery(text, cursorPos);
   }, [detectSlashQuery, textareaRef, text]);
 
+  const recentAutocompleteBoosts = useMemo(
+    () =>
+      computeRecentAutocompleteBoosts(messages, text, [
+        ...sessionView.skills,
+        ...sessionView.skillMetadata.map((skill) => skill.name),
+      ]),
+    [messages, sessionView.skillMetadata, sessionView.skills, text],
+  );
+
   const filteredCommands = useMemo(() => {
     if (!slashMenuOpen || slashAnchorRef.current === -1) return [];
     const cursorPos = textareaRef.current?.selectionStart ?? text.length;
     const query = text.slice(slashAnchorRef.current + 1, cursorPos).toLowerCase();
-    if (query === "") return allCommands;
-    return allCommands.filter((cmd) => cmd.name.toLowerCase().includes(query));
-  }, [allCommands, slashMenuOpen, textareaRef, text]);
+    const filtered = query === "" ? allCommands : allCommands.filter((cmd) => cmd.name.toLowerCase().includes(query));
+    return sortAutocompleteCommands(filtered, query, recentAutocompleteBoosts.skillBoosts, "after");
+  }, [allCommands, recentAutocompleteBoosts.skillBoosts, slashMenuOpen, textareaRef, text]);
 
   useEffect(() => {
     if (slashMenuIndex >= filteredCommands.length) {
@@ -269,9 +308,10 @@ export function useComposerAutocomplete({
   const filteredDollarCommands = useMemo(() => {
     if (!dollarMenuOpen) return [];
     const query = dollarQuery.toLowerCase();
-    if (query === "") return dollarCommands;
-    return dollarCommands.filter((cmd) => cmd.name.toLowerCase().includes(query));
-  }, [dollarCommands, dollarMenuOpen, dollarQuery]);
+    const filtered =
+      query === "" ? dollarCommands : dollarCommands.filter((cmd) => cmd.name.toLowerCase().includes(query));
+    return sortAutocompleteCommands(filtered, query, recentAutocompleteBoosts.skillBoosts, "before");
+  }, [dollarCommands, dollarMenuOpen, dollarQuery, recentAutocompleteBoosts.skillBoosts]);
 
   const detectDollarQuery = useCallback(
     (inputText: string, cursorPos: number) => {
@@ -346,8 +386,6 @@ export function useComposerAutocomplete({
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [dollarMenuOpen]);
 
-  const recentReferenceBoosts = useMemo(() => computeRecentReferenceBoosts(messages), [messages]);
-
   const filteredReferenceSuggestions = useMemo<ReferenceSuggestion[]>(() => {
     if (!referenceMenuOpen || referenceKind == null) return [];
     if (referenceKind === "quest") {
@@ -361,7 +399,7 @@ export function useComposerAutocomplete({
           preview: quest.title,
           insertText: buildQuestLinkInsertText(quest.questId),
           searchText: `${quest.questId} ${quest.title}`.toLowerCase(),
-          recentBoost: recentReferenceBoosts.questBoosts.get(quest.questId.toLowerCase()) ?? 0,
+          recentBoost: recentAutocompleteBoosts.questBoosts.get(quest.questId.toLowerCase()) ?? 0,
           tieBreaker: Number.parseInt(quest.questId.replace(/^q-/, ""), 10) || 0,
         }))
         .sort((left, right) => {
@@ -395,7 +433,7 @@ export function useComposerAutocomplete({
           preview,
           insertText: buildSessionLinkInsertText(sessionNum),
           searchText: `${rawRef} ${preview}`.toLowerCase(),
-          recentBoost: recentReferenceBoosts.sessionBoosts.get(sessionNum) ?? 0,
+          recentBoost: recentAutocompleteBoosts.sessionBoosts.get(sessionNum) ?? 0,
           tieBreaker: session.lastActivityAt ?? session.createdAt ?? sessionNum,
         };
       })
@@ -408,7 +446,7 @@ export function useComposerAutocomplete({
         return right.tieBreaker - left.tieBreaker;
       })
       .slice(0, REFERENCE_MENU_LIMIT);
-  }, [quests, recentReferenceBoosts, referenceKind, referenceMenuOpen, referenceQuery, sdkSessions, sessionNames]);
+  }, [quests, recentAutocompleteBoosts, referenceKind, referenceMenuOpen, referenceQuery, sdkSessions, sessionNames]);
 
   const detectReferenceQuery = useCallback(
     (inputText: string, cursorPos: number) => {
