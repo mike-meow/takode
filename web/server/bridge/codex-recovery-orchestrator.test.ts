@@ -10,7 +10,7 @@ function makeSession(pendingInputs: PendingCodexInput[]): CodexRecoveryOrchestra
   return {
     id: "test-session",
     backendType: "codex",
-    state: { backend_state: "connected", backend_type: "codex", cwd: "/tmp", model: "gpt-5.4" },
+    state: { backend_state: "connected", backend_type: "codex", cwd: "/tmp", model: "gpt-5.4", is_compacting: false },
     messageHistory: [] as BrowserIncomingMessage[],
     pendingMessages: [],
     pendingCodexInputs: pendingInputs,

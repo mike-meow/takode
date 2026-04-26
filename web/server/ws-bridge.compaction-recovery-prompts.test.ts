@@ -626,6 +626,42 @@ describe("Compaction recovery prompts", () => {
     expect(recoveryCalls[0][1]).toContain("port only when explicitly told");
   });
 
+  it("clears stale Codex compaction on reconnect and injects recovery once", () => {
+    const sid = "s-codex-stale-compaction";
+    const adapter1 = makeCodexAdapterMock();
+    bridge.attachCodexAdapter(sid, adapter1 as any);
+    emitCodexSessionReady(adapter1, { cliSessionId: "thread-codex-stale-compaction-1" });
+
+    bridge.setLauncher({
+      touchActivity: vi.fn(),
+      touchUserMessage: vi.fn(),
+      getSession: vi.fn(() => ({ isOrchestrator: true })),
+    } as any);
+
+    const spy = vi.spyOn(bridge, "injectUserMessage");
+
+    adapter1.emitBrowserMessage({ type: "status_change", status: "compacting" });
+    const compactingSession = bridge.getSession(sid)!;
+    expect(compactingSession.state.is_compacting).toBe(true);
+    expect(compactingSession.messageHistory.some((entry: any) => entry.type === "compact_marker")).toBe(true);
+
+    adapter1.emitDisconnect("turn-compaction-stale");
+
+    const adapter2 = makeCodexAdapterMock();
+    bridge.attachCodexAdapter(sid, adapter2 as any);
+    emitCodexSessionReady(adapter2, { cliSessionId: "thread-codex-stale-compaction-2" });
+
+    const session = bridge.getSession(sid)!;
+    expect(session.state.is_compacting).toBe(false);
+
+    const recoveryCalls = spy.mock.calls.filter(
+      ([targetSid, , source]) =>
+        targetSid === sid && source?.sessionId === "system" && source?.sessionLabel === "System",
+    );
+    expect(recoveryCalls).toHaveLength(1);
+    expect(recoveryCalls[0][1]).toContain("/takode-orchestration");
+  });
+
   it("does not inject recovery for Claude WebSocket leaders when compact_boundary never arrived", () => {
     // q-317: status-only compacting transitions can be noisy or stale. The
     // leader recovery prompt should only appear after a real Claude

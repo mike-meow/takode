@@ -2473,6 +2473,8 @@ export class WsBridge {
         turn: CodexResumeTurnSnapshot,
         pending: CodexOutboundTurn,
       ) => this.synthesizeCodexToolResultsFromResumedTurn(targetSession as Session, turn, pending),
+      injectCompactionRecovery: (targetSession: unknown) =>
+        injectCompactionRecoveryController(targetSession as Session, this.getCompactionRecoveryRuntimeDeps()),
       trackUserMessageForTurn: (targetSession: unknown, historyIndex: number, target: UserDispatchTurnTarget) =>
         trackUserMessageForTurnLifecycle(targetSession as Session, historyIndex, target),
       markRunningFromUserDispatch: (

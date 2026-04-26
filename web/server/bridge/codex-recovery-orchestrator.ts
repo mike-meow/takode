@@ -24,7 +24,7 @@ type CodexRecoveryAdapterLike = any;
 export interface CodexRecoveryOrchestratorSessionLike {
   id: string;
   backendType: "codex" | "claude" | "claude-sdk";
-  state: Pick<SessionState, "backend_state" | "backend_type" | "cwd" | "model">;
+  state: Pick<SessionState, "backend_state" | "backend_type" | "cwd" | "model" | "is_compacting">;
   messageHistory: BrowserIncomingMessage[];
   pendingMessages: string[];
   pendingCodexInputs: PendingCodexInput[];
@@ -53,6 +53,8 @@ export interface CodexRecoveryOrchestratorDeps {
   broadcastToBrowsers: (session: CodexRecoveryOrchestratorSessionLike, msg: BrowserIncomingMessage) => void;
   persistSession: (session: CodexRecoveryOrchestratorSessionLike) => void;
   touchUserMessage: (sessionId: string) => void;
+  emitTakodeEvent: (sessionId: string, type: string, data: Record<string, unknown>) => void;
+  injectCompactionRecovery: (session: CodexRecoveryOrchestratorSessionLike) => void;
   onUserMessage?: (
     sessionId: string,
     history: CodexRecoveryOrchestratorSessionLike["messageHistory"],
@@ -583,6 +585,8 @@ export function queueCodexPendingStartBatch(
   reason: string,
   deps: CodexRecoveryOrchestratorDeps,
 ): void {
+  retryNonDrainableCodexHeadTurn(session, `${reason}_stale_ack_head`, deps);
+  clearStaleCodexCompactionState(session, `${reason}_stale_compaction`, deps);
   rebuildQueuedCodexPendingStartBatch(session, deps);
   deps.dispatchQueuedCodexTurns(session, reason);
 }
@@ -647,6 +651,8 @@ export function registerCodexAdapterRecoveryLifecycle(
       reconcileCodexResumedTurn(session, meta.resumeSnapshot, deps);
     }
     deps.setBackendState(session, "connected", null);
+    retryNonDrainableCodexHeadTurn(session, "session_meta_stale_ack_head", deps);
+    clearStaleCodexCompactionState(session, "session_meta_stale_compaction", deps);
     if (meta.model) {
       session.state.model = meta.model;
       deps.broadcastToBrowsers(session, {
@@ -1298,6 +1304,45 @@ export function retryPendingCodexTurn(
   reconcileRecoveredQueuedTurnLifecycle(session, "codex_retry_pending_turn", deps, { releasedHeadQueuedTurn });
   deps.dispatchQueuedCodexTurns(session, "codex_retry_pending_turn");
   deps.persistSession(session);
+}
+export function retryNonDrainableCodexHeadTurn(
+  session: CodexRecoveryOrchestratorSessionLike,
+  reason: string,
+  deps: CodexRecoveryOrchestratorDeps,
+): boolean {
+  const head = deps.getCodexHeadTurn(session);
+  const adapter = session.codexAdapter;
+  if (!head || head.status !== "backend_acknowledged") return false;
+  if (session.isGenerating) return false;
+  if (!adapter || session.state.backend_state !== "connected" || !adapter.isConnected()) return false;
+  if (adapter.getCurrentTurnId()) return false;
+  console.warn(
+    `[ws-bridge] Retrying non-drainable Codex turn ${head.turnId ?? "<untracked>"} ` +
+      `for session ${sessionTag(session.id)} (${reason})`,
+  );
+  retryPendingCodexTurn(session, head, deps);
+  return true;
+}
+export function clearStaleCodexCompactionState(
+  session: CodexRecoveryOrchestratorSessionLike,
+  reason: string,
+  deps: CodexRecoveryOrchestratorDeps,
+): boolean {
+  const adapter = session.codexAdapter;
+  if (!session.state.is_compacting) return false;
+  if (session.isGenerating) return false;
+  if (!adapter || session.state.backend_state !== "connected" || !adapter.isConnected()) return false;
+  if (adapter.getCurrentTurnId()) return false;
+
+  session.state.is_compacting = false;
+  deps.broadcastToBrowsers(session, { type: "status_change", status: null });
+  deps.emitTakodeEvent(session.id, "compaction_finished", {});
+  if (session.messageHistory.some((entry) => entry.type === "compact_marker")) {
+    deps.injectCompactionRecovery(session);
+  }
+  deps.persistSession(session);
+  console.warn(`[ws-bridge] Cleared stale Codex compaction state for session ${sessionTag(session.id)} (${reason})`);
+  return true;
 }
 function hasOnlyRetrySafeCodexResumedItems(items: Array<Record<string, unknown>>): boolean {
   if (items.length === 0) return false;
