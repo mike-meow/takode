@@ -31,6 +31,27 @@ This skill covers leader discipline and the step-by-step dispatch process. Invok
 - **`/leader-dispatch` owns the initial Journey proposal.** Before dispatching a fresh or newly refined quest, present the planned initial Journey to the user, wait for approval, and only then dispatch the worker into `PLANNING`.
 - **Treat worker/reviewer confusion as a blocking signal.** When a herded worker or reviewer raises a clarification question, answer it from existing context if you can. If not, ask the user via plain text plus `takode notify needs-input` and keep that quest blocked until the ambiguity is resolved.
 
+## Pre-Dispatch Approval Contract
+
+Before you dispatch a quest, or intentionally leave it `QUEUED` for a later dispatch, present one combined proposal and get approval on the whole thing.
+
+That pre-dispatch approval surface must include both:
+- the planned initial Quest Journey phases
+- the planned scheduling/orchestration approach
+
+The scheduling/orchestration plan must state at least:
+- which worker you expect to use, or that you will spawn fresh
+- whether you will dispatch immediately after approval or keep the quest `QUEUED`
+- if `QUEUED`, the exact `--wait-for` reason: `q-N`, `#N`, or `free-worker`
+- if worker-slot capacity is tight, whether you will archive a reclaimable completed worker before dispatching
+
+Do not present only the phase list and silently decide the worker or queueing mechanics later. The user is approving both the phase plan and the intended dispatch/queueing approach.
+
+Examples:
+- **Simple immediate dispatch:** "Initial Journey: planning -> implement -> code-review -> port. Scheduling: spawn a fresh worker and dispatch immediately if approved."
+- **Queued for context:** "Initial Journey: planning -> explore -> implement -> code-review -> port. Scheduling: keep it queued with `--wait-for #12` because that worker's active context is materially useful; if that context stops mattering, revise to a fresh spawn."
+- **Capacity-tight immediate dispatch:** "Initial Journey: planning -> implement -> code-review -> port. Scheduling: dispatch immediately if approved; if worker slots are still `5/5` only because completed workers are reclaimable, archive one of those completed workers first and then spawn fresh."
+
 ## Dispatch Steps
 
 Walk through these steps before dispatching any quest.
@@ -166,6 +187,8 @@ Maintain at most **5 worker slots** in your herd. Reviewer sessions do **not** u
 
 **Use this exact template. Do not add extra context, file paths, or investigation instructions.**
 
+Only send this after the user approved the combined pre-dispatch proposal: initial Journey phases plus the scheduling/orchestration plan.
+
 ```
 Work on [q-XX](quest:q-XX). Load the quest skill first, then read the quest and claim it: `quest show q-XX && quest claim q-XX`.
 Return a plan for approval before implementing. After you send the plan, stop and wait for approval.
@@ -180,7 +203,7 @@ This dispatch happens only after the user has approved the initial Journey from 
 **Workers must stop after each phase boundary.** The dispatch message only authorizes planning. After plan approval, the worker implements. After implementation, the worker STOPS and waits -- it does NOT self-review, run review skills on its own, run `/self-groom`, or self-port. The leader advances the quest through Quest Journey phases.
 
 **Make every follow-up message phase-explicit.**
-- **Initial dispatch**: invoke the planning phase. The worker returns a plan and stops.
+- **Initial dispatch**: invoke the planning phase. The worker returns a plan and stops. The user-approved proposal that led to this dispatch must already have stated the scheduling/orchestration plan, even in the simple case: "spawn fresh and dispatch immediately if approved."
 - **Plan approval**: invoke the implement phase; say "implement now, then stop and report back." Do not imply review, porting, or quest transitions are authorized.
 - **Review or rework follow-up**: say exactly what the worker should do now, then tell them to report back and wait. Tell the worker to refresh the existing quest summary/comment as a user-oriented outcome note covering what changed, why it matters, and what verification passed. Consolidate feedback-addressing details into that same comment when clear instead of adding near-duplicate quest comments. Do not imply porting is authorized.
 - **Reviewer-owned quest hygiene**: reviewers may directly fix clear quest hygiene issues they know how to fix, including stale addressed flags, missing/refreshable summaries, and verification checklist checks backed by evidence. Expect reviewers to report those fixes in ACCEPT/CHALLENGE output. Do not send the worker rework for hygiene the reviewer already fixed; do send substantive failures, critical intention mismatches, missing or dishonest work, and ambiguity back through the normal review loop.

@@ -431,6 +431,9 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("do not let stale old-scope completions advance the quest");
     expect(guardrails).toContain("Zero-tracked-change quests still use explicit Journey phases");
     expect(guardrails).toContain("zero git-tracked changes");
+    expect(guardrails).toContain("Initial pre-dispatch approval is a combined contract");
+    expect(guardrails).toContain("expected worker choice or fresh-spawn intent");
+    expect(guardrails).toContain("spawn fresh and dispatch immediately if approved");
     expect(guardrails).toContain(
       "Docs, skills, prompts, templates, and other text-only tracked-file edits are commit-producing work",
     );
@@ -504,6 +507,9 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("Initial dispatch authorizes **planning only**");
     expect(guardrails).toContain("Initial Journey approval comes before dispatch");
     expect(guardrails).toContain("board-owned active state for the quest");
+    expect(guardrails).toContain("Initial pre-dispatch approval is a combined contract");
+    expect(guardrails).toContain("expected worker choice or fresh-spawn intent");
+    expect(guardrails).toContain("spawn fresh and dispatch immediately if approved");
     expect(guardrails).toContain("Leaders do not own worker quests");
     expect(guardrails).toContain("worker doing the job claims and completes the quest");
     expect(guardrails).toContain("Archiving a worktree worker removes its worktree and any uncommitted changes");
