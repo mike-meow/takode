@@ -28,7 +28,7 @@ This skill covers leader discipline and the step-by-step dispatch process. Invok
 - **Never hallucinate user intent.** If the user says "fix the sidebar bug", don't turn it into "fix the sidebar bug by adjusting the CSS grid layout and adding a media query for mobile breakpoints". Pass through what the user said and let the worker investigate.
 - **Added details need confirmation.** If you want to add specifics to make instructions more actionable (e.g. suggesting an approach, naming specific files, or scoping the fix), confirm with the user first. An over-specified instruction based on wrong assumptions wastes more time than a brief clarifying question.
 - **Use `/quest-design` before quest creation/refinement.** Before creating a quest or refining an `idea` quest into worker-ready scope, invoke `/quest-design` and wait for user confirmation or correction. A user-approved plan that explicitly covers the quest text counts as this confirmation. Routine feedback, claims, completion, verification checks, board updates, and already-approved phase transitions do not need a separate confirmation round. `/quest-design` confirms quest understanding and finalizes quest text; it does not own initial Journey proposal.
-- **`/leader-dispatch` owns the initial Journey proposal.** Before dispatching a fresh or newly refined quest, present the planned initial Journey to the user, wait for approval, and only then dispatch the worker into `PLANNING`.
+- **`/leader-dispatch` owns the initial Journey proposal.** Before dispatching a fresh or newly refined quest, present the planned initial Journey to the user, wait for approval, and only then dispatch the worker into the `alignment` phase (`PLANNING` on the board).
 - **Treat worker/reviewer confusion as a blocking signal.** When a herded worker or reviewer raises a clarification question, answer it from existing context if you can. If not, ask the user via plain text plus `takode notify needs-input` and keep that quest blocked until the ambiguity is resolved.
 
 ## Pre-Dispatch Approval Contract
@@ -48,9 +48,9 @@ The scheduling/orchestration plan must state at least:
 Do not present only the phase list and silently decide the worker or queueing mechanics later. The user is approving both the phase plan and the intended dispatch/queueing approach.
 
 Examples:
-- **Simple immediate dispatch:** "Initial Journey: planning -> implement -> code-review -> port. Scheduling: spawn a fresh worker and dispatch immediately if approved."
-- **Queued for context:** "Initial Journey: planning -> explore -> implement -> code-review -> port. Scheduling: keep it queued with `--wait-for #12` because that worker's active context is materially useful; if that context stops mattering, revise to a fresh spawn."
-- **Capacity-tight immediate dispatch:** "Initial Journey: planning -> implement -> code-review -> port. Scheduling: dispatch immediately if approved; if worker slots are still `5/5` only because completed workers are reclaimable, archive one of those completed workers first and then spawn fresh."
+- **Simple immediate dispatch:** "Initial Journey: alignment -> implement -> code-review -> port. Scheduling: spawn a fresh worker and dispatch immediately if approved."
+- **Queued for context:** "Initial Journey: alignment -> explore -> implement -> code-review -> port. Scheduling: keep it queued with `--wait-for #12` because that worker's active context is materially useful; if that context stops mattering, revise to a fresh spawn."
+- **Capacity-tight immediate dispatch:** "Initial Journey: alignment -> implement -> code-review -> port. Scheduling: dispatch immediately if approved; if worker slots are still `5/5` only because completed workers are reclaimable, archive one of those completed workers first and then spawn fresh."
 
 ## Dispatch Steps
 
@@ -173,7 +173,7 @@ This is the `/leader-dispatch` contract:
 The proposal should:
 - name the built-in phases you intend to put on the board first
 - explain why that initial Journey fits the quest's risk boundary and evidence needs
-- make it explicit that the first worker dispatch will enter `PLANNING` only after approval
+- make it explicit that the first worker dispatch will enter the `alignment` phase (`PLANNING` on the board) only after approval
 
 Do not spawn a worker, send the standard dispatch message, or set an active board row until the user approves that initial Journey. If the user changes scope, risk, or evidence needs, revise the proposed Journey and wait again.
 
@@ -191,20 +191,20 @@ Only send this after the user approved the combined pre-dispatch proposal: initi
 
 ```
 Work on [q-XX](quest:q-XX). Load the quest skill first, then read the quest and claim it: `quest show q-XX && quest claim q-XX`.
-Return a plan for approval before implementing. After you send the plan, stop and wait for approval.
+Return an alignment read-in for approval covering your concrete understanding, ambiguities, clarification questions, and when suitable a recommended next phase. After you send it, stop and wait for approval.
 ```
 
 When sending this template through the shell, prefer `takode spawn --message-file -` or `takode spawn --message-file <path>` over inline `--message` if you might include shell-like text or multi-line additions.
 
-If the worker needs additional context (related sessions, rejected approaches, user decisions), add it to the quest description before dispatching. Workers have the same tools and skills you do -- they run `quest show q-XX` themselves.
+If the worker needs additional context (related sessions, rejected approaches, user decisions), add it to the quest description before dispatching. When exact prior messages, quests, or discussions are already known, point to those specific sources so the worker can inspect them directly with Takode and quest tools during alignment instead of broad exploration. Workers have the same tools and skills you do -- they run `quest show q-XX` themselves.
 
-This dispatch happens only after the user has approved the initial Journey from Step 5. The worker's planning phase refines execution inside that approved Journey; it is not the first time phases are being proposed, and it is not a routine second user-approval gate.
+This dispatch happens only after the user has approved the initial Journey from Step 5. The worker's alignment phase returns a lightweight read-in inside that approved Journey; it is not the first time phases are being proposed, and it is not a routine second user-approval gate.
 
-**Workers must stop after each phase boundary.** The dispatch message only authorizes planning. After plan approval, the worker implements. After implementation, the worker STOPS and waits -- it does NOT self-review, run review skills on its own, run `/self-groom`, or self-port. The leader advances the quest through Quest Journey phases.
+**Workers must stop after each phase boundary.** The dispatch message only authorizes alignment. After alignment approval, the worker performs the approved next phase. After implementation, the worker STOPS and waits -- it does NOT self-review, run review skills on its own, run `/self-groom`, or self-port. The leader advances the quest through Quest Journey phases.
 
 **Make every follow-up message phase-explicit.**
-- **Initial dispatch**: invoke the planning phase. The worker returns a plan and stops. The user-approved proposal that led to this dispatch must already have stated the scheduling/orchestration plan, even in the simple case: "spawn fresh and dispatch immediately if approved."
-- **Plan approval**: after the worker returns a plan, the leader normally approves it directly and invokes the next phase. Escalate back to the user only when the plan introduces significant ambiguity, scope change, Journey revision, user-visible tradeoff, or another real blocking issue. If approval is still within the existing contract, invoke the implement phase and say "implement now, then stop and report back." Do not imply review, porting, or quest transitions are authorized.
+- **Initial dispatch**: invoke the alignment phase. The worker returns a lightweight read-in with concrete understanding, ambiguities, clarification questions, and when suitable a recommended next phase, then stops. The user-approved proposal that led to this dispatch must already have stated the scheduling/orchestration plan, even in the simple case: "spawn fresh and dispatch immediately if approved."
+- **Alignment approval**: after the worker returns the read-in, the leader normally approves the next phase directly. Escalate back to the user only when the read-in introduces significant ambiguity, scope change, Journey revision, user-visible tradeoff, or another real blocking issue. If real unknowns remain, route to `explore`; if the next move is already clear, invoke that phase and say so explicitly. Do not imply review, porting, or quest transitions are authorized.
 - **Review or rework follow-up**: say exactly what the worker should do now, then tell them to report back and wait. Tell the worker to refresh the existing quest summary/comment as a user-oriented outcome note covering what changed, why it matters, and what verification passed. Consolidate feedback-addressing details into that same comment when clear instead of adding near-duplicate quest comments. Do not imply porting is authorized.
 - **Reviewer-owned quest hygiene**: reviewers may directly fix clear quest hygiene issues they know how to fix, including stale addressed flags, missing/refreshable summaries, and verification checklist checks backed by evidence. Expect reviewers to report those fixes in ACCEPT/CHALLENGE output. Do not send the worker rework for hygiene the reviewer already fixed; do send substantive failures, critical intention mismatches, missing or dishonest work, and ambiguity back through the normal review loop.
 - **If review follow-up needs more code changes**: tell the worker to commit the current worktree state first, then make the fixes in a separate follow-up commit so the reviewer can inspect a clean diff of only the new work.
@@ -234,15 +234,15 @@ Port now using /port-changes, then report back when sync is complete. Include a 
 
 ```
 Work on [q-XX](quest:q-XX). Load the quest skill first, then read the quest and claim it: `quest show q-XX && quest claim q-XX`.
-The quest has unaddressed human feedback -- read it carefully and factor it into your plan.
-Return a plan for approval before implementing. After you send the plan, stop and wait for approval.
+The quest has unaddressed human feedback -- read it carefully and factor it into your alignment read-in.
+Return an alignment read-in for approval covering your concrete understanding, ambiguities, clarification questions, and when suitable a recommended next phase. After you send it, stop and wait for approval.
 ```
 
-This ensures workers load the quest skill (so CLI commands work), read pending feedback before planning, and stop at the planning boundary. Feedback addressing happens during implementation, not planning.
+This ensures workers load the quest skill (so CLI commands work), read pending feedback before alignment, and stop at the alignment boundary. Feedback addressing happens during implementation, not alignment.
 
 **Feedback rework resets the board cycle.** When new human feedback arrives for a quest that is already on the board, immediately reset that row to the earliest valid phase for the new cycle before doing anything else with stale worker/reviewer completions:
 
-- `PLANNING` if the same worker is still the intended owner and should produce a fresh plan
+- `PLANNING` if the same worker is still the intended owner and should produce a fresh alignment read-in
 - `QUEUED` if you need to choose a worker again or the prior ownership is no longer valid
 
 **Interrupt before redirecting active stale work.** If the old-scope worker is still actively generating when fresh human feedback or an urgent correction changes the source of truth, interrupt it first with `takode interrupt <N>`. Then send the corrected instruction as a fresh message. Do not rely on a queued correction to outrun the old turn.

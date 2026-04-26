@@ -93,7 +93,7 @@ describe("BoardTable", () => {
     render(<BoardTable board={board} />);
 
     expect(screen.getByText("Queued")).toHaveClass("text-cc-muted");
-    expect(screen.getByText("Planning")).toHaveClass("text-green-400");
+    expect(screen.getByText("Alignment")).toHaveClass("text-green-400");
     expect(screen.getByText("Explore")).toHaveClass("text-amber-400");
     expect(screen.getByText("Implement")).toHaveClass("text-green-400");
     expect(screen.getByText("Code Review")).toHaveClass("text-violet-500");
@@ -118,7 +118,7 @@ describe("BoardTable", () => {
         status: "IMPLEMENTING",
         journey: {
           presetId: "full-code",
-          phaseIds: ["planning", "implement", "code-review", "port"],
+          phaseIds: ["alignment", "implement", "code-review", "port"],
           currentPhaseId: "implement",
           revisionReason: "Need code review before port",
         },
@@ -130,7 +130,7 @@ describe("BoardTable", () => {
 
     expect(screen.getByText("Implement")).toHaveAttribute(
       "title",
-      expect.stringContaining("Planning -> Implement -> Code Review -> Port"),
+      expect.stringContaining("Alignment -> Implement -> Code Review -> Port"),
     );
     expect(screen.getByText("Implement")).toHaveAttribute(
       "title",

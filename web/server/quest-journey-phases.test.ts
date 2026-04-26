@@ -53,14 +53,14 @@ describe("Quest Journey phase directory loading", () => {
     const companionHome = await makeCompanionHome();
     await ensureBuiltInQuestJourneyPhaseData({ packageRoot: PACKAGE_ROOT, companionHome });
 
-    const planningPath = getQuestJourneyPhaseLeaderBriefPath("planning", { companionHome });
-    await writeFile(planningPath, "stale", "utf-8");
+    const alignmentPath = getQuestJourneyPhaseLeaderBriefPath("alignment", { companionHome });
+    await writeFile(alignmentPath, "stale", "utf-8");
 
     await ensureBuiltInQuestJourneyPhaseData({ packageRoot: PACKAGE_ROOT, companionHome });
 
-    const refreshed = await readFile(planningPath, "utf-8");
+    const refreshed = await readFile(alignmentPath, "utf-8");
     const canonical = await readFile(
-      join(PACKAGE_ROOT, "shared", "quest-journey-phases", "planning", "leader.md"),
+      join(PACKAGE_ROOT, "shared", "quest-journey-phases", "alignment", "leader.md"),
       "utf-8",
     );
 
@@ -86,5 +86,22 @@ describe("Quest Journey phase directory loading", () => {
     expect(outcomeReviewPhase?.leaderBrief).toContain("route back to `IMPLEMENTING`");
     expect(outcomeReviewPhase?.assigneeBrief).toContain("small bounded checks or repros");
     expect(outcomeReviewPhase?.assigneeBrief).toContain("do not become the primary experiment owner");
+  });
+
+  it("seeds alignment and explore briefs with the lightweight read-in contract", async () => {
+    const companionHome = await makeCompanionHome();
+    await ensureBuiltInQuestJourneyPhaseData({ packageRoot: PACKAGE_ROOT, companionHome });
+
+    const phases = await loadBuiltInQuestJourneyPhases({ companionHome });
+    const alignmentPhase = phases.find((phase) => phase.id === "alignment");
+    const explorePhase = phases.find((phase) => phase.id === "explore");
+
+    expect(alignmentPhase?.leaderBrief).toContain("exact prior messages, quests, or discussions");
+    expect(alignmentPhase?.assigneeBrief).toContain("Takode and quest inspection tools");
+    expect(alignmentPhase?.assigneeBrief).toContain("Concrete understanding:");
+    expect(alignmentPhase?.assigneeBrief).toContain("Clarification questions:");
+    expect(explorePhase?.leaderBrief).toContain("major findings, newly discovered ambiguities or blockers");
+    expect(explorePhase?.assigneeBrief).toContain("major findings");
+    expect(explorePhase?.assigneeBrief).toContain("high-level plan for next steps");
   });
 });

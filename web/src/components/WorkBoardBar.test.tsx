@@ -28,7 +28,7 @@ describe("boardSummary", () => {
         status: "IMPLEMENTING",
         journey: {
           presetId: "full-code",
-          phaseIds: ["planning", "implement", "code-review", "port"],
+          phaseIds: ["alignment", "implement", "code-review", "port"],
           currentPhaseId: "implement",
         },
         updatedAt: 1,

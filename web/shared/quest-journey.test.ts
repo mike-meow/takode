@@ -18,7 +18,7 @@ import {
   type QuestJourneyPhaseId,
 } from "./quest-journey.js";
 
-const VALID_PHASE_IDS = ["planning", "mental-simulation", "port"] as const satisfies readonly QuestJourneyPhaseId[];
+const VALID_PHASE_IDS = ["alignment", "mental-simulation", "port"] as const satisfies readonly QuestJourneyPhaseId[];
 // @ts-expect-error compile-time guard: invalid phase ids must not widen to string
 const INVALID_PHASE_IDS = ["planning", "not-a-phase"] as const satisfies readonly QuestJourneyPhaseId[];
 
@@ -71,6 +71,7 @@ describe("formatWaitForRefLabel", () => {
 
 describe("formatQuestJourneyText", () => {
   it("replaces embedded enum tokens with human-facing quest journey labels", () => {
+    expect(formatQuestJourneyText("advanced q-42 to PLANNING")).toBe("advanced q-42 to Alignment");
     expect(formatQuestJourneyText("advanced q-42 to CODE_REVIEWING")).toBe("advanced q-42 to Code Review");
     expect(formatQuestJourneyText("moved from SKEPTIC_REVIEWING to PORTING")).toBe("moved from Code Review to Port");
   });
@@ -82,6 +83,7 @@ describe("formatQuestJourneyText", () => {
 
 describe("phase alias compatibility", () => {
   it("maps legacy phase names and bookkeeping candidates to canonical ids", () => {
+    expect(canonicalizeQuestJourneyPhaseId("planning")).toBe("alignment");
     expect(canonicalizeQuestJourneyPhaseId("implementation")).toBe("implement");
     expect(canonicalizeQuestJourneyPhaseId("skeptic-review")).toBe("code-review");
     expect(canonicalizeQuestJourneyPhaseId("reviewer-groom")).toBe("code-review");
@@ -98,7 +100,7 @@ describe("phase alias compatibility", () => {
   it("normalizes legacy phase sequences into the new library", () => {
     expect(
       normalizeQuestJourneyPhaseIds(["planning", "implementation", "skeptic-review", "reviewer-groom", "porting"]),
-    ).toEqual(["planning", "implement", "code-review", "port"]);
+    ).toEqual(["alignment", "implement", "code-review", "port"]);
   });
 });
 
@@ -111,9 +113,9 @@ describe("QUEST_JOURNEY_HINTS", () => {
 
 describe("Quest Journey phases", () => {
   it("represents the new durable phase library without human verification", () => {
-    expect(DEFAULT_QUEST_JOURNEY_PHASE_IDS).toEqual(["planning", "implement", "code-review", "port"]);
+    expect(DEFAULT_QUEST_JOURNEY_PHASE_IDS).toEqual(["alignment", "implement", "code-review", "port"]);
     expect(QUEST_JOURNEY_PHASES.map((phase) => phase.id)).toEqual([
-      "planning",
+      "alignment",
       "explore",
       "implement",
       "code-review",
@@ -143,10 +145,11 @@ describe("Quest Journey phases", () => {
 
   it("maps board states to current phases and next leader actions", () => {
     expect(getQuestJourneyPhaseForState("IMPLEMENTING")?.id).toBe("implement");
+    expect(getQuestJourneyPhaseForState("PLANNING")?.id).toBe("alignment");
     expect(getQuestJourneyPhaseForState("SKEPTIC_REVIEWING")?.id).toBe("code-review");
     expect(getQuestJourneyPhase("bookkeeping")?.boardState).toBe("BOOKKEEPING");
-    expect(getQuestJourneyPhase("planning")?.nextLeaderAction).toContain("leader approval");
-    expect(getQuestJourneyPhase("planning")?.nextLeaderAction).toContain("user escalation");
+    expect(getQuestJourneyPhase("alignment")?.nextLeaderAction).toContain("leader approval");
+    expect(getQuestJourneyPhase("alignment")?.nextLeaderAction).toContain("user escalation");
     expect(normalizeQuestJourneyPlan(undefined, "PORTING")).toEqual(
       expect.objectContaining({
         phaseIds: DEFAULT_QUEST_JOURNEY_PHASE_IDS,
@@ -175,7 +178,22 @@ describe("Quest Journey phases", () => {
       expect.objectContaining({
         assigneeRole: "reviewer",
         contract: expect.stringContaining("Reviewer-owned acceptance judgment"),
-        nextLeaderAction: expect.stringContaining("route to implement, execute, planning"),
+        nextLeaderAction: expect.stringContaining("route to implement, execute, alignment"),
+      }),
+    );
+  });
+
+  it("defines alignment as a lightweight read-in phase and explore as the deeper investigation phase", () => {
+    expect(getQuestJourneyPhase("alignment")).toEqual(
+      expect.objectContaining({
+        contract: expect.stringContaining("lightweight read-in"),
+        nextLeaderAction: expect.stringContaining("worker read-in"),
+      }),
+    );
+    expect(getQuestJourneyPhase("explore")).toEqual(
+      expect.objectContaining({
+        contract: expect.stringContaining("major findings"),
+        nextLeaderAction: expect.stringContaining("findings summary"),
       }),
     );
   });
@@ -186,8 +204,8 @@ describe("Quest Journey phases", () => {
     ).toEqual(
       expect.objectContaining({
         presetId: "ops",
-        phaseIds: ["planning", "explore", "execute"],
-        currentPhaseId: "planning",
+        phaseIds: ["alignment", "explore", "execute"],
+        currentPhaseId: "alignment",
       }),
     );
   });
@@ -205,9 +223,9 @@ describe("Quest Journey phases", () => {
       ),
     ).toEqual(
       expect.objectContaining({
-        phaseIds: ["planning", "explore", "outcome-review"],
-        currentPhaseId: "planning",
-        nextLeaderAction: getQuestJourneyPhase("planning")?.nextLeaderAction,
+        phaseIds: ["alignment", "explore", "outcome-review"],
+        currentPhaseId: "alignment",
+        nextLeaderAction: getQuestJourneyPhase("alignment")?.nextLeaderAction,
       }),
     );
   });
@@ -225,7 +243,7 @@ describe("Quest Journey phases", () => {
 
     expect(normalized).toEqual(
       expect.objectContaining({
-        phaseIds: ["planning", "explore", "outcome-review"],
+        phaseIds: ["alignment", "explore", "outcome-review"],
       }),
     );
     expect(normalized).not.toHaveProperty("currentPhaseId");

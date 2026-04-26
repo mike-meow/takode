@@ -400,8 +400,8 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("Code Review");
     expect(guardrails).toContain("BOOKKEEPING");
     expect(guardrails).toContain("~/.companion/quest-journey-phases/<phase-id>/");
-    expect(guardrails).toContain("`planning/leader.md`");
-    expect(guardrails).toContain("`planning/assignee.md`");
+    expect(guardrails).toContain("`alignment/leader.md`");
+    expect(guardrails).toContain("`alignment/assignee.md`");
     expect(guardrails).toContain("board-owned active state for the quest");
     expect(guardrails).toContain("Work Board");
     // Spawn backend default note
@@ -427,13 +427,16 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("quest feedback list/latest/show");
     expect(guardrails).toContain("`commitShas`");
     expect(guardrails).toContain("Make every worker instruction phase-explicit");
-    expect(guardrails).toContain("Initial dispatch authorizes **planning only**");
+    expect(guardrails).toContain("Initial dispatch authorizes **alignment only**");
     expect(guardrails).toContain("Initial Journey approval comes before dispatch");
-    expect(guardrails).toContain("The worker planning phase then refines execution inside that approved Journey");
+    expect(guardrails).toContain(
+      "The worker alignment phase then returns a lightweight read-in inside that approved Journey",
+    );
     expect(guardrails).toContain("not a routine second user-approval gate");
-    expect(guardrails).toContain("Planning approval is leader-owned by default");
-    expect(guardrails).toContain("Escalate planning back to the user only");
+    expect(guardrails).toContain("Alignment approval is leader-owned by default");
+    expect(guardrails).toContain("Escalate alignment back to the user only");
     expect(guardrails).toContain("significant ambiguity, scope change, Journey revision, user-visible tradeoff");
+    expect(guardrails).toContain("point the worker at the exact prior messages, quests, or discussions");
     expect(guardrails).toContain("Fresh human feedback resets the active cycle");
     expect(guardrails).toContain("do not let stale old-scope completions advance the quest");
     expect(guardrails).toContain("Zero-tracked-change quests still use explicit Journey phases");
@@ -510,8 +513,8 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("Quest Journey");
     expect(guardrails).toContain("Code Review");
     expect(guardrails).toContain("~/.companion/quest-journey-phases/<phase-id>/");
-    expect(guardrails).toContain("`planning/leader.md`");
-    expect(guardrails).toContain("`planning/assignee.md`");
+    expect(guardrails).toContain("`alignment/leader.md`");
+    expect(guardrails).toContain("`alignment/assignee.md`");
     // CLI reference delegated to skill
     expect(guardrails).toContain("takode-orchestration");
     expect(guardrails).toContain("default to your own backend type");
@@ -520,12 +523,13 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("Do not use sleep-based waits");
     expect(guardrails).toContain("wait for the next herd event");
     expect(guardrails).toContain("Make every worker instruction phase-explicit");
-    expect(guardrails).toContain("Initial dispatch authorizes **planning only**");
+    expect(guardrails).toContain("Initial dispatch authorizes **alignment only**");
     expect(guardrails).toContain("Initial Journey approval comes before dispatch");
     expect(guardrails).toContain("not a routine second user-approval gate");
-    expect(guardrails).toContain("Planning approval is leader-owned by default");
-    expect(guardrails).toContain("Escalate planning back to the user only");
+    expect(guardrails).toContain("Alignment approval is leader-owned by default");
+    expect(guardrails).toContain("Escalate alignment back to the user only");
     expect(guardrails).toContain("board-owned active state for the quest");
+    expect(guardrails).toContain("point the worker at the exact prior messages, quests, or discussions");
     expect(guardrails).toContain("Initial pre-dispatch approval is a combined contract");
     expect(guardrails).toContain("expected worker choice or fresh-spawn intent");
     expect(guardrails).toContain("spawn fresh and dispatch immediately if approved");

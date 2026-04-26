@@ -8,4 +8,8 @@ Boundary:
 - Do not implement, review, port, or change quest status.
 
 Deliverable:
-- Return an evidence summary with recommended next steps and stop.
+- Return an exploration summary with:
+  - major findings
+  - newly discovered ambiguities or blockers
+  - a high-level plan for next steps when the right next move is already clear
+  - then stop

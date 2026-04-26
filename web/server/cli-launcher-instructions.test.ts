@@ -59,8 +59,8 @@ describe("getOrchestratorGuardrails", () => {
     expect(result).toContain("orchestrator agent");
     expect(result).toContain("/quest-design");
     expect(result).toContain("initial Journey proposal-and-approval contract");
-    expect(result).toContain("Planning approval is leader-owned by default");
-    expect(result).toContain("Escalate planning back to the user only");
+    expect(result).toContain("Alignment approval is leader-owned by default");
+    expect(result).toContain("Escalate alignment back to the user only");
     expect(result).toContain("commit the current worktree state first");
     expect(result).toContain("separate follow-up commit");
     expect(result).toContain(
@@ -69,6 +69,7 @@ describe("getOrchestratorGuardrails", () => {
     expect(result).toContain("reviewers may do only small bounded reruns or repros");
     expect(result).toContain("approval-gated runs");
     expect(result).toContain("route back deliberately: `implement`");
+    expect(result).toContain("point the worker at the exact prior messages, quests, or discussions");
   });
 
   it("returns codex-flavored guardrails for codex backend", () => {
@@ -76,8 +77,8 @@ describe("getOrchestratorGuardrails", () => {
     expect(result).toContain("orchestrator leader session");
     expect(result).toContain("/quest-design");
     expect(result).toContain("initial Journey proposal-and-approval");
-    expect(result).toContain("Planning approval is leader-owned by default");
-    expect(result).toContain("Escalate planning back to the user only");
+    expect(result).toContain("Alignment approval is leader-owned by default");
+    expect(result).toContain("Escalate alignment back to the user only");
     expect(result).toContain("commit the current worktree state first");
     expect(result).toContain("Use `outcome-review` when a reviewer should make an acceptance judgment");
     expect(result).toContain("small bounded reruns or repros");
@@ -103,8 +104,9 @@ describe("buildInjectedSystemPromptForDebug", () => {
     expect(result).toContain("board-owned active state for the quest");
     expect(result).toContain("Initial Journey approval comes before dispatch");
     expect(result).toContain("not a routine second user-approval gate");
-    expect(result).toContain("Planning approval is leader-owned by default");
+    expect(result).toContain("Alignment approval is leader-owned by default");
     expect(result).toContain("significant ambiguity, scope change, Journey revision, user-visible tradeoff");
+    expect(result).toContain("point the worker at the exact prior messages, quests, or discussions");
     expect(result).toContain(
       "Use `mental-simulation` when the question is whether a design, workflow, or responsibility split makes sense under replayed scenarios.",
     );
@@ -116,8 +118,8 @@ describe("buildInjectedSystemPromptForDebug", () => {
     expect(result).toContain("route back deliberately: `implement` for behavior/code changes");
     expect(result).toContain("| Built-in phase | Board state | Leader brief | Assignee brief | Next leader action |");
     expect(result).toContain("~/.companion/quest-journey-phases/<phase-id>/");
-    expect(result).toContain("`planning/leader.md`");
-    expect(result).toContain("`planning/assignee.md`");
+    expect(result).toContain("`alignment/leader.md`");
+    expect(result).toContain("`alignment/assignee.md`");
     expect(result).not.toContain("Every dispatched task follows the **Quest Journey** lifecycle");
     expect(result).not.toContain("Every quest goes through the full journey");
   });

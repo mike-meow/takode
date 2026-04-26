@@ -4,6 +4,6 @@
   "boardState": "OUTCOME_REVIEWING",
   "assigneeRole": "reviewer",
   "contract": "Reviewer-owned acceptance judgment over external or non-code outcomes such as metrics, logs, artifacts, prompt behavior, or UX trial notes.",
-  "nextLeaderAction": "read the outcome-review leader brief, then wait for the reviewer judgment and route to implement, execute, planning, or conclusion",
+  "nextLeaderAction": "read the outcome-review leader brief, then wait for the reviewer judgment and route to implement, execute, alignment, or conclusion",
   "aliases": []
 }

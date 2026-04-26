@@ -1,0 +1,9 @@
+{
+  "id": "alignment",
+  "label": "Alignment",
+  "boardState": "PLANNING",
+  "assigneeRole": "worker",
+  "contract": "Do a lightweight read-in to confirm concrete understanding, ambiguities, clarification questions, and whether deeper exploration is needed before implementation or execution.",
+  "nextLeaderAction": "read the alignment leader brief, send the alignment-only instruction, then review the worker read-in for leader approval, routing, or necessary user escalation",
+  "aliases": ["planning"]
+}

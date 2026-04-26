@@ -8,4 +8,4 @@ Leader actions:
 - Point the reviewer to the exact logs, metrics, artifacts, behaviors, or UX evidence to judge.
 - Ask for an outcome judgment tied to concrete evidence.
 - Keep the reviewer scoped to judging sufficiency of the existing evidence, with only small bounded reruns or repros when needed for acceptance.
-- If the evidence is insufficient, route back to `IMPLEMENTING` when behavior or code must change, to `EXECUTING` when more approved runs are needed, or to `PLANNING` when the success criteria, scope, or experiment design changed.
+- If the evidence is insufficient, route back to `IMPLEMENTING` when behavior or code must change, to `EXECUTING` when more approved runs are needed, or to `ALIGNMENT` when the success criteria, scope, or experiment design changed.

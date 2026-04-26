@@ -9,7 +9,7 @@ import explorePhase from "./quest-journey-phases/explore/phase.json";
 import implementPhase from "./quest-journey-phases/implement/phase.json";
 import mentalSimulationPhase from "./quest-journey-phases/mental-simulation/phase.json";
 import outcomeReviewPhase from "./quest-journey-phases/outcome-review/phase.json";
-import planningPhase from "./quest-journey-phases/planning/phase.json";
+import alignmentPhase from "./quest-journey-phases/alignment/phase.json";
 import portPhase from "./quest-journey-phases/port/phase.json";
 
 /** Regex pattern for valid quest IDs: q-NNN (case-insensitive). */
@@ -79,7 +79,7 @@ export type QuestJourneyState = (typeof QUEST_JOURNEY_STATES)[number];
  */
 export type QuestJourneyAssigneeRole = "worker" | "reviewer";
 const QUEST_JOURNEY_PHASE_IDS = [
-  "planning",
+  "alignment",
   "explore",
   "implement",
   "code-review",
@@ -141,7 +141,7 @@ function defineQuestJourneyPhase<Id extends QuestJourneyPhaseId>(
 }
 
 export const QUEST_JOURNEY_PHASES: readonly QuestJourneyPhase[] = [
-  defineQuestJourneyPhase("planning", planningPhase),
+  defineQuestJourneyPhase("alignment", alignmentPhase),
   defineQuestJourneyPhase("explore", explorePhase),
   defineQuestJourneyPhase("implement", implementPhase),
   defineQuestJourneyPhase("code-review", codeReviewPhase),
@@ -154,7 +154,7 @@ export const QUEST_JOURNEY_PHASES: readonly QuestJourneyPhase[] = [
 
 export const DEFAULT_QUEST_JOURNEY_PRESET_ID = "full-code";
 export const DEFAULT_QUEST_JOURNEY_PHASE_IDS = [
-  "planning",
+  "alignment",
   "implement",
   "code-review",
   "port",
@@ -283,7 +283,7 @@ export interface QuestJourneyPresentation {
 /** Human-facing labels and text-only color treatment for quest phases in the UI. */
 export const QUEST_JOURNEY_PRESENTATION: Record<QuestJourneyState, QuestJourneyPresentation> = {
   QUEUED: { label: "Queued", textClassName: "text-cc-muted" },
-  PLANNING: { label: "Planning", textClassName: "text-green-400" },
+  PLANNING: { label: "Alignment", textClassName: "text-green-400" },
   EXPLORING: { label: "Explore", textClassName: "text-amber-400" },
   IMPLEMENTING: { label: "Implement", textClassName: "text-green-400" },
   CODE_REVIEWING: { label: "Code Review", textClassName: "text-violet-500" },
@@ -311,7 +311,7 @@ export function formatQuestJourneyText(text: string): string {
 /** Next-action hints for Quest Journey states, including legacy aliases. */
 export const QUEST_JOURNEY_HINTS: Record<string, string> = {
   QUEUED: "dispatch to a worker",
-  PLANNING: QUEST_JOURNEY_PHASE_BY_ID.planning.nextLeaderAction,
+  PLANNING: QUEST_JOURNEY_PHASE_BY_ID.alignment.nextLeaderAction,
   EXPLORING: QUEST_JOURNEY_PHASE_BY_ID.explore.nextLeaderAction,
   IMPLEMENTING: QUEST_JOURNEY_PHASE_BY_ID.implement.nextLeaderAction,
   CODE_REVIEWING: QUEST_JOURNEY_PHASE_BY_ID["code-review"].nextLeaderAction,

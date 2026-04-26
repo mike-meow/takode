@@ -733,9 +733,9 @@ describe("Takode server-authoritative auth", () => {
           status: "PLANNING",
           journey: {
             presetId: "lightweight",
-            phaseIds: ["planning", "implement", "port"],
-            currentPhaseId: "planning",
-            nextLeaderAction: expect.stringContaining("planning leader brief"),
+            phaseIds: ["alignment", "implement", "port"],
+            currentPhaseId: "alignment",
+            nextLeaderAction: expect.stringContaining("alignment leader brief"),
           },
         },
       ],
@@ -767,8 +767,8 @@ describe("Takode server-authoritative auth", () => {
           status: "PLANNING",
           journey: {
             presetId: "lightweight-code",
-            phaseIds: ["planning", "implement", "code-review"],
-            currentPhaseId: "planning",
+            phaseIds: ["alignment", "implement", "code-review"],
+            currentPhaseId: "alignment",
           },
         },
       ],
@@ -788,7 +788,7 @@ describe("Takode server-authoritative auth", () => {
           updatedAt: 1,
           journey: {
             presetId: "full-code",
-            phaseIds: ["planning", "implement", "code-review", "port"],
+            phaseIds: ["alignment", "implement", "code-review", "port"],
             currentPhaseId: "implement",
           },
         },
@@ -837,7 +837,7 @@ describe("Takode server-authoritative auth", () => {
           updatedAt: 1,
           journey: {
             presetId: "investigation",
-            phaseIds: ["planning", "explore", "outcome-review"],
+            phaseIds: ["alignment", "explore", "outcome-review"],
             currentPhaseId: "outcome-review",
             nextLeaderAction: "stale outcome review action",
           },
@@ -859,9 +859,9 @@ describe("Takode server-authoritative auth", () => {
           status: "PLANNING",
           journey: {
             presetId: "investigation",
-            phaseIds: ["planning", "explore", "outcome-review"],
-            currentPhaseId: "planning",
-            nextLeaderAction: expect.stringContaining("planning leader brief"),
+            phaseIds: ["alignment", "explore", "outcome-review"],
+            currentPhaseId: "alignment",
+            nextLeaderAction: expect.stringContaining("alignment leader brief"),
           },
         },
       ],
@@ -908,7 +908,7 @@ describe("Takode server-authoritative auth", () => {
           title: "Investigate board lifecycle",
           journey: {
             presetId: "investigation",
-            phaseIds: ["planning", "explore", "outcome-review"],
+            phaseIds: ["alignment", "explore", "outcome-review"],
             currentPhaseId: "outcome-review",
           },
           status: "OUTCOME_REVIEWING",
@@ -942,7 +942,7 @@ describe("Takode server-authoritative auth", () => {
           title: "Investigate board lifecycle",
           journey: {
             presetId: "investigation",
-            phaseIds: ["planning", "explore", "outcome-review"],
+            phaseIds: ["alignment", "explore", "outcome-review"],
             currentPhaseId: "outcome-review",
             nextLeaderAction: "stale outcome review action",
           },

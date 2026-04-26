@@ -9,4 +9,4 @@ Leader actions:
 - Ensure required approvals are in place before execution starts.
 - Wait for the execution report before advancing.
 - If the run results are sufficient, route to `OUTCOME_REVIEWING` when a reviewer-owned acceptance judgment is still needed.
-- If more approved runs are needed, stay in or return to `EXECUTING`; if the success criteria, scope, or experiment design changed, route back to `PLANNING`.
+- If more approved runs are needed, stay in or return to `EXECUTING`; if the success criteria, scope, or experiment design changed, route back to `ALIGNMENT`.

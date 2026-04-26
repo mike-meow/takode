@@ -1,9 +1,0 @@
-{
-  "id": "planning",
-  "label": "Planning",
-  "boardState": "PLANNING",
-  "assigneeRole": "worker",
-  "contract": "Align goal, constraints, success criteria, escalation triggers, and next-phase plan.",
-  "nextLeaderAction": "read the planning leader brief, send the planning-only instruction, then review the worker plan for leader approval or necessary user escalation",
-  "aliases": []
-}

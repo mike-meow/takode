@@ -22,4 +22,4 @@ Exit evidence:
 - A conclusion grounded in external evidence, with concrete pass/fail rationale and any specific gap to route back.
 
 Advance when:
-- The leader accepts the outcome or routes findings back to `implement`, `execute`, or `planning`.
+- The leader accepts the outcome or routes findings back to `implement`, `execute`, or `alignment`.

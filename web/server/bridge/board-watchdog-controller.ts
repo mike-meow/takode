@@ -70,7 +70,7 @@ export interface WorkBoardStateDeps {
 type BoardSessionsLike = Map<string, SessionLike>;
 
 const LEGACY_NO_CODE_COMPAT_PHASE_IDS = [
-  "planning",
+  "alignment",
   "implement",
   "code-review",
 ] as const satisfies readonly QuestJourneyPhaseId[];

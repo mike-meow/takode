@@ -6,7 +6,7 @@ The active planned Journey is board-owned state associated with the quest while 
 
 `QUEUED` is a board state, not a phase. Once active, leaders choose the phase sequence that matches the risk boundary and evidence needed next.
 
-Before the first dispatch, leaders should use `/leader-dispatch` to propose the planned initial Journey and get approval. The worker planning phase then refines execution inside that approved Journey and may recommend revisions; it is not the first time phases are proposed. After the worker returns a plan, the leader normally approves it and advances without a routine second user-approval round. Escalate back to the user only for significant ambiguity, scope change, Journey revision, user-visible tradeoff, or another real blocking issue.
+Before the first dispatch, leaders should use `/leader-dispatch` to propose the planned initial Journey and get approval. The worker alignment phase then returns a lightweight read-in inside that approved Journey and may recommend revisions; it is not the first time phases are proposed. After the worker returns that read-in, the leader normally approves the next phase and advances without a routine second user-approval round. Escalate back to the user only for significant ambiguity, scope change, Journey revision, user-visible tradeoff, or another real blocking issue.
 
 ## Built-In Phase Library
 
@@ -19,13 +19,13 @@ Leaders should read `leader.md` themselves and point the target session to the m
 
 | Phase | Board state | Leader brief | Assignee brief | Contract | Next leader action |
 |-------|-------------|--------------|----------------|----------|--------------------|
-| Planning | `PLANNING` | `planning/leader.md` | `planning/assignee.md` | Align goal, constraints, success criteria, escalation triggers, and next-phase plan | read the planning leader brief, send the planning-only instruction, then review the worker plan for leader approval or necessary user escalation |
-| Explore | `EXPLORING` | `explore/leader.md` | `explore/assignee.md` | Gather unknown information without making the target-state change | read the explore leader brief, then wait for the evidence summary and decide whether to revise the Journey or advance |
+| Alignment | `PLANNING` | `alignment/leader.md` | `alignment/assignee.md` | Do a lightweight read-in to confirm concrete understanding, ambiguities, clarification questions, and whether deeper exploration is needed before implementation or execution | read the alignment leader brief, send the alignment-only instruction, then review the worker read-in for leader approval, routing, or necessary user escalation |
+| Explore | `EXPLORING` | `explore/leader.md` | `explore/assignee.md` | Investigate real unknowns without making the target-state change, then return major findings, new ambiguities or blockers, and when suitable a high-level next-step plan | read the explore leader brief, then wait for the findings summary and decide whether to revise the Journey, advance, or escalate |
 | Implement | `IMPLEMENTING` | `implement/leader.md` | `implement/assignee.md` | Make approved code/docs/prompts/config/artifact changes and gather cheap, local, reversible evidence when that stays within the approved scope | read the implement leader brief, then wait for the worker report and choose the next review, execute, or bookkeeping phase |
 | Code Review | `CODE_REVIEWING` | `code-review/leader.md` | `code-review/assignee.md` | Review tracked code or tracked artifacts for correctness, maintainability, tests, security, and regression risk | read the code-review leader brief, then wait for the reviewer result and either send rework or advance |
 | Mental Simulation | `MENTAL_SIMULATING` | `mental-simulation/leader.md` | `mental-simulation/assignee.md` | Replay a design, workflow, or implementation against concrete scenarios | read the mental-simulation leader brief, then wait for the scenario review and decide whether the Journey needs revision |
 | Execute | `EXECUTING` | `execute/leader.md` | `execute/assignee.md` | Run approved expensive, risky, long-running, externally consequential, or approval-gated operations | read the execute leader brief, track monitor and stop conditions, then wait for the execution report and decide whether outcome review, more execute work, or a Journey revision is needed |
-| Outcome Review | `OUTCOME_REVIEWING` | `outcome-review/leader.md` | `outcome-review/assignee.md` | Reviewer-owned acceptance judgment over external or non-code outcomes such as metrics, logs, artifacts, prompt behavior, or UX trial notes | read the outcome-review leader brief, then wait for the reviewer judgment and route to implement, execute, planning, or conclusion |
+| Outcome Review | `OUTCOME_REVIEWING` | `outcome-review/leader.md` | `outcome-review/assignee.md` | Reviewer-owned acceptance judgment over external or non-code outcomes such as metrics, logs, artifacts, prompt behavior, or UX trial notes | read the outcome-review leader brief, then wait for the reviewer judgment and route to implement, execute, alignment, or conclusion |
 | Bookkeeping | `BOOKKEEPING` | `bookkeeping/leader.md` | `bookkeeping/assignee.md` | Record durable shared external state such as quest updates, stream updates, artifact locations, handoff facts, and superseded facts | read the bookkeeping leader brief, record the durable shared state update, then advance when the facts and handoff state are current |
 | Port | `PORTING` | `port/leader.md` | `port/assignee.md` | Sync accepted tracked changes back to the main repo | read the port leader brief, then wait for sync confirmation and post-port verification before removing the row |
 
@@ -33,16 +33,16 @@ Leaders should read `leader.md` themselves and point the target session to the m
 
 The default built-in tracked-code Journey is:
 
-`planning -> implement -> code-review -> port`
+`alignment -> implement -> code-review -> port`
 
 This preserves a small normal path for common repo work while allowing leaders to choose richer review or operations paths when the quest needs them.
 
 Examples:
 
-- Straight tracked-code work: `planning -> implement -> code-review -> port`
-- Expensive or approval-gated run: `planning -> explore -> execute -> outcome-review`
-- Design or workflow validation: `planning -> implement -> mental-simulation -> code-review -> port`
-- Cheap local evidence followed by acceptance review: `planning -> implement -> outcome-review -> code-review -> port`
+- Straight tracked-code work: `alignment -> implement -> code-review -> port`
+- Expensive or approval-gated run: `alignment -> explore -> execute -> outcome-review`
+- Design or workflow validation: `alignment -> implement -> mental-simulation -> code-review -> port`
+- Cheap local evidence followed by acceptance review: `alignment -> implement -> outcome-review -> code-review -> port`
 
 ## Journey Revision
 
@@ -68,12 +68,13 @@ Rules:
 - **Authorize one phase at a time.**
 - **Initial Journey approval happens before dispatch.** Use `/leader-dispatch` to propose the starting phases and wait for approval.
 - **Read `leader.md`; point assignees to `assignee.md`.** Do not treat globally installed phase skills as the primary phase mechanism.
-- **Initial dispatch = planning only.**
+- **Initial dispatch = alignment only.**
 - **Quest ownership stays with the worker.**
-- **Worker planning refines a leader-approved Journey.** It may recommend revisions, but the board-owned Journey remains authoritative until the leader changes it.
-- **Planning approval is leader-owned by default.** Once the user has approved the initial Journey plus scheduling plan, the leader normally approves the returned worker plan and dispatches the next phase.
-- **Escalate planning back to the user only for real blockers.** Significant ambiguity, scope change, Journey revision, user-visible tradeoff, or another blocking issue can require fresh user approval.
-- **Plan approval authorizes exactly one next phase.** For example: implement now, then stop and report back.
+- **Worker alignment returns a lightweight read-in inside a leader-approved Journey.** It may recommend revisions, but the board-owned Journey remains authoritative until the leader changes it.
+- **Point alignment at exact sources when you already know them.** When the relevant prior messages, quests, or discussions are known, point the worker to those specific sources so alignment can use targeted Takode or quest inspection instead of broad exploration.
+- **Alignment approval is leader-owned by default.** Once the user has approved the initial Journey plus scheduling plan, the leader normally approves the returned worker read-in and dispatches the next phase.
+- **Escalate alignment back to the user only for real blockers.** Significant ambiguity, scope change, Journey revision, user-visible tradeoff, or another blocking issue can require fresh user approval.
+- **Alignment approval authorizes exactly one next phase.** For example: explore now, then stop and report back.
 - **Workers must stop at phase boundaries.** They do not self-review, self-port, or self-transition.
 - **Porting requires an explicit instruction.**
 
@@ -91,7 +92,7 @@ Guidance:
 - Use **`mental-simulation`** when the question is whether a design or workflow makes sense under replayed scenarios. This is about plausibility and failure modes, not externally executed sufficiency.
 - Use **`outcome-review`** when the worker has usually already produced the evidence and a reviewer should decide whether that evidence is sufficient. The reviewer may do only small bounded reruns or repros needed for acceptance.
 - Use **`execute`** when the worker needs more than cheap local evidence gathering and the next step is an approved run with monitors, stop conditions, risk controls, or external consequences.
-- If outcome evidence is insufficient, route back deliberately: **`implement`** when behavior or code must change, **`execute`** when more approved runs are needed, and **`planning`** when success criteria, scope, or experiment design changed.
+- If outcome evidence is insufficient, route back deliberately: **`implement`** when behavior or code must change, **`execute`** when more approved runs are needed, and **`alignment`** when success criteria, scope, or experiment design changed.
 
 Do not default to a generic skeptic-review framing for new work. Legacy board rows or saved phrases may still mention `skeptic-review`, `reviewer-groom`, or `stream-update`; treat those as compatibility aliases rather than the preferred vocabulary.
 
@@ -101,9 +102,9 @@ Zero-tracked-change quests use the same phase-based Journey model as any other q
 
 Choose explicit phases that match the evidence you need and simply omit `port` when nothing will be synced. Examples:
 
-- `planning -> explore -> outcome-review`
-- `planning -> explore -> bookkeeping`
-- `planning -> mental-simulation`
+- `alignment -> explore -> outcome-review`
+- `alignment -> explore -> bookkeeping`
+- `alignment -> mental-simulation`
 
 Advancing from the final planned phase removes the row from the board. Git-tracked docs, skills, prompts, templates, and other text-only edits still count as tracked-change work and should include `port`.
 

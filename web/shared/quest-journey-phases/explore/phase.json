@@ -3,7 +3,7 @@
   "label": "Explore",
   "boardState": "EXPLORING",
   "assigneeRole": "worker",
-  "contract": "Gather unknown information without making the target-state change.",
-  "nextLeaderAction": "read the explore leader brief, then wait for the evidence summary and decide whether to revise the Journey or advance",
+  "contract": "Investigate real unknowns without making the target-state change, then return major findings, new ambiguities or blockers, and when suitable a high-level next-step plan.",
+  "nextLeaderAction": "read the explore leader brief, then wait for the findings summary and decide whether to revise the Journey, advance, or escalate",
   "aliases": []
 }

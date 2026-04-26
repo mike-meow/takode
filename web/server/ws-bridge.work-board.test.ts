@@ -1251,7 +1251,7 @@ describe("work board", () => {
         questId: "q-1",
         noCode: true,
         journey: expect.objectContaining({
-          phaseIds: ["planning", "implement", "code-review"],
+          phaseIds: ["alignment", "implement", "code-review"],
           currentPhaseId: "code-review",
         }),
         status: "CODE_REVIEWING",
@@ -1429,9 +1429,9 @@ describe("work board", () => {
         status: "PLANNING",
         journey: expect.objectContaining({
           presetId: "full-code",
-          phaseIds: ["planning", "implement", "code-review", "port"],
-          currentPhaseId: "planning",
-          nextLeaderAction: expect.stringContaining("planning leader brief"),
+          phaseIds: ["alignment", "implement", "code-review", "port"],
+          currentPhaseId: "alignment",
+          nextLeaderAction: expect.stringContaining("alignment leader brief"),
         }),
       }),
     );
@@ -1455,7 +1455,7 @@ describe("work board", () => {
     expect(implementation?.newState).toBe("IMPLEMENTING");
     expect(implementation?.board[0].journey).toEqual(
       expect.objectContaining({
-        phaseIds: ["planning", "implement", "port"],
+        phaseIds: ["alignment", "implement", "port"],
         currentPhaseId: "implement",
       }),
     );
