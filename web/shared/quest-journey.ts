@@ -250,20 +250,25 @@ export function normalizeQuestJourneyPlan(
 ): QuestJourneyPlanState {
   const phaseIds = normalizeQuestJourneyPhaseIds(plan?.phaseIds);
   const nonEmptyPhaseIds = phaseIds.length > 0 ? phaseIds : [...DEFAULT_QUEST_JOURNEY_PHASE_IDS];
+  const normalizedStatus = typeof status === "string" ? status.trim().toUpperCase() : "";
   const statusPhase = getQuestJourneyPhaseForState(status)?.id;
   const plannedCurrentPhaseId = getQuestJourneyPhase(plan?.currentPhaseId)?.id;
   const currentPhaseId =
-    plannedCurrentPhaseId && nonEmptyPhaseIds.includes(plannedCurrentPhaseId)
-      ? plannedCurrentPhaseId
-      : statusPhase && nonEmptyPhaseIds.includes(statusPhase)
-        ? statusPhase
-        : undefined;
+    statusPhase && nonEmptyPhaseIds.includes(statusPhase)
+      ? statusPhase
+      : normalizedStatus === "QUEUED"
+        ? undefined
+        : plannedCurrentPhaseId && nonEmptyPhaseIds.includes(plannedCurrentPhaseId)
+          ? plannedCurrentPhaseId
+          : undefined;
   const currentPhase = getQuestJourneyPhase(currentPhaseId);
+  const nextLeaderAction =
+    currentPhase?.nextLeaderAction ?? (normalizedStatus === "QUEUED" ? undefined : plan?.nextLeaderAction);
   return {
     presetId: plan?.presetId ?? DEFAULT_QUEST_JOURNEY_PRESET_ID,
     phaseIds: [...nonEmptyPhaseIds],
     ...(currentPhaseId ? { currentPhaseId } : {}),
-    nextLeaderAction: currentPhase?.nextLeaderAction ?? plan?.nextLeaderAction,
+    ...(nextLeaderAction ? { nextLeaderAction } : {}),
     ...(plan?.revisionReason ? { revisionReason: plan.revisionReason } : {}),
     ...(plan?.revisedAt ? { revisedAt: plan.revisedAt } : {}),
     ...(typeof plan?.revisionCount === "number" ? { revisionCount: plan.revisionCount } : {}),

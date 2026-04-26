@@ -1552,6 +1552,7 @@ export function createTakodeRoutes(ctx: RouteContext) {
       ? advanceBoardRowController(bridgeSession, questId, QUEST_JOURNEY_STATES, workBoardStateDeps)
       : null;
     if (!result) return c.json({ error: "Quest not found on board" }, 404);
+    if ("error" in result) return c.json({ error: result.error }, 409);
     return c.json({
       ...result,
       completedCount: bridgeSession?.completedBoard.size ?? 0,

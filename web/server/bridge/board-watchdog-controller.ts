@@ -351,17 +351,34 @@ export function advanceBoardRow(
   questId: string,
   states: readonly string[],
   deps: WorkBoardStateDeps,
-): { board: BoardRow[]; removed: boolean; previousState?: string; newState?: string } | null {
+):
+  | { board: BoardRow[]; removed: boolean; previousState?: string; newState?: string }
+  | { error: string; previousState?: string }
+  | null {
   const row = session.board.get(questId);
   if (!row) return null;
 
   const currentIdx = states.indexOf(row.status ?? "");
   const previousState = row.status;
   const plannedPhaseIds = getBoardRowPhaseIds(row);
-  const currentPhaseId =
+  const statusPhaseId = getQuestJourneyPhaseForState(row.status)?.id;
+  const plannedCurrentPhaseId =
     row.journey?.currentPhaseId && plannedPhaseIds.includes(row.journey.currentPhaseId)
       ? row.journey.currentPhaseId
-      : getQuestJourneyPhaseForState(row.status)?.id;
+      : undefined;
+  const normalizedStatus = typeof row.status === "string" ? row.status.trim().toUpperCase() : "";
+  if (
+    (normalizedStatus === "QUEUED" && plannedCurrentPhaseId) ||
+    (statusPhaseId && plannedCurrentPhaseId && statusPhaseId !== plannedCurrentPhaseId)
+  ) {
+    const phaseLabel = plannedCurrentPhaseId ?? "none";
+    const statusLabel = normalizedStatus || row.status || "none";
+    return {
+      error: `Cannot advance ${questId}: board status ${statusLabel} disagrees with journey.currentPhaseId ${phaseLabel}. Reconcile the row with takode board set --status before advancing.`,
+      previousState,
+    };
+  }
+  const currentPhaseId = statusPhaseId ?? plannedCurrentPhaseId;
   const currentPhaseIdx = currentPhaseId ? plannedPhaseIds.indexOf(currentPhaseId) : -1;
 
   if (currentPhaseIdx >= 0 && currentPhaseIdx >= plannedPhaseIds.length - 1) {
@@ -435,7 +452,10 @@ export function advanceBoardRowForSession(
   questId: string,
   states: readonly string[],
   deps: WorkBoardStateDeps,
-): { board: BoardRow[]; removed: boolean; previousState?: string; newState?: string } | null {
+):
+  | { board: BoardRow[]; removed: boolean; previousState?: string; newState?: string }
+  | { error: string; previousState?: string }
+  | null {
   const session = sessions.get(sessionId);
   if (!session) return null;
   return advanceBoardRow(session, questId, states, deps);

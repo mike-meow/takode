@@ -824,6 +824,50 @@ describe("Takode server-authoritative auth", () => {
     });
   });
 
+  it("realigns the current custom Journey phase when board set applies an explicit reset status", async () => {
+    setupTakodeSessions();
+    bridge._sessions["orch-1"].board = new Map([
+      [
+        "q-9",
+        {
+          questId: "q-9",
+          title: "Investigate board lifecycle",
+          status: "OUTCOME_REVIEWING",
+          createdAt: 1,
+          updatedAt: 1,
+          journey: {
+            presetId: "investigation",
+            phaseIds: ["planning", "explore", "outcome-review"],
+            currentPhaseId: "outcome-review",
+            nextLeaderAction: "stale outcome review action",
+          },
+        },
+      ],
+    ]);
+
+    const res = await app.request("/api/sessions/orch-1/board", {
+      method: "POST",
+      headers: authHeaders("orch-1", "tok-1"),
+      body: JSON.stringify({ questId: "q-9", status: "PLANNING" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      board: [
+        {
+          questId: "q-9",
+          status: "PLANNING",
+          journey: {
+            presetId: "investigation",
+            phaseIds: ["planning", "explore", "outcome-review"],
+            currentPhaseId: "planning",
+            nextLeaderAction: expect.stringContaining("planning phase skill"),
+          },
+        },
+      ],
+    });
+  });
+
   it("rejects unknown planned phase IDs", async () => {
     setupTakodeSessions();
 
@@ -885,6 +929,44 @@ describe("Takode server-authoritative auth", () => {
       previousState: "OUTCOME_REVIEWING",
       board: [],
       completedCount: 1,
+    });
+  });
+
+  it("fails closed when board advance sees a status/currentPhase mismatch on a custom Journey", async () => {
+    setupTakodeSessions();
+    bridge._sessions["orch-1"].board = new Map([
+      [
+        "q-9",
+        {
+          questId: "q-9",
+          title: "Investigate board lifecycle",
+          journey: {
+            presetId: "investigation",
+            phaseIds: ["planning", "explore", "outcome-review"],
+            currentPhaseId: "outcome-review",
+            nextLeaderAction: "stale outcome review action",
+          },
+          status: "PLANNING",
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+    ]);
+
+    const res = await app.request("/api/sessions/orch-1/board/q-9/advance", {
+      method: "POST",
+      headers: authHeaders("orch-1", "tok-1"),
+    });
+
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({
+      error: expect.stringContaining("disagrees with journey.currentPhaseId"),
+    });
+    expect(bridge._sessions["orch-1"].board.get("q-9")).toMatchObject({
+      status: "PLANNING",
+      journey: {
+        currentPhaseId: "outcome-review",
+      },
     });
   });
 

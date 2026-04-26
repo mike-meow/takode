@@ -166,6 +166,46 @@ describe("Quest Journey phases", () => {
     );
   });
 
+  it("realigns custom planned phases to an explicit reset status and refreshes the next action", () => {
+    expect(
+      normalizeQuestJourneyPlan(
+        {
+          presetId: "investigation",
+          phaseIds: ["planning", "explore", "outcome-review"],
+          currentPhaseId: "outcome-review",
+          nextLeaderAction: "stale outcome review action",
+        },
+        "PLANNING",
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        phaseIds: ["planning", "explore", "outcome-review"],
+        currentPhaseId: "planning",
+        nextLeaderAction: expect.stringContaining("planning phase skill"),
+      }),
+    );
+  });
+
+  it("clears stale current phase bookkeeping when an explicit reset moves the row back to queued", () => {
+    const normalized = normalizeQuestJourneyPlan(
+      {
+        presetId: "investigation",
+        phaseIds: ["planning", "explore", "outcome-review"],
+        currentPhaseId: "outcome-review",
+        nextLeaderAction: "stale outcome review action",
+      },
+      "QUEUED",
+    );
+
+    expect(normalized).toEqual(
+      expect.objectContaining({
+        phaseIds: ["planning", "explore", "outcome-review"],
+      }),
+    );
+    expect(normalized).not.toHaveProperty("currentPhaseId");
+    expect(normalized).not.toHaveProperty("nextLeaderAction");
+  });
+
   it("preserves revision metadata on normalized plans", () => {
     expect(
       normalizeQuestJourneyPlan(
