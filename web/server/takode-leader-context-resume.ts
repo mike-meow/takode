@@ -90,7 +90,10 @@ export interface LeaderContextResumeQuestObservation {
   questStatus?: string | null;
   questOwnerSessionId?: string | null;
   rowUpdatedAt: number;
+  currentPhaseInstructionMatched: boolean;
+  currentPhaseResultMatched: boolean;
   lastRelevantLeaderInstruction?: LeaderContextResumeInstructionObservation;
+  latestFallbackLeaderInstruction?: LeaderContextResumeInstructionObservation;
   latestCurrentPhaseResult?: LeaderContextResumeResultObservation;
   latestSupportingResult?: LeaderContextResumeResultObservation;
 }
@@ -269,6 +272,25 @@ function phaseDispatchLabel(phase: QuestJourneyPhase | null): string {
   return phase.id.replace(/-/g, "_").toUpperCase();
 }
 
+function phaseDispatchLabelForPhaseId(phaseId?: string | null): string {
+  if (!phaseId) return "QUEST_RELEVANT";
+  const phase = getQuestJourneyPhase(phaseId);
+  return phase ? phaseDispatchLabel(phase) : phaseId.replace(/-/g, "_").toUpperCase();
+}
+
+function describeMatchedInstruction(phase: QuestJourneyPhase | null): string {
+  return `explicit \`${phaseDispatchLabel(phase)}\` dispatch`;
+}
+
+function describeFallbackInstruction(turn: LeaderDirectedTurn): string {
+  if (turn.phaseIds[0]) return `earlier \`${phaseDispatchLabelForPhaseId(turn.phaseIds[0])}\` dispatch`;
+  return "earlier quest-relevant leader turn";
+}
+
+function describeFallbackResult(turn: LeaderDirectedTurn): string {
+  return `supporting prior-phase ${turn.participant.role} result "${turn.resultSummary}"`;
+}
+
 function buildParticipantObservation(
   participant: LeaderContextResumeParticipant | undefined,
   rowStatusParticipant: BoardRowSessionStatus["worker"] | BoardRowSessionStatus["reviewer"],
@@ -337,33 +359,50 @@ function buildMismatchNote(
 
 function buildWhyHere(
   currentInstruction: LeaderDirectedTurn | undefined,
+  fallbackInstruction: LeaderDirectedTurn | undefined,
   supportingResult: LeaderDirectedTurn | undefined,
   phase: QuestJourneyPhase | null,
 ): { summary: string; source?: LeaderContextResumeMessageSource } {
-  if (supportingResult?.resultSource && supportingResult.resultSummary) {
+  if (currentInstruction && supportingResult?.resultSource && supportingResult.resultSummary) {
     return {
-      summary: `${supportingResult.participant.role} result "${supportingResult.resultSummary}"`,
+      summary: describeFallbackResult(supportingResult),
       source: supportingResult.resultSource,
     };
   }
   if (currentInstruction) {
     return {
-      summary: `explicit \`${phaseDispatchLabel(phase)}\` dispatch`,
+      summary: describeMatchedInstruction(phase),
       source: currentInstruction.startSource,
     };
   }
-  return { summary: "current board phase has no matched phase-explicit dispatch in recent participant history" };
+  if (supportingResult?.resultSource && supportingResult.resultSummary) {
+    return {
+      summary: `current phase has no matched \`${phaseDispatchLabel(phase)}\` dispatch; latest context is ${describeFallbackResult(supportingResult)}`,
+      source: supportingResult.resultSource,
+    };
+  }
+  if (fallbackInstruction) {
+    return {
+      summary: `current phase has no matched \`${phaseDispatchLabel(phase)}\` dispatch; latest quest-relevant leader turn is ${describeFallbackInstruction(fallbackInstruction)}`,
+      source: fallbackInstruction.startSource,
+    };
+  }
+  return {
+    summary: `current phase has no matched \`${phaseDispatchLabel(phase)}\` dispatch in recent participant history`,
+  };
 }
 
 function buildNextLeaderAction(args: {
   row: BoardRow;
   phase: QuestJourneyPhase | null;
-  currentInstruction?: LeaderDirectedTurn;
+  currentInstructionMatched: boolean;
+  fallbackInstruction?: LeaderDirectedTurn;
   latestCurrentPhaseResult?: LeaderDirectedTurn;
   worker?: LeaderContextResumeParticipantObservation;
   reviewer?: LeaderContextResumeParticipantObservation;
 }): string {
-  const { row, phase, currentInstruction, latestCurrentPhaseResult, worker, reviewer } = args;
+  const { row, phase, currentInstructionMatched, fallbackInstruction, latestCurrentPhaseResult, worker, reviewer } =
+    args;
   if ((row.waitForInput ?? []).length > 0) {
     return `wait for same-session user input ${row.waitForInput!.map((notificationId) => formatNotificationId(notificationId)).join(", ")}`;
   }
@@ -382,8 +421,18 @@ function buildNextLeaderAction(args: {
     }
     return "read the worker report and choose the next phase";
   }
-  if (currentInstruction) {
-    const participant = currentInstruction.participant;
+  if (!currentInstructionMatched && phase) {
+    const participant = phase.assigneeRole === "reviewer" ? reviewer : worker;
+    const inspectTarget = participant
+      ? linkSession(participant)
+      : phase.assigneeRole === "reviewer"
+        ? "the reviewer"
+        : "the worker";
+    const resend = `resend the \`${phaseDispatchLabel(phase)}\` instruction if it never actually went out`;
+    return participant ? `inspect ${inspectTarget} and ${resend}` : `inspect the row and ${resend}`;
+  }
+  if (fallbackInstruction) {
+    const participant = fallbackInstruction.participant;
     const sessionLabel = linkSession(participant);
     if (participant.status === "disconnected" || participant.status === "archived") {
       return `inspect ${sessionLabel}; current phase is waiting on that report`;
@@ -394,6 +443,27 @@ function buildNextLeaderAction(args: {
     row.journey?.nextLeaderAction ??
     (row.status ? QUEST_JOURNEY_HINTS[row.status] : "inspect the row history and decide the next orchestration step")
   );
+}
+
+function buildLatestMeaningfulResult(args: {
+  currentInstructionMatched: boolean;
+  latestCurrentPhaseResult?: LeaderDirectedTurn;
+  supportingResult?: LeaderDirectedTurn;
+}): { summary?: string; source?: LeaderContextResumeMessageSource } {
+  const { currentInstructionMatched, latestCurrentPhaseResult, supportingResult } = args;
+  if (latestCurrentPhaseResult?.resultSummary && latestCurrentPhaseResult.resultSource) {
+    return {
+      summary: latestCurrentPhaseResult.resultSummary,
+      source: latestCurrentPhaseResult.resultSource,
+    };
+  }
+  if (!currentInstructionMatched && supportingResult?.resultSummary && supportingResult.resultSource) {
+    return {
+      summary: describeFallbackResult(supportingResult),
+      source: supportingResult.resultSource,
+    };
+  }
+  return {};
 }
 
 function commandForSource(source: LeaderContextResumeMessageSource | undefined): string | null {
@@ -457,40 +527,44 @@ export async function buildLeaderContextResume(input: LeaderContextResumeInput):
       .sort((left, right) => right.startTimestamp - left.startTimestamp || right.startIndex - left.startIndex);
 
     const phaseParticipantRole = phase?.assigneeRole;
-    const currentInstruction =
+    const currentPhaseInstruction =
       relevantTurns.find(
         (turn) =>
           !!phase?.id &&
           turn.phaseIds.includes(phase.id) &&
           (!phaseParticipantRole || turn.participant.role === phaseParticipantRole),
-      ) ??
-      relevantTurns.find((turn) => !!phase?.id && turn.phaseIds.includes(phase.id)) ??
-      relevantTurns[0];
+      ) ?? relevantTurns.find((turn) => !!phase?.id && turn.phaseIds.includes(phase.id));
+    const fallbackInstruction = currentPhaseInstruction ? undefined : relevantTurns[0];
 
     const latestCurrentPhaseResult =
-      currentInstruction && currentInstruction.resultSource && currentInstruction.resultSummary
-        ? currentInstruction
+      currentPhaseInstruction && currentPhaseInstruction.resultSource && currentPhaseInstruction.resultSummary
+        ? currentPhaseInstruction
         : undefined;
 
     const supportingResult = relevantTurns.find((turn) => {
       if (!turn.resultSource || !turn.resultSummary) return false;
       if (
-        currentInstruction &&
-        turn.startIndex === currentInstruction.startIndex &&
-        turn.participant.sessionId === currentInstruction.participant.sessionId
+        currentPhaseInstruction &&
+        turn.startIndex === currentPhaseInstruction.startIndex &&
+        turn.participant.sessionId === currentPhaseInstruction.participant.sessionId
       ) {
         return false;
       }
-      if (currentInstruction) return turn.endTimestamp <= currentInstruction.startTimestamp;
+      if (currentPhaseInstruction) return turn.endTimestamp <= currentPhaseInstruction.startTimestamp;
       return true;
+    });
+    const latestMeaningfulResult = buildLatestMeaningfulResult({
+      currentInstructionMatched: !!currentPhaseInstruction,
+      latestCurrentPhaseResult,
+      supportingResult,
     });
 
     const mismatchNote = buildMismatchNote(quest, workerParticipant, input.participants);
     if (mismatchNote) warnings.add(`${row.questId}: ${mismatchNote}`);
 
     const rowWarnings: string[] = [];
-    if (!currentInstruction) {
-      rowWarnings.push("no matched phase-explicit leader dispatch found");
+    if (!currentPhaseInstruction) {
+      rowWarnings.push(`no matched current-phase \`${phaseDispatchLabel(phase)}\` dispatch found`);
     }
     if (phase?.assigneeRole === "reviewer" && !reviewerObservation) {
       rowWarnings.push("current review phase has no reviewer session");
@@ -500,11 +574,12 @@ export async function buildLeaderContextResume(input: LeaderContextResumeInput):
     }
     for (const warning of rowWarnings) warnings.add(`${row.questId}: ${warning}`);
 
-    const whyHere = buildWhyHere(currentInstruction, supportingResult, phase);
+    const whyHere = buildWhyHere(currentPhaseInstruction, fallbackInstruction, supportingResult, phase);
     const nextLeaderAction = buildNextLeaderAction({
       row,
       phase,
-      currentInstruction,
+      currentInstructionMatched: !!currentPhaseInstruction,
+      fallbackInstruction,
       latestCurrentPhaseResult,
       worker: workerObservation,
       reviewer: reviewerObservation,
@@ -519,15 +594,29 @@ export async function buildLeaderContextResume(input: LeaderContextResumeInput):
       questStatus: quest?.status ?? null,
       questOwnerSessionId: quest && "sessionId" in quest ? (quest.sessionId ?? null) : null,
       rowUpdatedAt: row.updatedAt,
-      ...(currentInstruction
+      currentPhaseInstructionMatched: !!currentPhaseInstruction,
+      currentPhaseResultMatched: !!latestCurrentPhaseResult,
+      ...(currentPhaseInstruction
         ? {
             lastRelevantLeaderInstruction: {
-              participantRole: currentInstruction.participant.role,
-              participantSessionId: currentInstruction.participant.sessionId,
-              participantSessionNum: currentInstruction.participant.sessionNum,
-              phaseId: currentInstruction.phaseIds[0],
-              summary: `explicit \`${phaseDispatchLabel(phase)}\` dispatch`,
-              source: currentInstruction.startSource,
+              participantRole: currentPhaseInstruction.participant.role,
+              participantSessionId: currentPhaseInstruction.participant.sessionId,
+              participantSessionNum: currentPhaseInstruction.participant.sessionNum,
+              phaseId: currentPhaseInstruction.phaseIds[0],
+              summary: describeMatchedInstruction(phase),
+              source: currentPhaseInstruction.startSource,
+            },
+          }
+        : {}),
+      ...(fallbackInstruction
+        ? {
+            latestFallbackLeaderInstruction: {
+              participantRole: fallbackInstruction.participant.role,
+              participantSessionId: fallbackInstruction.participant.sessionId,
+              participantSessionNum: fallbackInstruction.participant.sessionNum,
+              phaseId: fallbackInstruction.phaseIds[0],
+              summary: describeFallbackInstruction(fallbackInstruction),
+              source: fallbackInstruction.startSource,
             },
           }
         : {}),
@@ -561,10 +650,10 @@ export async function buildLeaderContextResume(input: LeaderContextResumeInput):
       questId: row.questId,
       whyHere: whyHere.summary,
       ...(whyHere.source ? { whyHereSource: whyHere.source } : {}),
-      ...(latestCurrentPhaseResult?.resultSummary
+      ...(latestMeaningfulResult.summary && latestMeaningfulResult.source
         ? {
-            latestMeaningfulResult: latestCurrentPhaseResult.resultSummary,
-            latestMeaningfulResultSource: latestCurrentPhaseResult.resultSource,
+            latestMeaningfulResult: latestMeaningfulResult.summary,
+            latestMeaningfulResultSource: latestMeaningfulResult.source,
           }
         : {}),
       nextLeaderAction,
@@ -572,7 +661,9 @@ export async function buildLeaderContextResume(input: LeaderContextResumeInput):
       warnings: rowWarnings,
     });
 
-    const sourceCommand = commandForSource(latestCurrentPhaseResult?.resultSource ?? supportingResult?.resultSource);
+    const sourceCommand = commandForSource(
+      latestCurrentPhaseResult?.resultSource ?? supportingResult?.resultSource ?? fallbackInstruction?.startSource,
+    );
     if (sourceCommand && !suggestedCommands.includes(sourceCommand)) suggestedCommands.push(sourceCommand);
     const peekCommand = peekCommandForParticipant(
       phase?.assigneeRole === "reviewer"
@@ -660,13 +751,19 @@ export function renderLeaderContextResumeText(model: LeaderContextResumeModel): 
       lines.push(
         `- last leader instruction: ${observedQuest.lastRelevantLeaderInstruction.summary} from ${linkMessage(observedQuest.lastRelevantLeaderInstruction.source)}`,
       );
+    } else if (observedQuest.latestFallbackLeaderInstruction) {
+      lines.push(
+        `- last leader instruction: no matched current-phase dispatch; latest quest-relevant leader turn is ${observedQuest.latestFallbackLeaderInstruction.summary} from ${linkMessage(observedQuest.latestFallbackLeaderInstruction.source)}`,
+      );
     } else {
-      lines.push("- last leader instruction: none found");
+      lines.push("- last leader instruction: no matched current-phase dispatch found");
     }
     if (synthesizedQuest.latestMeaningfulResult && synthesizedQuest.latestMeaningfulResultSource) {
       lines.push(
-        `- latest result: "${synthesizedQuest.latestMeaningfulResult}" from ${linkMessage(synthesizedQuest.latestMeaningfulResultSource)}`,
+        `- latest result: ${synthesizedQuest.latestMeaningfulResult} from ${linkMessage(synthesizedQuest.latestMeaningfulResultSource)}`,
       );
+    } else if (!observedQuest.currentPhaseInstructionMatched) {
+      lines.push("- latest result: no matched current-phase result because the active-phase dispatch was not found");
     } else {
       lines.push("- latest result: none since that instruction");
     }

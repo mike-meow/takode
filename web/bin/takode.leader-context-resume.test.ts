@@ -67,6 +67,8 @@ describe("takode leader-context-resume", () => {
                   questId: "q-773",
                   title: "Recover leader context after compaction",
                   currentBoardPhase: "IMPLEMENTING",
+                  currentPhaseInstructionMatched: true,
+                  currentPhaseResultMatched: false,
                   worker: {
                     sessionId: "worker-ctx",
                     sessionNum: 1128,

@@ -172,9 +172,11 @@ describe("takode leader-context-resume", () => {
 
     expect(model.observed.activeBoardQuests).toHaveLength(1);
     expect(model.observed.activeBoardQuests[0]?.currentBoardPhase).toBe("IMPLEMENTING");
+    expect(model.observed.activeBoardQuests[0]?.currentPhaseInstructionMatched).toBe(true);
+    expect(model.observed.activeBoardQuests[0]?.currentPhaseResultMatched).toBe(false);
     expect(model.observed.activeBoardQuests[0]?.lastRelevantLeaderInstruction?.source.messageIndex).toBe(3);
     expect(model.observed.activeBoardQuests[0]?.latestSupportingResult?.source.messageIndex).toBe(2);
-    expect(model.synthesized.activeBoardQuests[0]?.whyHere).toContain("worker result");
+    expect(model.synthesized.activeBoardQuests[0]?.whyHere).toContain("supporting prior-phase worker result");
     expect(model.synthesized.activeBoardQuests[0]?.whyHereSource?.messageIndex).toBe(2);
     expect(model.synthesized.activeBoardQuests[0]?.latestMeaningfulResult).toBeUndefined();
     expect(model.synthesized.activeBoardQuests[0]?.nextLeaderAction).toContain("wait for the worker report");
@@ -182,9 +184,139 @@ describe("takode leader-context-resume", () => {
     const rendered = renderLeaderContextResumeText(model);
     expect(rendered).toContain("Recovery for [#1132](session:1132)");
     expect(rendered).toContain("[q-773](quest:q-773) -- IMPLEMENTING");
-    expect(rendered).toContain("why here: worker result");
+    expect(rendered).toContain("why here: supporting prior-phase worker result");
     expect(rendered).toContain("latest result: none since that instruction");
     expect(rendered).toContain("`takode peek 1128`");
+  });
+
+  it("does not mislabel a prior alignment turn as the active explore dispatch in the q-773 compaction edge", async () => {
+    // Shape based on [#1132 msg 631](session:1132:631) -> [#1132 msg 636](session:1132:636) -> [#1132 msg 655](session:1132:655):
+    // the board says EXPLORING, but compaction hits before an actual explore brief is ever sent.
+    const leaderHistory: BrowserIncomingMessage[] = [
+      {
+        type: "assistant",
+        timestamp: 631,
+        parent_tool_use_id: null,
+        message: {
+          id: "leader-631",
+          type: "message",
+          role: "assistant",
+          model: "gpt-5.4",
+          content: [
+            {
+              type: "text",
+              text: "The [q-773](quest:q-773) alignment read-in is within scope and I am revising it into EXPLORING now.",
+            },
+          ],
+          stop_reason: null,
+          usage: { input_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 0 },
+        },
+        uuid: "leader-631",
+      },
+      {
+        type: "compact_marker",
+        timestamp: 636,
+        summary: "[Context compacted]",
+        trigger: "auto",
+      },
+      makeUserMessage("Recover enough context to safely resume orchestration.", 655, {
+        sessionId: "system",
+        sessionLabel: "System",
+      }),
+    ];
+    const workerHistory: BrowserIncomingMessage[] = [
+      makeUserMessage("Return the alignment read-in for [q-773](quest:q-773).", 620, {
+        sessionId: "leader-session",
+        sessionLabel: "#1132 Leader",
+      }),
+      makeAssistant("The startup-path unknowns are real and worth exploring.", 621),
+      makeResult("Within scope for exploration once the leader sends the bounded explore brief.", 10),
+    ];
+
+    const model = await buildLeaderContextResume({
+      leader: {
+        sessionId: "leader-session",
+        sessionNum: 1132,
+        name: "Leader",
+        isOrchestrator: true,
+        messageHistory: leaderHistory,
+        notifications: [],
+        board: [
+          {
+            questId: "q-773",
+            title: "Recover leader context after compaction",
+            worker: "worker-session",
+            status: "EXPLORING",
+            journey: {
+              phaseIds: ["alignment", "explore", "implement", "mental-simulation", "code-review", "port"],
+              currentPhaseId: "explore",
+              nextLeaderAction:
+                "read the explore leader brief, then wait for the findings summary and decide whether to revise the Journey, advance, or escalate",
+            },
+            createdAt: 600,
+            updatedAt: 631,
+          },
+        ],
+      },
+      rowSessionStatuses: {
+        "q-773": {
+          worker: {
+            sessionId: "worker-session",
+            sessionNum: 1128,
+            name: "q-773 explore worker",
+            status: "idle",
+          },
+          reviewer: null,
+        },
+      },
+      participants: new Map([
+        [
+          "worker-session",
+          makeParticipant({
+            sessionId: "worker-session",
+            sessionNum: 1128,
+            name: "q-773 explore worker",
+            role: "worker",
+            status: "idle",
+            claimedQuestId: "q-773",
+            claimedQuestStatus: "in_progress",
+            messageHistory: workerHistory,
+          }),
+        ],
+      ]),
+      loadQuest: async () => ({
+        id: "q-773-v2",
+        questId: "q-773",
+        version: 2,
+        title: "Recover leader context after compaction",
+        description: "Synthetic replay fixture for the compaction edge.",
+        status: "in_progress",
+        sessionId: "worker-session",
+        claimedAt: 600,
+        createdAt: 590,
+      }),
+    });
+
+    const observedQuest = model.observed.activeBoardQuests[0]!;
+    const synthesizedQuest = model.synthesized.activeBoardQuests[0]!;
+
+    expect(observedQuest.currentPhaseInstructionMatched).toBe(false);
+    expect(observedQuest.currentPhaseResultMatched).toBe(false);
+    expect(observedQuest.lastRelevantLeaderInstruction).toBeUndefined();
+    expect(observedQuest.latestFallbackLeaderInstruction?.summary).toContain("ALIGNMENT");
+    expect(observedQuest.latestSupportingResult?.source.messageIndex).toBe(2);
+
+    expect(synthesizedQuest.whyHere).toContain("no matched `EXPLORE` dispatch");
+    expect(synthesizedQuest.latestMeaningfulResult).toContain("supporting prior-phase worker result");
+    expect(synthesizedQuest.nextLeaderAction).toContain("inspect [#1128](session:1128)");
+    expect(synthesizedQuest.nextLeaderAction).toContain("resend the `EXPLORE` instruction");
+
+    const rendered = renderLeaderContextResumeText(model);
+    expect(rendered).toContain("no matched current-phase dispatch");
+    expect(rendered).toContain("supporting prior-phase worker result");
+    expect(rendered).toContain("resend the `EXPLORE` instruction");
+    expect(rendered).not.toContain("explicit `EXPLORE` dispatch");
+    expect(rendered).not.toContain("read the worker report and choose the next phase");
   });
 
   it("keeps observed facts and synthesized interpretation separated in json output", async () => {
