@@ -355,6 +355,22 @@ function createMaiWrapperFixture(options?: { envHost?: string }) {
   return { root, wrapperPath };
 }
 
+function normalizeMaiHostname(input: string): string {
+  let normalized = input.replace(/[^A-Za-z0-9._-]/g, "-");
+  while (normalized.length > 0 && /^[._-]/.test(normalized)) normalized = normalized.slice(1);
+  while (normalized.length > 0 && /[._-]$/.test(normalized)) normalized = normalized.slice(0, -1);
+  if (normalized.length > 64) {
+    normalized = normalized.slice(0, 64);
+    while (normalized.length > 0 && /[._-]$/.test(normalized)) normalized = normalized.slice(0, -1);
+  }
+  return normalized || "host";
+}
+
+function getMaiWrapperSessionEnvPath(wrapperRoot: string, sessionId = "test-session-id") {
+  const overlayHost = normalizeMaiHostname(`companion-codex-home-${sessionId}`);
+  return join(wrapperRoot, ".run", `.env-${overlayHost}`);
+}
+
 const mockSpawn = vi.fn();
 const bunGlobal = globalThis as typeof globalThis & { Bun?: any };
 const hadBunGlobal = typeof bunGlobal.Bun !== "undefined";
@@ -934,6 +950,7 @@ describe("launch", () => {
     const customHome = mkdtempSync(join(tmpdir(), "codex-home-test-"));
     const sessionHome = join(customHome, "test-session-id");
     const configPath = join(sessionHome, "config.toml");
+    const shimDir = join(sessionHome, ".mai-wrapper-bin");
     const { readFileSync: realReadFileSync } = require("node:fs");
     const { root, wrapperPath } = createMaiWrapperFixture();
 
@@ -974,6 +991,11 @@ describe("launch", () => {
       const [, options] = mockSpawn.mock.calls[1]!;
       expect(cmdAndArgs[0]).toBe(wrapperPath);
       expect(options.env.CODEX_HOME).toBe(sessionHome);
+      expect(options.env.PATH.split(":")[0]).toBe(shimDir);
+
+      const wrapperEnv = realReadFileSync(getMaiWrapperSessionEnvPath(root), "utf-8");
+      expect(wrapperEnv).toContain('LITELLM_PROXY_URL="http://localhost:4000"');
+      expect(wrapperEnv).toContain(`CODEX_HOME='${sessionHome}'`);
 
       const config = realReadFileSync(configPath, "utf-8");
       expect(config).toContain("model_context_window = 1000000");
@@ -988,13 +1010,13 @@ describe("launch", () => {
     const customHome = mkdtempSync(join(tmpdir(), "codex-home-test-"));
     const sessionHome = join(customHome, "test-session-id");
     const configPath = join(sessionHome, "config.toml");
+    const shimDir = join(sessionHome, ".mai-wrapper-bin");
     const { readFileSync: realReadFileSync } = require("node:fs");
     const { root, wrapperPath } = createMaiWrapperFixture();
 
     try {
       mockResolveBinary.mockImplementation((name: string): string | null => {
         if (name === wrapperPath) return wrapperPath;
-        if (name === "codex") return "/opt/fake/codex";
         return "/usr/bin/claude";
       });
       mockCaptureUserShellEnv.mockReturnValue({});
@@ -1017,6 +1039,11 @@ describe("launch", () => {
       const [cmdAndArgs, options] = mockSpawn.mock.calls[0]!;
       expect(cmdAndArgs[0]).toBe(wrapperPath);
       expect(options.env.CODEX_HOME).toBe(sessionHome);
+      expect(options.env.PATH.split(":")[0]).toBe(shimDir);
+
+      const wrapperEnv = realReadFileSync(getMaiWrapperSessionEnvPath(root), "utf-8");
+      expect(wrapperEnv).toContain('LITELLM_API_KEY="sk-wrapper123"');
+      expect(wrapperEnv).toContain(`CODEX_HOME='${sessionHome}'`);
 
       const config = realReadFileSync(configPath, "utf-8");
       expect(config).toContain("model_context_window = 1000000");

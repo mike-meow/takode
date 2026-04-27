@@ -1,6 +1,7 @@
 import {
   mkdir,
   access,
+  chmod,
   copyFile,
   cp,
   readFile,
@@ -11,8 +12,8 @@ import {
   readdir,
   stat,
 } from "node:fs/promises";
-import { join, resolve, relative, dirname } from "node:path";
-import { homedir } from "node:os";
+import { join, resolve, relative, dirname, basename } from "node:path";
+import { homedir, hostname } from "node:os";
 import { getLegacyCodexHome, resolveCompanionCodexHome, resolveCompanionCodexSessionHome } from "./codex-home.js";
 import { resolveBinary, getEnrichedPath, captureUserShellEnv } from "./path-resolver.js";
 import { sessionTag } from "./session-tag.js";
@@ -25,8 +26,14 @@ const dotslashShebang = "#!/usr/bin/env dotslash";
 const codexBootstrapCacheMarker = 'CACHE_DIR = os.path.expanduser("~/.cache/codex")';
 const nodeShebangRe = /^#!.*\bnode(?:\s|$)/;
 const hostCodexShellEnvVars = ["LITELLM_API_KEY", "LITELLM_PROXY_URL", "LITELLM_BASE_URL"] as const;
+const maiWrapperRootMarker = ".mai-agents-root";
+const maiWrapperEnvHostPrefix = "companion-codex-home-";
+const maiWrapperHostnameShimDirName = ".mai-wrapper-bin";
 
 type HostCodexBinaryKind = "native" | "dotslash" | "bootstrap";
+interface MaiWrapperSessionLaunchSpec {
+  hostnameShimDir: string;
+}
 
 export class MissingCodexBinaryError extends Error {}
 
@@ -120,10 +127,94 @@ function mergePathStrings(paths: Array<string | undefined>): string {
   return merged.join(":");
 }
 
+function normalizeMaiHostname(input: string): string {
+  let normalized = input.replace(/[^A-Za-z0-9._-]/g, "-");
+  while (normalized.length > 0 && /^[._-]/.test(normalized)) normalized = normalized.slice(1);
+  while (normalized.length > 0 && /[._-]$/.test(normalized)) normalized = normalized.slice(0, -1);
+  if (normalized.length > 64) {
+    normalized = normalized.slice(0, 64);
+    while (normalized.length > 0 && /[._-]$/.test(normalized)) normalized = normalized.slice(0, -1);
+  }
+  return normalized || "host";
+}
+
+function quoteShellEnvValue(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
 function isCodexLeaderLaunch(info: CodexLaunchInfo, options: CodexLaunchOptions): boolean {
   return info.isOrchestrator === true || options.env?.TAKODE_ROLE === "orchestrator";
 }
 
+async function readMaiWrapperHostEnv(wrapperRoot: string): Promise<string> {
+  const currentHostname = hostname();
+  const shortHostname = currentHostname.split(".")[0] || currentHostname;
+  const candidates = Array.from(
+    new Set([normalizeMaiHostname(currentHostname), normalizeMaiHostname(shortHostname)]).values(),
+  ).filter(Boolean);
+
+  for (const candidate of candidates) {
+    const hostEnvPath = join(wrapperRoot, ".run", `.env-${candidate}`);
+    const hostEnvRaw = await readFile(hostEnvPath, "utf-8").catch(() => "");
+    if (hostEnvRaw) return hostEnvRaw;
+  }
+  return "";
+}
+
+function renderMaiWrapperSessionEnv(hostEnvRaw: string, codexHome: string, options: CodexLaunchOptions): string {
+  let out = hostEnvRaw;
+  if (out.length > 0 && !out.endsWith("\n")) out += "\n";
+  out += "# Takode session overrides\n";
+  out += `CODEX_HOME=${quoteShellEnvValue(codexHome)}\n`;
+
+  for (const key of hostCodexShellEnvVars) {
+    const value = options.env?.[key];
+    if (value) out += `${key}=${quoteShellEnvValue(value)}\n`;
+  }
+
+  return out;
+}
+
+async function ensureMaiWrapperHostnameShim(shimDir: string, hostnameValue: string): Promise<void> {
+  await mkdir(shimDir, { recursive: true });
+  const shimPath = join(shimDir, "hostname");
+  const shimContents = `#!/usr/bin/env bash
+printf '%s\\n' ${quoteShellEnvValue(hostnameValue)}
+`;
+  await writeFile(shimPath, shimContents, "utf-8");
+  await chmod(shimPath, 0o755);
+}
+
+async function resolveMaiWrapperSessionLaunchSpec(
+  binary: string,
+  sessionId: string,
+  codexHome: string,
+  options: CodexLaunchOptions,
+): Promise<MaiWrapperSessionLaunchSpec | null> {
+  if (basename(binary) !== "codex.sh") return null;
+
+  let resolvedBinary = binary;
+  try {
+    resolvedBinary = await realpath(binary);
+  } catch {
+    resolvedBinary = binary;
+  }
+
+  const wrapperRoot = dirname(resolvedBinary);
+  if (!(await fileExists(join(wrapperRoot, maiWrapperRootMarker)))) {
+    return null;
+  }
+
+  const hostEnvRaw = await readMaiWrapperHostEnv(wrapperRoot);
+  const overlayHostname = normalizeMaiHostname(`${maiWrapperEnvHostPrefix}${sessionId}`);
+  const overlayEnvPath = join(wrapperRoot, ".run", `.env-${overlayHostname}`);
+  const overlayEnv = renderMaiWrapperSessionEnv(hostEnvRaw, codexHome, options);
+  await mkdir(dirname(overlayEnvPath), { recursive: true });
+  await writeFile(overlayEnvPath, overlayEnv, "utf-8");
+
+  const hostnameShimDir = join(codexHome, maiWrapperHostnameShimDirName);
+  await ensureMaiWrapperHostnameShim(hostnameShimDir, overlayHostname);
+  return { hostnameShimDir };
+}
 function upsertShellEnvironmentIncludeOnly(configToml: string, requiredVars: string[]): string {
   if (requiredVars.length === 0) return configToml;
   const normalizedRequired = Array.from(new Set(requiredVars)).sort();
@@ -564,6 +655,9 @@ export async function prepareCodexSpawn(
     });
   }
 
+  const maiWrapperLaunchSpec = !isContainerized
+    ? await resolveMaiWrapperSessionLaunchSpec(binary, sessionId, codexHome, options)
+    : null;
   const args: string[] = [];
   args.push("-c", `tools.webSearch=${options.codexInternetAccess === true ? "true" : "false"}`);
   if (options.codexReasoningEffort) {
@@ -603,7 +697,14 @@ export async function prepareCodexSpawn(
   const localBinDir = join(homedir(), ".local", "bin");
   const bunBinDir = join(homedir(), ".bun", "bin");
   const enrichedPath = getEnrichedPath({ serverId });
-  const spawnPath = mergePathStrings([binaryDir, companionBinDir, localBinDir, bunBinDir, enrichedPath]);
+  const spawnPath = mergePathStrings([
+    maiWrapperLaunchSpec?.hostnameShimDir,
+    binaryDir,
+    companionBinDir,
+    localBinDir,
+    bunBinDir,
+    enrichedPath,
+  ]);
 
   let spawnCmd: string[];
   if ((await fileExists(siblingNode)) && (await shouldInvokeCodexWithSiblingNode(binary))) {
