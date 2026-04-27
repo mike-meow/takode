@@ -427,7 +427,9 @@ async function buildLatestFileStateByQuestId(
       }
     }),
   );
-  return Object.fromEntries(entries.filter((entry): entry is readonly [string, LatestQuestFileState] => entry !== null));
+  return Object.fromEntries(
+    entries.filter((entry): entry is readonly [string, LatestQuestFileState] => entry !== null),
+  );
 }
 
 function buildLatestSnapshot(
@@ -556,7 +558,9 @@ async function listQuestVersionFilesByQuest(): Promise<Map<string, QuestVersionF
   return versionFilesByQuest;
 }
 
-async function readLatestReadableQuestFromVersionFiles(versionFiles: QuestVersionFile[]): Promise<QuestmasterTask | null> {
+async function readLatestReadableQuestFromVersionFiles(
+  versionFiles: QuestVersionFile[],
+): Promise<QuestmasterTask | null> {
   for (const { file } of versionFiles) {
     const quest = await readQuestAtPath(join(QUESTMASTER_DIR, file));
     if (quest) return quest;
@@ -574,7 +578,9 @@ async function buildLatestSnapshotFromDisk(
   const latestVersionByQuestId = buildLatestVersionByQuestId(resolvedVersionFilesByQuest);
   const latestFileStateByQuestId = await buildLatestFileStateByQuestId(resolvedVersionFilesByQuest);
   const quests = await Promise.all(
-    [...resolvedVersionFilesByQuest.values()].map((versionFiles) => readLatestReadableQuestFromVersionFiles(versionFiles)),
+    [...resolvedVersionFilesByQuest.values()].map((versionFiles) =>
+      readLatestReadableQuestFromVersionFiles(versionFiles),
+    ),
   );
   return buildLatestSnapshot(
     quests.filter((quest): quest is QuestmasterTask => quest !== null),
@@ -627,10 +633,14 @@ async function updateLatestSnapshotWithQuest(quest: QuestmasterTask): Promise<vo
     const current = await readFreshLatestSnapshotOrRebuild(currentVersionFilesByQuest);
     const nextQuest = normalizeQuestOwnership(quest);
     const remaining = current.quests.filter((existing) => existing.questId !== nextQuest.questId);
-    const nextSnapshot = buildLatestSnapshot([...remaining, nextQuest], {
-      ...current.latestVersionByQuestId,
-      [nextQuest.questId]: nextQuest.version,
-    }, current.latestFileStateByQuestId);
+    const nextSnapshot = buildLatestSnapshot(
+      [...remaining, nextQuest],
+      {
+        ...current.latestVersionByQuestId,
+        [nextQuest.questId]: nextQuest.version,
+      },
+      current.latestFileStateByQuestId,
+    );
     await writeLatestSnapshot(nextSnapshot);
   });
 }
