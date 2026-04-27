@@ -897,11 +897,9 @@ describe("relaunch", () => {
     mockCaptureUserShellPath.mockImplementation(() => {
       throw new Error("host Codex relaunch should not re-capture shell PATH");
     });
-    mockCaptureUserShellEnv.mockImplementation(() => {
-      throw new Error("host Codex relaunch should not re-capture shell env");
-    });
+    mockCaptureUserShellEnv.mockReturnValue({ LITELLM_PROXY_URL: "https://shell-proxy.example" });
     mockGetEnrichedPath.mockReturnValue("/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin");
-    process.env.LITELLM_PROXY_URL = "https://proxy.example";
+    process.env.LITELLM_PROXY_URL = "https://stale-daemon-proxy.example";
 
     let resolveFirst: (code: number) => void;
     const firstProc = {
@@ -934,9 +932,11 @@ describe("relaunch", () => {
 
     expect(result).toEqual({ ok: true });
     const [, relaunchOptions] = mockSpawn.mock.calls[1];
-    expect(relaunchOptions.env.LITELLM_PROXY_URL).toBe("https://proxy.example");
+    expect(relaunchOptions.env.LITELLM_PROXY_URL).toBe("https://shell-proxy.example");
+    expect(mockCaptureUserShellEnv).toHaveBeenCalledWith(["LITELLM_API_KEY", "LITELLM_PROXY_URL", "LITELLM_BASE_URL"], {
+      allowShellSpawn: false,
+    });
     expect(mockCaptureUserShellPath).not.toHaveBeenCalled();
-    expect(mockCaptureUserShellEnv).not.toHaveBeenCalled();
   });
 
   // Regression: q-110 — without orchestrator guardrails, relaunched leaders

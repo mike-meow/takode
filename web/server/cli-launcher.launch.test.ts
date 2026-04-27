@@ -1239,13 +1239,11 @@ describe("launch", () => {
     mockCaptureUserShellPath.mockImplementation(() => {
       throw new Error("host Codex launch should not re-capture shell PATH");
     });
-    mockCaptureUserShellEnv.mockImplementation(() => {
-      throw new Error("host Codex launch should not re-capture shell env");
-    });
+    mockCaptureUserShellEnv.mockReturnValue({ LITELLM_API_KEY: "startup-warmed-key" });
     mockGetEnrichedPath.mockReturnValue(
       "/opt/homebrew/bin:/Users/test/.bun/bin:/usr/local/share/companion-extra:/usr/bin:/bin",
     );
-    process.env.LITELLM_API_KEY = "startup-warmed-key";
+    process.env.LITELLM_API_KEY = "stale-daemon-key";
 
     await launcher.launch({
       backendType: "codex",
@@ -1267,8 +1265,10 @@ describe("launch", () => {
     ]);
     expect(dirs).toContain("/usr/local/share/companion-extra");
     expect(options.env.LITELLM_API_KEY).toBe("startup-warmed-key");
+    expect(mockCaptureUserShellEnv).toHaveBeenCalledWith(["LITELLM_API_KEY", "LITELLM_PROXY_URL", "LITELLM_BASE_URL"], {
+      allowShellSpawn: false,
+    });
     expect(mockCaptureUserShellPath).not.toHaveBeenCalled();
-    expect(mockCaptureUserShellEnv).not.toHaveBeenCalled();
   });
 
   it("spawns codex via sibling node binary to bypass shebang issues", async () => {

@@ -116,9 +116,9 @@ describe("captureUserShellPath", () => {
   });
 
   it("warms critical shell env vars for later host Codex launches", () => {
-    delete process.env.LITELLM_API_KEY;
-    delete process.env.LITELLM_PROXY_URL;
-    delete process.env.LITELLM_BASE_URL;
+    process.env.LITELLM_API_KEY = "stale-daemon-key";
+    process.env.LITELLM_PROXY_URL = "https://stale-proxy.example";
+    process.env.LITELLM_BASE_URL = "https://stale-base.example";
     mockExecSync.mockReturnValueOnce(
       [
         "___PATH_START___/usr/bin:/opt/homebrew/bin___PATH_END___",
@@ -130,10 +130,14 @@ describe("captureUserShellPath", () => {
     );
 
     expect(captureUserShellPath()).toBe("/usr/bin:/opt/homebrew/bin");
-    expect(process.env.LITELLM_API_KEY).toBe("litellm-key");
+    expect(process.env.LITELLM_API_KEY).toBe("stale-daemon-key");
 
     mockExecSync.mockClear();
-    expect(captureUserShellEnv(["LITELLM_API_KEY", "LITELLM_PROXY_URL", "LITELLM_BASE_URL"])).toEqual({
+    expect(
+      captureUserShellEnv(["LITELLM_API_KEY", "LITELLM_PROXY_URL", "LITELLM_BASE_URL"], {
+        allowShellSpawn: false,
+      }),
+    ).toEqual({
       LITELLM_API_KEY: "litellm-key",
       LITELLM_PROXY_URL: "https://proxy.example",
       LITELLM_BASE_URL: "https://base.example",

@@ -14,7 +14,7 @@ import {
 import { join, resolve, relative, dirname } from "node:path";
 import { homedir } from "node:os";
 import { getLegacyCodexHome, resolveCompanionCodexHome, resolveCompanionCodexSessionHome } from "./codex-home.js";
-import { resolveBinary, getEnrichedPath } from "./path-resolver.js";
+import { resolveBinary, getEnrichedPath, captureUserShellEnv } from "./path-resolver.js";
 import { sessionTag } from "./session-tag.js";
 
 const shellEnvPolicySection = "shell_environment_policy";
@@ -118,15 +118,6 @@ function mergePathStrings(paths: Array<string | undefined>): string {
     }
   }
   return merged.join(":");
-}
-
-function readDefinedProcessEnv(names: readonly string[]): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const name of names) {
-    const value = process.env[name];
-    if (value) out[name] = value;
-  }
-  return out;
 }
 
 function upsertShellEnvironmentIncludeOnly(configToml: string, requiredVars: string[]): string {
@@ -621,7 +612,7 @@ export async function prepareCodexSpawn(
     spawnCmd = [binary, ...args];
   }
 
-  const shellEnv = readDefinedProcessEnv(hostCodexShellEnvVars);
+  const shellEnv = captureUserShellEnv([...hostCodexShellEnvVars], { allowShellSpawn: false });
 
   return {
     spawnCmd,

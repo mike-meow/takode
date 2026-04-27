@@ -155,56 +155,55 @@ let _cachedShellEnv: Record<string, string> | null = null;
  * missing from process.env. This function spawns a login shell — just like
  * captureUserShellPath() — to capture the specified env vars.
  *
- * Result is cached after the first call (the user's shell env doesn't change
- * during the server's lifetime).
+ * Result is cached after the first successful shell capture. Callers that only
+ * want already-warmed values can disable shell spawning and still get the
+ * cached shell snapshot with process.env fallback.
  */
-export function captureUserShellEnv(varNames: string[]): Record<string, string> {
-  if (_cachedShellEnv) {
-    const result: Record<string, string> = {};
-    for (const name of varNames) {
-      if (_cachedShellEnv[name] !== undefined) result[name] = _cachedShellEnv[name];
-    }
-    return result;
-  }
-
-  _cachedShellEnv = {};
-
+export function captureUserShellEnv(
+  varNames: string[],
+  options?: { allowShellSpawn?: boolean },
+): Record<string, string> {
   if (varNames.length === 0) return {};
 
-  try {
+  if (_cachedShellEnv === null && options?.allowShellSpawn !== false) {
+    _cachedShellEnv = {};
     const shell = process.env.SHELL || "/bin/bash";
-    // Print each requested var as KEY=VALUE, using a unique delimiter to avoid
-    // collisions with noisy shell startup output.
-    const printCommands = varNames.map((name) => `echo "___ENV_${name}___=\${${name}:-}"`).join("; ");
-    const captured = execSync(
-      // sync-ok: cold path, one-time capture at startup
-      `${shell} -lic '${printCommands}'`,
-      {
-        encoding: "utf-8",
-        timeout: 10_000,
-        env: { HOME: homedir(), USER: process.env.USER, SHELL: shell },
-      },
-    );
+    try {
+      // Print each requested var as KEY=VALUE, using a unique delimiter to avoid
+      // collisions with noisy shell startup output.
+      const printCommands = varNames.map((name) => `echo "___ENV_${name}___=\${${name}:-}"`).join("; ");
+      const captured = execSync(
+        // sync-ok: cold path, one-time capture at startup
+        `${shell} -lic '${printCommands}'`,
+        {
+          encoding: "utf-8",
+          timeout: 10_000,
+          env: { HOME: homedir(), USER: process.env.USER, SHELL: shell },
+        },
+      );
 
-    for (const name of varNames) {
-      const pattern = new RegExp(`___ENV_${name}___=(.*)`);
-      const match = captured.match(pattern);
-      if (match?.[1] && match[1].length > 0) {
-        _cachedShellEnv[name] = match[1];
+      for (const name of varNames) {
+        const pattern = new RegExp(`___ENV_${name}___=(.*)`);
+        const match = captured.match(pattern);
+        if (match?.[1] && match[1].length > 0) {
+          _cachedShellEnv[name] = match[1];
+        }
       }
+    } catch {
+      // Shell sourcing failed — fall back to process.env
     }
-  } catch {
-    // Shell sourcing failed — fall back to process.env
   }
 
-  // Also check process.env for any vars not captured from the shell
+  const result: Record<string, string> = {};
+  const cachedShellEnv = _cachedShellEnv ?? {};
   for (const name of varNames) {
-    if (!_cachedShellEnv[name] && process.env[name]) {
-      _cachedShellEnv[name] = process.env[name]!;
+    if (cachedShellEnv[name] !== undefined) {
+      result[name] = cachedShellEnv[name];
+      continue;
     }
+    if (process.env[name]) result[name] = process.env[name]!;
   }
-
-  return { ..._cachedShellEnv };
+  return result;
 }
 
 /** Reset the cached shell env (for testing). */
