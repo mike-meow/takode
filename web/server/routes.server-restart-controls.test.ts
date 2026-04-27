@@ -23,35 +23,46 @@ vi.mock("./path-resolver.js", () => ({
 }));
 
 import { createSettingsRoutes } from "./routes/settings.js";
+import type { PermissionRequest } from "./session-types.js";
+import { WsBridge } from "./ws-bridge.js";
 
-interface MockBridgeSession {
-  id: string;
-  isGenerating: boolean;
-  pendingPermissions: Map<string, unknown>;
+type TestCliSocket = {
+  send: ReturnType<typeof vi.fn>;
+  close: ReturnType<typeof vi.fn>;
+};
+
+function makeCliSocket(sessionId: string, sentOrder: string[]): TestCliSocket {
+  return {
+    send: vi.fn((raw: string) => {
+      const parsed = JSON.parse(raw.trim());
+      if (parsed.type === "control_request" && parsed.request?.subtype === "interrupt") {
+        sentOrder.push(sessionId);
+      }
+    }),
+    close: vi.fn(),
+  };
 }
 
 describe("server restart controls", () => {
   let app: Hono;
+  let bridge: WsBridge;
   let launcher: {
     listSessions: ReturnType<typeof vi.fn>;
     getSessionNum: ReturnType<typeof vi.fn>;
   };
-  let routeBrowserMessage: ReturnType<typeof vi.fn>;
   let requestRestart: ReturnType<typeof vi.fn>;
-  let bridgeSessions: Map<string, MockBridgeSession>;
+  let sentOrder: string[];
+  let cliSockets: Record<string, TestCliSocket>;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    bridgeSessions = new Map<string, MockBridgeSession>();
-    routeBrowserMessage = vi.fn(async () => {});
+    bridge = new WsBridge();
+    sentOrder = [];
+    cliSockets = {};
     requestRestart = vi.fn();
     launcher = {
       listSessions: vi.fn(() => []),
       getSessionNum: vi.fn((sessionId: string) => ({ leader: 5, worker: 11, approval: 17 })[sessionId] ?? null),
-    };
-    const wsBridge = {
-      getSession: vi.fn((sessionId: string) => bridgeSessions.get(sessionId) ?? null),
-      routeBrowserMessage,
     };
 
     app = new Hono();
@@ -59,20 +70,40 @@ describe("server restart controls", () => {
       "/api",
       createSettingsRoutes({
         launcher,
-        wsBridge,
+        wsBridge: bridge,
         options: { requestRestart },
         pushoverNotifier: undefined,
       } as any),
     );
   });
 
+  function attachBlockingSession(
+    sessionId: string,
+    options: { isGenerating: boolean; pendingPermissionCount?: number },
+  ): void {
+    const session = bridge.getOrCreateSession(sessionId);
+    session.isGenerating = options.isGenerating;
+    session.pendingPermissions = new Map(
+      Array.from({ length: options.pendingPermissionCount ?? 0 }, (_, index) => {
+        const requestId = `perm-${sessionId}-${index}`;
+        const request: PermissionRequest = {
+          request_id: requestId,
+          tool_name: "Bash",
+          input: {},
+          tool_use_id: `tool-${requestId}`,
+          timestamp: Date.now(),
+        };
+        return [requestId, request];
+      }),
+    );
+    const socket = makeCliSocket(sessionId, sentOrder);
+    session.backendSocket = socket as any;
+    cliSockets[sessionId] = socket;
+  }
+
   it("blocks restart when a session only has pending permissions", async () => {
     launcher.listSessions.mockReturnValue([{ sessionId: "approval", state: "connected", name: "Needs approval" }]);
-    bridgeSessions.set("approval", {
-      id: "approval",
-      isGenerating: false,
-      pendingPermissions: new Map([["perm-1", {}]]),
-    });
+    attachBlockingSession("approval", { isGenerating: false, pendingPermissionCount: 1 });
 
     const res = await app.request("/api/server/restart", { method: "POST" });
 
@@ -84,47 +115,25 @@ describe("server restart controls", () => {
     expect(requestRestart).not.toHaveBeenCalled();
   });
 
-  it("interrupts restart blockers in child-before-leader order with user semantics", async () => {
+  it("interrupts restart blockers through the live bridge surface in child-before-leader order", async () => {
     launcher.listSessions.mockReturnValue([
       { sessionId: "leader", state: "connected", name: "Leader session" },
       { sessionId: "worker", state: "connected", name: "Worker session", herdedBy: "leader" },
       { sessionId: "approval", state: "connected", name: "Needs approval" },
       { sessionId: "idle", state: "connected", name: "Idle session" },
     ]);
-    bridgeSessions.set("leader", {
-      id: "leader",
-      isGenerating: true,
-      pendingPermissions: new Map(),
-    });
-    bridgeSessions.set("worker", {
-      id: "worker",
-      isGenerating: true,
-      pendingPermissions: new Map(),
-    });
-    bridgeSessions.set("approval", {
-      id: "approval",
-      isGenerating: false,
-      pendingPermissions: new Map([
-        ["perm-1", {}],
-        ["perm-2", {}],
-      ]),
-    });
-    bridgeSessions.set("idle", {
-      id: "idle",
-      isGenerating: false,
-      pendingPermissions: new Map(),
-    });
+    attachBlockingSession("leader", { isGenerating: true });
+    attachBlockingSession("worker", { isGenerating: true });
+    attachBlockingSession("approval", { isGenerating: false, pendingPermissionCount: 2 });
+    attachBlockingSession("idle", { isGenerating: false });
+
+    expect((bridge as any).routeBrowserMessage).toBeUndefined();
 
     const res = await app.request("/api/server/interrupt-all", { method: "POST" });
     const body = await res.json();
 
     expect(res.status).toBe(200);
-    expect(routeBrowserMessage.mock.calls.map(([session]) => session.id)).toEqual(["worker", "leader", "approval"]);
-    expect(routeBrowserMessage.mock.calls.map(([, msg]) => msg)).toEqual([
-      { type: "interrupt", interruptSource: "user" },
-      { type: "interrupt", interruptSource: "user" },
-      { type: "interrupt", interruptSource: "user" },
-    ]);
+    expect(sentOrder).toEqual(["worker", "leader", "approval"]);
     expect(body).toEqual({
       ok: true,
       interrupted: [
@@ -135,5 +144,19 @@ describe("server restart controls", () => {
       skipped: [],
       failures: [],
     });
+
+    const workerSession = bridge.getSession("worker");
+    const leaderSession = bridge.getSession("leader");
+    expect(workerSession?.interruptSourceDuringTurn).toBe("user");
+    expect(workerSession?.interruptedDuringTurn).toBe(true);
+    expect(workerSession?.messageHistory).not.toContainEqual(expect.objectContaining({ type: "user_message" }));
+    expect(leaderSession?.interruptSourceDuringTurn).toBe("user");
+
+    for (const sessionId of ["worker", "leader", "approval"] as const) {
+      expect(cliSockets[sessionId].send).toHaveBeenCalledTimes(1);
+      const payload = JSON.parse(cliSockets[sessionId].send.mock.calls[0][0].trim());
+      expect(payload.type).toBe("control_request");
+      expect(payload.request?.subtype).toBe("interrupt");
+    }
   });
 });

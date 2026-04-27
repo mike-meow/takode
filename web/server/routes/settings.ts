@@ -119,27 +119,22 @@ export function createSettingsRoutes(ctx: RouteContext) {
 
   api.post("/server/interrupt-all", async (c) => {
     const blockers = sortInterruptSessionsByDependency(getRestartBlockingSessions());
-    const bridgeAny = wsBridge as any;
     const interrupted: Array<{ sessionId: string; label: string; reasons: string[] }> = [];
     const skipped: Array<{ sessionId: string; label: string; reasons: string[]; detail: string }> = [];
     const failures: Array<{ sessionId: string; label: string; reasons: string[]; detail: string }> = [];
 
     for (const blocker of blockers) {
-      const bridgeSession = wsBridge.getSession(blocker.sessionId);
-      if (!bridgeSession) {
-        skipped.push({
-          sessionId: blocker.sessionId,
-          label: blocker.label,
-          reasons: blocker.reasons,
-          detail: "Session was no longer loaded when interrupts were dispatched.",
-        });
-        continue;
-      }
       try {
-        if (typeof bridgeAny.routeBrowserMessage !== "function") {
-          throw new Error("Interrupt routing unavailable");
+        const routed = await wsBridge.interruptSession(blocker.sessionId, "user");
+        if (!routed) {
+          skipped.push({
+            sessionId: blocker.sessionId,
+            label: blocker.label,
+            reasons: blocker.reasons,
+            detail: "Session was no longer loaded when interrupts were dispatched.",
+          });
+          continue;
         }
-        await bridgeAny.routeBrowserMessage(bridgeSession, { type: "interrupt", interruptSource: "user" });
         interrupted.push({
           sessionId: blocker.sessionId,
           label: blocker.label,

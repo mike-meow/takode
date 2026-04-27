@@ -1171,6 +1171,18 @@ export class WsBridge {
     return this.sessions.get(sessionId);
   }
 
+  async interruptSession(sessionId: string, source: InterruptSource = "user"): Promise<boolean> {
+    const session = this.sessions.get(sessionId);
+    if (!session) return false;
+    await routeBrowserMessageController(
+      session,
+      { type: "interrupt", interruptSource: source },
+      undefined,
+      this.getBrowserRoutingDeps(),
+    );
+    return true;
+  }
+
   prepareSessionForRevert(
     sessionId: string,
     truncateIdx: number,
