@@ -1,5 +1,5 @@
 import { mkdirSync } from "node:fs";
-import { readdir, readFile, writeFile, unlink, mkdir, rm, stat } from "node:fs/promises";
+import { readdir, readFile, writeFile, unlink, mkdir, rm, stat, rename } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { extname } from "node:path";
@@ -165,10 +165,20 @@ const QUESTMASTER_DIR = join(homedir(), ".companion", "questmaster");
 const IMAGES_DIR = join(QUESTMASTER_DIR, "images");
 const COUNTER_FILE = join(QUESTMASTER_DIR, "_quest_counter.json");
 const CREATE_LOCK_DIR = join(QUESTMASTER_DIR, "_create.lock");
+const LATEST_SNAPSHOT_FILE = join(QUESTMASTER_DIR, "_latest_snapshot.json");
+const LATEST_SNAPSHOT_LOCK_DIR = join(QUESTMASTER_DIR, "_latest_snapshot.lock");
 const CREATE_LOCK_STALE_MS = 30_000;
 const CREATE_LOCK_RETRY_MS = 10;
+const LATEST_SNAPSHOT_LOCK_STALE_MS = 120_000;
 
 let pendingCreate: Promise<unknown> = Promise.resolve();
+
+type LatestQuestSnapshot = {
+  activeQuestBySessionId: Record<string, string>;
+  quests: QuestmasterTask[];
+  updatedAt: number;
+  version: 1;
+};
 
 // Cold-path: synchronous mkdir at module load is fine
 mkdirSync(QUESTMASTER_DIR, { recursive: true });
@@ -179,6 +189,10 @@ async function ensureDir(): Promise<void> {
 
 async function ensureImagesDir(): Promise<void> {
   await mkdir(IMAGES_DIR, { recursive: true });
+}
+
+function latestSnapshotTempPath(): string {
+  return `${LATEST_SNAPSHOT_FILE}.${process.pid}.${randomBytes(4).toString("hex")}.tmp`;
 }
 
 function filePath(id: string): string {
@@ -287,6 +301,166 @@ async function withCreateLock<T>(fn: () => Promise<T>): Promise<T> {
   return result;
 }
 
+function buildActiveQuestBySessionId(quests: QuestmasterTask[]): Record<string, string> {
+  const activeQuestBySessionId: Record<string, string> = {};
+  for (const quest of quests) {
+    if (quest.status !== "in_progress") continue;
+    const sessionId = getActiveSessionId(quest);
+    if (!sessionId) continue;
+    activeQuestBySessionId[sessionId] = quest.questId;
+  }
+  return activeQuestBySessionId;
+}
+
+function sortLatestQuests(quests: QuestmasterTask[]): QuestmasterTask[] {
+  return [...quests].sort((a, b) => b.createdAt - a.createdAt);
+}
+
+function buildLatestSnapshot(quests: QuestmasterTask[]): LatestQuestSnapshot {
+  const normalized = sortLatestQuests(quests.map((quest) => normalizeQuestOwnership(quest)));
+  return {
+    version: 1,
+    quests: normalized,
+    activeQuestBySessionId: buildActiveQuestBySessionId(normalized),
+    updatedAt: Date.now(),
+  };
+}
+
+async function writeLatestSnapshot(snapshot: LatestQuestSnapshot): Promise<void> {
+  const tempPath = latestSnapshotTempPath();
+  await writeFile(tempPath, JSON.stringify(snapshot, null, 2), "utf-8");
+  await rename(tempPath, LATEST_SNAPSHOT_FILE);
+}
+
+async function readLatestSnapshotFile(): Promise<LatestQuestSnapshot | null> {
+  await ensureDir();
+  try {
+    const raw = await readFile(LATEST_SNAPSHOT_FILE, "utf-8");
+    const parsed = JSON.parse(raw) as {
+      quests?: QuestmasterTask[];
+      updatedAt?: number;
+      version?: number;
+    };
+    if (parsed.version !== 1 || !Array.isArray(parsed.quests)) return null;
+    const quests = sortLatestQuests(parsed.quests.map((quest) => normalizeQuestOwnership(quest)));
+    return {
+      version: 1,
+      quests,
+      activeQuestBySessionId: buildActiveQuestBySessionId(quests),
+      updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : Date.now(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function isLatestSnapshotLockStale(): Promise<boolean> {
+  try {
+    const lockStat = await stat(LATEST_SNAPSHOT_LOCK_DIR);
+    return Date.now() - lockStat.mtimeMs > LATEST_SNAPSHOT_LOCK_STALE_MS;
+  } catch {
+    return false;
+  }
+}
+
+async function acquireLatestSnapshotFilesystemLock(): Promise<() => Promise<void>> {
+  await ensureDir();
+  const startedAt = Date.now();
+
+  while (true) {
+    try {
+      await mkdir(LATEST_SNAPSHOT_LOCK_DIR);
+      return async () => {
+        await rm(LATEST_SNAPSHOT_LOCK_DIR, { recursive: true, force: true });
+      };
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException | undefined)?.code;
+      if (code !== "EEXIST") throw err;
+
+      if (await isLatestSnapshotLockStale()) {
+        await rm(LATEST_SNAPSHOT_LOCK_DIR, { recursive: true, force: true }).catch(() => {});
+        continue;
+      }
+
+      if (Date.now() - startedAt > LATEST_SNAPSHOT_LOCK_STALE_MS * 2) {
+        throw new Error("Timed out waiting for latest quest snapshot lock");
+      }
+
+      await sleep(CREATE_LOCK_RETRY_MS);
+    }
+  }
+}
+
+async function withLatestSnapshotLock<T>(fn: () => Promise<T>): Promise<T> {
+  const release = await acquireLatestSnapshotFilesystemLock();
+  try {
+    return await fn();
+  } finally {
+    await release();
+  }
+}
+
+async function listLatestQuestVersionFiles(): Promise<{ file: string; questId: string; version: number }[]> {
+  await ensureDir();
+  const latestByQuestId = new Map<string, { file: string; questId: string; version: number }>();
+  try {
+    const files = await readdir(QUESTMASTER_DIR);
+    for (const file of files) {
+      const match = file.match(/^(q-\d+)-v(\d+)\.json$/);
+      if (!match) continue;
+      const questId = match[1];
+      const version = Number(match[2]);
+      const current = latestByQuestId.get(questId);
+      if (!current || version > current.version) {
+        latestByQuestId.set(questId, { file, questId, version });
+      }
+    }
+  } catch {
+    return [];
+  }
+  return [...latestByQuestId.values()];
+}
+
+async function buildLatestSnapshotFromDisk(): Promise<LatestQuestSnapshot> {
+  const latestVersionFiles = await listLatestQuestVersionFiles();
+  if (latestVersionFiles.length === 0) {
+    return buildLatestSnapshot([]);
+  }
+  const quests = await Promise.all(latestVersionFiles.map(({ file }) => readQuestAtPath(join(QUESTMASTER_DIR, file))));
+  return buildLatestSnapshot(quests.filter((quest): quest is QuestmasterTask => quest !== null));
+}
+
+async function loadLatestSnapshot(): Promise<LatestQuestSnapshot> {
+  const cached = await readLatestSnapshotFile();
+  if (cached) return cached;
+
+  return withLatestSnapshotLock(async () => {
+    const afterLock = await readLatestSnapshotFile();
+    if (afterLock) return afterLock;
+    const rebuilt = await buildLatestSnapshotFromDisk();
+    await writeLatestSnapshot(rebuilt);
+    return rebuilt;
+  });
+}
+
+async function updateLatestSnapshotWithQuest(quest: QuestmasterTask): Promise<void> {
+  await withLatestSnapshotLock(async () => {
+    const current = (await readLatestSnapshotFile()) ?? (await buildLatestSnapshotFromDisk());
+    const nextQuest = normalizeQuestOwnership(quest);
+    const remaining = current.quests.filter((existing) => existing.questId !== nextQuest.questId);
+    const nextSnapshot = buildLatestSnapshot([...remaining, nextQuest]);
+    await writeLatestSnapshot(nextSnapshot);
+  });
+}
+
+async function removeQuestFromLatestSnapshot(questId: string): Promise<void> {
+  await withLatestSnapshotLock(async () => {
+    const current = (await readLatestSnapshotFile()) ?? (await buildLatestSnapshotFromDisk());
+    const nextSnapshot = buildLatestSnapshot(current.quests.filter((quest) => quest.questId !== questId));
+    await writeLatestSnapshot(nextSnapshot);
+  });
+}
+
 // ─── Internal helpers ────────────────────────────────────────────────────────
 
 async function readQuest(id: string): Promise<QuestmasterTask | null> {
@@ -310,7 +484,9 @@ async function readQuestAtPath(path: string): Promise<QuestmasterTask | null> {
 
 async function writeQuest(quest: QuestmasterTask): Promise<void> {
   await ensureDir();
-  await writeFile(filePath(quest.id), JSON.stringify(normalizeQuestOwnership(quest), null, 2), "utf-8");
+  const normalized = normalizeQuestOwnership(quest);
+  await writeFile(filePath(normalized.id), JSON.stringify(normalized, null, 2), "utf-8");
+  await updateLatestSnapshotWithQuest(normalized);
 }
 
 function escapeRegExp(text: string): string {
@@ -354,34 +530,6 @@ async function readLatestQuestVersionForId(questId: string): Promise<Questmaster
   return null;
 }
 
-/** Read all version files, grouped by questId. */
-async function readAllVersions(): Promise<Map<string, QuestmasterTask[]>> {
-  await ensureDir();
-  const groups = new Map<string, QuestmasterTask[]>();
-  try {
-    const files = (await readdir(QUESTMASTER_DIR)).filter((f) => f.endsWith(".json") && !f.startsWith("_"));
-    for (const file of files) {
-      try {
-        const raw = await readFile(join(QUESTMASTER_DIR, file), "utf-8");
-        const quest = normalizeQuestOwnership(JSON.parse(raw) as QuestmasterTask);
-        const arr = groups.get(quest.questId) || [];
-        arr.push(quest);
-        groups.set(quest.questId, arr);
-      } catch {
-        // Skip corrupt files
-      }
-    }
-  } catch {
-    // Directory might not exist yet
-  }
-  return groups;
-}
-
-/** Get the latest version for a questId from a list of versions. */
-function latestVersion(versions: QuestmasterTask[]): QuestmasterTask {
-  return versions.reduce((a, b) => (a.version > b.version ? a : b));
-}
-
 /** Build the next version ID for a questId. */
 function nextVersionId(questId: string, currentVersion: number): string {
   return `${questId}-v${currentVersion + 1}`;
@@ -391,13 +539,8 @@ function nextVersionId(questId: string, currentVersion: number): string {
 
 /** List the latest version of every quest. */
 export async function listQuests(): Promise<QuestmasterTask[]> {
-  const groups = await readAllVersions();
-  const result: QuestmasterTask[] = [];
-  for (const versions of groups.values()) {
-    result.push(latestVersion(versions));
-  }
-  result.sort((a, b) => b.createdAt - a.createdAt);
-  return result;
+  const snapshot = await loadLatestSnapshot();
+  return snapshot.quests;
 }
 
 /** Get the latest version of a quest by questId. */
@@ -508,6 +651,7 @@ export async function deleteQuest(questId: string): Promise<boolean> {
       // ok
     }
   }
+  await removeQuestFromLatestSnapshot(questId);
   return true;
 }
 
@@ -706,11 +850,10 @@ export async function transitionQuest(questId: string, input: QuestTransitionInp
  * Returns null if the session has no in_progress quest.
  */
 export async function getActiveQuestForSession(sessionId: string): Promise<QuestmasterTask | null> {
-  const all = await listQuests();
-  return (
-    all.find((q) => q.status === "in_progress" && "sessionId" in q && (q as QuestInProgress).sessionId === sessionId) ??
-    null
-  );
+  const snapshot = await loadLatestSnapshot();
+  const questId = snapshot.activeQuestBySessionId[sessionId];
+  if (!questId) return null;
+  return snapshot.quests.find((quest) => quest.questId === questId) ?? null;
 }
 
 /** Convenience: claim a quest (transition to in_progress). */
@@ -984,7 +1127,7 @@ export async function _resetForTests(): Promise<void> {
     const files = await readdir(QUESTMASTER_DIR);
     for (const file of files) {
       try {
-        await unlink(join(QUESTMASTER_DIR, file));
+        await rm(join(QUESTMASTER_DIR, file), { recursive: true, force: true });
       } catch {
         // ok
       }

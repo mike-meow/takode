@@ -40,6 +40,17 @@ function questDir(): string {
   return join(tempDir, ".companion", "questmaster");
 }
 
+function latestSnapshotPath(): string {
+  return join(questDir(), "_latest_snapshot.json");
+}
+
+function questFileReads(reads: string[]): string[] {
+  return reads
+    .filter((path) => path.endsWith(".json"))
+    .map((path) => basename(path))
+    .filter((name) => name.startsWith("q-"));
+}
+
 async function importQuestStoreWithReadSpy(reads: string[]): Promise<typeof import("./quest-store.js")> {
   vi.resetModules();
   mockHomedir.set(tempDir);
@@ -195,6 +206,43 @@ describe("listQuests", () => {
     expect(quests[0].title).toBe("Newer");
     expect(quests[1].title).toBe("Older");
   });
+
+  it("reads the derived latest snapshot instead of individual quest version files on repeated list calls", async () => {
+    const reads: string[] = [];
+    const instrumentedStore = await importQuestStoreWithReadSpy(reads);
+
+    await instrumentedStore.createQuest({ title: "Primary" });
+    await instrumentedStore.transitionQuest("q-1", {
+      status: "refined",
+      description: "Details",
+    });
+    await instrumentedStore.createQuest({ title: "Unrelated" });
+
+    reads.length = 0;
+    const quests = await instrumentedStore.listQuests();
+    expect(quests.map((quest) => quest.id)).toEqual(["q-2-v1", "q-1-v2"]);
+    expect(questFileReads(reads)).toEqual([]);
+    expect(reads.map((path) => basename(path))).toContain(basename(latestSnapshotPath()));
+  });
+
+  it("rebuilds the latest snapshot from only the latest quest version files when the snapshot is missing", async () => {
+    const initialReads: string[] = [];
+    const instrumentedStore = await importQuestStoreWithReadSpy(initialReads);
+
+    await instrumentedStore.createQuest({ title: "Primary" });
+    await instrumentedStore.transitionQuest("q-1", {
+      status: "refined",
+      description: "Details",
+    });
+    await instrumentedStore.createQuest({ title: "Secondary" });
+    await writeFile(latestSnapshotPath(), "", "utf-8");
+
+    const rebuildReads: string[] = [];
+    const rebuiltStore = await importQuestStoreWithReadSpy(rebuildReads);
+    const quests = await rebuiltStore.listQuests();
+    expect(quests.map((quest) => quest.id)).toEqual(["q-2-v1", "q-1-v2"]);
+    expect(questFileReads(rebuildReads).sort()).toEqual(["q-1-v2.json", "q-2-v1.json"]);
+  });
 });
 
 // ===========================================================================
@@ -341,6 +389,27 @@ describe("getQuestHistory", () => {
       .filter((name) => name.startsWith("q-"))
       .sort();
     expect(questReads).toEqual(["q-1-v1.json", "q-1-v2.json", "q-1-v3.json"]);
+  });
+});
+
+describe("getActiveQuestForSession", () => {
+  it("uses the derived latest snapshot instead of scanning individual quest files", async () => {
+    const reads: string[] = [];
+    const instrumentedStore = await importQuestStoreWithReadSpy(reads);
+
+    await instrumentedStore.createQuest({ title: "Primary" });
+    await instrumentedStore.transitionQuest("q-1", {
+      status: "refined",
+      description: "Details",
+    });
+    await instrumentedStore.claimQuest("q-1", "session-abc");
+    await instrumentedStore.createQuest({ title: "Unrelated" });
+
+    reads.length = 0;
+    const active = await instrumentedStore.getActiveQuestForSession("session-abc");
+    expect(active?.questId).toBe("q-1");
+    expect(questFileReads(reads)).toEqual([]);
+    expect(reads.map((path) => basename(path))).toContain(basename(latestSnapshotPath()));
   });
 });
 
@@ -569,6 +638,30 @@ describe("claimQuest", () => {
 
   it("returns null for non-existent quest", async () => {
     expect(await questStore.claimQuest("q-999", "sess-1")).toBeNull();
+  });
+
+  it("checks existing active ownership via the latest snapshot without scanning unrelated quest files", async () => {
+    const reads: string[] = [];
+    const instrumentedStore = await importQuestStoreWithReadSpy(reads);
+
+    await instrumentedStore.createQuest({ title: "Already active" });
+    await instrumentedStore.transitionQuest("q-1", {
+      status: "refined",
+      description: "Primary details",
+    });
+    await instrumentedStore.claimQuest("q-1", "sess-1");
+    await instrumentedStore.createQuest({ title: "Second quest" });
+    await instrumentedStore.transitionQuest("q-2", {
+      status: "refined",
+      description: "Secondary details",
+    });
+
+    reads.length = 0;
+    await expect(instrumentedStore.claimQuest("q-2", "sess-1")).rejects.toThrow(
+      'Session already has an active quest: q-1 "Already active".',
+    );
+    expect(questFileReads(reads)).toEqual(["q-2-v2.json"]);
+    expect(reads.map((path) => basename(path))).toContain(basename(latestSnapshotPath()));
   });
 });
 
