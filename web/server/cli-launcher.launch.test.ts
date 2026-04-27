@@ -1077,12 +1077,9 @@ describe("launch", () => {
     try {
       writeFileSync(
         join(hostCodexHome, "config.toml"),
-        [
-          'model = "gpt-5.5"',
-          "model_context_window = 1000000",
-          "model_auto_compact_token_limit = 750000",
-          "",
-        ].join("\n"),
+        ['model = "gpt-5.5"', "model_context_window = 1000000", "model_auto_compact_token_limit = 750000", ""].join(
+          "\n",
+        ),
       );
       writeFileSync(
         join(hostCodexHome, "models_cache.json"),
@@ -1313,7 +1310,7 @@ describe("launch", () => {
       bashIndex = cmdAndArgs.indexOf("-lc");
       expect(bashIndex).toBeGreaterThan(-1);
       innerScript = cmdAndArgs[bashIndex + 1];
-      expect(innerScript).toContain('cat > "/root/.codex/config.toml" <<\'__COMPANION_CODEX_CONFIG__\'');
+      expect(innerScript).toContain("cat > \"/root/.codex/config.toml\" <<'__COMPANION_CODEX_CONFIG__'");
       expect(innerScript).toContain("model_context_window = 1000000");
       expect(innerScript).toContain("model_auto_compact_token_limit = 1000000");
       expect(innerScript).toContain("exec 'codex' '-c' 'tools.webSearch=false' '-a'");
