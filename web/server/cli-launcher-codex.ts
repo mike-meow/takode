@@ -4,8 +4,12 @@ import {
   chmod,
   copyFile,
   cp,
+  lstat,
   readFile,
+  readlink,
   realpath,
+  rm,
+  symlink,
   writeFile,
   unlink,
   open,
@@ -517,6 +521,43 @@ async function pruneBrokenSymlinks(root: string): Promise<void> {
   }
 }
 
+function resolveSymlinkTargetPath(linkPath: string, targetPath: string): string {
+  return resolve(dirname(linkPath), targetPath);
+}
+
+async function syncSeededDirectory(src: string, dest: string): Promise<"missing" | "unchanged" | "created"> {
+  if (!(await fileExists(src))) return "missing";
+
+  const srcStat = await lstat(src).catch(() => null);
+  if (!srcStat) {
+    if (await fileExists(dest)) return "unchanged";
+    await cp(src, dest, { recursive: true });
+    return "created";
+  }
+
+  if (srcStat.isSymbolicLink()) {
+    const srcTargetRaw = await readlink(src).catch(() => null);
+    if (!srcTargetRaw) return "unchanged";
+
+    const desiredTarget = resolveSymlinkTargetPath(src, srcTargetRaw);
+    const destStat = await lstat(dest).catch(() => null);
+    if (destStat?.isSymbolicLink()) {
+      const destTargetRaw = await readlink(dest).catch(() => null);
+      if (destTargetRaw && resolveSymlinkTargetPath(dest, destTargetRaw) === desiredTarget) {
+        return "unchanged";
+      }
+    }
+
+    await rm(dest, { recursive: true, force: true }).catch(() => {});
+    await symlink(desiredTarget, dest);
+    return "created";
+  }
+
+  if (await fileExists(dest)) return "unchanged";
+  await cp(src, dest, { recursive: true });
+  return "created";
+}
+
 async function prepareCodexHome(
   codexHome: string,
   resumeCliSessionId?: string,
@@ -548,12 +589,8 @@ async function prepareCodexHome(
     try {
       const src = join(sourceHome, name);
       const dest = join(codexHome, name);
-      let copied = false;
-      if (!(await fileExists(dest)) && (await fileExists(src))) {
-        await cp(src, dest, { recursive: true });
-        copied = true;
-      }
-      if (name === "skills" && (copied || (await fileExists(dest)))) {
+      const synced = await syncSeededDirectory(src, dest);
+      if (name === "skills" && (synced === "created" || (await fileExists(dest)))) {
         await pruneBrokenSymlinks(dest);
       }
     } catch (error) {

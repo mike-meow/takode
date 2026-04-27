@@ -1,5 +1,15 @@
 import { vi } from "vitest";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { homedir, hostname, tmpdir } from "node:os";
 
@@ -1129,6 +1139,49 @@ describe("launch", () => {
       });
     } finally {
       rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("refreshes stale MAI-wrapper-backed copied skills when the wrapper host home now exposes a symlink", async () => {
+    const customHome = mkdtempSync(join(tmpdir(), "codex-home-test-"));
+    const hostCodexHome = mkdtempSync(join(tmpdir(), "codex-host-home-test-"));
+    const sharedSkills = mkdtempSync(join(tmpdir(), "codex-shared-skills-test-"));
+    const sessionHome = join(customHome, "test-session-id");
+    const sessionSkills = join(sessionHome, "skills");
+    const { root, wrapperPath } = createMaiWrapperFixture({ hostCodexHome });
+
+    try {
+      mkdirSync(join(sharedSkills, ".system"), { recursive: true });
+      writeFileSync(join(sharedSkills, ".system", "README.txt"), "shared skill\n");
+      symlinkSync(sharedSkills, join(hostCodexHome, "skills"));
+
+      mkdirSync(join(sessionSkills, ".system", "imagegen"), { recursive: true });
+      writeFileSync(join(sessionSkills, ".system", "imagegen", "SKILL.md"), "stale copied skill\n");
+
+      mockResolveBinary.mockImplementation((name: string): string | null => {
+        if (name === wrapperPath) return wrapperPath;
+        return "/usr/bin/claude";
+      });
+      mockCaptureUserShellEnv.mockReturnValue({});
+      mockSpawn.mockReturnValueOnce(createMockCodexProc());
+
+      await launcher.launch({
+        backendType: "codex",
+        cwd: "/tmp/project",
+        codexSandbox: "workspace-write",
+        codexBinary: wrapperPath,
+        codexHome: customHome,
+      });
+      await waitForSpawnCalls(1);
+
+      expect(lstatSync(sessionSkills).isSymbolicLink()).toBe(true);
+      expect(realpathSync(sessionSkills)).toBe(realpathSync(sharedSkills));
+      expect(existsSync(join(sessionSkills, ".system", "imagegen", "SKILL.md"))).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(customHome, { recursive: true, force: true });
+      rmSync(hostCodexHome, { recursive: true, force: true });
+      rmSync(sharedSkills, { recursive: true, force: true });
     }
   });
 
