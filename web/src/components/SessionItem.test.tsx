@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { render, fireEvent, screen } from "@testing-library/react";
 import "@testing-library/jest-dom";
-import type { ComponentProps } from "react";
+import { useState, type ComponentProps } from "react";
 import type { SidebarSessionItem as SessionItemType } from "../utils/sidebar-session-item.js";
 import type { HerdGroupBadgeTheme } from "../utils/herd-group-theme.js";
 
@@ -84,6 +84,40 @@ function renderSessionItem(overrides: Partial<ComponentProps<typeof SessionItem>
     onArchive,
     onSelect,
   };
+}
+
+function EditingSessionItem({
+  onConfirmRename = vi.fn(),
+  onCancelRename = vi.fn(),
+}: {
+  onConfirmRename?: ReturnType<typeof vi.fn>;
+  onCancelRename?: ReturnType<typeof vi.fn>;
+}) {
+  const [editingName, setEditingName] = useState("Session");
+
+  return (
+    <SessionItem
+      session={makeSession()}
+      isActive={false}
+      isArchived={false}
+      sessionName="Session"
+      sessionPreview="preview"
+      permCount={0}
+      isRecentlyRenamed={false}
+      onSelect={vi.fn()}
+      onStartRename={vi.fn()}
+      onArchive={vi.fn()}
+      onUnarchive={vi.fn()}
+      onDelete={vi.fn()}
+      onClearRecentlyRenamed={vi.fn()}
+      editingSessionId="s1"
+      editingName={editingName}
+      setEditingName={setEditingName}
+      onConfirmRename={onConfirmRename as () => void}
+      onCancelRename={onCancelRename as () => void}
+      editInputRef={{ current: null }}
+    />
+  );
 }
 
 function setSessionNotifications(sessionId: string, notifications: Array<any>) {
@@ -206,6 +240,28 @@ describe("SessionItem archived worktree cleanup status", () => {
     });
 
     expect(screen.getByText("wt")).toHaveAttribute("title", "git worktree remove failed");
+  });
+});
+
+describe("SessionItem rename mode", () => {
+  it("keeps the rename input outside the clickable row button so spaces do not trigger row activation", () => {
+    // Regression guard for q-676: the rename input must not be nested inside the
+    // row button, because Space can activate buttons and collapse edit mode.
+    const onConfirmRename = vi.fn();
+    const onCancelRename = vi.fn();
+
+    render(<EditingSessionItem onConfirmRename={onConfirmRename} onCancelRename={onCancelRename} />);
+    const input = screen.getByDisplayValue("Session");
+
+    input.focus();
+    fireEvent.change(input, { target: { value: "Session Name" } });
+    fireEvent.keyDown(input, { key: " " });
+
+    expect(input.closest("button")).toBeNull();
+    expect(screen.getByDisplayValue("Session Name")).toBeInTheDocument();
+    expect(document.activeElement).toBe(input);
+    expect(onConfirmRename).not.toHaveBeenCalled();
+    expect(onCancelRename).not.toHaveBeenCalled();
   });
 });
 
