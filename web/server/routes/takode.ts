@@ -137,8 +137,11 @@ export function createTakodeRoutes(ctx: RouteContext) {
   };
   const notificationPersistDeps = {
     broadcastToBrowsers: (session: BridgeSession, msg: unknown) => wsBridge.broadcastToSession(session.id, msg as any),
-    broadcastBoard: (session: BridgeSession, board: unknown[], completedBoard: unknown[]) =>
-      wsBridge.broadcastToSession(session.id, { type: "board_updated", board, completedBoard } as any),
+    broadcastBoard: (
+      session: BridgeSession,
+      board: import("../session-types.js").BoardRow[],
+      completedBoard: import("../session-types.js").BoardRow[],
+    ) => broadcastBoardUpdate(session, board, completedBoard),
     persistSession: (session: BridgeSession) => wsBridge.persistSessionById(session.id),
   };
   const boardWatchdogDeps = {
@@ -170,8 +173,11 @@ export function createTakodeRoutes(ctx: RouteContext) {
     getBoardDispatchableSignature: (session: BridgeSession, questId: string) =>
       wsBridge.getBoardDispatchableSignature(session.id, questId),
     markNotificationDone: boardWatchdogDeps.markNotificationDone,
-    broadcastBoard: (session: BridgeSession, board: unknown[], completedBoard: unknown[]) =>
-      wsBridge.broadcastToSession(session.id, { type: "board_updated", board, completedBoard } as any),
+    broadcastBoard: (
+      session: BridgeSession,
+      board: import("../session-types.js").BoardRow[],
+      completedBoard: import("../session-types.js").BoardRow[],
+    ) => broadcastBoardUpdate(session, board, completedBoard),
     persistSession: (session: BridgeSession) => wsBridge.persistSessionById(session.id),
     notifyReview: (sessionId: string, summary: string) => {
       const session = wsBridge.getSession(sessionId);
@@ -331,12 +337,40 @@ export function createTakodeRoutes(ctx: RouteContext) {
     return { notifications: unresolved, resolvedCount };
   };
 
+  const getBoardStatusSessions = () =>
+    launcher.listSessions().map((session) => {
+      const bridgeSession = wsBridge.getSession(session.sessionId);
+      const cliConnected = wsBridge.isBackendConnected(session.sessionId);
+      return {
+        sessionId: session.sessionId,
+        sessionNum: launcher.getSessionNum(session.sessionId) ?? null,
+        reviewerOf: session.reviewerOf,
+        archived: session.archived,
+        state: cliConnected && bridgeSession?.isGenerating ? "running" : session.state,
+        cliConnected,
+        name: sessionNames.getName(session.sessionId) ?? session.name,
+      };
+    });
+
   const buildBoardRowSessionStatuses = async (rows: import("../session-types.js").BoardRow[]) => {
     if (rows.length === 0) return {};
-
-    const sessions = await buildEnrichedSessions();
-    return buildBoardRowSessionStatusesController(rows, sessions);
+    return buildBoardRowSessionStatusesController(rows, getBoardStatusSessions());
   };
+
+  const broadcastBoardUpdate = (
+    session: BridgeSession,
+    board: import("../session-types.js").BoardRow[],
+    completedBoard: import("../session-types.js").BoardRow[],
+  ) =>
+    wsBridge.broadcastToSession(session.id, {
+      type: "board_updated",
+      board,
+      completedBoard,
+      rowSessionStatuses: buildBoardRowSessionStatusesController(
+        [...board, ...completedBoard],
+        getBoardStatusSessions(),
+      ),
+    } as any);
 
   api.get("/takode/me", (c) => {
     const auth = authenticateTakodeCaller(c);

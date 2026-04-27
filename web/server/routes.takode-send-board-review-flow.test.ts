@@ -841,6 +841,52 @@ describe("Takode server-authoritative auth", () => {
     ]);
   });
 
+  it("includes row session statuses in live board_updated broadcasts after board mutations", async () => {
+    const sessions = setupTakodeSessions();
+    sessions["worker-1"].sessionNum = 11;
+    sessions["worker-1"].state = "running";
+    sessions["reviewer-1"] = {
+      sessionId: "reviewer-1",
+      sessionNum: 12,
+      state: "running",
+      cwd: "/repo/r1",
+      createdAt: Date.now(),
+      herdedBy: "orch-1",
+      reviewerOf: 11,
+      archived: false,
+    };
+    launcher.listSessions.mockReturnValue(Object.values(sessions));
+    launcher.getSession.mockImplementation((id: string) => sessions[id]);
+    launcher.getSessionNum.mockImplementation((id: string) => sessions[id]?.sessionNum);
+    bridge.isBackendConnected.mockImplementation((id: string) => id === "worker-1" || id === "reviewer-1");
+
+    const res = await app.request("/api/sessions/orch-1/board", {
+      method: "POST",
+      headers: authHeaders("orch-1", "tok-1"),
+      body: JSON.stringify({
+        questId: "q-9",
+        title: "Implement board lifecycle",
+        worker: "worker-1",
+        workerNum: 11,
+        status: "IMPLEMENTING",
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(bridge.broadcastToSession).toHaveBeenCalledWith(
+      "orch-1",
+      expect.objectContaining({
+        type: "board_updated",
+        rowSessionStatuses: {
+          "q-9": {
+            worker: { sessionId: "worker-1", sessionNum: 11, status: "running" },
+            reviewer: { sessionId: "reviewer-1", sessionNum: 12, status: "running" },
+          },
+        },
+      }),
+    );
+  });
+
   it("clears stale queue wait-for metadata when an active row is updated with wait-for-input", async () => {
     setupTakodeSessions();
     bridge._sessions["orch-1"].notifications = [

@@ -4,6 +4,7 @@ import { useStore } from "../store.js";
 import { BoardTable } from "./BoardTable.js";
 import { ToolBlock } from "./ToolBlock.js";
 import { formatQuestJourneyText, type BoardQueueWarning } from "../../shared/quest-journey.js";
+import type { BoardRowSessionStatus } from "../types.js";
 
 // Re-export for backward compatibility (ToolBlock imports BoardRowData from here)
 export type { BoardRowData } from "./BoardTable.js";
@@ -11,6 +12,7 @@ import type { BoardRowData } from "./BoardTable.js";
 
 interface BoardBlockProps {
   board: BoardRowData[];
+  rowSessionStatuses?: Record<string, BoardRowSessionStatus>;
   operation?: string;
   queueWarnings?: BoardQueueWarning[];
   toolUseId?: string;
@@ -31,6 +33,7 @@ interface BoardBlockProps {
  */
 export const BoardBlock = memo(function BoardBlock({
   board,
+  rowSessionStatuses,
   operation,
   queueWarnings,
   toolUseId,
@@ -42,8 +45,9 @@ export const BoardBlock = memo(function BoardBlock({
 }: BoardBlockProps) {
   // Subscribe to the latest board ID for this session via Zustand (reactive)
   const latestId = useStore((s) => (sessionId ? s.latestBoardToolUseId.get(sessionId) : undefined));
-  const rowSessionStatuses = useStore((s) => (sessionId ? s.sessionBoardRowStatuses.get(sessionId) : undefined));
+  const liveRowSessionStatuses = useStore((s) => (sessionId ? s.sessionBoardRowStatuses.get(sessionId) : undefined));
   const setLatest = useStore((s) => s.setLatestBoardToolUseId);
+  const effectiveRowSessionStatuses = rowSessionStatuses ?? liveRowSessionStatuses;
 
   // Determine if this board is the latest (should be expanded)
   const isLatest = !toolUseId || !latestId || toolUseId === latestId;
@@ -165,7 +169,7 @@ export const BoardBlock = memo(function BoardBlock({
               />
             </div>
           )}
-          <BoardTable board={board} rowSessionStatuses={rowSessionStatuses} />
+          <BoardTable board={board} rowSessionStatuses={effectiveRowSessionStatuses} />
           <CollapseFooter headerRef={headerRef} onCollapse={() => setOpen(false)} />
         </div>
       )}

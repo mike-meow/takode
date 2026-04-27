@@ -2026,4 +2026,21 @@ describe("parseBoardFromResult", () => {
     const result = parseBoardFromResult(json);
     expect(result).toEqual({ board, operation: undefined, queueWarnings });
   });
+
+  it("extracts row session statuses when present", () => {
+    const board = [{ questId: "q-42", title: "Test", updatedAt: 100 }];
+    const rowSessionStatuses = {
+      "q-42": {
+        worker: { sessionId: "worker-1", sessionNum: 11, status: "running" },
+        reviewer: { sessionId: "reviewer-1", sessionNum: 12, status: "idle" },
+      },
+    };
+    const json = JSON.stringify({ __takode_board__: true, board, rowSessionStatuses });
+
+    expect(parseBoardFromResult(json)).toEqual({
+      board,
+      rowSessionStatuses,
+      operation: undefined,
+    });
+  });
 });

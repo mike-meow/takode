@@ -13,6 +13,7 @@ import { useStore } from "../store.js";
 import { api } from "../api.js";
 import { getSingleAnchoredNotification } from "../utils/anchored-notifications.js";
 import { getChangePatch, parseEditToolInput, parseWriteToolInput } from "../utils/tool-rendering.js";
+import type { BoardRowSessionStatus } from "../types.js";
 import type { BoardQueueWarning } from "../../shared/quest-journey.js";
 import {
   openFileWithEditorPreference,
@@ -327,6 +328,7 @@ const ToolBlockInner = memo(function ToolBlockInner({
     return (
       <BoardBlock
         board={parsedBoard.board}
+        rowSessionStatuses={parsedBoard.rowSessionStatuses}
         operation={parsedBoard.operation}
         queueWarnings={parsedBoard.queueWarnings}
         toolUseId={toolUseId}
@@ -528,6 +530,7 @@ function useBoardData(
  */
 export interface ParsedBoardResult {
   board: BoardRowData[];
+  rowSessionStatuses?: Record<string, BoardRowSessionStatus>;
   operation?: string;
   queueWarnings?: BoardQueueWarning[];
 }
@@ -541,6 +544,12 @@ export function parseBoardFromResult(resultContent: string | undefined): ParsedB
     if (parsed?.__takode_board__ === true && Array.isArray(parsed.board)) {
       return {
         board: parsed.board,
+        rowSessionStatuses:
+          parsed.rowSessionStatuses &&
+          typeof parsed.rowSessionStatuses === "object" &&
+          !Array.isArray(parsed.rowSessionStatuses)
+            ? (parsed.rowSessionStatuses as Record<string, BoardRowSessionStatus>)
+            : undefined,
         operation: typeof parsed.operation === "string" ? parsed.operation : undefined,
         queueWarnings: Array.isArray(parsed.queueWarnings) ? parsed.queueWarnings : undefined,
       };

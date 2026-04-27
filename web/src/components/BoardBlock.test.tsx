@@ -1,9 +1,12 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi } from "vitest";
+import { beforeEach, describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { BoardBlock } from "./BoardBlock.js";
 import type { BoardRowData } from "./BoardTable.js";
+import type { BoardRowSessionStatus } from "../types.js";
+
+const liveRowSessionStatuses = new Map<string, Record<string, BoardRowSessionStatus>>();
 
 vi.mock("../store.js", () => ({
   useStore: (
@@ -15,14 +18,22 @@ vi.mock("../store.js", () => ({
   ) =>
     selector({
       latestBoardToolUseId: new Map<string, string>(),
-      sessionBoardRowStatuses: new Map(),
+      sessionBoardRowStatuses: liveRowSessionStatuses,
       setLatestBoardToolUseId: () => {},
     }),
 }));
 
 vi.mock("./BoardTable.js", () => ({
-  BoardTable: ({ board }: { board: BoardRowData[]; rowSessionStatuses?: unknown }) => (
-    <div data-testid="board-table">{board.length} rows</div>
+  BoardTable: ({
+    board,
+    rowSessionStatuses,
+  }: {
+    board: BoardRowData[];
+    rowSessionStatuses?: Record<string, BoardRowSessionStatus>;
+  }) => (
+    <div data-testid="board-table" data-statuses={JSON.stringify(rowSessionStatuses ?? null)}>
+      {board.length} rows
+    </div>
   ),
 }));
 
@@ -31,6 +42,40 @@ vi.mock("./CollapseFooter.js", () => ({
 }));
 
 describe("BoardBlock", () => {
+  beforeEach(() => {
+    liveRowSessionStatuses.clear();
+  });
+
+  it("prefers explicit row session statuses over the live store snapshot", () => {
+    const board: BoardRowData[] = [{ questId: "q-42", title: "Quest", updatedAt: 1 }];
+    liveRowSessionStatuses.set("s-1", {
+      "q-42": { worker: { sessionId: "worker-live", sessionNum: 9, status: "idle" }, reviewer: null },
+    });
+
+    render(
+      <BoardBlock
+        board={board}
+        sessionId="s-1"
+        rowSessionStatuses={{
+          "q-42": {
+            worker: { sessionId: "worker-inline", sessionNum: 12, status: "running" },
+            reviewer: { sessionId: "reviewer-inline", sessionNum: 13, status: "running" },
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId("board-table")).toHaveAttribute(
+      "data-statuses",
+      JSON.stringify({
+        "q-42": {
+          worker: { sessionId: "worker-inline", sessionNum: 12, status: "running" },
+          reviewer: { sessionId: "reviewer-inline", sessionNum: 13, status: "running" },
+        },
+      }),
+    );
+  });
+
   it("formats embedded quest journey enum labels in the operation header", () => {
     const board: BoardRowData[] = [{ questId: "q-42", title: "Quest", updatedAt: 1 }];
 
