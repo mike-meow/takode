@@ -2,6 +2,74 @@ import { describe, expect, it } from "vitest";
 import { searchSessionDocuments, type SessionSearchDocument } from "./session-search.js";
 
 describe("searchSessionDocuments", () => {
+  it("boosts an exact session-number query above other matches", () => {
+    const docs: SessionSearchDocument[] = [
+      {
+        sessionId: "s-name",
+        sessionNum: 87,
+        archived: false,
+        createdAt: 100,
+        name: "Session #12 notes",
+      },
+      {
+        sessionId: "s-num",
+        sessionNum: 12,
+        archived: false,
+        createdAt: 200,
+        name: "General session",
+      },
+    ];
+
+    const out = searchSessionDocuments(docs, { query: "#12" });
+    expect(out.totalMatches).toBe(2);
+    expect(out.results[0]).toMatchObject({
+      sessionId: "s-num",
+      matchedField: "session_number",
+    });
+    expect(out.results[1]).toMatchObject({
+      sessionId: "s-name",
+      matchedField: "name",
+    });
+  });
+
+  it("treats leading-zero exact session-number queries as numeric lookups", () => {
+    const docs: SessionSearchDocument[] = [
+      {
+        sessionId: "s-num",
+        sessionNum: 12,
+        archived: false,
+        createdAt: 100,
+        name: "General session",
+      },
+    ];
+
+    const out = searchSessionDocuments(docs, { query: "#0012" });
+    expect(out.totalMatches).toBe(1);
+    expect(out.results[0]).toMatchObject({
+      sessionId: "s-num",
+      matchedField: "session_number",
+    });
+  });
+
+  it("falls back to normal ranking when an exact session-number query has no matching session", () => {
+    const docs: SessionSearchDocument[] = [
+      {
+        sessionId: "s-name",
+        sessionNum: 87,
+        archived: false,
+        createdAt: 100,
+        name: "Follow-up for #9999",
+      },
+    ];
+
+    const out = searchSessionDocuments(docs, { query: "#9999" });
+    expect(out.totalMatches).toBe(1);
+    expect(out.results[0]).toMatchObject({
+      sessionId: "s-name",
+      matchedField: "name",
+    });
+  });
+
   it("ranks metadata matches above user-message matches", () => {
     const docs: SessionSearchDocument[] = [
       {
@@ -105,6 +173,37 @@ describe("searchSessionDocuments", () => {
       includeReviewers: true,
     });
     expect(withReviewers.results.map((r) => r.sessionId)).toEqual(["reviewer", "worker"]);
+  });
+
+  it("applies exact session-number ranking after reviewer filtering", () => {
+    const docs: SessionSearchDocument[] = [
+      {
+        sessionId: "worker",
+        sessionNum: 12,
+        archived: false,
+        createdAt: 1,
+        name: "Worker session",
+      },
+      {
+        sessionId: "reviewer",
+        sessionNum: 12,
+        archived: false,
+        reviewerOf: 7,
+        createdAt: 2,
+        name: "Reviewer session",
+      },
+    ];
+
+    const defaultOut = searchSessionDocuments(docs, { query: "#12" });
+    expect(defaultOut.results.map((r) => r.sessionId)).toEqual(["worker"]);
+
+    const withReviewers = searchSessionDocuments(docs, {
+      query: "#12",
+      includeReviewers: true,
+    });
+    expect(withReviewers.results.map((r) => r.sessionId)).toEqual(["reviewer", "worker"]);
+    expect(withReviewers.results[0].matchedField).toBe("session_number");
+    expect(withReviewers.results[1].matchedField).toBe("session_number");
   });
 
   it("matches CamelCase tokens in session names", () => {

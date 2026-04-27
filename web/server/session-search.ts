@@ -3,6 +3,7 @@ import type { SearchExcerpt } from "./session-store.js";
 import { multiWordMatch, normalizeForSearch } from "../shared/search-utils.js";
 
 export type SessionSearchMatchedField =
+  | "session_number"
   | "name"
   | "task"
   | "keyword"
@@ -15,6 +16,7 @@ export type SessionSearchMatchedField =
 
 export interface SessionSearchDocument {
   sessionId: string;
+  sessionNum?: number | null;
   archived: boolean;
   reviewerOf?: number;
   createdAt: number;
@@ -58,6 +60,12 @@ export interface SearchSessionDocumentsOutput {
 
 function clampInt(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
+}
+
+function parseExactSessionNumberQuery(query: string): number | null {
+  const match = query.trim().match(/^#(\d+)$/);
+  if (!match) return null;
+  return Number.parseInt(match[1], 10);
 }
 
 function buildSnippet(content: string, qWords: string[], maxLen = 120): string {
@@ -213,6 +221,7 @@ export function searchSessionDocuments(
   docs: SessionSearchDocument[],
   options: SearchSessionDocumentsOptions,
 ): SearchSessionDocumentsOutput {
+  const exactSessionNum = parseExactSessionNumberQuery(options.query);
   const q = normalizeForSearch(options.query);
   if (!q) return { totalMatches: 0, results: [] };
   const qWords = q.split(/\s+/).filter(Boolean);
@@ -234,6 +243,16 @@ export function searchSessionDocuments(
 
     const recencyTs = doc.lastActivityAt ?? doc.createdAt ?? 0;
     let best: SessionSearchResult | null = null;
+
+    if (exactSessionNum !== null && doc.sessionNum === exactSessionNum) {
+      best = pushIfBetter(best, {
+        sessionId: doc.sessionId,
+        score: 1100,
+        matchedField: "session_number",
+        matchContext: null,
+        matchedAt: recencyTs,
+      });
+    }
 
     const name = (doc.name || "").trim();
     if (name && matches_(name)) {

@@ -219,7 +219,15 @@ export interface CliSession {
   backend?: "claude" | "codex";
 }
 
-export type SessionSearchMatchedField = "name" | "task" | "keyword" | "branch" | "path" | "repo" | "user_message";
+export type SessionSearchMatchedField =
+  | "session_number"
+  | "name"
+  | "task"
+  | "keyword"
+  | "branch"
+  | "path"
+  | "repo"
+  | "user_message";
 
 export interface SessionSearchResult {
   sessionId: string;

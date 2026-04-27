@@ -8,7 +8,7 @@ import { questLabel, questOwnsSessionName } from "../utils/quest-helpers.js";
 import type { HerdGroupBadgeTheme } from "../utils/herd-group-theme.js";
 import { getHighestNotificationUrgency } from "../utils/notification-urgency.js";
 
-type SearchMatchedField = "name" | "task" | "keyword" | "branch" | "path" | "repo" | "user_message";
+type SearchMatchedField = "session_number" | "name" | "task" | "keyword" | "branch" | "path" | "repo" | "user_message";
 
 export interface ArchiveConfirmationState {
   sessionId: string;
@@ -49,6 +49,7 @@ export function StatusCountDots({ counts }: { counts: StatusCounts }) {
 }
 
 const SEARCH_MATCH_LABELS: Record<SearchMatchedField, string> = {
+  session_number: "session",
   name: "name",
   task: "task",
   keyword: "keyword",
@@ -398,7 +399,12 @@ export function SessionItem({
         const snippet = (prefixMatch?.[2] ?? raw).trim();
         const fieldLabel = matchedField ? SEARCH_MATCH_LABELS[matchedField] : null;
         const finalFieldLabel = fieldLabel || (prefixMatch?.[1] ? prefixMatch[1].toLowerCase() : null);
-        const fallbackSnippet = matchedField === "name" ? label : "";
+        const fallbackSnippet =
+          matchedField === "name"
+            ? label
+            : matchedField === "session_number" && s.sessionNum != null
+              ? `#${s.sessionNum}`
+              : "";
         const finalSnippet = snippet || fallbackSnippet;
         if (!finalFieldLabel || !finalSnippet) return null;
         return { fieldLabel: `${finalFieldLabel}:`, snippet: finalSnippet };

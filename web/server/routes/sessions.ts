@@ -1259,6 +1259,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
       const bridge = bridgeSession?.state;
       return {
         sessionId: s.sessionId,
+        sessionNum: launcher.getSessionNum(s.sessionId) ?? null,
         archived: !!s.archived,
         reviewerOf: s.reviewerOf,
         createdAt: s.createdAt || 0,

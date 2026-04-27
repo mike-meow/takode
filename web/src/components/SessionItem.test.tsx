@@ -291,6 +291,19 @@ describe("SessionItem search match context", () => {
     const highlight = screen.getByText("Beta");
     expect(highlight.tagName).toBe("MARK");
   });
+
+  it("falls back to the numeric session label for exact session-number matches", () => {
+    renderSessionItem({
+      session: makeSession({ sessionNum: 12 }),
+      matchContext: null,
+      matchedField: "session_number",
+      matchQuery: "#0012",
+    });
+
+    const matchLine = screen.getByText("session:").parentElement;
+    expect(matchLine).not.toBeNull();
+    expect(matchLine).toHaveTextContent("#12");
+  });
 });
 
 describe("SessionItem herd role badges", () => {

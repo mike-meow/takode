@@ -644,4 +644,44 @@ describe("GET /api/sessions/search", () => {
     const includeJson = await includeRes.json();
     expect(includeJson.results.map((r: any) => r.sessionId)).toEqual(["s-reviewer", "s-worker"]);
   });
+
+  it("boosts exact session-number queries while preserving existing filters", async () => {
+    launcher.listSessions.mockReturnValue([
+      { sessionId: "s-num", state: "running", cwd: "/num", createdAt: 1, archived: false, sessionNum: 12 },
+      { sessionId: "s-name", state: "running", cwd: "/name", createdAt: 2, archived: false, sessionNum: 87 },
+      {
+        sessionId: "s-reviewer",
+        state: "running",
+        cwd: "/reviewer",
+        createdAt: 3,
+        archived: false,
+        reviewerOf: 12,
+        sessionNum: 12,
+      },
+    ]);
+    vi.mocked(sessionNames.getAllNames).mockReturnValue({
+      "s-num": "General session",
+      "s-name": "Session #12 backlog",
+      "s-reviewer": "Reviewer session",
+    });
+    bridge.getAllSessions.mockReturnValue([
+      { session_id: "s-num", cwd: "/num", repo_root: "/repo/num", git_branch: "main" },
+      { session_id: "s-name", cwd: "/name", repo_root: "/repo/name", git_branch: "main" },
+      { session_id: "s-reviewer", cwd: "/reviewer", repo_root: "/repo/reviewer", git_branch: "main" },
+    ]);
+    launcher.getSessionNum.mockImplementation((sessionId: string) => {
+      if (sessionId === "s-num" || sessionId === "s-reviewer") return 12;
+      if (sessionId === "s-name") return 87;
+      return undefined;
+    });
+    bridge.getMessageHistory.mockReturnValue([]);
+
+    const res = await app.request("/api/sessions/search?q=%2312", { method: "GET" });
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.results.map((r: any) => r.sessionId)).toEqual(["s-num", "s-name"]);
+    expect(json.results[0]).toMatchObject({
+      matchedField: "session_number",
+    });
+  });
 });
