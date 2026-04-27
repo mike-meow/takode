@@ -22,6 +22,10 @@ import {
   parseSessionAuthFileData,
   type SessionAuthFileData,
 } from "../shared/session-auth.ts";
+import {
+  renderLeaderContextResumeText,
+  type LeaderContextResumeModel,
+} from "../server/takode-leader-context-resume.js";
 
 const DEFAULT_PORT = 3456;
 const DEFAULT_CODEX_MODEL = "gpt-5.4";
@@ -600,6 +604,11 @@ const INFO_HELP = `Usage: takode info <session> [--json]
 Show detailed metadata for a session, including backend, git, quest, and timer state.
 `;
 
+const LEADER_CONTEXT_RESUME_HELP = `Usage: takode leader-context-resume <session> [--json]
+
+Recover the minimum leader/orchestrator context needed to resume safely after compaction or interruption.
+`;
+
 const TASKS_HELP = `Usage: takode tasks <session> [--json]
 
 Show the high-level task outline for a session's conversation history.
@@ -829,6 +838,9 @@ function printCommandHelp(command: string, argv: string[]): boolean {
       return true;
     case "info":
       console.log(INFO_HELP);
+      return true;
+    case "leader-context-resume":
+      console.log(LEADER_CONTEXT_RESUME_HELP);
       return true;
     case "spawn":
       console.log(SPAWN_FLAG_USAGE);
@@ -1427,6 +1439,21 @@ async function handleInfo(base: string, args: string[]): Promise<void> {
   }
 
   printSessionInfo(data);
+}
+
+async function handleLeaderContextResume(base: string, args: string[]): Promise<void> {
+  const sessionRef = args[0];
+  if (!sessionRef) err("Usage: takode leader-context-resume <session> [--json]");
+  const flags = parseFlags(args.slice(1));
+  const result = (await apiGet(
+    base,
+    `/sessions/${encodeURIComponent(sessionRef)}/leader-context-resume`,
+  )) as LeaderContextResumeModel;
+  if (flags.json === true) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+  console.log(renderLeaderContextResumeText(result));
 }
 
 function printSessionInfo(data: TakodeSessionInfo): void {
@@ -4348,6 +4375,7 @@ Commands:
   list     List sessions (--active: all, --herd: herded only, --all: include archived)
   search   Search sessions via server-side ranking (available to all sessions)
   info     Show detailed metadata for a session
+  leader-context-resume  Recover compact leader/orchestrator context for a session
   spawn    Create and auto-herd new worker sessions
   tasks    Show a session task outline (available to all sessions)
   timers   Inspect pending timers for a session
@@ -4391,6 +4419,7 @@ Examples:
   takode search "jwt" --all
   takode info 1
   takode info 1 --json
+  takode leader-context-resume 1
   takode spawn --backend claude-sdk --count 2
   takode spawn --backend codex --count 3 --message "Check flaky tests"
   takode spawn --message-file /tmp/dispatch.txt
@@ -4436,6 +4465,7 @@ try {
     ["list", {}],
     ["search", {}],
     ["info", {}],
+    ["leader-context-resume", {}],
     ["tasks", {}],
     ["timers", {}],
     ["scan", {}],
@@ -4503,6 +4533,9 @@ try {
       break;
     case "info":
       await handleInfo(base, args);
+      break;
+    case "leader-context-resume":
+      await handleLeaderContextResume(base, args);
       break;
     case "spawn":
       await handleSpawn(base, args);

@@ -24,6 +24,7 @@ import {
   grepMessageHistory,
   exportSessionAsText,
 } from "../takode-messages.js";
+import { buildLeaderContextResume } from "../takode-leader-context-resume.js";
 import {
   getHerdDiagnostics as getHerdDiagnosticsController,
   markAllNotificationsDone as markAllNotificationsDoneController,
@@ -460,6 +461,88 @@ export function createTakodeRoutes(ctx: RouteContext) {
       taskHistory: currentBridgeSession?.taskHistory ?? [],
       keywords: currentBridgeSession?.keywords ?? [],
     });
+  });
+
+  api.get("/sessions/:id/leader-context-resume", async (c) => {
+    const auth = authenticateTakodeCaller(c);
+    if ("response" in auth) return auth.response;
+
+    const sessionId = resolveId(c.req.param("id"));
+    if (!sessionId) return c.json({ error: "Session not found" }, 404);
+
+    const launcherSession = launcher.getSession(sessionId);
+    const bridgeSession = wsBridge.getSession(sessionId);
+    if (!launcherSession || !bridgeSession) return c.json({ error: "Session not found" }, 404);
+
+    const isLeaderSession = launcherSession.isOrchestrator === true || bridgeSession.state?.isOrchestrator === true;
+    if (!isLeaderSession) {
+      return c.json(
+        {
+          error:
+            "Session is not recognized as a leader/orchestrator session; takode leader-context-resume only supports leader sessions.",
+        },
+        409,
+      );
+    }
+
+    const board = getBoardController(bridgeSession);
+    const rowSessionStatuses = await buildBoardRowSessionStatuses(board);
+    const participantIds = new Set<string>();
+    for (const row of board) {
+      if (row.worker) participantIds.add(row.worker);
+      const status = rowSessionStatuses[row.questId];
+      if (status?.worker?.sessionId) participantIds.add(status.worker.sessionId);
+      if (status?.reviewer?.sessionId) participantIds.add(status.reviewer.sessionId);
+    }
+
+    const participants = new Map<string, import("../takode-leader-context-resume.js").LeaderContextResumeParticipant>();
+    for (const participantId of participantIds) {
+      const participantLauncher = launcher.getSession(participantId);
+      if (!participantLauncher) continue;
+      const participantBridge = wsBridge.getSession(participantId);
+      const participantStatus = participantBridge
+        ? wsBridge.isBackendConnected(participantId)
+          ? participantBridge.isGenerating
+            ? "running"
+            : "idle"
+          : "disconnected"
+        : participantLauncher.archived
+          ? "archived"
+          : "missing";
+      const participantSessionNum = launcher.getSessionNum(participantId) ?? null;
+      const participantState =
+        (participantBridge?.state as
+          | { claimedQuestId?: string | null; claimedQuestStatus?: string | null }
+          | undefined) ?? {};
+      const role = participantLauncher.reviewerOf != null ? "reviewer" : "worker";
+      participants.set(participantId, {
+        sessionId: participantId,
+        sessionNum: participantSessionNum,
+        name: sessionNames.getName(participantId) ?? participantLauncher.name ?? null,
+        role,
+        status: participantStatus,
+        claimedQuestId: participantState.claimedQuestId ?? null,
+        claimedQuestStatus: participantState.claimedQuestStatus ?? null,
+        messageHistory: participantBridge?.messageHistory ?? [],
+      });
+    }
+
+    const model = await buildLeaderContextResume({
+      leader: {
+        sessionId,
+        sessionNum: launcher.getSessionNum(sessionId) ?? null,
+        name: sessionNames.getName(sessionId) ?? launcherSession.name ?? null,
+        isOrchestrator: true,
+        messageHistory: bridgeSession.messageHistory ?? [],
+        notifications: bridgeSession.notifications ?? [],
+        board,
+      },
+      rowSessionStatuses,
+      participants,
+      loadQuest: (questId: string) => questStore.getQuest(questId),
+    });
+
+    return c.json(model);
   });
 
   // ─── Takode: Message Peek & Read ────────────────────────────
