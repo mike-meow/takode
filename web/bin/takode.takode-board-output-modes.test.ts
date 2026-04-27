@@ -264,6 +264,68 @@ describe("takode board output modes", () => {
     }
   });
 
+  it("prints indexed phase notes for proposed and active Journey rows", async () => {
+    const server = createServer((req, res) => {
+      const method = req.method || "";
+      const url = req.url || "";
+
+      if (method === "GET" && url === "/api/takode/me") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ sessionId: "leader-board-notes", isOrchestrator: true }));
+        return;
+      }
+
+      if (method === "GET" && url === "/api/sessions/leader-board-notes/board?resolve=true") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            board: [
+              {
+                questId: "q-12",
+                title: "Draft Journey notes",
+                status: "PROPOSED",
+                waitForInput: ["n-3"],
+                createdAt: 1,
+                updatedAt: 2,
+                journey: {
+                  mode: "proposed",
+                  phaseIds: ["alignment", "implement", "code-review", "implement", "code-review", "port"],
+                  phaseNotes: {
+                    "2": "focus on stream migration behavior",
+                    "4": "inspect only the follow-up diff",
+                  },
+                },
+              },
+            ],
+            rowSessionStatuses: {},
+          }),
+        );
+        return;
+      }
+
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    });
+
+    server.listen(0);
+    await once(server, "listening");
+    const port = (server.address() as AddressInfo).port;
+
+    try {
+      const result = await runTakode(["board", "show", "--port", String(port)], {
+        ...process.env,
+        COMPANION_SESSION_ID: "leader-board-notes",
+        COMPANION_AUTH_TOKEN: "auth-board-notes",
+      });
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("note[3] Code Review: focus on stream migration behavior");
+      expect(result.stdout).toContain("note[5] Code Review: inspect only the follow-up diff");
+    } finally {
+      server.close();
+    }
+  });
+
   it("emits structured board JSON only in --json mode", async () => {
     const server = createServer((req, res) => {
       const method = req.method || "";

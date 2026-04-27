@@ -113,6 +113,10 @@ function isQueuedBoardRowStatus(status: string | undefined): boolean {
   return (status || "").trim().toUpperCase() === "QUEUED";
 }
 
+function isProposedBoardRowStatus(status: string | undefined): boolean {
+  return (status || "").trim().toUpperCase() === "PROPOSED";
+}
+
 function normalizeBoardWaitForInput(waitForInput: string[] | undefined): string[] | undefined {
   if (!Array.isArray(waitForInput)) return undefined;
   const deduped = [...new Set(waitForInput)]
@@ -428,28 +432,48 @@ export function advanceBoardRow(
   const row = session.board.get(questId);
   if (!row) return null;
 
+  if (isProposedBoardRowStatus(row.status)) {
+    return {
+      error: `Cannot advance ${questId}: proposed Journey rows must be promoted before execution. Use takode board promote ${questId}.`,
+      previousState: row.status,
+    };
+  }
+
   const currentIdx = states.indexOf(row.status ?? "");
   const previousState = row.status;
-  const plannedPhaseIds = getBoardRowPhaseIds(row);
+  const normalizedJourney = normalizeBoardRowJourneyPlan(row, row.status);
+  const plannedPhaseIds = normalizedJourney.phaseIds;
   const statusPhaseId = getQuestJourneyPhaseForState(row.status)?.id;
-  const plannedCurrentPhaseId =
-    row.journey?.currentPhaseId && plannedPhaseIds.includes(row.journey.currentPhaseId)
-      ? row.journey.currentPhaseId
+  const rawCurrentPhaseIndex =
+    typeof row.journey?.activePhaseIndex === "number" &&
+    Number.isInteger(row.journey.activePhaseIndex) &&
+    row.journey.activePhaseIndex >= 0 &&
+    row.journey.activePhaseIndex < plannedPhaseIds.length
+      ? row.journey.activePhaseIndex
       : undefined;
+  const rawCurrentPhaseId =
+    rawCurrentPhaseIndex !== undefined
+      ? plannedPhaseIds[rawCurrentPhaseIndex]
+      : row.journey?.currentPhaseId && plannedPhaseIds.includes(row.journey.currentPhaseId)
+        ? row.journey.currentPhaseId
+        : undefined;
   const normalizedStatus = typeof row.status === "string" ? row.status.trim().toUpperCase() : "";
   if (
-    (normalizedStatus === "QUEUED" && plannedCurrentPhaseId) ||
-    (statusPhaseId && plannedCurrentPhaseId && statusPhaseId !== plannedCurrentPhaseId)
+    (normalizedStatus === "QUEUED" && (rawCurrentPhaseId || rawCurrentPhaseIndex !== undefined)) ||
+    (statusPhaseId && rawCurrentPhaseId && statusPhaseId !== rawCurrentPhaseId)
   ) {
-    const phaseLabel = plannedCurrentPhaseId ?? "none";
+    const phaseLabel = rawCurrentPhaseId ?? "none";
     const statusLabel = normalizedStatus || row.status || "none";
     return {
       error: `Cannot advance ${questId}: board status ${statusLabel} disagrees with journey.currentPhaseId ${phaseLabel}. Reconcile the row with takode board set --status before advancing.`,
       previousState,
     };
   }
-  const currentPhaseId = statusPhaseId ?? plannedCurrentPhaseId;
-  const currentPhaseIdx = currentPhaseId ? plannedPhaseIds.indexOf(currentPhaseId) : -1;
+  const currentPhaseId = statusPhaseId ?? rawCurrentPhaseId ?? normalizedJourney.currentPhaseId;
+  const currentPhaseIdx =
+    rawCurrentPhaseIndex ??
+    normalizedJourney.activePhaseIndex ??
+    (currentPhaseId ? plannedPhaseIds.indexOf(currentPhaseId) : -1);
 
   if (currentPhaseIdx >= 0 && currentPhaseIdx >= plannedPhaseIds.length - 1) {
     const { board } = completeBoardRow(session, questId, deps);
@@ -466,8 +490,11 @@ export function advanceBoardRow(
           noCode: row.noCode,
           journey: {
             presetId: row.journey?.presetId,
+            mode: "active",
             phaseIds: plannedPhaseIds,
+            activePhaseIndex: currentPhaseIdx >= 0 ? currentPhaseIdx + 1 : 0,
             currentPhaseId: nextPhase.id,
+            phaseNotes: row.journey?.phaseNotes,
             revisionReason: row.journey?.revisionReason,
             revisedAt: row.journey?.revisedAt,
             revisionCount: row.journey?.revisionCount,

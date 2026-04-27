@@ -217,6 +217,74 @@ describe("takode board set --worker auto-clears waitFor", () => {
     expect(capturedBodies[0].presetId).toBe("lightweight-code");
   });
 
+  it("posts proposed Journey rows with explicit proposal mode and approval hold", async () => {
+    const result = await runTakode(
+      [
+        "board",
+        "propose",
+        "q-1",
+        "--phases",
+        "alignment,implement,code-review,port",
+        "--preset",
+        "full-code",
+        "--wait-for-input",
+        "3",
+        "--port",
+        String(port),
+      ],
+      {
+        ...process.env,
+        COMPANION_SESSION_ID: "leader-1",
+        COMPANION_AUTH_TOKEN: "auth-1",
+      },
+    );
+
+    expect(result.status).toBe(0);
+    expect(capturedBodies[0]).toMatchObject({
+      questId: "q-1",
+      journeyMode: "proposed",
+      status: "PROPOSED",
+      phases: ["alignment", "implement", "code-review", "port"],
+      presetId: "full-code",
+      waitForInput: ["n-3"],
+    });
+  });
+
+  it("promotes proposed rows into active mode and clears approval hold by default", async () => {
+    const result = await runTakode(["board", "promote", "q-1", "--worker", "3", "--port", String(port)], {
+      ...process.env,
+      COMPANION_SESSION_ID: "leader-1",
+      COMPANION_AUTH_TOKEN: "auth-1",
+    });
+
+    expect(result.status).toBe(0);
+    expect(capturedBodies[0]).toMatchObject({
+      questId: "q-1",
+      journeyMode: "active",
+      worker: "worker-session-abc",
+      workerNum: 3,
+      clearWaitForInput: true,
+    });
+    expect(capturedBodies[0].phases).toBeUndefined();
+  });
+
+  it("sends board note edits keyed by 1-based phase positions", async () => {
+    const result = await runTakode(
+      ["board", "note", "q-1", "4", "--text", "Inspect only the follow-up diff", "--port", String(port)],
+      {
+        ...process.env,
+        COMPANION_SESSION_ID: "leader-1",
+        COMPANION_AUTH_TOKEN: "auth-1",
+      },
+    );
+
+    expect(result.status).toBe(0);
+    expect(capturedBodies[0]).toMatchObject({
+      questId: "q-1",
+      phaseNoteEdits: [{ index: 3, note: "Inspect only the follow-up diff" }],
+    });
+  });
+
   it("rejects unknown planned Quest Journey phase IDs before posting", async () => {
     const result = await runTakode(["board", "set", "q-1", "--phases", "planning,unknown", "--port", String(port)], {
       ...process.env,

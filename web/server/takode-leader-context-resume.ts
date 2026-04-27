@@ -9,6 +9,7 @@ import type { QuestmasterTask } from "./quest-types.js";
 import { findTurnBoundaries } from "./takode-messages.js";
 import {
   QUEST_JOURNEY_HINTS,
+  getQuestJourneyCurrentPhaseId,
   getQuestJourneyPhase,
   getQuestJourneyPhaseForState,
   type QuestJourneyPhase,
@@ -487,6 +488,9 @@ function buildNextLeaderAction(args: {
   if ((row.waitForInput ?? []).length > 0) {
     return `wait for same-session user input ${row.waitForInput!.map((notificationId) => formatNotificationId(notificationId)).join(", ")}`;
   }
+  if ((row.status || "").trim().toUpperCase() === "PROPOSED") {
+    return row.journey?.nextLeaderAction ?? QUEST_JOURNEY_HINTS.PROPOSED;
+  }
   if (phase?.assigneeRole === "reviewer" && !reviewer) {
     return "attach or inspect the reviewer for this row";
   }
@@ -601,7 +605,9 @@ export async function buildLeaderContextResume(input: LeaderContextResumeInput):
     const workerObservation = buildParticipantObservation(workerParticipant, rowStatus?.worker, "worker");
     const reviewerObservation = buildParticipantObservation(reviewerParticipant, rowStatus?.reviewer, "reviewer");
     const quest = await input.loadQuest(row.questId);
-    const phase = getQuestJourneyPhase(row.journey?.currentPhaseId) ?? getQuestJourneyPhaseForState(row.status);
+    const phase =
+      getQuestJourneyPhase(getQuestJourneyCurrentPhaseId(row.journey, row.status)) ??
+      getQuestJourneyPhaseForState(row.status);
     const relevantTurns = [workerParticipant, reviewerParticipant]
       .filter((participant): participant is LeaderContextResumeParticipant => !!participant)
       .flatMap((participant) => collectLeaderDirectedTurns(participant, input.leader.sessionId, row.questId))
@@ -637,13 +643,21 @@ export async function buildLeaderContextResume(input: LeaderContextResumeInput):
     if (mismatchNote) warnings.add(`${row.questId}: ${mismatchNote}`);
 
     const rowWarnings: string[] = [];
-    if (!currentPhaseInstruction) {
+    if ((row.status || "").trim().toUpperCase() !== "PROPOSED" && !currentPhaseInstruction) {
       rowWarnings.push(`no matched current-phase \`${phaseDispatchLabel(phase)}\` dispatch found`);
     }
-    if (phase?.assigneeRole === "reviewer" && !reviewerObservation) {
+    if (
+      (row.status || "").trim().toUpperCase() !== "PROPOSED" &&
+      phase?.assigneeRole === "reviewer" &&
+      !reviewerObservation
+    ) {
       rowWarnings.push("current review phase has no reviewer session");
     }
-    if (phase?.assigneeRole !== "reviewer" && !workerObservation) {
+    if (
+      (row.status || "").trim().toUpperCase() !== "PROPOSED" &&
+      phase?.assigneeRole !== "reviewer" &&
+      !workerObservation
+    ) {
       rowWarnings.push("current worker phase has no worker session");
     }
     for (const warning of rowWarnings) warnings.add(`${row.questId}: ${warning}`);

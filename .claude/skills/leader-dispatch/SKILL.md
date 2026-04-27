@@ -176,9 +176,9 @@ The proposal should:
 - explain why that initial Journey fits the quest's risk boundary and evidence needs
 - make it explicit that the first worker dispatch will enter the `alignment` phase (`PLANNING` on the board) only after approval
 
-Do not spawn a worker, send the standard dispatch message, or set an active board row until the user approves that initial Journey. If the user changes scope, risk, or evidence needs, revise the proposed Journey and wait again.
+Put that proposed Journey on the board before approval with `takode board propose ...`, then present it from there. Do not spawn a worker, send the standard dispatch message, or promote the row into active execution until the user approves that initial Journey. If the user changes scope, risk, or evidence needs, revise the proposed Journey on the board and wait again.
 
-Once approved, the board row becomes the active shared record of that quest's current planned Journey while it remains on the board.
+Once approved, promote that same board row into active execution with `takode board promote ...`; do not restate or rebuild the Journey from scratch.
 
 ### 6. Check Herd Limit
 
@@ -255,7 +255,8 @@ Do not let a stale review acceptance, stale port confirmation, or any other old-
 ### 8. Update the Board
 
 ```bash
-takode board set <quest-id> --worker <N> --status PLANNING
+takode board propose <quest-id> --phases alignment,implement,code-review,port --preset full-code --wait-for-input <notif-id>
+takode board promote <quest-id> --worker <N>
 ```
 
 ## Task Delegation Style

@@ -59,6 +59,7 @@ export interface BoardQueueWarning {
  * Active rows use canonical states derived from the active phase contract.
  */
 export const QUEST_JOURNEY_STATES = [
+  "PROPOSED",
   "QUEUED",
   "PLANNING",
   "EXPLORING",
@@ -72,6 +73,8 @@ export const QUEST_JOURNEY_STATES = [
 ] as const;
 
 export type QuestJourneyState = (typeof QUEST_JOURNEY_STATES)[number];
+export const QUEST_JOURNEY_LIFECYCLE_MODES = ["active", "proposed"] as const;
+export type QuestJourneyLifecycleMode = (typeof QUEST_JOURNEY_LIFECYCLE_MODES)[number];
 
 /**
  * Reusable Quest Journey phases. Phases are the user-facing units leaders
@@ -174,8 +177,14 @@ export interface QuestJourneyPlanState {
   presetId?: string;
   /** Ordered phase IDs planned for this row's active Quest Journey. */
   phaseIds: QuestJourneyPhaseId[];
+  /** Proposed rows are pre-dispatch drafts; active rows track execution progress. */
+  mode?: QuestJourneyLifecycleMode;
+  /** Current phase position within `phaseIds`, used for repeated phases. */
+  activePhaseIndex?: number;
   /** Current phase ID. Omitted while the row is queued before phase execution. */
   currentPhaseId?: QuestJourneyPhaseId;
+  /** Lightweight reminder text keyed by zero-based phase position. */
+  phaseNotes?: Record<string, string>;
   /** Cached next leader action for board/reminder display. */
   nextLeaderAction?: string;
   /** Why the leader revised the remaining Journey, when applicable. */
@@ -190,17 +199,9 @@ export const QUEST_JOURNEY_PHASE_BY_ID: Record<QuestJourneyPhaseId, QuestJourney
   QUEST_JOURNEY_PHASES.map((phase) => [phase.id, phase]),
 ) as Record<QuestJourneyPhaseId, QuestJourneyPhase>;
 
-export const QUEST_JOURNEY_PHASE_ID_BY_STATE: Record<QuestJourneyState, QuestJourneyPhaseId> = Object.fromEntries(
+export const QUEST_JOURNEY_PHASE_ID_BY_STATE = Object.fromEntries(
   QUEST_JOURNEY_PHASES.map((phase) => [phase.boardState, phase.id]),
-) as Record<QuestJourneyState, QuestJourneyPhaseId>;
-
-function dedupeAdjacentPhaseIds(phaseIds: readonly QuestJourneyPhaseId[]): QuestJourneyPhaseId[] {
-  const deduped: QuestJourneyPhaseId[] = [];
-  for (const phaseId of phaseIds) {
-    if (deduped[deduped.length - 1] !== phaseId) deduped.push(phaseId);
-  }
-  return deduped;
-}
+) as Partial<Record<QuestJourneyState, QuestJourneyPhaseId>>;
 
 export function canonicalizeQuestJourneyPhaseId(value?: string | null): QuestJourneyPhaseId | null {
   if (!value) return null;
@@ -218,12 +219,16 @@ export function canonicalizeQuestJourneyState(value?: string | null): QuestJourn
   return QUEST_JOURNEY_STATE_ALIAS_MAP[normalized as keyof typeof QUEST_JOURNEY_STATE_ALIAS_MAP] ?? null;
 }
 
+export function canonicalizeQuestJourneyLifecycleMode(value?: string | null): QuestJourneyLifecycleMode | null {
+  if (!value) return null;
+  const normalized = value.trim().toLowerCase();
+  return normalized === "active" || normalized === "proposed" ? (normalized as QuestJourneyLifecycleMode) : null;
+}
+
 export function normalizeQuestJourneyPhaseIds(values?: readonly string[] | null): QuestJourneyPhaseId[] {
-  return dedupeAdjacentPhaseIds(
-    (values ?? [])
-      .map((value) => canonicalizeQuestJourneyPhaseId(value))
-      .filter((phaseId): phaseId is QuestJourneyPhaseId => phaseId !== null),
-  );
+  return (values ?? [])
+    .map((value) => canonicalizeQuestJourneyPhaseId(value))
+    .filter((phaseId): phaseId is QuestJourneyPhaseId => phaseId !== null);
 }
 
 export function isQuestJourneyPhaseId(value: string): value is QuestJourneyPhaseId {
@@ -241,7 +246,76 @@ export function getQuestJourneyPhase(phaseId?: string | null): QuestJourneyPhase
 
 export function getQuestJourneyPhaseForState(status?: string | null): QuestJourneyPhase | null {
   const canonical = canonicalizeQuestJourneyState(status);
-  return canonical ? getQuestJourneyPhase(QUEST_JOURNEY_PHASE_ID_BY_STATE[canonical]) : null;
+  return canonical ? getQuestJourneyPhase(QUEST_JOURNEY_PHASE_ID_BY_STATE[canonical] ?? null) : null;
+}
+
+function normalizeQuestJourneyPhaseNotes(
+  phaseNotes: Record<string, unknown> | undefined,
+  phaseCount: number,
+): Record<string, string> | undefined {
+  if (!phaseNotes || typeof phaseNotes !== "object") return undefined;
+  const entries = Object.entries(phaseNotes)
+    .map(([rawIndex, rawNote]) => {
+      const index = Number.parseInt(rawIndex, 10);
+      if (!Number.isInteger(index) || index < 0 || index >= phaseCount) return null;
+      if (typeof rawNote !== "string") return null;
+      const note = rawNote.trim();
+      if (!note) return null;
+      return [String(index), note] as const;
+    })
+    .filter((entry): entry is readonly [string, string] => entry !== null)
+    .sort((a, b) => Number.parseInt(a[0], 10) - Number.parseInt(b[0], 10));
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+function normalizeQuestJourneyActivePhaseIndex(
+  plan: Partial<QuestJourneyPlanState> | undefined,
+  phaseIds: readonly QuestJourneyPhaseId[],
+  status?: string | null,
+): number | undefined {
+  const explicitIndex =
+    typeof plan?.activePhaseIndex === "number" &&
+    Number.isInteger(plan.activePhaseIndex) &&
+    plan.activePhaseIndex >= 0 &&
+    plan.activePhaseIndex < phaseIds.length
+      ? plan.activePhaseIndex
+      : undefined;
+  const statusPhaseId = getQuestJourneyPhaseForState(status)?.id;
+  const plannedCurrentPhaseId = getQuestJourneyPhase(plan?.currentPhaseId)?.id;
+  const normalizedStatus = typeof status === "string" ? status.trim().toUpperCase() : "";
+
+  if (statusPhaseId) {
+    if (explicitIndex !== undefined && phaseIds[explicitIndex] === statusPhaseId) return explicitIndex;
+    if (plannedCurrentPhaseId === statusPhaseId) {
+      const currentIndex = phaseIds.indexOf(plannedCurrentPhaseId);
+      if (currentIndex >= 0) return currentIndex;
+    }
+    const statusIndex = phaseIds.indexOf(statusPhaseId);
+    return statusIndex >= 0 ? statusIndex : undefined;
+  }
+  if (normalizedStatus === "QUEUED" || normalizedStatus === "PROPOSED") return undefined;
+  if (explicitIndex !== undefined) return explicitIndex;
+  if (plannedCurrentPhaseId) {
+    const currentIndex = phaseIds.indexOf(plannedCurrentPhaseId);
+    if (currentIndex >= 0) return currentIndex;
+  }
+  return undefined;
+}
+
+export function getQuestJourneyCurrentPhaseIndex(
+  plan: Partial<QuestJourneyPlanState> | undefined,
+  status?: string | null,
+): number | undefined {
+  const normalized = normalizeQuestJourneyPlan(plan, status);
+  return normalized.activePhaseIndex;
+}
+
+export function getQuestJourneyCurrentPhaseId(
+  plan: Partial<QuestJourneyPlanState> | undefined,
+  status?: string | null,
+): QuestJourneyPhaseId | undefined {
+  const normalized = normalizeQuestJourneyPlan(plan, status);
+  return normalized.currentPhaseId;
 }
 
 export function normalizeQuestJourneyPlan(
@@ -250,24 +324,27 @@ export function normalizeQuestJourneyPlan(
 ): QuestJourneyPlanState {
   const phaseIds = normalizeQuestJourneyPhaseIds(plan?.phaseIds);
   const nonEmptyPhaseIds = phaseIds.length > 0 ? phaseIds : [...DEFAULT_QUEST_JOURNEY_PHASE_IDS];
+  const mode = canonicalizeQuestJourneyLifecycleMode(plan?.mode) ?? "active";
   const normalizedStatus = typeof status === "string" ? status.trim().toUpperCase() : "";
-  const statusPhase = getQuestJourneyPhaseForState(status)?.id;
-  const plannedCurrentPhaseId = getQuestJourneyPhase(plan?.currentPhaseId)?.id;
+  const phaseNotes = normalizeQuestJourneyPhaseNotes(plan?.phaseNotes, nonEmptyPhaseIds.length);
+  const activePhaseIndex =
+    mode === "proposed" ? undefined : normalizeQuestJourneyActivePhaseIndex(plan, nonEmptyPhaseIds, status);
   const currentPhaseId =
-    statusPhase && nonEmptyPhaseIds.includes(statusPhase)
-      ? statusPhase
-      : normalizedStatus === "QUEUED"
-        ? undefined
-        : plannedCurrentPhaseId && nonEmptyPhaseIds.includes(plannedCurrentPhaseId)
-          ? plannedCurrentPhaseId
-          : undefined;
+    activePhaseIndex !== undefined && activePhaseIndex >= 0 && activePhaseIndex < nonEmptyPhaseIds.length
+      ? nonEmptyPhaseIds[activePhaseIndex]
+      : undefined;
   const currentPhase = getQuestJourneyPhase(currentPhaseId);
   const nextLeaderAction =
-    currentPhase?.nextLeaderAction ?? (normalizedStatus === "QUEUED" ? undefined : plan?.nextLeaderAction);
+    mode === "proposed"
+      ? QUEST_JOURNEY_HINTS.PROPOSED
+      : (currentPhase?.nextLeaderAction ?? (normalizedStatus === "QUEUED" ? undefined : plan?.nextLeaderAction));
   return {
     presetId: plan?.presetId ?? DEFAULT_QUEST_JOURNEY_PRESET_ID,
     phaseIds: [...nonEmptyPhaseIds],
+    mode,
+    ...(activePhaseIndex !== undefined ? { activePhaseIndex } : {}),
     ...(currentPhaseId ? { currentPhaseId } : {}),
+    ...(phaseNotes ? { phaseNotes } : {}),
     ...(nextLeaderAction ? { nextLeaderAction } : {}),
     ...(plan?.revisionReason ? { revisionReason: plan.revisionReason } : {}),
     ...(plan?.revisedAt ? { revisedAt: plan.revisedAt } : {}),
@@ -282,6 +359,7 @@ export interface QuestJourneyPresentation {
 
 /** Human-facing labels and text-only color treatment for quest phases in the UI. */
 export const QUEST_JOURNEY_PRESENTATION: Record<QuestJourneyState, QuestJourneyPresentation> = {
+  PROPOSED: { label: "Proposed", textClassName: "text-amber-200" },
   QUEUED: { label: "Queued", textClassName: "text-cc-muted" },
   PLANNING: { label: "Alignment", textClassName: "text-green-400" },
   EXPLORING: { label: "Explore", textClassName: "text-amber-400" },
@@ -303,13 +381,14 @@ export function getQuestJourneyPresentation(status?: string | null): QuestJourne
 /** Replace embedded quest-journey enum tokens in freeform text with human labels. */
 export function formatQuestJourneyText(text: string): string {
   return text.replace(
-    /\b(QUEUED|PLANNING|EXPLORING|IMPLEMENTING|CODE_REVIEWING|MENTAL_SIMULATING|EXECUTING|OUTCOME_REVIEWING|BOOKKEEPING|PORTING|SKEPTIC_REVIEWING|GROOM_REVIEWING)\b/g,
+    /\b(PROPOSED|QUEUED|PLANNING|EXPLORING|IMPLEMENTING|CODE_REVIEWING|MENTAL_SIMULATING|EXECUTING|OUTCOME_REVIEWING|BOOKKEEPING|PORTING|SKEPTIC_REVIEWING|GROOM_REVIEWING)\b/g,
     (match) => getQuestJourneyPresentation(match)?.label ?? match,
   );
 }
 
 /** Next-action hints for Quest Journey states, including legacy aliases. */
 export const QUEST_JOURNEY_HINTS: Record<string, string> = {
+  PROPOSED: "present or revise the proposed Journey, then promote it after approval",
   QUEUED: "dispatch to a worker",
   PLANNING: QUEST_JOURNEY_PHASE_BY_ID.alignment.nextLeaderAction,
   EXPLORING: QUEST_JOURNEY_PHASE_BY_ID.explore.nextLeaderAction,

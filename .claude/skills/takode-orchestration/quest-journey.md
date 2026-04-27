@@ -1,12 +1,17 @@
 # Quest Journey Lifecycle
 
-Every dispatched task follows a **Quest Journey** assembled from built-in phases. The work board (`takode board show`) tracks the current phase, remaining phases, and next required leader action.
+Every dispatched task follows a **Quest Journey** assembled from built-in phases. The work board (`takode board show`) tracks proposed pre-dispatch Journeys, active current phases, remaining phases, indexed phase notes, and next required leader action.
 
-The active planned Journey is board-owned state associated with the quest while that quest is on the board. Quest creation or refinement defines the quest text; it does not freeze the active Journey.
+The planned Journey is board-owned state associated with the quest while that quest is on the board. Quest creation or refinement defines the quest text; it does not freeze either the proposed draft or the active Journey.
 
-`QUEUED` is a board state, not a phase. Once active, leaders choose the phase sequence that matches the risk boundary and evidence needed next.
+Board-side Journey modes:
 
-Before the first dispatch, leaders should use `/leader-dispatch` to propose the planned initial Journey and get approval. The worker alignment phase then returns a lightweight read-in inside that approved Journey and may recommend revisions; it is not the first time phases are proposed. After the worker returns that read-in, the leader normally approves the next phase and advances without a routine second user-approval round. Escalate back to the user only for significant ambiguity, scope change, Journey revision, user-visible tradeoff, or another real blocking issue.
+- `proposed`: pre-dispatch draft, no worker required yet, no active/current phase semantics yet
+- `active`: approved execution Journey, with progress tracked by phase position/index
+
+`PROPOSED` and `QUEUED` are board states, not phases. Once active, leaders choose the phase sequence that matches the risk boundary and evidence needed next. Repeated phases are allowed, so progress is tracked by active phase occurrence rather than assuming each phase name appears only once.
+
+Before the first dispatch, leaders should use `/leader-dispatch` to propose the planned initial Journey on the board and get approval. The worker alignment phase then returns a lightweight read-in inside that approved Journey and may recommend revisions; it is not the first time phases are proposed. After the worker returns that read-in, the leader normally approves the next phase and advances without a routine second user-approval round. Escalate back to the user only for significant ambiguity, scope change, Journey revision, user-visible tradeoff, or another real blocking issue.
 
 ## Built-In Phase Library
 
@@ -37,6 +42,25 @@ The default built-in tracked-code Journey is:
 
 This preserves a small normal path for common repo work while allowing leaders to choose richer review or operations paths when the quest needs them.
 
+## Proposed Workflow
+
+Use the board as the draft carrier before dispatch:
+
+```bash
+takode board propose q-12 --phases alignment,implement,code-review,port \
+  --preset full-code \
+  --wait-for-input 3
+
+takode board note q-12 3 --text "focus on stream migration behavior"
+
+takode board promote q-12 --worker 5
+```
+
+- `takode board propose` creates or revises the board-owned draft
+- `takode board note` attaches one free-form note to a specific phase occurrence
+- `takode board promote` reuses that same Journey object for execution after approval
+- approval-hold rows should use `PROPOSED` plus `--wait-for-input`, not a fake generic queue dependency
+
 Examples:
 
 - Straight tracked-code work: `alignment -> implement -> code-review -> port`
@@ -60,15 +84,18 @@ Rules:
 
 - Revising an active Journey requires `--revise-reason`.
 - When revising an active row without changing `--status`, include the current phase in `--phases`.
+- Repeated phases are first-class. Insert or append them directly instead of pretending the Journey reset to an earlier abstract state.
+- Indexed phase notes belong to the occurrence position. After a phase-list revision, refresh notes deliberately when their intended occurrence changed.
 - If the active boundary itself changes, set an explicit `--status` that matches the revised phase plan.
 - `takode board advance` always follows the row's planned phases, not a hard-coded global order.
 
 ## Phase-Explicit Worker Steering
 
 - **Authorize one phase at a time.**
-- **Initial Journey approval happens before dispatch.** Use `/leader-dispatch` to propose the starting phases and wait for approval.
+- **Initial Journey approval happens before dispatch.** Use `/leader-dispatch` to put the proposed Journey on the board, present it there, and wait for approval.
 - **Read `leader.md`; point assignees to `assignee.md`.** Do not treat globally installed phase skills as the primary phase mechanism.
 - **Initial dispatch = alignment only.**
+- **Promote the same board-drafted Journey after approval.** Do not restate the Journey from scratch when moving from proposal to active execution.
 - **Quest ownership stays with the worker.**
 - **Worker alignment returns a lightweight read-in inside a leader-approved Journey.** It may recommend revisions, but the board-owned Journey remains authoritative until the leader changes it.
 - **Point alignment at exact sources when you already know them.** When the relevant prior messages, quests, or discussions are known, point the worker to those specific sources so alignment can use targeted Takode or quest inspection instead of broad exploration.

@@ -2,9 +2,12 @@ import { describe, it, expect } from "vitest";
 import {
   FREE_WORKER_WAIT_FOR_TOKEN,
   canonicalizeQuestJourneyPhaseId,
+  canonicalizeQuestJourneyLifecycleMode,
   canonicalizeQuestJourneyState,
   formatQuestJourneyText,
   formatWaitForRefLabel,
+  getQuestJourneyCurrentPhaseId,
+  getQuestJourneyCurrentPhaseIndex,
   getQuestJourneyPhase,
   getQuestJourneyPhaseForState,
   getWaitForRefKind,
@@ -72,6 +75,7 @@ describe("formatWaitForRefLabel", () => {
 describe("formatQuestJourneyText", () => {
   it("replaces embedded enum tokens with human-facing quest journey labels", () => {
     expect(formatQuestJourneyText("advanced q-42 to PLANNING")).toBe("advanced q-42 to Alignment");
+    expect(formatQuestJourneyText("left q-42 as PROPOSED")).toBe("left q-42 as Proposed");
     expect(formatQuestJourneyText("advanced q-42 to CODE_REVIEWING")).toBe("advanced q-42 to Code Review");
     expect(formatQuestJourneyText("moved from SKEPTIC_REVIEWING to PORTING")).toBe("moved from Code Review to Port");
   });
@@ -97,17 +101,38 @@ describe("phase alias compatibility", () => {
     expect(canonicalizeQuestJourneyState("GROOM_REVIEWING")).toBe("CODE_REVIEWING");
   });
 
-  it("normalizes legacy phase sequences into the new library", () => {
+  it("normalizes legacy phase sequences into the new library while preserving repeats", () => {
     expect(
-      normalizeQuestJourneyPhaseIds(["planning", "implementation", "skeptic-review", "reviewer-groom", "porting"]),
-    ).toEqual(["alignment", "implement", "code-review", "port"]);
+      normalizeQuestJourneyPhaseIds([
+        "planning",
+        "implementation",
+        "skeptic-review",
+        "reviewer-groom",
+        "porting",
+        "implementation",
+      ]),
+    ).toEqual(["alignment", "implement", "code-review", "code-review", "port", "implement"]);
   });
 });
 
 describe("QUEST_JOURNEY_HINTS", () => {
   it("describes the normal phase-driven review and port actions", () => {
+    expect(QUEST_JOURNEY_HINTS.PROPOSED).toContain("promote");
     expect(QUEST_JOURNEY_HINTS.CODE_REVIEWING).toContain("reviewer result");
     expect(QUEST_JOURNEY_HINTS.PORTING).toContain("sync confirmation");
+  });
+});
+
+describe("canonicalizeQuestJourneyLifecycleMode", () => {
+  it.each([
+    ["active", "active"],
+    [" proposed ", "proposed"],
+  ])("normalizes %j", (input, expected) => {
+    expect(canonicalizeQuestJourneyLifecycleMode(input)).toBe(expected);
+  });
+
+  it("rejects unknown lifecycle modes", () => {
+    expect(canonicalizeQuestJourneyLifecycleMode("queued")).toBeNull();
   });
 });
 
@@ -145,6 +170,7 @@ describe("Quest Journey phases", () => {
 
   it("maps board states to current phases and next leader actions", () => {
     expect(getQuestJourneyPhaseForState("IMPLEMENTING")?.id).toBe("implement");
+    expect(getQuestJourneyPhaseForState("PROPOSED")).toBeNull();
     expect(getQuestJourneyPhaseForState("PLANNING")?.id).toBe("alignment");
     expect(getQuestJourneyPhaseForState("SKEPTIC_REVIEWING")?.id).toBe("code-review");
     expect(getQuestJourneyPhase("bookkeeping")?.boardState).toBe("BOOKKEEPING");
@@ -152,7 +178,9 @@ describe("Quest Journey phases", () => {
     expect(getQuestJourneyPhase("alignment")?.nextLeaderAction).toContain("user escalation");
     expect(normalizeQuestJourneyPlan(undefined, "PORTING")).toEqual(
       expect.objectContaining({
+        mode: "active",
         phaseIds: DEFAULT_QUEST_JOURNEY_PHASE_IDS,
+        activePhaseIndex: 3,
         currentPhaseId: "port",
         nextLeaderAction: expect.stringContaining("sync confirmation"),
       }),
@@ -205,6 +233,7 @@ describe("Quest Journey phases", () => {
       expect.objectContaining({
         presetId: "ops",
         phaseIds: ["alignment", "explore", "execute"],
+        activePhaseIndex: 0,
         currentPhaseId: "alignment",
       }),
     );
@@ -224,6 +253,7 @@ describe("Quest Journey phases", () => {
     ).toEqual(
       expect.objectContaining({
         phaseIds: ["alignment", "explore", "outcome-review"],
+        activePhaseIndex: 0,
         currentPhaseId: "alignment",
         nextLeaderAction: getQuestJourneyPhase("alignment")?.nextLeaderAction,
       }),
@@ -243,9 +273,11 @@ describe("Quest Journey phases", () => {
 
     expect(normalized).toEqual(
       expect.objectContaining({
+        mode: "active",
         phaseIds: ["alignment", "explore", "outcome-review"],
       }),
     );
+    expect(normalized).not.toHaveProperty("activePhaseIndex");
     expect(normalized).not.toHaveProperty("currentPhaseId");
     expect(normalized).not.toHaveProperty("nextLeaderAction");
   });
@@ -266,10 +298,73 @@ describe("Quest Journey phases", () => {
     ).toEqual(
       expect.objectContaining({
         phaseIds: ["implement", "outcome-review", "code-review", "port"],
+        activePhaseIndex: 0,
         currentPhaseId: "implement",
         revisionReason: "Need outcome evidence before final review",
         revisedAt: 123,
         revisionCount: 2,
+      }),
+    );
+  });
+
+  it("keeps repeated phases and tracks progress by active phase index", () => {
+    const normalized = normalizeQuestJourneyPlan(
+      {
+        phaseIds: ["alignment", "implement", "code-review", "implement", "code-review", "port"],
+        activePhaseIndex: 3,
+        currentPhaseId: "implement",
+      },
+      "IMPLEMENTING",
+    );
+
+    expect(normalized).toEqual(
+      expect.objectContaining({
+        phaseIds: ["alignment", "implement", "code-review", "implement", "code-review", "port"],
+        activePhaseIndex: 3,
+        currentPhaseId: "implement",
+      }),
+    );
+    expect(getQuestJourneyCurrentPhaseIndex(normalized, "IMPLEMENTING")).toBe(3);
+    expect(getQuestJourneyCurrentPhaseId(normalized, "IMPLEMENTING")).toBe("implement");
+  });
+
+  it("normalizes proposed Journeys without active phase semantics", () => {
+    expect(
+      normalizeQuestJourneyPlan(
+        {
+          mode: "proposed",
+          phaseIds: ["alignment", "implement", "code-review", "port"],
+          activePhaseIndex: 1,
+          currentPhaseId: "implement",
+          nextLeaderAction: "stale implement action",
+        },
+        "PROPOSED",
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        mode: "proposed",
+        phaseIds: ["alignment", "implement", "code-review", "port"],
+        nextLeaderAction: QUEST_JOURNEY_HINTS.PROPOSED,
+      }),
+    );
+  });
+
+  it("keeps only valid in-range phase notes", () => {
+    expect(
+      normalizeQuestJourneyPlan({
+        phaseIds: ["alignment", "implement", "code-review"],
+        phaseNotes: {
+          "0": "Start with exact source links",
+          "2": "Inspect only the follow-up diff",
+          "5": "drop this",
+        },
+      }),
+    ).toEqual(
+      expect.objectContaining({
+        phaseNotes: {
+          "0": "Start with exact source links",
+          "2": "Inspect only the follow-up diff",
+        },
       }),
     );
   });

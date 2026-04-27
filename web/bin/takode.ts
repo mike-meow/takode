@@ -727,13 +727,16 @@ Categories:
   review       Ready for user review
 `;
 
-const BOARD_HELP = `Usage: takode board [show|set|advance|rm] ...
+const BOARD_HELP = `Usage: takode board [show|set|propose|promote|note|advance|rm] ...
 
 Quest Journey work board for the current leader session.
 
 Subcommands:
   show                    Show the board (default)
   set <quest-id>          Add or update a board row
+  propose <quest-id>      Draft or revise a proposed Journey row
+  promote <quest-id>      Promote a proposed Journey row into execution
+  note <quest-id>         Add or clear a per-phase Journey note
   advance <quest-id>      Move a quest to the next Journey state
   rm <quest-id> [...]     Remove quests from the active board
 
@@ -743,6 +746,9 @@ Examples:
   takode board set q-12 --phases planning,implement,code-review,port --preset full-code
   takode board set q-12 --phases planning,explore,outcome-review --preset investigation
   takode board set q-12 --phases implement,outcome-review,code-review,port --preset cli-rollout --revise-reason "Need outcome evidence before final code review"
+  takode board propose q-12 --phases alignment,implement,code-review,port --preset full-code --wait-for-input 3
+  takode board promote q-12 --worker 5
+  takode board note q-12 3 --text "Inspect only the follow-up diff"
   takode board set q-12 --status QUEUED --wait-for ${FREE_WORKER_WAIT_FOR_TOKEN}
   takode board set q-12 --status IMPLEMENTING --wait-for-input 3,4
   takode board set q-12 --clear-wait-for-input
@@ -764,6 +770,21 @@ Quest Journey phases:
   --clear-wait-for-input removes any existing linked needs-input wait state
 
 Zero-tracked-change work uses the same board model: choose explicit phases that omit \`port\` instead of using a special no-code board flag.
+`;
+
+const BOARD_PROPOSE_HELP = `Usage: takode board propose <quest-id> [--title <title>] --phases <ids> [--preset <id>] [--revise-reason <text>] [--wait-for-input <id,id...> | --clear-wait-for-input] [--json]
+
+Draft or revise a proposed pre-dispatch Journey row. Proposed rows stay board-owned and can wait on user approval without pretending they are generic queue rows.
+`;
+
+const BOARD_PROMOTE_HELP = `Usage: takode board promote <quest-id> [--worker <session>] [--status <state>] [--wait-for q-X,#Y,${FREE_WORKER_WAIT_FOR_TOKEN}] [--wait-for-input <id,id...> | --clear-wait-for-input] [--json]
+
+Promote an existing proposed Journey into active execution without redefining its phases. By default this clears any proposal hold linked through --wait-for-input.
+`;
+
+const BOARD_NOTE_HELP = `Usage: takode board note <quest-id> <phase-position> [--text <text> | --clear] [--json]
+
+Add or clear a lightweight per-phase Journey note. Phase positions are 1-based in CLI usage.
 `;
 
 const BOARD_ADVANCE_HELP = `Usage: takode board advance <quest-id> [--json]
@@ -908,6 +929,12 @@ function printCommandHelp(command: string, argv: string[]): boolean {
         console.log(BOARD_HELP);
       } else if (sub === "set" || sub === "add") {
         console.log(BOARD_SET_HELP);
+      } else if (sub === "propose") {
+        console.log(BOARD_PROPOSE_HELP);
+      } else if (sub === "promote") {
+        console.log(BOARD_PROMOTE_HELP);
+      } else if (sub === "note") {
+        console.log(BOARD_NOTE_HELP);
       } else if (sub === "advance") {
         console.log(BOARD_ADVANCE_HELP);
       } else if (sub === "advance-no-groom") {
@@ -3311,6 +3338,7 @@ import {
   formatWaitForRefLabel,
   type BoardQueueWarning,
   getInvalidQuestJourneyPhaseIds,
+  getQuestJourneyPhase,
   normalizeQuestJourneyPhaseIds,
   QUEST_JOURNEY_STATES,
   QUEST_JOURNEY_HINTS,
@@ -3392,6 +3420,19 @@ function formatBoardQueueWarnings(queueWarnings: BoardQueueWarning[] | undefined
   return queueWarnings.map((warning) =>
     warning.action ? `- ${warning.summary} Next: ${warning.action}` : `- ${warning.summary}`,
   );
+}
+
+function formatBoardPhaseNoteLines(row: BoardRow): string[] {
+  const entries = Object.entries(row.journey?.phaseNotes ?? {})
+    .map(([rawIndex, note]) => {
+      const index = Number.parseInt(rawIndex, 10);
+      if (!Number.isInteger(index) || index < 0) return null;
+      const phaseId = row.journey?.phaseIds?.[index];
+      const phaseLabel = getQuestJourneyPhase(phaseId)?.label ?? phaseId ?? "Unknown";
+      return `note[${index + 1}] ${phaseLabel}: ${note}`;
+    })
+    .filter((line): line is string => line !== null);
+  return entries;
 }
 
 /** Format board output as JSON with a marker for frontend detection. */
@@ -3507,6 +3548,11 @@ function printBoardText(
     }
 
     console.log(`${quest} ${title} ${owner} ${state} ${waitForDisplay} ${nextAction}`);
+    for (const noteLine of formatBoardPhaseNoteLines(row)) {
+      console.log(
+        `${"".padEnd(qCol)} ${"".padEnd(tCol)} ${"".padEnd(ownerCol)} ${"".padEnd(sCol)} ${"".padEnd(waitCol)} ${noteLine}`,
+      );
+    }
   }
   console.log("");
 }
@@ -3599,14 +3645,19 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
     return;
   }
 
-  if (sub === "add" || sub === "set") {
+  if (sub === "add" || sub === "set" || sub === "propose" || sub === "promote") {
     const questId = args[1];
-    if (!questId)
-      err(
-        `Usage: takode board ${sub} <quest-id> [--worker <session>] [--status "..."] [--title "..."] [--wait-for q-X,#Y,${FREE_WORKER_WAIT_FOR_TOKEN}] [--wait-for-input <id,id...> | --clear-wait-for-input] [--phases <ids>] [--preset <id>] [--revise-reason <text>] [--json]`,
-      );
+    const usageBySub =
+      sub === "propose"
+        ? `Usage: takode board propose <quest-id> [--title "..."] [--phases <ids>] [--preset <id>] [--revise-reason <text>] [--wait-for-input <id,id...> | --clear-wait-for-input] [--json]`
+        : sub === "promote"
+          ? `Usage: takode board promote <quest-id> [--worker <session>] [--status <state>] [--wait-for q-X,#Y,${FREE_WORKER_WAIT_FOR_TOKEN}] [--wait-for-input <id,id...> | --clear-wait-for-input] [--json]`
+          : `Usage: takode board ${sub} <quest-id> [--worker <session>] [--status "..."] [--title "..."] [--wait-for q-X,#Y,${FREE_WORKER_WAIT_FOR_TOKEN}] [--wait-for-input <id,id...> | --clear-wait-for-input] [--phases <ids>] [--preset <id>] [--revise-reason <text>] [--json]`;
+    if (!questId) err(usageBySub);
     if (!isValidQuestId(questId)) err(`Invalid quest ID "${questId}": must match q-NNN format (e.g., q-1, q-42)`);
     const flags = parseFlags(args.slice(2));
+    const isProposalCommand = sub === "propose";
+    const isPromoteCommand = sub === "promote";
     if (flags["no-code"] === true || flags["code-change"] === true) {
       err(
         "Board no-code flags were removed. Model zero-tracked-change work with an explicit phase plan that omits `port`.",
@@ -3614,9 +3665,16 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
     }
 
     const body: Record<string, unknown> = { questId };
+    if (isProposalCommand) body.journeyMode = "proposed";
+    if (isPromoteCommand) body.journeyMode = "active";
     if (typeof flags.status === "string") body.status = flags.status;
     if (typeof flags.title === "string") body.title = flags.title;
     if (typeof flags.phases === "string") {
+      if (isPromoteCommand) {
+        err(
+          "`takode board promote` reuses the existing Journey. Revise it first with `takode board propose` or `takode board set`.",
+        );
+      }
       const phases = flags.phases
         .split(",")
         .map((s: string) => s.trim())
@@ -3636,6 +3694,8 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
       }
     } else if (typeof flags.preset === "string") {
       err("Use --preset only with --phases so the planned Quest Journey is explicit.");
+    } else if (isProposalCommand) {
+      err("Use --phases with `takode board propose` so the proposed Journey is explicit.");
     }
     if (typeof flags["revise-reason"] === "string") {
       if (!("phases" in body)) {
@@ -3643,8 +3703,12 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
       }
       body.revisionReason = flags["revise-reason"];
     }
-    const explicitStatus = typeof flags.status === "string" ? flags.status.trim().toUpperCase() : null;
     if (typeof flags["wait-for"] === "string") {
+      if (isProposalCommand) {
+        err(
+          "Proposed Journey rows do not use --wait-for. Use --wait-for-input when the proposal is waiting on approval.",
+        );
+      }
       const waitFor = flags["wait-for"]
         .split(",")
         .map((s: string) => s.trim())
@@ -3661,6 +3725,14 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
     }
     if (typeof flags["wait-for"] === "string" && typeof flags["wait-for-input"] === "string") {
       err("Invalid board update: --wait-for and --wait-for-input cannot be combined on the same row.");
+    }
+    let explicitStatus = typeof flags.status === "string" ? flags.status.trim().toUpperCase() : null;
+    if (isProposalCommand) {
+      body.status = "PROPOSED";
+      explicitStatus = "PROPOSED";
+    } else if (isPromoteCommand && typeof flags["wait-for"] === "string" && !explicitStatus) {
+      body.status = "QUEUED";
+      explicitStatus = "QUEUED";
     }
     if (typeof flags["wait-for"] === "string" && explicitStatus && explicitStatus !== "QUEUED") {
       err("Invalid board update: --wait-for is only valid on QUEUED rows.");
@@ -3688,8 +3760,13 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
     }
     if (flags["clear-wait-for-input"] === true) {
       body.clearWaitForInput = true;
+    } else if (isPromoteCommand && typeof flags["wait-for-input"] !== "string") {
+      body.clearWaitForInput = true;
     }
     if (typeof flags.worker === "string") {
+      if (isProposalCommand) {
+        err("Proposed Journey rows cannot be assigned to a worker yet. Promote the row first.");
+      }
       const workerRef = flags.worker;
       if (!workerRef) {
         // Empty string means "clear worker assignment"
@@ -3725,7 +3802,51 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
     };
     const resolved = new Set(result.resolvedSessionDeps ?? []);
     outputBoard(result.board, flags.json === true, {
-      operation: `set ${questId}`,
+      operation: `${sub} ${questId}`,
+      resolvedSessionDeps: resolved,
+      rowSessionStatuses: result.rowSessionStatuses,
+      queueWarnings: result.queueWarnings,
+      workerSlotUsage: result.workerSlotUsage,
+    });
+    return;
+  }
+
+  if (sub === "note") {
+    const questId = args[1];
+    const usage = "Usage: takode board note <quest-id> <phase-position> [--text <text> | --clear] [--json]";
+    if (!questId) err(usage);
+    if (!isValidQuestId(questId)) err(`Invalid quest ID "${questId}": must match q-NNN format (e.g., q-1, q-42)`);
+    const phasePositionRaw = args[2];
+    if (!phasePositionRaw) err(usage);
+    const phasePosition = Number.parseInt(phasePositionRaw, 10);
+    if (!Number.isInteger(phasePosition) || phasePosition <= 0) {
+      err("Phase position must be a positive integer.");
+    }
+    const flags = parseFlags(args.slice(3));
+    const hasText = typeof flags.text === "string";
+    const wantsClear = flags.clear === true;
+    if (hasText === wantsClear) {
+      err("Use exactly one of --text or --clear.");
+    }
+    const body: Record<string, unknown> = {
+      questId,
+      phaseNoteEdits: [
+        {
+          index: phasePosition - 1,
+          note: hasText ? flags.text : null,
+        },
+      ],
+    };
+    const result = (await apiPost(base, `/sessions/${encodeURIComponent(selfId)}/board`, body)) as {
+      board: BoardRow[];
+      resolvedSessionDeps?: string[];
+      rowSessionStatuses?: Record<string, BoardRowSessionStatus>;
+      queueWarnings?: BoardQueueWarning[];
+      workerSlotUsage?: { used: number; limit: number };
+    };
+    const resolved = new Set(result.resolvedSessionDeps ?? []);
+    outputBoard(result.board, flags.json === true, {
+      operation: `note ${questId}`,
       resolvedSessionDeps: resolved,
       rowSessionStatuses: result.rowSessionStatuses,
       queueWarnings: result.queueWarnings,

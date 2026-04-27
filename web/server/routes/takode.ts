@@ -4,13 +4,16 @@ import * as questStore from "../quest-store.js";
 import * as sessionNames from "../session-names.js";
 import type { HerdSessionsResponse } from "../../shared/herd-types.js";
 import {
+  canonicalizeQuestJourneyLifecycleMode,
   FREE_WORKER_WAIT_FOR_TOKEN,
   getQuestJourneyPhase,
+  getQuestJourneyCurrentPhaseIndex,
   getQuestJourneyPhaseForState,
   getInvalidQuestJourneyPhaseIds,
   isValidQuestId,
   isValidWaitForRef,
   normalizeQuestJourneyPhaseIds,
+  type QuestJourneyLifecycleMode,
   type QuestJourneyPhaseId,
   type QuestJourneyPlanState,
 } from "../../shared/quest-journey.js";
@@ -50,6 +53,86 @@ import { getSettings } from "../settings-manager.js";
 import { QUEST_JOURNEY_STATES, type BrowserOutgoingMessage } from "../session-types.js";
 import { isSessionIdleRuntime } from "../herd-event-dispatcher.js";
 import type { RouteContext } from "./context.js";
+
+interface PhaseNoteEdit {
+  index: number;
+  note?: string;
+}
+
+function normalizeJourneyMode(value: unknown): QuestJourneyLifecycleMode | undefined {
+  if (typeof value !== "string") return undefined;
+  return canonicalizeQuestJourneyLifecycleMode(value) ?? undefined;
+}
+
+function normalizePhaseNoteEdits(value: unknown): PhaseNoteEdit[] | null {
+  if (!Array.isArray(value)) return null;
+  const edits: PhaseNoteEdit[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object") return null;
+    const index = (entry as { index?: unknown }).index;
+    if (typeof index !== "number" || !Number.isInteger(index) || index < 0) return null;
+    const rawNote = (entry as { note?: unknown }).note;
+    if (rawNote === null) {
+      edits.push({ index });
+      continue;
+    }
+    if (typeof rawNote !== "string") return null;
+    const note = rawNote.trim();
+    edits.push(note ? { index, note } : { index });
+  }
+  return edits;
+}
+
+function rebasePhaseNotesForRevisedPlan(
+  existingNotes: Record<string, string> | undefined,
+  previousPhaseIds: readonly QuestJourneyPhaseId[],
+  nextPhaseIds: readonly QuestJourneyPhaseId[],
+): Record<string, string> | undefined {
+  if (!existingNotes) return undefined;
+  const nextEntries = Object.entries(existingNotes)
+    .map(([rawIndex, note]) => {
+      const index = Number.parseInt(rawIndex, 10);
+      if (!Number.isInteger(index) || index < 0 || index >= nextPhaseIds.length) return null;
+      if (previousPhaseIds[index] !== nextPhaseIds[index]) return null;
+      const trimmed = note.trim();
+      return trimmed ? [String(index), trimmed] : null;
+    })
+    .filter((entry): entry is [string, string] => entry !== null);
+  return nextEntries.length > 0 ? Object.fromEntries(nextEntries) : undefined;
+}
+
+function applyPhaseNoteEdits(
+  existingNotes: Record<string, string> | undefined,
+  edits: readonly PhaseNoteEdit[],
+  phaseCount: number,
+): Record<string, string> | undefined {
+  const nextNotes = new Map<string, string>(Object.entries(existingNotes ?? {}));
+  for (const edit of edits) {
+    if (edit.index >= phaseCount) {
+      throw new Error(`Phase note index ${edit.index + 1} is out of range for the current Journey.`);
+    }
+    const key = String(edit.index);
+    if (edit.note) nextNotes.set(key, edit.note);
+    else nextNotes.delete(key);
+  }
+  return nextNotes.size > 0
+    ? Object.fromEntries([...nextNotes.entries()].sort((a, b) => Number(a[0]) - Number(b[0])))
+    : undefined;
+}
+
+function findPreservedPhaseIndex(
+  phaseIds: readonly QuestJourneyPhaseId[],
+  currentPhaseId: QuestJourneyPhaseId,
+  previousIndex: number | undefined,
+): number | undefined {
+  const matches = phaseIds
+    .map((phaseId, index) => ({ phaseId, index }))
+    .filter((entry) => entry.phaseId === currentPhaseId)
+    .map((entry) => entry.index);
+  if (matches.length === 0) return undefined;
+  if (previousIndex === undefined) return matches[0];
+  return matches.find((index) => index >= previousIndex) ?? matches[matches.length - 1];
+}
 
 export function createTakodeRoutes(ctx: RouteContext) {
   const api = new Hono();
@@ -1504,6 +1587,18 @@ export function createTakodeRoutes(ctx: RouteContext) {
     }
     let journey: QuestJourneyPlanState | undefined;
     let firstPlannedPhaseState: string | undefined;
+    const explicitStatus = typeof body.status === "string" ? body.status.trim() || undefined : undefined;
+    const explicitStatusUpper = explicitStatus?.toUpperCase();
+    const explicitStatusPhase = getQuestJourneyPhaseForState(explicitStatus ?? null)?.id;
+    const requestedMode = normalizeJourneyMode(body.journeyMode);
+    if (body.journeyMode !== undefined && !requestedMode) {
+      return c.json({ error: "journeyMode must be `active` or `proposed` when provided" }, 400);
+    }
+    const existingJourney = existingRow?.journey;
+    const existingMode: QuestJourneyLifecycleMode =
+      normalizeJourneyMode(existingJourney?.mode) ??
+      ((existingRow?.status || "").trim().toUpperCase() === "PROPOSED" ? "proposed" : "active");
+    const targetMode = requestedMode ?? (explicitStatusUpper === "PROPOSED" ? "proposed" : (existingMode ?? "active"));
     const revisionReason =
       typeof body.revisionReason === "string" && body.revisionReason.trim() ? body.revisionReason.trim() : undefined;
     if (typeof body.revisionReason === "string" && !revisionReason) {
@@ -1512,6 +1607,19 @@ export function createTakodeRoutes(ctx: RouteContext) {
     if (revisionReason && !Array.isArray(body.phases)) {
       return c.json({ error: "Journey revision reason requires --phases / phases so the revision is explicit" }, 400);
     }
+    const phaseNoteEdits = normalizePhaseNoteEdits(body.phaseNoteEdits);
+    if (body.phaseNoteEdits !== undefined && phaseNoteEdits === null) {
+      return c.json({ error: "phaseNoteEdits must be an array of { index, note } edits when provided" }, 400);
+    }
+    if (targetMode === "proposed" && explicitStatus && explicitStatusUpper !== "PROPOSED") {
+      return c.json({ error: "Proposed Journey rows must use status PROPOSED." }, 400);
+    }
+    if (targetMode === "active" && explicitStatusUpper === "PROPOSED") {
+      return c.json({ error: "Status PROPOSED is only valid for proposed Journey rows." }, 400);
+    }
+
+    let typedPhaseIds: QuestJourneyPhaseId[] | undefined;
+    const existingPhaseIds = normalizeQuestJourneyPhaseIds(existingJourney?.phaseIds ?? []);
     if (Array.isArray(body.phases)) {
       const phaseIds = body.phases
         .filter((s: unknown) => typeof s === "string" && s.trim())
@@ -1523,9 +1631,8 @@ export function createTakodeRoutes(ctx: RouteContext) {
       if (invalid.length > 0) {
         return c.json({ error: `Invalid Quest Journey phase(s): ${invalid.join(", ")}` }, 400);
       }
-      const typedPhaseIds = normalizeQuestJourneyPhaseIds(phaseIds) as QuestJourneyPhaseId[];
+      typedPhaseIds = normalizeQuestJourneyPhaseIds(phaseIds) as QuestJourneyPhaseId[];
       firstPlannedPhaseState = getQuestJourneyPhase(typedPhaseIds[0])?.boardState;
-      const existingPhaseIds = normalizeQuestJourneyPhaseIds(existingRow?.journey?.phaseIds ?? []);
       const phasesChanged =
         typedPhaseIds.length !== existingPhaseIds.length ||
         typedPhaseIds.some((phaseId, index) => phaseId !== existingPhaseIds[index]);
@@ -1533,17 +1640,17 @@ export function createTakodeRoutes(ctx: RouteContext) {
         return c.json(
           {
             error:
-              "Updating an active Quest Journey requires a revision reason. Re-run with --revise-reason / revisionReason.",
+              "Updating an existing Quest Journey requires a revision reason. Re-run with --revise-reason / revisionReason.",
           },
           400,
         );
       }
-      const existingCurrentPhaseId =
-        existingRow?.journey?.currentPhaseId ?? getQuestJourneyPhaseForState(existingRow?.status)?.id;
+      const existingCurrentPhaseId = getQuestJourneyPhase(existingJourney?.currentPhaseId)?.id;
       if (
+        targetMode === "active" &&
         existingCurrentPhaseId &&
         !typedPhaseIds.includes(existingCurrentPhaseId) &&
-        typeof body.status !== "string"
+        !explicitStatus
       ) {
         return c.json(
           {
@@ -1553,9 +1660,6 @@ export function createTakodeRoutes(ctx: RouteContext) {
           400,
         );
       }
-      const explicitStatusPhase = getQuestJourneyPhaseForState(
-        typeof body.status === "string" ? body.status : null,
-      )?.id;
       if (explicitStatusPhase && !typedPhaseIds.includes(explicitStatusPhase)) {
         return c.json(
           {
@@ -1564,26 +1668,91 @@ export function createTakodeRoutes(ctx: RouteContext) {
           400,
         );
       }
+    }
+
+    const resolvedPhaseIds = typedPhaseIds ?? existingPhaseIds;
+    if (phaseNoteEdits && resolvedPhaseIds.length === 0) {
+      return c.json(
+        { error: "Phase notes require an existing Journey row or explicit --phases for the target row." },
+        400,
+      );
+    }
+
+    let phaseNotes =
+      typedPhaseIds && existingJourney
+        ? rebasePhaseNotesForRevisedPlan(existingJourney.phaseNotes, existingPhaseIds, typedPhaseIds)
+        : existingJourney?.phaseNotes;
+    if (phaseNoteEdits) {
+      try {
+        phaseNotes = applyPhaseNoteEdits(phaseNotes, phaseNoteEdits, resolvedPhaseIds.length);
+      } catch (error) {
+        return c.json({ error: error instanceof Error ? error.message : "Invalid phase note update." }, 400);
+      }
+    }
+
+    let activePhaseIndex: number | undefined;
+    if (targetMode === "active" && resolvedPhaseIds.length > 0) {
+      const existingCurrentPhaseId = getQuestJourneyPhase(existingJourney?.currentPhaseId)?.id;
+      const existingCurrentPhaseIndex = getQuestJourneyCurrentPhaseIndex(existingJourney, existingRow?.status);
+      if (explicitStatusPhase) {
+        activePhaseIndex = findPreservedPhaseIndex(resolvedPhaseIds, explicitStatusPhase, existingCurrentPhaseIndex);
+      } else if (typedPhaseIds && existingMode === "active" && existingCurrentPhaseId) {
+        activePhaseIndex = findPreservedPhaseIndex(resolvedPhaseIds, existingCurrentPhaseId, existingCurrentPhaseIndex);
+      } else if ((requestedMode === "active" && existingMode === "proposed") || !existingRow?.status) {
+        activePhaseIndex = 0;
+      }
+    }
+
+    if (typedPhaseIds || phaseNoteEdits || revisionReason || requestedMode) {
       journey = {
-        presetId: typeof body.presetId === "string" && body.presetId.trim() ? body.presetId.trim() : "custom",
-        phaseIds: typedPhaseIds,
+        phaseIds: resolvedPhaseIds.length > 0 ? resolvedPhaseIds : [],
+        presetId:
+          typedPhaseIds && typeof body.presetId === "string" && body.presetId.trim()
+            ? body.presetId.trim()
+            : (existingJourney?.presetId ?? (typedPhaseIds ? "custom" : undefined)),
+        mode: targetMode,
+        ...(targetMode === "active" && activePhaseIndex !== undefined ? { activePhaseIndex } : {}),
+        ...(phaseNotes ? { phaseNotes } : {}),
         ...(revisionReason ? { revisionReason } : {}),
       };
     }
+
     const implicitQueuedStatus =
-      typeof body.status !== "string" &&
+      !explicitStatus &&
+      targetMode === "active" &&
       typeof body.worker !== "string" &&
       waitFor !== undefined &&
       !existingRow?.status
         ? "QUEUED"
         : undefined;
+    const defaultActiveStatus =
+      firstPlannedPhaseState ??
+      (resolvedPhaseIds.length > 0 ? getQuestJourneyPhase(resolvedPhaseIds[0])?.boardState : undefined);
     const mergedStatus =
-      typeof body.status === "string"
-        ? body.status.trim() || undefined
-        : (implicitQueuedStatus ?? existingRow?.status?.trim() ?? firstPlannedPhaseState);
-    const mergedWaitFor = waitFor !== undefined ? waitFor : existingRow?.waitFor;
+      explicitStatus ??
+      (targetMode === "proposed"
+        ? "PROPOSED"
+        : (implicitQueuedStatus ??
+          ((existingRow?.status || "").trim().toUpperCase() === "PROPOSED"
+            ? defaultActiveStatus
+            : (existingRow?.status?.trim() ?? defaultActiveStatus))));
+    const mergedStatusUpper = (mergedStatus || "").trim().toUpperCase();
+    const mergedWaitFor =
+      targetMode === "proposed" ? undefined : waitFor !== undefined ? waitFor : existingRow?.waitFor;
     const mergedWaitForInput = waitForInput !== undefined ? waitForInput : existingRow?.waitForInput;
-    const mergedIsQueued = (mergedStatus || "").trim().toUpperCase() === "QUEUED";
+    const mergedIsQueued = mergedStatusUpper === "QUEUED";
+    if (targetMode === "proposed" && typeof body.worker === "string" && body.worker.trim()) {
+      return c.json({ error: "Proposed Journey rows cannot be assigned to a worker yet." }, 400);
+    }
+    if (targetMode === "proposed" && waitFor && waitFor.length > 0) {
+      return c.json(
+        {
+          error:
+            "Proposed Journey rows do not use queue wait-for dependencies. Use wait-for-input to hold for approval.",
+        },
+        400,
+      );
+    }
     if (mergedIsQueued && mergedWaitForInput && mergedWaitForInput.length > 0) {
       return c.json(
         {
@@ -1609,6 +1778,9 @@ export function createTakodeRoutes(ctx: RouteContext) {
         400,
       );
     }
+    if (targetMode === "active" && mergedStatusUpper === "PROPOSED") {
+      return c.json({ error: "Active Journey rows cannot keep status PROPOSED." }, 400);
+    }
     if (mergedIsQueued && (!mergedWaitFor || mergedWaitFor.length === 0)) {
       return c.json(
         {
@@ -1618,12 +1790,10 @@ export function createTakodeRoutes(ctx: RouteContext) {
       );
     }
 
-    const statusForUpsert =
-      typeof body.status === "string"
-        ? body.status
-        : existingRow?.status
-          ? implicitQueuedStatus
-          : (implicitQueuedStatus ?? firstPlannedPhaseState);
+    const statusForUpsert = mergedStatus;
+    const workerForUpsert = targetMode === "proposed" ? "" : typeof body.worker === "string" ? body.worker : undefined;
+    const workerNumForUpsert =
+      targetMode === "proposed" ? undefined : typeof body.workerNum === "number" ? body.workerNum : undefined;
 
     const board = bridgeSession
       ? upsertBoardRowController(
@@ -1631,11 +1801,11 @@ export function createTakodeRoutes(ctx: RouteContext) {
           {
             questId,
             title,
-            worker: typeof body.worker === "string" ? body.worker : undefined,
-            workerNum: typeof body.workerNum === "number" ? body.workerNum : undefined,
+            worker: workerForUpsert,
+            workerNum: workerNumForUpsert,
             journey,
             status: statusForUpsert,
-            waitFor,
+            waitFor: targetMode === "proposed" ? [] : waitFor,
             waitForInput,
           },
           workBoardStateDeps,

@@ -12,7 +12,11 @@
  */
 import { useState, useEffect } from "react";
 import { useStore } from "../store.js";
-import { getQuestJourneyPhase, getQuestJourneyPresentation } from "../../shared/quest-journey.js";
+import {
+  getQuestJourneyCurrentPhaseId,
+  getQuestJourneyPhase,
+  getQuestJourneyPresentation,
+} from "../../shared/quest-journey.js";
 import { BoardTable, orderBoardRows } from "./BoardTable.js";
 import type { BoardRowData } from "./BoardTable.js";
 import { scopedGetItem, scopedSetItem } from "../utils/scoped-storage.js";
@@ -31,7 +35,11 @@ export function boardSummary(board: BoardRowData[], completedCount: number): Boa
   const counts = new Map<string, { count: number; className: string }>();
   for (const row of orderBoardRows(board)) {
     const pres = row.status ? getQuestJourneyPresentation(row.status) : null;
-    const label = getQuestJourneyPhase(row.journey?.currentPhaseId)?.label ?? pres?.label ?? row.status ?? "unknown";
+    const label =
+      getQuestJourneyPhase(getQuestJourneyCurrentPhaseId(row.journey, row.status))?.label ??
+      pres?.label ??
+      row.status ??
+      "unknown";
     const className = pres?.textClassName ?? "text-cc-fg/80";
     const entry = counts.get(label);
     if (entry) entry.count++;

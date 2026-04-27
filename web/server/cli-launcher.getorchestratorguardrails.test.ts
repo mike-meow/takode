@@ -402,7 +402,7 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("~/.companion/quest-journey-phases/<phase-id>/");
     expect(guardrails).toContain("`alignment/leader.md`");
     expect(guardrails).toContain("`alignment/assignee.md`");
-    expect(guardrails).toContain("board-owned active state for the quest");
+    expect(guardrails).toContain("board-owned draft-or-active state for the quest");
     expect(guardrails).toContain("Work Board");
     // Spawn backend default note
     expect(guardrails).toContain("default to your own backend type");
@@ -528,7 +528,7 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("not a routine second user-approval gate");
     expect(guardrails).toContain("Alignment approval is leader-owned by default");
     expect(guardrails).toContain("Escalate alignment back to the user only");
-    expect(guardrails).toContain("board-owned active state for the quest");
+    expect(guardrails).toContain("board-owned draft-or-active state for the quest");
     expect(guardrails).toContain("point the worker at the exact prior messages, quests, or discussions");
     expect(guardrails).toContain("Initial pre-dispatch approval is a combined contract");
     expect(guardrails).toContain("expected worker choice or fresh-spawn intent");

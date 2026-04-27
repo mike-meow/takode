@@ -1,4 +1,5 @@
 import {
+  getQuestJourneyCurrentPhaseIndex,
   getQuestJourneyPhase,
   getQuestJourneyPhaseForState,
   type QuestJourneyPlanState,
@@ -106,8 +107,8 @@ export function QuestJourneyTimeline({
   if (phaseIds.length === 0) return null;
 
   const fallbackCurrentPhaseId = getQuestJourneyPhaseForState(status)?.id;
-  const currentPhaseId = getQuestJourneyPhase(journey.currentPhaseId)?.id ?? fallbackCurrentPhaseId ?? undefined;
-  const currentIndex = currentPhaseId ? phaseIds.indexOf(currentPhaseId) : -1;
+  const fallbackCurrentIndex = fallbackCurrentPhaseId ? phaseIds.indexOf(fallbackCurrentPhaseId) : -1;
+  const currentIndex = getQuestJourneyCurrentPhaseIndex(journey, status) ?? fallbackCurrentIndex;
   const rootTitle = journey.revisionReason ? `Journey revised: ${journey.revisionReason}` : undefined;
 
   return (
@@ -128,7 +129,7 @@ export function QuestJourneyTimeline({
           index === 0 ? null : previousCompleted ? COMPLETED_TONE : toneForPhase(phaseIds[index - 1]);
 
         return (
-          <div key={phase.id} className="inline-flex min-w-0 items-center">
+          <div key={`${phase.id}-${index}`} className="inline-flex min-w-0 items-center">
             {connectorTone && (
               <span className={`mx-1 h-px w-3 shrink-0 ${connectorTone.lineClassName}`} aria-hidden="true" />
             )}

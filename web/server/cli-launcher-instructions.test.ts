@@ -101,7 +101,7 @@ describe("buildInjectedSystemPromptForDebug", () => {
     expect(result).toContain("Every dispatched task follows a **Quest Journey** assembled from phases");
     expect(result).toContain("Use `/quest-design` before creating or materially refining quest text");
     expect(result).toContain("Use `/leader-dispatch` before dispatching a fresh or newly refined quest");
-    expect(result).toContain("board-owned active state for the quest");
+    expect(result).toContain("board-owned draft-or-active state for the quest");
     expect(result).toContain("Initial Journey approval comes before dispatch");
     expect(result).toContain("not a routine second user-approval gate");
     expect(result).toContain("Alignment approval is leader-owned by default");

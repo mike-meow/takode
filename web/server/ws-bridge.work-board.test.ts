@@ -1340,6 +1340,37 @@ describe("work board", () => {
     expect(bridge.getCompletedBoardCount("s1")).toBe(1);
   });
 
+  it("advanceBoardRow rejects proposed rows until they are promoted", () => {
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    bridge.upsertBoardRow("s1", {
+      questId: "q-1",
+      title: "Draft Journey proposal",
+      status: "PROPOSED",
+      waitForInput: ["n-3"],
+      journey: {
+        mode: "proposed",
+        phaseIds: ["alignment", "implement", "code-review", "port"],
+      },
+    });
+
+    const result = bridge.advanceBoardRow("s1", "q-1");
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        error: expect.stringContaining("must be promoted before execution"),
+        previousState: "PROPOSED",
+      }),
+    );
+    expect(bridge.getBoard("s1")).toEqual([
+      expect.objectContaining({
+        questId: "q-1",
+        status: "PROPOSED",
+      }),
+    ]);
+  });
+
   it("preserves full takode board previews so dependent rows stay visible to the agent", () => {
     // Regression for q-466: the bridge state was intact, but the 300-char tail
     // preview for `takode board advance` hid q-461 and made the model think the
