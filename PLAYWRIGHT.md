@@ -12,37 +12,42 @@ Always use the **frontend port (5174)** for browser testing.
 
 ## Quick Start
 
-1. **Start the dev server** (if not already running):
+1. **Install web dependencies if needed**:
    ```bash
-   cd web && bun install && bun run dev
+   bun install --cwd web
    ```
 
-2. **Start the Playwright MCP server** (keeps browser session alive across commands):
+2. **Start the dev server** (if not already running):
+   ```bash
+   make dev
+   ```
+
+3. **Start the Playwright MCP server** (keeps browser session alive across commands):
    ```bash
    npx -y mcp-cmd start playwright npx -y @playwright/mcp@latest
    ```
 
-3. **Navigate to the app**:
+4. **Navigate to the app**:
    ```bash
    npx -y mcp-cmd call playwright browser_navigate --url="http://localhost:5174"
    ```
 
-4. **Take a snapshot** (preferred over screenshots for interactions):
+5. **Take a snapshot** (preferred over screenshots for interactions):
    ```bash
    npx -y mcp-cmd call playwright browser_snapshot
    ```
 
-5. **Interact with elements** using refs from the snapshot:
+6. **Interact with elements** using refs from the snapshot:
    ```bash
    npx -y mcp-cmd call playwright browser_click --element="Submit button" --ref="A1"
    ```
 
-6. **Take a screenshot**:
+7. **Take a screenshot**:
    ```bash
    npx -y mcp-cmd call playwright browser_take_screenshot --filename="step1.png"
    ```
 
-7. **Stop the server when done**:
+8. **Stop the server when done**:
    ```bash
    npx -y mcp-cmd stop playwright
    ```

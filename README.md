@@ -167,6 +167,10 @@ Takode runs locally. There is no required third-party service besides the model 
 ## Development
 
 ```bash
+# Install web dependencies once before the first local dev run,
+# and rerun after pulling dependency changes
+bun install --cwd web
+
 # Dev server (backend :3456 + Vite HMR :5174)
 make dev
 
@@ -176,6 +180,9 @@ cd web && bun run typecheck && bun run test
 # Production build
 cd web && bun run build && bun run start
 ```
+
+`make dev` assumes the `web/` dependencies are already installed. On a fresh
+clone or after dependency changes, run `bun install --cwd web` first.
 
 ## Documentation
 

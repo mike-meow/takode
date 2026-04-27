@@ -7,7 +7,10 @@ Run these from the repository root unless noted otherwise.
 ## Shell scripts
 
 - [`dev-start.sh`](./dev-start.sh)
-  - Idempotent local dev bootstrap for backend + frontend.
+  - Idempotent local dev bootstrap for backend + frontend after the `web/`
+    dependencies are installed.
+  - Fails fast with setup guidance when `bun install --cwd web` has not been
+    run yet.
   - Supports:
     - `./scripts/dev-start.sh`
     - `./scripts/dev-start.sh --status`
@@ -68,6 +71,7 @@ Run these from the repository root unless noted otherwise.
 ## Typical maintenance workflows
 
 - "Bring up local app stack":
+  - `bun install --cwd web` (first local setup, or after dependency changes)
   - `./scripts/dev-start.sh`
 - "Run landing page":
   - `./scripts/landing-start.sh`

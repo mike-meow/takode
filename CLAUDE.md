@@ -41,11 +41,15 @@ Legacy compatibility aliases also remain installed for older references: `quest-
 ## Development Commands
 
 ```bash
-# Dev server (Hono backend on :3456 + Vite HMR on :5174)
-cd web && bun install && bun run dev
+# Install web dependencies once before the first local dev run,
+# and rerun after pulling dependency changes
+bun install --cwd web
 
-# Or from repo root
+# Dev server (Hono backend on :3456 + Vite HMR on :5174)
 make dev
+
+# Direct web runner
+cd web && bun run dev
 
 # Type checking
 cd web && bun run typecheck

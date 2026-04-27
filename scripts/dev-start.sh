@@ -8,7 +8,8 @@ set -euo pipefail
 #        ./scripts/dev-start.sh --stop   Stop all dev servers
 #        ./scripts/dev-start.sh --status Check if running
 #
-# Starts both the Bun backend (port 3456) and Vite frontend (port 5174).
+# Starts the Bun backend and Vite frontend used by this helper script.
+# Requires installed web dependencies; run `bun install --cwd web` first.
 # Idempotent: safe to run N times. If servers are healthy, exits instantly.
 # =============================================================================
 
@@ -35,6 +36,37 @@ die()   { echo -e "${RED}[xx]${NC} $*" >&2; exit 1; }
 step()  { echo -e "${CYAN}-->>${NC} $*"; }
 
 # --------------- helpers ---------------
+
+missing_dependency_marker() {
+  local markers=(
+    "$WEB_DIR/node_modules/.bin/vite"
+    "$WEB_DIR/node_modules/hono/package.json"
+    "$WEB_DIR/node_modules/react/package.json"
+  )
+
+  local marker
+  for marker in "${markers[@]}"; do
+    if [ ! -e "$marker" ]; then
+      echo "$marker"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+require_installed_web_dependencies() {
+  local missing_marker
+  if ! missing_marker=$(missing_dependency_marker); then
+    return 0
+  fi
+
+  die "Missing local web dependencies in $WEB_DIR.
+Expected install artifact not found: $missing_marker
+Run: bun install --cwd web
+Then start local dev with: make dev
+Or rerun this helper after install: ./scripts/dev-start.sh"
+}
 
 start_detached() {
   local log_file="$1"
@@ -191,10 +223,10 @@ cmd_start() {
   command -v python3 &>/dev/null || die "python3 not found. Required for detached dev server startup."
   info "bun $(bun --version)"
 
-  # --- Install deps (bun install is idempotent) ---
-  step "Checking dependencies..."
-  bun install --frozen-lockfile 2>&1 | tail -3
-  info "Dependencies OK"
+  # --- Fail fast if local install state is missing or incomplete ---
+  step "Checking installed web dependencies..."
+  require_installed_web_dependencies
+  info "Installed web dependencies OK"
 
   # --- Start backend if needed ---
   if is_port_listening "$BACKEND_PORT" && is_http_healthy "$BACKEND_PORT" "$BACKEND_HEALTH_PATH"; then
