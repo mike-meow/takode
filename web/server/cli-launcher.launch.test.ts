@@ -1,7 +1,7 @@
 import { vi } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { homedir, tmpdir } from "node:os";
+import { homedir, hostname, tmpdir } from "node:os";
 
 // ─── Hoisted mocks ──────────────────────────────────────────────────────────
 
@@ -317,6 +317,32 @@ function createMockCodexProc(pid = 12345) {
     stdout: new ReadableStream<Uint8Array>(),
     stderr: new ReadableStream<Uint8Array>(),
   };
+}
+
+function createMaiWrapperFixture() {
+  const root = mkdtempSync(join(tmpdir(), "mai-wrapper-test-"));
+  const envHost =
+    hostname()
+      .replace(/[^A-Za-z0-9._-]/g, "-")
+      .replace(/^[._-]+/, "")
+      .replace(/[._-]+$/, "")
+      .slice(0, 64)
+      .replace(/[._-]+$/, "") || "host";
+  mkdirSync(join(root, ".run"), { recursive: true });
+  writeFileSync(join(root, ".mai-agents-root"), "");
+  writeFileSync(
+    join(root, ".run", `.env-${envHost}`),
+    [
+      'LITELLM_API_KEY="sk-wrapper123"',
+      'LITELLM_PROXY_URL="http://localhost:4000"',
+      'CODEX_HOME="/Users/test/.codex/hosts/test-host"',
+      "",
+    ].join("\n"),
+  );
+  const wrapperPath = join(root, "codex.sh");
+  writeFileSync(wrapperPath, ["#!/usr/bin/env bash", "set -euo pipefail", 'echo "wrapper placeholder"', ""].join("\n"));
+  chmodSync(wrapperPath, 0o755);
+  return { root, wrapperPath };
 }
 
 const mockSpawn = vi.fn();
@@ -894,6 +920,65 @@ describe("launch", () => {
     }
   });
 
+  it("relaunches MAI-wrapper-backed Codex leaders with the session-local CODEX_HOME", async () => {
+    const customHome = mkdtempSync(join(tmpdir(), "codex-home-test-"));
+    const sessionHome = join(customHome, "test-session-id");
+    const configPath = join(sessionHome, "config.toml");
+    const { readFileSync: realReadFileSync } = require("node:fs");
+    const { root, wrapperPath } = createMaiWrapperFixture();
+
+    try {
+      mockResolveBinary.mockImplementation((name: string): string | null => {
+        if (name === wrapperPath) return wrapperPath;
+        if (name === "codex") return "/opt/fake/codex";
+        return "/usr/bin/claude";
+      });
+      mockCaptureUserShellEnv.mockReturnValue({});
+
+      mockSpawn.mockReturnValueOnce(createMockCodexProc());
+      const workerInfo = await launcher.launch({
+        backendType: "codex",
+        cwd: "/tmp/project",
+        codexSandbox: "workspace-write",
+        codexBinary: wrapperPath,
+        codexHome: customHome,
+        codexLeaderContextWindowOverrideTokens: 1_000_000,
+      });
+      await waitForSpawnCalls(1);
+
+      let [cmdAndArgs] = mockSpawn.mock.calls[0]!;
+      expect(cmdAndArgs[0]).toBe(wrapperPath);
+
+      (launcher.getSession(workerInfo.sessionId) as any).isOrchestrator = true;
+      launcher.setSettingsGetter(() => ({
+        claudeBinary: "",
+        codexBinary: wrapperPath,
+        codexLeaderContextWindowOverrideTokens: 1_000_000,
+      }));
+      mockSpawn.mockReturnValueOnce(createMockCodexProc(12346));
+      const relaunch = await launcher.relaunch(workerInfo.sessionId);
+      expect(relaunch.ok).toBe(true);
+      await waitForSpawnCalls(2);
+
+      [cmdAndArgs] = mockSpawn.mock.calls[1]!;
+      const [, options] = mockSpawn.mock.calls[1]!;
+      expect(cmdAndArgs[0]).toBe("/opt/fake/codex");
+      expect(cmdAndArgs).toContain("model_provider=litellm");
+      expect(cmdAndArgs).toContain("web_search=disabled");
+      expect(cmdAndArgs.join(" ")).toContain('base_url="http://localhost:4000"');
+      expect(options.env.CODEX_HOME).toBe(sessionHome);
+      expect(options.env.LITELLM_API_KEY).toBe("sk-wrapper123");
+      expect(options.env.LITELLM_PROXY_URL).toBe("http://localhost:4000");
+
+      const config = realReadFileSync(configPath, "utf-8");
+      expect(config).toContain("model_context_window = 1000000");
+      expect(config).toContain("model_auto_compact_token_limit = 1000000");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(customHome, { recursive: true, force: true });
+    }
+  });
+
   it("applies the context-window override to containerized Codex leaders only", async () => {
     const customHome = mkdtempSync(join(tmpdir(), "codex-container-home-test-"));
 
@@ -940,7 +1025,7 @@ describe("launch", () => {
       expect(innerScript).toContain("cat > /root/.codex/config.toml <<'__COMPANION_CODEX_CONFIG__'");
       expect(innerScript).toContain("model_context_window = 1000000");
       expect(innerScript).toContain("model_auto_compact_token_limit = 1000000");
-      expect(innerScript).toContain("exec 'codex' '-a'");
+      expect(innerScript).toContain("exec 'codex' '-c' 'tools.webSearch=false' '-a'");
     } finally {
       rmSync(customHome, { recursive: true, force: true });
     }
@@ -1325,7 +1410,7 @@ describe("launch", () => {
 
     const [cmdAndArgs] = mockSpawn.mock.calls[0];
     expect(cmdAndArgs[0]).toBe(fakeCodex);
-    expect(cmdAndArgs[1]).toBe("-a");
+    expect(cmdAndArgs.slice(1, 5)).toEqual(["-c", "tools.webSearch=false", "-a", "untrusted"]);
 
     rmSync(tmpBinDir, { recursive: true, force: true });
   });
