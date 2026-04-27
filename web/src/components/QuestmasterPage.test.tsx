@@ -332,7 +332,6 @@ describe("QuestmasterPage verification inbox", () => {
         ...buildVerificationQuest({ id: "q-21-v1", questId: "q-21", title: "Newest refined" }),
         status: "refined",
         createdAt: 200,
-        claimedAt: 200,
         statusChangedAt: 200,
         updatedAt: 9_000,
       } as QuestmasterTask,
