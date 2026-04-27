@@ -1639,6 +1639,27 @@ describe("Sidebar", { timeout: 10000 }, () => {
     });
   });
 
+  it("copies session numbers with a leading hash from the context menu", () => {
+    // The session-row menu exposes Takode session numbers in their UI form so
+    // pasted references stay consistent with linked session tokens elsewhere.
+    const session = makeSession("s1");
+    const sdk = makeSdkSession("s1", { sessionNum: 1147 });
+    mockState = createMockState({
+      sessions: new Map([["s1", session]]),
+      sdkSessions: [sdk],
+      currentSessionId: "s1",
+    });
+
+    render(<Sidebar />);
+    const sessionButton = screen.getByText("claude-sonnet-4-5-20250929").closest("button")!;
+    fireEvent.contextMenu(sessionButton, { clientX: 100, clientY: 120 });
+
+    expect(screen.getByText("Copy Session Number")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Copy Session Number"));
+    expect(mockWriteClipboardText).toHaveBeenCalledWith("#1147");
+  });
+
   it("offers a force-herd action to the current leader for workers owned by another leader", async () => {
     // Workers already owned by a different leader should expose the explicit
     // force-takeover affordance, including the confirmation gate.

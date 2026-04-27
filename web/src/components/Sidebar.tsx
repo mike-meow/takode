@@ -1545,7 +1545,7 @@ export function Sidebar() {
                   {
                     label: "Copy Session Number",
                     onClick: () => {
-                      writeClipboardText(String(sessionNum)).catch(console.error);
+                      writeClipboardText(`#${sessionNum}`).catch(console.error);
                     },
                   },
                 ]
