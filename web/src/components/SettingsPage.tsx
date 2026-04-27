@@ -71,16 +71,30 @@ function codexLeaderThresholdOverrideDraftsFromSettings(
     }));
   const unusedDraftIds = new Set(existingDrafts.map((draft) => draft.draftId));
   return nextEntries.map(({ modelId, thresholdTokens }) => {
-    const matchingDraft = existingDrafts.find(
-      (draft) =>
-        unusedDraftIds.has(draft.draftId) && draft.modelId === modelId && draft.thresholdTokens === thresholdTokens,
-    );
+    const matchingDraft = existingDrafts.find((draft) => {
+      if (!unusedDraftIds.has(draft.draftId)) return false;
+      const normalizedDraft = normalizeCodexLeaderThresholdOverrideDraftForComparison(draft);
+      return normalizedDraft.modelId === modelId && normalizedDraft.thresholdTokens === thresholdTokens;
+    });
     if (matchingDraft) {
       unusedDraftIds.delete(matchingDraft.draftId);
       return { ...matchingDraft, modelId, thresholdTokens };
     }
     return createCodexLeaderThresholdOverrideDraft(modelId, thresholdTokens);
   });
+}
+
+function normalizeCodexLeaderThresholdOverrideDraftForComparison(
+  draft: Pick<CodexLeaderThresholdOverrideDraft, "modelId" | "thresholdTokens">,
+): { modelId: string; thresholdTokens: string } {
+  const modelId = draft.modelId.trim();
+  const trimmedThresholdTokens = draft.thresholdTokens.trim();
+  const thresholdNumber = Number(trimmedThresholdTokens);
+  return {
+    modelId,
+    thresholdTokens:
+      Number.isInteger(thresholdNumber) && thresholdNumber >= 1 ? String(thresholdNumber) : trimmedThresholdTokens,
+  };
 }
 
 function parseCodexLeaderThresholdOverrideDrafts(

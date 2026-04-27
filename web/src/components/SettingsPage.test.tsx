@@ -879,6 +879,77 @@ describe("SettingsPage", () => {
     expect(modelInput.value).toBe("gpt-5.4.1");
   });
 
+  it("preserves the same override row through normalized save reconciliation", async () => {
+    mockApi.getSettings.mockResolvedValue({
+      serverName: "",
+      serverId: "test-id",
+      pushoverConfigured: false,
+      pushoverEnabled: true,
+      pushoverEventFilters: { needsInput: true, review: true, error: true },
+      pushoverDelaySeconds: 30,
+      pushoverBaseUrl: "",
+      claudeBinary: "",
+      codexBinary: "",
+      codexLeaderContextWindowOverrideTokens: 1_000_000,
+      codexLeaderRecycleThresholdTokens: 260_000,
+      codexLeaderRecycleThresholdTokensByModel: { "gpt-5.4": 430_000 },
+      maxKeepAlive: 0,
+      heavyRepoModeEnabled: false,
+      editorConfig: { editor: "none" },
+    });
+    mockApi.updateSettings.mockResolvedValue({
+      serverName: "",
+      serverId: "test-id",
+      pushoverConfigured: false,
+      pushoverEnabled: true,
+      pushoverEventFilters: { needsInput: true, review: true, error: true },
+      pushoverDelaySeconds: 30,
+      pushoverBaseUrl: "",
+      claudeBinary: "",
+      codexBinary: "",
+      codexLeaderContextWindowOverrideTokens: 1_000_000,
+      codexLeaderRecycleThresholdTokens: 260_000,
+      codexLeaderRecycleThresholdTokensByModel: { "gpt-5.4": 430_000 },
+      maxKeepAlive: 0,
+      heavyRepoModeEnabled: false,
+      editorConfig: { editor: "none" },
+    });
+
+    render(<SettingsPage />);
+    await waitForSettingsPage();
+
+    const cliSection = settingsSection("CLI & Backends");
+    const modelInput = within(cliSection).getByLabelText("Codex Leader Recycle Threshold Model 1") as HTMLInputElement;
+    const thresholdInput = within(cliSection).getByLabelText(
+      "Codex Leader Recycle Threshold Tokens 1",
+    ) as HTMLInputElement;
+
+    vi.useFakeTimers();
+    try {
+      modelInput.focus();
+      fireEvent.change(modelInput, { target: { value: " gpt-5.4 " } });
+      fireEvent.change(thresholdInput, { target: { value: "0430000" } });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(900);
+      });
+
+      expect(mockApi.updateSettings).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          codexLeaderRecycleThresholdTokensByModel: { "gpt-5.4": 430_000 },
+        }),
+      );
+
+      expect(within(cliSection).getByLabelText("Codex Leader Recycle Threshold Model 1")).toBe(modelInput);
+      expect(within(cliSection).getByLabelText("Codex Leader Recycle Threshold Tokens 1")).toBe(thresholdInput);
+      expect(document.activeElement).toBe(modelInput);
+      expect(modelInput.value).toBe("gpt-5.4");
+      expect(thresholdInput.value).toBe("430000");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps the model override surface discoverable in Settings search", async () => {
     render(<SettingsPage />);
     await waitForSettingsPage();
