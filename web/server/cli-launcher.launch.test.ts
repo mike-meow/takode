@@ -964,6 +964,7 @@ describe("launch", () => {
       const [, options] = mockSpawn.mock.calls[1]!;
       expect(cmdAndArgs[0]).toBe("/opt/fake/codex");
       expect(cmdAndArgs).toContain("model_provider=litellm");
+      expect(cmdAndArgs).toContain("model=gpt-5.4");
       expect(cmdAndArgs).toContain("web_search=disabled");
       expect(cmdAndArgs.join(" ")).toContain('base_url="http://localhost:4000"');
       expect(options.env.CODEX_HOME).toBe(sessionHome);

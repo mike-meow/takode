@@ -26,6 +26,7 @@ const codexBootstrapCacheMarker = 'CACHE_DIR = os.path.expanduser("~/.cache/code
 const nodeShebangRe = /^#!.*\bnode(?:\s|$)/;
 const hostCodexShellEnvVars = ["LITELLM_API_KEY", "LITELLM_PROXY_URL", "LITELLM_BASE_URL"] as const;
 const maiWrapperRootMarker = ".mai-agents-root";
+const maiWrapperDefaultModel = "gpt-5.4";
 const maiWrapperDefaultReasoningEffort = "high";
 
 type HostCodexBinaryKind = "native" | "dotslash" | "bootstrap";
@@ -198,6 +199,8 @@ async function resolveHostCodexWrapperLaunchSpec(
   const extraArgs = [
     "-c",
     "model_provider=litellm",
+    "-c",
+    `model=${maiWrapperDefaultModel}`,
     "-c",
     `model_providers.litellm={ name = "LiteLLM", base_url="${escapeCodexConfigString(litellmProxyUrl)}", env_key="LITELLM_API_KEY", wire_api="responses" }`,
     "-c",
