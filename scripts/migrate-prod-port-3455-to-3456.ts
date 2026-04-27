@@ -42,6 +42,19 @@ function printPlan(plan: OneOffProdPortMigrationPlan): void {
   }
 }
 
+function printValidationChecklist(): void {
+  console.log("\nPost-cutover validation:");
+  console.log("1. Confirm 3455 is down and 3456 is listening.");
+  console.log("2. Open /api/settings and confirm the reused 3455 serverId is now serving on 3456.");
+  console.log(
+    "3. Confirm the expected tree groups are still present on 3456 instead of falling back to an empty/default-only view.",
+  );
+  console.log(
+    "4. From a representative existing worktree, run `quest status q-922` without setting COMPANION_PORT and confirm it succeeds against 3456.",
+  );
+  console.log("5. If any check fails, stop 3456 and run the generated rollback script.");
+}
+
 try {
   const result = await runOneOffProdPort3455To3456Migration({
     companionHome,
@@ -57,6 +70,7 @@ try {
     console.log("1. Stop the live server on port 3455.");
     console.log("2. Re-run with PORT_MIGRATION_APPLY=1.");
     console.log("3. Restart prod on 3456 with: cd web && PORT=3456 bun run start");
+    printValidationChecklist();
     process.exit(0);
   }
 
@@ -65,8 +79,7 @@ try {
   console.log(`Rollback script: ${result.rollbackScriptPath}`);
   console.log("\nOperator next steps:");
   console.log("1. Restart prod on 3456 with: cd web && PORT=3456 bun run start");
-  console.log("2. Confirm /api/settings reports the reused 3455 serverId on 3456.");
-  console.log("3. If validation fails, stop 3456 and run the generated rollback script.");
+  printValidationChecklist();
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);
   console.error(`Migration failed: ${message}`);

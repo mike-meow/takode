@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { access, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer, type Server } from "node:net";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { runOneOffProdPort3455To3456Migration } from "./one-off-prod-port-3455-to-3456.js";
@@ -94,6 +95,80 @@ describe("one-off-prod-port-3455-to-3456", () => {
     expect(await pathExists(join(backupDir, "target", "tree-groups.json"))).toBe(true);
     expect(await pathExists(result.manifestPath!)).toBe(true);
     expect(await pathExists(result.rollbackScriptPath!)).toBe(true);
+
+    const rollbackScript = await readFile(result.rollbackScriptPath!, "utf-8");
+    expect(rollbackScript).toContain(`rm -rf "$COMPANION_HOME/sessions/${targetPort}"`);
+    expect(rollbackScript).toContain(
+      `cp "$BACKUP_DIR/target/settings-${targetPort}.json" "$COMPANION_HOME/settings-${targetPort}.json"`,
+    );
+    expect(rollbackScript).toContain(`cp "$BACKUP_DIR/target/tree-groups.json" "$COMPANION_HOME/tree-groups.json"`);
+    expect(rollbackScript).toContain('mkdir -p "$COMPANION_HOME/session-auth"');
+    expect(rollbackScript).toContain('cp "$BACKUP_DIR"/target/session-auth/*.json "$COMPANION_HOME/session-auth/"');
+    expect(rollbackScript).toContain('cp "$BACKUP_DIR"/source/session-auth/*.json "$COMPANION_HOME/session-auth/"');
+    expect(rollbackScript).toContain(`cd web && PORT=${sourcePort} bun run start`);
+  });
+
+  it("refuses apply while the source port is still listening and leaves state untouched", async () => {
+    const sourceServer = await listenOnEphemeralPort();
+    const sourcePort = getBoundPort(sourceServer);
+    const targetPort = await findAvailablePort();
+    const sourceServerId = "source-server";
+    const targetServerId = "target-server";
+    await seedFixture(companionHome, { sourcePort, targetPort, sourceServerId, targetServerId });
+
+    const backupRoot = join(companionHome, "backups");
+    const now = new Date("2026-04-27T21:00:00Z");
+    const beforeTargetSettings = await readJson(join(companionHome, `settings-${targetPort}.json`));
+    const beforeAuth = await readJson(join(companionHome, "session-auth", `cwd-a-${sourceServerId}.json`));
+
+    try {
+      await expect(
+        runOneOffProdPort3455To3456Migration({
+          companionHome,
+          sourcePort,
+          targetPort,
+          backupRoot,
+          apply: true,
+          now,
+        }),
+      ).rejects.toThrow(`Port ${sourcePort} is still listening`);
+    } finally {
+      await closeServer(sourceServer);
+    }
+
+    expect(await pathExists(join(backupRoot, `${sourcePort}-to-${targetPort}-2026-04-27T21-00-00Z`))).toBe(false);
+    expect(await readJson(join(companionHome, `settings-${targetPort}.json`))).toEqual(beforeTargetSettings);
+    expect(await readJson(join(companionHome, "session-auth", `cwd-a-${sourceServerId}.json`))).toEqual(beforeAuth);
+  });
+
+  it("refuses apply while the target port is still listening and leaves backup state untouched", async () => {
+    const targetServer = await listenOnEphemeralPort();
+    const targetPort = getBoundPort(targetServer);
+    const sourcePort = await findAvailablePort();
+    const sourceServerId = "source-server";
+    const targetServerId = "target-server";
+    await seedFixture(companionHome, { sourcePort, targetPort, sourceServerId, targetServerId });
+
+    const backupRoot = join(companionHome, "backups");
+    const beforeTargetSettings = await readJson(join(companionHome, `settings-${targetPort}.json`));
+
+    try {
+      await expect(
+        runOneOffProdPort3455To3456Migration({
+          companionHome,
+          sourcePort,
+          targetPort,
+          backupRoot,
+          apply: true,
+          now: new Date("2026-04-27T22:00:00Z"),
+        }),
+      ).rejects.toThrow(`Port ${targetPort} is still listening`);
+    } finally {
+      await closeServer(targetServer);
+    }
+
+    expect(await pathExists(join(backupRoot, `${sourcePort}-to-${targetPort}-2026-04-27T22-00-00Z`))).toBe(false);
+    expect(await readJson(join(companionHome, `settings-${targetPort}.json`))).toEqual(beforeTargetSettings);
   });
 });
 
@@ -170,4 +245,37 @@ async function readJson(path: string): Promise<Record<string, unknown>> {
 
 async function writeJson(path: string, value: unknown): Promise<void> {
   await writeFile(path, JSON.stringify(value, null, 2), "utf-8");
+}
+
+async function listenOnEphemeralPort(): Promise<Server> {
+  const server = createServer();
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => resolve());
+  });
+  return server;
+}
+
+function getBoundPort(server: Server): number {
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Expected a TCP server address.");
+  }
+  return address.port;
+}
+
+async function closeServer(server: Server): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => {
+      if (error) reject(error);
+      else resolve();
+    });
+  });
+}
+
+async function findAvailablePort(): Promise<number> {
+  const server = await listenOnEphemeralPort();
+  const port = getBoundPort(server);
+  await closeServer(server);
+  return port;
 }

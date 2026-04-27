@@ -286,6 +286,7 @@ function buildRollbackScript(plan: OneOffProdPortMigrationPlan): string {
     `if [ -f "$BACKUP_DIR/target/tree-groups.json" ]; then`,
     `  cp "$BACKUP_DIR/target/tree-groups.json" "$COMPANION_HOME/tree-groups.json"`,
     "fi",
+    `mkdir -p "$COMPANION_HOME/session-auth"`,
     `if [ -d "$BACKUP_DIR/target/session-auth" ]; then`,
     `  cp "$BACKUP_DIR"/target/session-auth/*.json "$COMPANION_HOME/session-auth/" 2>/dev/null || true`,
     "fi",

@@ -42,6 +42,12 @@ Run these from the repository root unless noted otherwise.
   - Apply after stopping the live `3455` server:
     - `PORT_MIGRATION_APPLY=1 bun run scripts/migrate-prod-port-3455-to-3456.ts`
   - Writes timestamped backups under `~/.companion/port-migrations/` and generates a rollback script alongside the manifest.
+  - After restarting prod on `3456`, validate:
+    - `3455` is down and `3456` is listening
+    - `/api/settings` reports the reused `3455` serverId on `3456`
+    - the expected tree groups still appear on `3456` instead of a default-only fallback
+    - from a representative existing worktree, `quest status q-922` succeeds without setting `COMPANION_PORT`
+  - If any validation fails, stop `3456` and run the generated rollback script.
 
 ## When to use this directory
 
