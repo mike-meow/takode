@@ -1147,6 +1147,58 @@ describe("launch", () => {
     }
   });
 
+  it("synthesizes a session-local model catalog override when no source catalog exists", async () => {
+    const customHome = mkdtempSync(join(tmpdir(), "codex-home-test-"));
+    const hostCodexHome = mkdtempSync(join(tmpdir(), "codex-host-home-test-"));
+    const sessionHome = join(customHome, "test-session-id");
+    const configPath = join(sessionHome, "config.toml");
+    const catalogPath = join(sessionHome, "takode-leader-model-catalog.json");
+    const { root, wrapperPath } = createMaiWrapperFixture({ hostCodexHome });
+    const { readFileSync: realReadFileSync } = require("node:fs");
+
+    try {
+      writeFileSync(join(hostCodexHome, "config.toml"), ['model = "gpt-5.5"', ""].join("\n"));
+
+      mockResolveBinary.mockImplementation((name: string): string | null => {
+        if (name === wrapperPath) return wrapperPath;
+        return "/usr/bin/claude";
+      });
+      mockCaptureUserShellEnv.mockReturnValue({});
+      mockSpawn.mockReturnValueOnce(createMockCodexProc());
+
+      await launcher.launch({
+        backendType: "codex",
+        cwd: "/tmp/project",
+        codexSandbox: "workspace-write",
+        codexBinary: wrapperPath,
+        codexHome: customHome,
+        codexLeaderContextWindowOverrideTokens: 1_000_000,
+        env: {
+          TAKODE_ROLE: "orchestrator",
+        },
+      });
+      await waitForSpawnCalls(1);
+
+      const config = realReadFileSync(configPath, "utf-8");
+      expect(config).toContain(`model_catalog_json = ${JSON.stringify(catalogPath)}`);
+
+      const catalog = JSON.parse(realReadFileSync(catalogPath, "utf-8"));
+      expect(catalog.models).toEqual([
+        {
+          slug: "gpt-5.5",
+          effective_context_window_percent: 95,
+          context_window: 1_052_632,
+          max_context_window: 1_052_632,
+          auto_compact_token_limit: 1_000_000,
+        },
+      ]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(customHome, { recursive: true, force: true });
+      rmSync(hostCodexHome, { recursive: true, force: true });
+    }
+  });
+
   it("launches MAI-wrapper-backed Codex workers without installing the wrapper CODEX_HOME overlay", async () => {
     const customHome = mkdtempSync(join(tmpdir(), "codex-home-test-"));
     const sessionHome = join(customHome, "test-session-id");

@@ -445,21 +445,29 @@ async function ensureCodexLeaderModelCatalogOverride(
   const sourceCatalogPath = existingCatalogPathValue
     ? resolveConfigPathValue(codexHome, existingCatalogPathValue)
     : join(codexHome, "models_cache.json");
-  if (!(await fileExists(sourceCatalogPath))) return { configToml };
-
-  let parsedCatalog: any;
-  try {
-    parsedCatalog = JSON.parse(await readFile(sourceCatalogPath, "utf-8"));
-  } catch (error) {
-    console.warn(`[cli-launcher] Failed to parse Codex model catalog ${sourceCatalogPath}:`, error);
-    return { configToml };
+  let parsedCatalog: any = { models: [] };
+  if (await fileExists(sourceCatalogPath)) {
+    try {
+      parsedCatalog = JSON.parse(await readFile(sourceCatalogPath, "utf-8"));
+    } catch (error) {
+      console.warn(`[cli-launcher] Failed to parse Codex model catalog ${sourceCatalogPath}:`, error);
+      parsedCatalog = { models: [] };
+    }
   }
 
-  const modelEntries = Array.isArray(parsedCatalog?.models) ? parsedCatalog.models : null;
-  if (!modelEntries) return { configToml };
+  if (!Array.isArray(parsedCatalog?.models)) {
+    parsedCatalog = { ...parsedCatalog, models: [] };
+  }
 
-  const modelEntry = modelEntries.find((entry: any) => entry?.slug === modelSlug);
-  if (!modelEntry || typeof modelEntry !== "object") return { configToml };
+  const modelEntries = parsedCatalog.models as any[];
+  let modelEntry = modelEntries.find((entry: any) => entry?.slug === modelSlug);
+  if (!modelEntry || typeof modelEntry !== "object") {
+    modelEntry = {
+      slug: modelSlug,
+      effective_context_window_percent: 95,
+    };
+    modelEntries.push(modelEntry);
+  }
 
   const effectivePercent = coercePositiveNumber(modelEntry.effective_context_window_percent) || 95;
   const rawContextWindow = Math.ceil((leaderContextWindowOverrideTokens * 100) / effectivePercent);
