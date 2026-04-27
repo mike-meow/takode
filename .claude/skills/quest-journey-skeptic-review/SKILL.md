@@ -1,3 +1,4 @@
+---
 name: quest-journey-skeptic-review
 description: "Installed legacy compatibility alias. New work should use quest-journey-code-review or another purpose-specific review phase."
 ---
