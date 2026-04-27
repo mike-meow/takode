@@ -305,13 +305,21 @@ function createMockProc(pid = 12345) {
 
 function createMockCodexProc(pid = 12345) {
   let resolve: (code: number) => void;
+  let exited = false;
   const exitedPromise = new Promise<number>((r) => {
     resolve = r;
   });
-  exitResolve = resolve!;
+  const resolveExit = (code: number) => {
+    if (exited) return;
+    exited = true;
+    resolve(code);
+  };
+  exitResolve = resolveExit;
   return {
     pid,
-    kill: vi.fn(),
+    kill: vi.fn((signal?: string) => {
+      resolveExit(signal === "SIGKILL" ? 137 : 0);
+    }),
     exited: exitedPromise,
     stdin: new WritableStream<Uint8Array>(),
     stdout: new ReadableStream<Uint8Array>(),

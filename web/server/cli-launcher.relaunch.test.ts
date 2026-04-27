@@ -305,13 +305,21 @@ function createMockProc(pid = 12345) {
 
 function createMockCodexProc(pid = 12345) {
   let resolve: (code: number) => void;
+  let exited = false;
   const exitedPromise = new Promise<number>((r) => {
     resolve = r;
   });
-  exitResolve = resolve!;
+  const resolveExit = (code: number) => {
+    if (exited) return;
+    exited = true;
+    resolve(code);
+  };
+  exitResolve = resolveExit;
   return {
     pid,
-    kill: vi.fn(),
+    kill: vi.fn((signal?: string) => {
+      resolveExit(signal === "SIGKILL" ? 137 : 0);
+    }),
     exited: exitedPromise,
     stdin: new WritableStream<Uint8Array>(),
     stdout: new ReadableStream<Uint8Array>(),
@@ -472,6 +480,9 @@ describe("relaunch", () => {
     // Simulate container being removed
     mockIsContainerAlive.mockReturnValueOnce("missing");
 
+    // Resolve the tracked launcher proc so relaunch can fail on the missing
+    // container check instead of waiting through the generic SIGTERM timeout.
+    exitResolve(0);
     const result = await launcher.relaunch("test-session-id");
     expect(result.ok).toBe(false);
     expect(result.error).toContain("companion-gone");
@@ -533,6 +544,9 @@ describe("relaunch", () => {
       throw new Error("container start failed");
     });
 
+    // This test is about the container restart failure, not launcher process
+    // termination latency.
+    exitResolve(0);
     const result = await launcher.relaunch("test-session-id");
     expect(result.ok).toBe(false);
     expect(result.error).toContain("companion-dead");
@@ -550,6 +564,8 @@ describe("relaunch", () => {
     mockIsContainerAlive.mockReturnValueOnce("running");
     mockHasBinaryInContainer.mockReturnValueOnce(false);
 
+    // Resolve the old proc so this assertion measures binary validation only.
+    exitResolve(0);
     const result = await launcher.relaunch("test-session-id");
     expect(result.ok).toBe(false);
     expect(result.error).toContain("claude");
@@ -780,12 +796,19 @@ describe("relaunch", () => {
     mockSpawn.mockReturnValueOnce(createMockCodexProc(55555));
     await launcher.restoreFromDisk();
 
-    const result = await launcher.relaunch("stubborn-codex");
-    expect(result).toEqual({ ok: true });
-    expect(killSpy).toHaveBeenCalledWith(44444, "SIGTERM");
-    expect(killSpy).not.toHaveBeenCalledWith(44444, "SIGKILL");
+    vi.useFakeTimers();
+    try {
+      const relaunchPromise = launcher.relaunch("stubborn-codex");
+      await vi.advanceTimersByTimeAsync(2_100);
 
-    killSpy.mockRestore();
+      const result = await relaunchPromise;
+      expect(result).toEqual({ ok: true });
+      expect(killSpy).toHaveBeenCalledWith(44444, "SIGTERM");
+      expect(killSpy).not.toHaveBeenCalledWith(44444, "SIGKILL");
+    } finally {
+      vi.useRealTimers();
+      killSpy.mockRestore();
+    }
   });
 
   // Regression: q-16 — old Codex process exit handler stomps new process state.
