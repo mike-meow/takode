@@ -137,16 +137,16 @@ type LeaderDirectedTurn = {
   startSource: LeaderContextResumeMessageSource;
 };
 
-const PHASE_KEYWORDS: Record<string, string[]> = {
-  alignment: ["alignment", "planning", "read-in"],
-  explore: ["explore", "exploration", "findings"],
-  implement: ["implement", "implementation"],
-  "code-review": ["code-review", "code review", "reviewer-groom", "skeptic-review", "review"],
-  "mental-simulation": ["mental-simulation", "mental simulation", "scenario review"],
-  execute: ["execute", "execution"],
-  "outcome-review": ["outcome-review", "outcome review"],
-  bookkeeping: ["bookkeeping", "state-update", "stream-update"],
-  port: ["port", "porting"],
+const PHASE_PATTERNS: Record<string, RegExp[]> = {
+  alignment: [/\balignment\b/i, /\bplanning\b/i, /\bread[\s-]?in\b/i],
+  explore: [/\bexplore\b/i, /\bexploring\b/i, /\bexploration\b/i],
+  implement: [/\bimplement\b/i, /\bimplementing\b/i, /\bimplementation\b/i],
+  "code-review": [/\bcode[\s-]?review(?:ing)?\b/i, /\breviewer-groom\b/i, /\bskeptic-review\b/i],
+  "mental-simulation": [/\bmental[\s-]?simulation\b/i],
+  execute: [/\bexecute\b/i, /\bexecuting\b/i, /\bexecution\b/i],
+  "outcome-review": [/\boutcome[\s-]?review(?:ing)?\b/i],
+  bookkeeping: [/\bbookkeeping\b/i, /\bstate[\s-]?update\b/i, /\bstream[\s-]?update\b/i],
+  port: [/\bport\b/i, /\bporting\b/i],
 };
 
 function truncate(text: string, max = 120): string {
@@ -201,10 +201,9 @@ function deriveTurnResultSummary(messages: BrowserIncomingMessage[], startIndex:
 }
 
 function phaseIdsForMessage(content: string): string[] {
-  const normalized = content.toLowerCase();
   const matches: string[] = [];
-  for (const [phaseId, keywords] of Object.entries(PHASE_KEYWORDS)) {
-    if (keywords.some((keyword) => normalized.includes(keyword))) matches.push(phaseId);
+  for (const [phaseId, patterns] of Object.entries(PHASE_PATTERNS)) {
+    if (patterns.some((pattern) => pattern.test(content))) matches.push(phaseId);
   }
   return matches;
 }
@@ -288,7 +287,18 @@ function describeFallbackInstruction(turn: LeaderDirectedTurn): string {
 }
 
 function describeFallbackResult(turn: LeaderDirectedTurn): string {
-  return `supporting prior-phase ${turn.participant.role} result "${turn.resultSummary}"`;
+  if (turn.phaseIds[0]) {
+    return `supporting earlier \`${phaseDispatchLabelForPhaseId(turn.phaseIds[0])}\` ${turn.participant.role} result "${turn.resultSummary}"`;
+  }
+  return `supporting earlier quest-relevant ${turn.participant.role} result "${turn.resultSummary}"`;
+}
+
+function findCurrentPhaseInstruction(
+  relevantTurns: LeaderDirectedTurn[],
+  phase: QuestJourneyPhase | null,
+): LeaderDirectedTurn | undefined {
+  if (!phase) return undefined;
+  return relevantTurns.find((turn) => turn.participant.role === phase.assigneeRole && turn.phaseIds.includes(phase.id));
 }
 
 function buildParticipantObservation(
@@ -526,14 +536,7 @@ export async function buildLeaderContextResume(input: LeaderContextResumeInput):
       .flatMap((participant) => collectLeaderDirectedTurns(participant, input.leader.sessionId, row.questId))
       .sort((left, right) => right.startTimestamp - left.startTimestamp || right.startIndex - left.startIndex);
 
-    const phaseParticipantRole = phase?.assigneeRole;
-    const currentPhaseInstruction =
-      relevantTurns.find(
-        (turn) =>
-          !!phase?.id &&
-          turn.phaseIds.includes(phase.id) &&
-          (!phaseParticipantRole || turn.participant.role === phaseParticipantRole),
-      ) ?? relevantTurns.find((turn) => !!phase?.id && turn.phaseIds.includes(phase.id));
+    const currentPhaseInstruction = findCurrentPhaseInstruction(relevantTurns, phase);
     const fallbackInstruction = currentPhaseInstruction ? undefined : relevantTurns[0];
 
     const latestCurrentPhaseResult =
@@ -602,7 +605,7 @@ export async function buildLeaderContextResume(input: LeaderContextResumeInput):
               participantRole: currentPhaseInstruction.participant.role,
               participantSessionId: currentPhaseInstruction.participant.sessionId,
               participantSessionNum: currentPhaseInstruction.participant.sessionNum,
-              phaseId: currentPhaseInstruction.phaseIds[0],
+              phaseId: phase?.id,
               summary: describeMatchedInstruction(phase),
               source: currentPhaseInstruction.startSource,
             },
@@ -626,7 +629,7 @@ export async function buildLeaderContextResume(input: LeaderContextResumeInput):
               participantRole: latestCurrentPhaseResult.participant.role,
               participantSessionId: latestCurrentPhaseResult.participant.sessionId,
               participantSessionNum: latestCurrentPhaseResult.participant.sessionNum,
-              phaseId: latestCurrentPhaseResult.phaseIds[0],
+              phaseId: phase?.id,
               summary: latestCurrentPhaseResult.resultSummary,
               source: latestCurrentPhaseResult.resultSource!,
             },

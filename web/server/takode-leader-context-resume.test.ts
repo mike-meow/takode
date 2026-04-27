@@ -176,7 +176,7 @@ describe("takode leader-context-resume", () => {
     expect(model.observed.activeBoardQuests[0]?.currentPhaseResultMatched).toBe(false);
     expect(model.observed.activeBoardQuests[0]?.lastRelevantLeaderInstruction?.source.messageIndex).toBe(3);
     expect(model.observed.activeBoardQuests[0]?.latestSupportingResult?.source.messageIndex).toBe(2);
-    expect(model.synthesized.activeBoardQuests[0]?.whyHere).toContain("supporting prior-phase worker result");
+    expect(model.synthesized.activeBoardQuests[0]?.whyHere).toContain("supporting earlier `EXPLORE` worker result");
     expect(model.synthesized.activeBoardQuests[0]?.whyHereSource?.messageIndex).toBe(2);
     expect(model.synthesized.activeBoardQuests[0]?.latestMeaningfulResult).toBeUndefined();
     expect(model.synthesized.activeBoardQuests[0]?.nextLeaderAction).toContain("wait for the worker report");
@@ -184,7 +184,7 @@ describe("takode leader-context-resume", () => {
     const rendered = renderLeaderContextResumeText(model);
     expect(rendered).toContain("Recovery for [#1132](session:1132)");
     expect(rendered).toContain("[q-773](quest:q-773) -- IMPLEMENTING");
-    expect(rendered).toContain("why here: supporting prior-phase worker result");
+    expect(rendered).toContain("why here: supporting earlier `EXPLORE` worker result");
     expect(rendered).toContain("latest result: none since that instruction");
     expect(rendered).toContain("`takode peek 1128`");
   });
@@ -307,16 +307,163 @@ describe("takode leader-context-resume", () => {
     expect(observedQuest.latestSupportingResult?.source.messageIndex).toBe(2);
 
     expect(synthesizedQuest.whyHere).toContain("no matched `EXPLORE` dispatch");
-    expect(synthesizedQuest.latestMeaningfulResult).toContain("supporting prior-phase worker result");
+    expect(synthesizedQuest.latestMeaningfulResult).toContain("supporting earlier `ALIGNMENT` worker result");
     expect(synthesizedQuest.nextLeaderAction).toContain("inspect [#1128](session:1128)");
     expect(synthesizedQuest.nextLeaderAction).toContain("resend the `EXPLORE` instruction");
 
     const rendered = renderLeaderContextResumeText(model);
     expect(rendered).toContain("no matched current-phase dispatch");
-    expect(rendered).toContain("supporting prior-phase worker result");
+    expect(rendered).toContain("supporting earlier `ALIGNMENT` worker result");
     expect(rendered).toContain("resend the `EXPLORE` instruction");
     expect(rendered).not.toContain("explicit `EXPLORE` dispatch");
     expect(rendered).not.toContain("read the worker report and choose the next phase");
+  });
+
+  it("fails closed for reviewer-owned phases when only ambiguous worker wording and non-literal reviewer wording exist", async () => {
+    // This locks down the reviewer transition from [#1146 msg 62](session:1146:62):
+    // the board is CODE_REVIEWING, the worker implement prompt mentions "review"
+    // generically, and the reviewer brief is quest-relevant but does not literally
+    // say "code review". The resume command must not fabricate an explicit review
+    // dispatch/result from either turn.
+    const workerHistory: BrowserIncomingMessage[] = [
+      makeUserMessage(
+        "Perform the approved IMPLEMENT phase for [q-918](quest:q-918). While you implement it, review the current diff shape and keep the output contract tight.",
+        2_000,
+        {
+          sessionId: "leader-session",
+          sessionLabel: "#1132 Leader",
+        },
+      ),
+      makeAssistant("The implementation is in place and the compact recovery output is stable.", 2_010),
+      makeResult("Implemented the leader recovery command and tightened the text rendering.", 20),
+    ];
+    const reviewerHistory: BrowserIncomingMessage[] = [
+      makeUserMessage(
+        "Pressure-test edge cases for [q-918](quest:q-918) and tell me whether the recovery view stays trustworthy after the reviewer handoff.",
+        3_000,
+        {
+          sessionId: "leader-session",
+          sessionLabel: "#1132 Leader",
+        },
+      ),
+    ];
+
+    const model = await buildLeaderContextResume({
+      leader: {
+        sessionId: "leader-session",
+        sessionNum: 1132,
+        name: "Leader",
+        isOrchestrator: true,
+        messageHistory: [],
+        notifications: [],
+        board: [
+          {
+            questId: "q-918",
+            title: "Design takode leader-context-resume for leader post-compaction recovery",
+            worker: "worker-session",
+            status: "CODE_REVIEWING",
+            journey: {
+              phaseIds: ["alignment", "explore", "implement", "mental-simulation", "code-review", "port"],
+              currentPhaseId: "code-review",
+              nextLeaderAction: "read the reviewer findings and decide whether to request rework or advance",
+            },
+            createdAt: 1_500,
+            updatedAt: 3_000,
+          },
+        ],
+      },
+      rowSessionStatuses: {
+        "q-918": {
+          worker: {
+            sessionId: "worker-session",
+            sessionNum: 1143,
+            name: "q-918 implement worker",
+            status: "idle",
+          },
+          reviewer: {
+            sessionId: "reviewer-session",
+            sessionNum: 1146,
+            name: "q-918 reviewer",
+            status: "idle",
+          },
+        },
+      },
+      participants: new Map([
+        [
+          "worker-session",
+          makeParticipant({
+            sessionId: "worker-session",
+            sessionNum: 1143,
+            name: "q-918 implement worker",
+            role: "worker",
+            status: "idle",
+            claimedQuestId: "q-918",
+            claimedQuestStatus: "in_progress",
+            messageHistory: workerHistory,
+          }),
+        ],
+        [
+          "reviewer-session",
+          makeParticipant({
+            sessionId: "reviewer-session",
+            sessionNum: 1146,
+            name: "q-918 reviewer",
+            role: "reviewer",
+            status: "idle",
+            claimedQuestId: "q-918",
+            claimedQuestStatus: "in_progress",
+            messageHistory: reviewerHistory,
+          }),
+        ],
+      ]),
+      loadQuest: async () => ({
+        id: "q-918-v1",
+        questId: "q-918",
+        version: 1,
+        title: "Design takode leader-context-resume for leader post-compaction recovery",
+        description: "Reviewer transition regression fixture.",
+        status: "in_progress",
+        sessionId: "worker-session",
+        claimedAt: 1_500,
+        createdAt: 1_400,
+      }),
+    });
+
+    const observedQuest = model.observed.activeBoardQuests[0]!;
+    const synthesizedQuest = model.synthesized.activeBoardQuests[0]!;
+
+    expect(observedQuest.currentPhaseInstructionMatched).toBe(false);
+    expect(observedQuest.currentPhaseResultMatched).toBe(false);
+    expect(observedQuest.lastRelevantLeaderInstruction).toBeUndefined();
+    expect(observedQuest.latestCurrentPhaseResult).toBeUndefined();
+    expect(observedQuest.latestFallbackLeaderInstruction).toMatchObject({
+      participantRole: "reviewer",
+      participantSessionId: "reviewer-session",
+      phaseId: undefined,
+      summary: "earlier quest-relevant leader turn",
+    });
+    expect(observedQuest.latestSupportingResult).toMatchObject({
+      participantRole: "worker",
+      participantSessionId: "worker-session",
+      phaseId: "implement",
+      summary: "Implemented the leader recovery command and tightened the text rendering.",
+    });
+
+    expect(synthesizedQuest.whyHere).toContain("no matched `CODE_REVIEW` dispatch");
+    expect(synthesizedQuest.whyHere).toContain("supporting earlier `IMPLEMENT` worker result");
+    expect(synthesizedQuest.latestMeaningfulResult).toContain("supporting earlier `IMPLEMENT` worker result");
+    expect(synthesizedQuest.nextLeaderAction).toContain("inspect [#1146](session:1146)");
+    expect(synthesizedQuest.nextLeaderAction).toContain("resend the `CODE_REVIEW` instruction");
+
+    const rendered = renderLeaderContextResumeText(model);
+    expect(rendered).toContain("[q-918](quest:q-918) -- CODE_REVIEWING");
+    expect(rendered).toContain("no matched current-phase dispatch");
+    expect(rendered).toContain("earlier quest-relevant leader turn");
+    expect(rendered).toContain("supporting earlier `IMPLEMENT` worker result");
+    expect(rendered).toContain("inspect [#1146](session:1146)");
+    expect(rendered).toContain("resend the `CODE_REVIEW` instruction");
+    expect(rendered).not.toContain("explicit `CODE_REVIEW` dispatch");
+    expect(rendered).not.toContain("read the reviewer result and either send rework or advance");
   });
 
   it("keeps observed facts and synthesized interpretation separated in json output", async () => {
