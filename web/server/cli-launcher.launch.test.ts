@@ -1233,11 +1233,19 @@ describe("launch", () => {
     }
   });
 
-  it("preserves built-in shim directories for host Codex sessions", async () => {
+  it("builds host Codex PATH from enriched startup data without hot-path shell capture", async () => {
     mockResolveBinary.mockReturnValue("/opt/fake/codex");
     mockSpawn.mockReturnValueOnce(createMockCodexProc());
-    mockCaptureUserShellPath.mockReturnValue("/opt/homebrew/bin:/Users/test/.bun/bin:/usr/bin:/bin");
-    mockGetEnrichedPath.mockReturnValue("/usr/local/share/companion-extra:/usr/bin:/bin");
+    mockCaptureUserShellPath.mockImplementation(() => {
+      throw new Error("host Codex launch should not re-capture shell PATH");
+    });
+    mockCaptureUserShellEnv.mockImplementation(() => {
+      throw new Error("host Codex launch should not re-capture shell env");
+    });
+    mockGetEnrichedPath.mockReturnValue(
+      "/opt/homebrew/bin:/Users/test/.bun/bin:/usr/local/share/companion-extra:/usr/bin:/bin",
+    );
+    process.env.LITELLM_API_KEY = "startup-warmed-key";
 
     await launcher.launch({
       backendType: "codex",
@@ -1258,6 +1266,9 @@ describe("launch", () => {
       "/Users/test/.bun/bin",
     ]);
     expect(dirs).toContain("/usr/local/share/companion-extra");
+    expect(options.env.LITELLM_API_KEY).toBe("startup-warmed-key");
+    expect(mockCaptureUserShellPath).not.toHaveBeenCalled();
+    expect(mockCaptureUserShellEnv).not.toHaveBeenCalled();
   });
 
   it("spawns codex via sibling node binary to bypass shebang issues", async () => {

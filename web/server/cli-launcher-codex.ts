@@ -14,7 +14,7 @@ import {
 import { join, resolve, relative, dirname } from "node:path";
 import { homedir } from "node:os";
 import { getLegacyCodexHome, resolveCompanionCodexHome, resolveCompanionCodexSessionHome } from "./codex-home.js";
-import { resolveBinary, getEnrichedPath, captureUserShellEnv, captureUserShellPath } from "./path-resolver.js";
+import { resolveBinary, getEnrichedPath } from "./path-resolver.js";
 import { sessionTag } from "./session-tag.js";
 
 const shellEnvPolicySection = "shell_environment_policy";
@@ -24,6 +24,7 @@ const codexMultiAgentFeature = "multi_agent";
 const dotslashShebang = "#!/usr/bin/env dotslash";
 const codexBootstrapCacheMarker = 'CACHE_DIR = os.path.expanduser("~/.cache/codex")';
 const nodeShebangRe = /^#!.*\bnode(?:\s|$)/;
+const hostCodexShellEnvVars = ["LITELLM_API_KEY", "LITELLM_PROXY_URL", "LITELLM_BASE_URL"] as const;
 
 type HostCodexBinaryKind = "native" | "dotslash" | "bootstrap";
 
@@ -117,6 +118,15 @@ function mergePathStrings(paths: Array<string | undefined>): string {
     }
   }
   return merged.join(":");
+}
+
+function readDefinedProcessEnv(names: readonly string[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const name of names) {
+    const value = process.env[name];
+    if (value) out[name] = value;
+  }
+  return out;
 }
 
 function upsertShellEnvironmentIncludeOnly(configToml: string, requiredVars: string[]): string {
@@ -596,8 +606,7 @@ export async function prepareCodexSpawn(
   const localBinDir = join(homedir(), ".local", "bin");
   const bunBinDir = join(homedir(), ".bun", "bin");
   const enrichedPath = getEnrichedPath({ serverId });
-  const userShellPath = captureUserShellPath();
-  const spawnPath = mergePathStrings([binaryDir, companionBinDir, localBinDir, bunBinDir, userShellPath, enrichedPath]);
+  const spawnPath = mergePathStrings([binaryDir, companionBinDir, localBinDir, bunBinDir, enrichedPath]);
 
   let spawnCmd: string[];
   if ((await fileExists(siblingNode)) && (await shouldInvokeCodexWithSiblingNode(binary))) {
@@ -612,7 +621,7 @@ export async function prepareCodexSpawn(
     spawnCmd = [binary, ...args];
   }
 
-  const shellEnv = captureUserShellEnv(["LITELLM_API_KEY", "LITELLM_PROXY_URL", "LITELLM_BASE_URL"]);
+  const shellEnv = readDefinedProcessEnv(hostCodexShellEnvVars);
 
   return {
     spawnCmd,

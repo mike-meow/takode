@@ -893,6 +893,52 @@ describe("relaunch", () => {
     expect(firstProc.kill).toHaveBeenCalled();
   });
 
+  it("relaunches host Codex sessions without hot-path shell capture", async () => {
+    mockCaptureUserShellPath.mockImplementation(() => {
+      throw new Error("host Codex relaunch should not re-capture shell PATH");
+    });
+    mockCaptureUserShellEnv.mockImplementation(() => {
+      throw new Error("host Codex relaunch should not re-capture shell env");
+    });
+    mockGetEnrichedPath.mockReturnValue("/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin");
+    process.env.LITELLM_PROXY_URL = "https://proxy.example";
+
+    let resolveFirst: (code: number) => void;
+    const firstProc = {
+      pid: 12345,
+      kill: vi.fn(() => {
+        resolveFirst(0);
+      }),
+      exited: new Promise<number>((r) => {
+        resolveFirst = r;
+      }),
+      stdin: new WritableStream<Uint8Array>(),
+      stdout: new ReadableStream<Uint8Array>(),
+      stderr: new ReadableStream<Uint8Array>(),
+    };
+    mockSpawn.mockReturnValueOnce(firstProc);
+    await launcher.launch({
+      backendType: "codex",
+      cwd: "/tmp/project",
+      codexSandbox: "workspace-write",
+    });
+
+    const deadline = Date.now() + 2000;
+    while (mockSpawn.mock.calls.length < 1) {
+      if (Date.now() > deadline) throw new Error("Timed out waiting for initial Codex spawn");
+      await new Promise<void>((r) => setTimeout(r, 10));
+    }
+
+    mockSpawn.mockReturnValueOnce(createMockCodexProc(54321));
+    const result = await launcher.relaunch("test-session-id");
+
+    expect(result).toEqual({ ok: true });
+    const [, relaunchOptions] = mockSpawn.mock.calls[1];
+    expect(relaunchOptions.env.LITELLM_PROXY_URL).toBe("https://proxy.example");
+    expect(mockCaptureUserShellPath).not.toHaveBeenCalled();
+    expect(mockCaptureUserShellEnv).not.toHaveBeenCalled();
+  });
+
   // Regression: q-110 — without orchestrator guardrails, relaunched leaders
   // lose Quest Journey stages, worker selection rules, and skeptic review
   // workflows, breaking all orchestration coordination.

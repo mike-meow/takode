@@ -13,17 +13,26 @@ import { existsSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+const warmedShellEnvVars = ["LITELLM_API_KEY", "LITELLM_PROXY_URL", "LITELLM_BASE_URL"] as const;
+
 /**
  * Capture the user's full interactive shell PATH by spawning a login shell.
  * This picks up all version manager initializations (nvm, fnm, volta, mise, etc.).
- * Falls back to probing common directories if shell sourcing fails.
+ * Falls back to probing common directories if shell sourcing fails. While the
+ * login shell is already running, also cache a small set of shell-defined vars
+ * needed by the host Codex launcher so later session launch/relaunch stays on
+ * the non-blocking hot path.
  */
 export function captureUserShellPath(): string {
   try {
     const shell = process.env.SHELL || "/bin/bash";
+    const printCommands = [
+      'echo "___PATH_START___$PATH___PATH_END___"',
+      ...warmedShellEnvVars.map((name) => `echo "___ENV_${name}___=\${${name}:-}"`),
+    ].join("; ");
     const captured = execSync(
       // sync-ok: cold path, binary resolution at startup
-      `${shell} -lic 'echo "___PATH_START___$PATH___PATH_END___"'`,
+      `${shell} -lic '${printCommands}'`,
       {
         encoding: "utf-8",
         timeout: 10_000,
@@ -32,6 +41,16 @@ export function captureUserShellPath(): string {
     );
     const match = captured.match(/___PATH_START___(.+)___PATH_END___/);
     if (match?.[1]) {
+      _cachedShellEnv = _cachedShellEnv ?? {};
+      for (const name of warmedShellEnvVars) {
+        const pattern = new RegExp(`___ENV_${name}___=(.*)`);
+        const envMatch = captured.match(pattern);
+        if (!envMatch?.[1]) continue;
+        _cachedShellEnv[name] = envMatch[1];
+        if (!process.env[name]) {
+          process.env[name] = envMatch[1];
+        }
+      }
       return match[1];
     }
   } catch {

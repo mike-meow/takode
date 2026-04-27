@@ -30,12 +30,14 @@ vi.mock("node:os", async (importOriginal) => {
 
 import {
   captureUserShellPath,
+  captureUserShellEnv,
   buildFallbackPath,
   getEnrichedPath,
   resolveBinary,
   getServicePath,
   expandTilde,
   _resetPathCache,
+  _resetShellEnvCache,
 } from "./path-resolver.js";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -45,6 +47,7 @@ const originalEnv = { ...process.env };
 beforeEach(() => {
   vi.clearAllMocks();
   _resetPathCache();
+  _resetShellEnvCache();
   process.env = { ...originalEnv };
 });
 
@@ -110,6 +113,32 @@ describe("captureUserShellPath", () => {
     captureUserShellPath();
 
     expect(mockExecSync).toHaveBeenCalledWith(expect.stringContaining("/bin/bash"), expect.any(Object));
+  });
+
+  it("warms critical shell env vars for later host Codex launches", () => {
+    delete process.env.LITELLM_API_KEY;
+    delete process.env.LITELLM_PROXY_URL;
+    delete process.env.LITELLM_BASE_URL;
+    mockExecSync.mockReturnValueOnce(
+      [
+        "___PATH_START___/usr/bin:/opt/homebrew/bin___PATH_END___",
+        "___ENV_LITELLM_API_KEY___=litellm-key",
+        "___ENV_LITELLM_PROXY_URL___=https://proxy.example",
+        "___ENV_LITELLM_BASE_URL___=https://base.example",
+        "",
+      ].join("\n"),
+    );
+
+    expect(captureUserShellPath()).toBe("/usr/bin:/opt/homebrew/bin");
+    expect(process.env.LITELLM_API_KEY).toBe("litellm-key");
+
+    mockExecSync.mockClear();
+    expect(captureUserShellEnv(["LITELLM_API_KEY", "LITELLM_PROXY_URL", "LITELLM_BASE_URL"])).toEqual({
+      LITELLM_API_KEY: "litellm-key",
+      LITELLM_PROXY_URL: "https://proxy.example",
+      LITELLM_BASE_URL: "https://base.example",
+    });
+    expect(mockExecSync).not.toHaveBeenCalled();
   });
 });
 
