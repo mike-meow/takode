@@ -323,16 +323,25 @@ describe("QuestmasterPage verification inbox", () => {
     mockState.quests = [
       {
         ...buildVerificationQuest({ id: "q-20-v1", questId: "q-20", title: "Old verification" }),
+        createdAt: 100,
+        claimedAt: 100,
+        statusChangedAt: 100,
         updatedAt: 1_000,
       } as QuestmasterTask,
       {
         ...buildVerificationQuest({ id: "q-21-v1", questId: "q-21", title: "Newest refined" }),
         status: "refined",
+        createdAt: 200,
+        claimedAt: 200,
+        statusChangedAt: 200,
         updatedAt: 9_000,
       } as QuestmasterTask,
       {
         ...buildVerificationQuest({ id: "q-22-v1", questId: "q-22", title: "Middle progress" }),
         status: "in_progress",
+        createdAt: 300,
+        claimedAt: 300,
+        statusChangedAt: 300,
         updatedAt: 5_000,
       } as QuestmasterTask,
     ];

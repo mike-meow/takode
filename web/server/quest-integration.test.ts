@@ -271,7 +271,7 @@ describe("ensureQuestmasterIntegration", () => {
     expect(skill).toContain("quest feedback list/latest/show");
     expect(skill).toContain("quest feedback list --json");
     expect(skill).toContain("`commitShas`");
-    expect(skill).toContain("version-local metadata from `quest history`");
+    expect(skill).toContain("legacy backup metadata from `quest history`");
   });
 
   it("documents feedback inspection and compact status commands", async () => {
