@@ -72,7 +72,7 @@ git -C <BASE_REPO> push origin <BASE_BRANCH>
 
 ### 7. Run required post-port verification
 
-After resetting, run the required post-port verification in the worktree to verify nothing broke. For refactor quests, the current full pre-commit-equivalent automated gate is:
+After resetting, run the required post-port verification in the worktree to verify nothing broke. For refactor quests, the current full automated gate is:
 
 - `cd web && bun run typecheck`
 - `cd web && bun run test`

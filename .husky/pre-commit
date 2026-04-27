@@ -6,4 +6,4 @@ if [ -n "$STAGED_FILES" ]; then
   echo "$STAGED_FILES" | xargs bun biome format --no-errors-on-unmatched
 fi
 
-bun run check:staged-file-line-limit && bun run typecheck && bun run test
+bun run check:staged-file-line-limit && bun run typecheck

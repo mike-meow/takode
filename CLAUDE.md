@@ -85,8 +85,8 @@ cd web && bun run format:check
 
 - All new backend (`web/server/`) and frontend (`web/src/`) code **must** include tests when possible.
 - Tests use Vitest. Server tests live alongside source files (e.g. `routes.test.ts` next to `routes.ts`).
-- A husky pre-commit hook runs typecheck and tests automatically before each commit.
-- For refactor quests, the current full pre-commit-equivalent automated gate before merge or final acceptance is:
+- A husky pre-commit hook runs staged formatting, the staged file line-limit guard, and typecheck automatically before each commit. It does not run the full test suite.
+- For refactor quests, the current full automated gate before merge or final acceptance is:
   - `cd web && bun run typecheck`
   - `cd web && bun run test`
   - `cd web && bun run format:check`
