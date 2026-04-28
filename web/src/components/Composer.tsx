@@ -432,8 +432,14 @@ export function Composer({ sessionId }: { sessionId: string }) {
   );
   const vscodeSelectionState = useStore((s) => s.vscodeSelectionContext);
   const sessionMessages = useStore((s) => s.messages.get(sessionId) ?? EMPTY_CHAT_MESSAGES);
-  const previewQuests = useStore((s) => s.quests);
-  const previewSdkSessions = useStore((s) => s.sdkSessions);
+  const previewQuestIds = useStore(useShallow((s) => s.quests.map((quest) => quest.questId.toLowerCase())));
+  const previewSessionNums = useStore(
+    useShallow((s) =>
+      s.sdkSessions
+        .map((sdkSession) => sdkSession.sessionNum)
+        .filter((sessionNum): sessionNum is number => Number.isFinite(sessionNum)),
+    ),
+  );
 
   const isConnected = sessionView.isConnected;
   const currentMode = sessionView.permissionMode;
@@ -1345,19 +1351,15 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const sendButtonTitle =
     attachmentBlockReason || (activePendingUserUpload ? "Delivering pending message" : "Send message");
   const plainReferencePreviews = useMemo(() => {
-    const questIds = new Set(previewQuests.map((quest) => quest.questId.toLowerCase()));
-    const sessionNums = new Set(
-      previewSdkSessions
-        .map((sdkSession) => sdkSession.sessionNum)
-        .filter((sessionNum): sessionNum is number => Number.isFinite(sessionNum)),
-    );
+    const questIds = new Set(previewQuestIds);
+    const sessionNums = new Set(previewSessionNums);
 
     return collectPlainTakodeReferences(text).filter((reference) =>
       reference.kind === "quest"
         ? questIds.has(reference.questId.toLowerCase())
         : sessionNums.has(reference.sessionNum),
     );
-  }, [previewQuests, previewSdkSessions, text]);
+  }, [previewQuestIds, previewSessionNums, text]);
 
   useEffect(() => {
     if (voiceSupported || isRecording || isTranscribing) {
