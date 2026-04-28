@@ -87,6 +87,9 @@ vi.mock("./git-utils.js", () => ({
 vi.mock("./session-names.js", () => ({
   getName: vi.fn(() => undefined),
   setName: vi.fn(),
+  setUserNamed: vi.fn(),
+  isUserNamed: vi.fn(() => false),
+  clearUserNamed: vi.fn(),
   getAllNames: vi.fn(() => ({})),
   removeName: vi.fn(),
   getNextLeaderNumber: vi.fn(() => 1),
@@ -548,6 +551,8 @@ describe("PATCH /api/sessions/:id/name", () => {
     const json = await res.json();
     expect(json).toEqual({ ok: true, name: "Fix auth bug" });
     expect(sessionNames.setName).toHaveBeenCalledWith("s1", "Fix auth bug");
+    // Verify the session is marked as user-named to prevent auto-namer overwriting
+    expect(sessionNames.setUserNamed).toHaveBeenCalledWith("s1");
   });
 
   it("trims whitespace from name", async () => {

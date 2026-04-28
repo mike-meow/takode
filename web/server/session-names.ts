@@ -18,10 +18,12 @@ const DEFAULT_PATH = join(homedir(), ".companion", "session-names.json");
 interface PersistedData {
   names: Record<string, string>;
   leaderCounter: number;
+  userNamed?: string[];
 }
 
 let names: Record<string, string> = {};
 let leaderCounter = 0;
+let userNamed: Set<string> = new Set();
 let loaded = false;
 let filePath = DEFAULT_PATH;
 let _pendingWrite: Promise<void> = Promise.resolve();
@@ -37,6 +39,7 @@ function ensureLoaded(): void {
         // New format
         names = parsed.names as Record<string, string>;
         leaderCounter = typeof parsed.leaderCounter === "number" ? parsed.leaderCounter : 0;
+        userNamed = new Set(Array.isArray(parsed.userNamed) ? parsed.userNamed : []);
       } else {
         // Old format: flat Record<string, string>
         names = parsed as Record<string, string>;
@@ -46,12 +49,13 @@ function ensureLoaded(): void {
   } catch {
     names = {};
     leaderCounter = 0;
+    userNamed = new Set();
   }
   loaded = true;
 }
 
 function persist(): void {
-  const data: PersistedData = { names, leaderCounter };
+  const data: PersistedData = { names, leaderCounter, userNamed: [...userNamed] };
   const json = JSON.stringify(data, null, 2);
   const path = filePath;
   mkdirSync(dirname(path), { recursive: true }); // sync-ok: cold path, ensure dir exists
@@ -89,6 +93,26 @@ export function getNextLeaderNumber(): number {
   leaderCounter += 1;
   persist();
   return leaderCounter;
+}
+
+/** Mark a session as manually named by the user (prevents auto-namer from overwriting). */
+export function setUserNamed(sessionId: string): void {
+  ensureLoaded();
+  userNamed.add(sessionId);
+  persist();
+}
+
+/** Check if a session was manually named by the user. */
+export function isUserNamed(sessionId: string): boolean {
+  ensureLoaded();
+  return userNamed.has(sessionId);
+}
+
+/** Clear the user-named flag (e.g. when a session is deleted). */
+export function clearUserNamed(sessionId: string): void {
+  ensureLoaded();
+  userNamed.delete(sessionId);
+  persist();
 }
 
 /** Wait for any pending async writes to complete. Test-only. */
