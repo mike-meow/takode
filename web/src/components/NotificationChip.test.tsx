@@ -167,6 +167,9 @@ describe("NotificationChip", () => {
 
     render(<NotificationChip sessionId="s1" />);
     fireEvent.click(screen.getByRole("button", { name: "Notification inbox: 1 needs-input notification" }));
+    expect(screen.getByTestId("notification-answer-actions")).toContainElement(
+      screen.getByRole("button", { name: "yes" }),
+    );
     fireEvent.click(screen.getByRole("button", { name: "yes" }));
 
     expect(mockSetReplyContext).toHaveBeenCalledWith("s1", {
@@ -198,7 +201,7 @@ describe("NotificationChip", () => {
 
     render(<NotificationChip sessionId="s1" />);
     fireEvent.click(screen.getByRole("button", { name: "Notification inbox: 1 needs-input notification" }));
-    fireEvent.click(screen.getByRole("button", { name: "Custom" }));
+    fireEvent.click(screen.getByRole("button", { name: "Custom answer" }));
 
     expect(mockSetReplyContext).toHaveBeenCalledWith("s1", {
       messageId: "msg-123",
@@ -208,6 +211,35 @@ describe("NotificationChip", () => {
     expect(mockSetComposerDraft).not.toHaveBeenCalled();
     expect(mockComposerDrafts.get("s1")?.text).toBe("keep my draft");
     expect(mockFocusComposer).toHaveBeenCalledTimes(1);
+  });
+
+  it("hides answer actions for addressed needs-input notifications in the done section", () => {
+    setNotifications("s1", [
+      {
+        id: "active-review",
+        category: "review",
+        summary: "Ready for review",
+        timestamp: Date.now(),
+        done: false,
+      },
+      {
+        id: "done-input",
+        category: "needs-input",
+        summary: "Deploy now?",
+        suggestedAnswers: ["yes", "no"],
+        timestamp: Date.now(),
+        done: true,
+      },
+    ]);
+
+    render(<NotificationChip sessionId="s1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Notification inbox: 1 review notification" }));
+    fireEvent.click(screen.getByRole("button", { name: "Done (1)" }));
+
+    expect(screen.getByText("Deploy now?")).not.toBeNull();
+    expect(screen.queryByTestId("notification-answer-actions")).toBeNull();
+    expect(screen.queryByRole("button", { name: "yes" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Custom answer" })).toBeNull();
   });
 
   it("renders the quest mention as a quest link while keeping the row clickable for jump-to-message", () => {

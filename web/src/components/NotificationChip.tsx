@@ -224,7 +224,7 @@ function NotificationItem({ notif, sessionId }: { notif: SessionNotification; se
         </div>
         <div className="text-[10px] text-cc-muted/60 mt-0.5 pl-3">{formatRelativeTime(notif.timestamp)}</div>
         {isNeedsInput && !notif.done && (
-          <div className="mt-1.5 flex flex-wrap items-center gap-1 pl-3">
+          <div className="mt-1.5 flex flex-wrap items-center gap-1 pl-3" data-testid="notification-answer-actions">
             {suggestedAnswers.map((answer) => (
               <button
                 key={answer}
@@ -241,7 +241,7 @@ function NotificationItem({ notif, sessionId }: { notif: SessionNotification; se
               onClick={startReply()}
               className="rounded border border-cc-border/60 px-2 py-0.5 text-[11px] text-cc-muted transition-colors hover:border-cc-primary/40 hover:text-cc-fg cursor-pointer"
             >
-              {suggestedAnswers.length > 0 ? "Custom" : "Reply"}
+              {suggestedAnswers.length > 0 ? "Custom answer" : "Reply"}
             </button>
           </div>
         )}

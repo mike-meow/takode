@@ -658,6 +658,39 @@ export function PlaygroundSuggestedAnswerNotificationMarker() {
   );
 }
 
+export function PlaygroundAddressedSuggestedAnswerNotificationMarker() {
+  useEffect(() => {
+    const previous = useStore.getState().sessionNotifications;
+    const next = new Map(previous);
+    next.set("playground-addressed-suggested-notify", [
+      {
+        id: "n-addressed-suggested-1",
+        category: "needs-input",
+        timestamp: Date.now() - 30_000,
+        messageId: "playground-addressed-suggested-notify-msg",
+        summary: "Approve the rollout?",
+        suggestedAnswers: ["yes", "no"],
+        done: true,
+      },
+    ]);
+    useStore.setState({ sessionNotifications: next });
+
+    return () => {
+      useStore.setState({ sessionNotifications: previous });
+    };
+  }, []);
+
+  return (
+    <NotificationMarker
+      category="needs-input"
+      summary="Approve the rollout?"
+      sessionId="playground-addressed-suggested-notify"
+      messageId="playground-addressed-suggested-notify-msg"
+      notificationId="n-addressed-suggested-1"
+    />
+  );
+}
+
 export function PlaygroundDedupedNotificationMessage() {
   useEffect(() => {
     const previous = useStore.getState().sessionNotifications;

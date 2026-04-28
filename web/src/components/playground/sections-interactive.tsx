@@ -9,6 +9,7 @@ import { UserReplyChip } from "../MessageBubble.js";
 import { useStore } from "../../store.js";
 import {
   Card,
+  PlaygroundAddressedSuggestedAnswerNotificationMarker,
   PlaygroundBoardWithOriginalCommand,
   PlaygroundDedupedNotificationMessage,
   PlaygroundHoverCrossLinkDemo,
@@ -859,6 +860,13 @@ export function PlaygroundInteractiveSections() {
               <p className="mb-1">The canary is healthy and ready for the next step.</p>
               <p className="text-cc-muted">Choose whether to continue the rollout now or hold for manual checks.</p>
               <PlaygroundSuggestedAnswerNotificationMarker />
+            </div>
+          </Card>
+          <Card label="addressed needs-input with suggested answers">
+            <div className="text-cc-fg text-sm">
+              <p className="mb-1">The rollout decision was answered.</p>
+              <p className="text-cc-muted">No further reply is needed.</p>
+              <PlaygroundAddressedSuggestedAnswerNotificationMarker />
             </div>
           </Card>
           <Card label="review (green, no summary)">
