@@ -84,6 +84,8 @@ type SessionRuntimeOptions = {
   completedBoard?: Map<any, any>;
   notifications?: SessionNotification[];
   notificationCounter?: number;
+  notificationStatusVersion?: number;
+  notificationStatusUpdatedAt?: number;
   lastReadAt?: number;
   attentionReason?: "action" | "error" | "review" | null;
 };
@@ -95,6 +97,12 @@ function createSessionRuntime(
   options: SessionRuntimeOptions = {},
 ): SessionLike {
   const processedClientMessageIds = options.processedClientMessageIds ?? [];
+  const notifications = options.notifications ?? [];
+  const notificationStatusVersion = normalizeStatusNumber(options.notificationStatusVersion, 0);
+  const notificationStatusUpdatedAt = normalizeStatusNumber(
+    options.notificationStatusUpdatedAt,
+    deriveNotificationStatusUpdatedAt(notifications),
+  );
   return {
     id: sessionId,
     backendType,
@@ -164,8 +172,10 @@ function createSessionRuntime(
     completedBoard: options.completedBoard ?? new Map(),
     boardStallStates: new Map(),
     boardDispatchStates: new Map(),
-    notifications: options.notifications ?? [],
+    notifications,
     notificationCounter: options.notificationCounter ?? 0,
+    notificationStatusVersion,
+    notificationStatusUpdatedAt,
     diffStatsDirty: true,
     searchDataOnly: false,
     searchExcerpts: [],
@@ -462,6 +472,10 @@ export async function restorePersistedSessions(
           Array.isArray(p.completedBoard) ? p.completedBoard.map((row: any) => [row.questId, row]) : [],
         ),
         notifications: Array.isArray(p.notifications) ? p.notifications : [],
+        notificationStatusVersion:
+          typeof p.notificationStatusVersion === "number" ? p.notificationStatusVersion : undefined,
+        notificationStatusUpdatedAt:
+          typeof p.notificationStatusUpdatedAt === "number" ? p.notificationStatusUpdatedAt : undefined,
         notificationCounter: Array.isArray(p.notifications)
           ? p.notifications.reduce((max: number, n: SessionNotification) => {
               const num = parseInt(n.id.replace("n-", ""), 10);
@@ -525,6 +539,10 @@ export async function restorePersistedSessions(
         Array.isArray(p.completedBoard) ? p.completedBoard.map((row: any) => [row.questId, row]) : [],
       ),
       notifications: Array.isArray(p.notifications) ? p.notifications : [],
+      notificationStatusVersion:
+        typeof p.notificationStatusVersion === "number" ? p.notificationStatusVersion : undefined,
+      notificationStatusUpdatedAt:
+        typeof p.notificationStatusUpdatedAt === "number" ? p.notificationStatusUpdatedAt : undefined,
       notificationCounter: Array.isArray(p.notifications)
         ? p.notifications.reduce((max: number, n: SessionNotification) => {
             const num = parseInt(n.id.replace("n-", ""), 10);
@@ -648,6 +666,8 @@ export function buildPersistedSessionPayload(session: SessionLike): PersistedSes
     board: Array.from(session.board.values()),
     completedBoard: Array.from(session.completedBoard.values()),
     notifications: session.notifications,
+    notificationStatusVersion: session.notificationStatusVersion,
+    notificationStatusUpdatedAt: session.notificationStatusUpdatedAt,
   };
 }
 
@@ -853,6 +873,14 @@ function findHistoryReplayEntry<T extends BrowserIncomingMessage>(
 
 type AttentionReason = "action" | "error" | "review";
 type TurnTriggerSource = "user" | "leader" | "system" | "unknown";
+type NotificationUrgency = "needs-input" | "review" | null;
+
+export interface NotificationStatusSnapshot {
+  notificationUrgency: NotificationUrgency;
+  activeNotificationCount: number;
+  notificationStatusVersion: number;
+  notificationStatusUpdatedAt: number;
+}
 
 type IdleState = {
   timer: ReturnType<typeof setTimeout> | null;
@@ -912,6 +940,66 @@ export function clearAttentionAndMarkRead(
   deps.persistSession(session);
 }
 
+function normalizeStatusNumber(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : fallback;
+}
+
+function deriveNotificationStatusUpdatedAt(
+  notifications: ReadonlyArray<Pick<SessionNotification, "timestamp">>,
+): number {
+  let latest = 0;
+  for (const notification of notifications) {
+    if (Number.isFinite(notification.timestamp) && notification.timestamp > latest) latest = notification.timestamp;
+  }
+  return latest;
+}
+
+function touchNotificationStatus(session: SessionLike): void {
+  session.notificationStatusVersion = normalizeStatusNumber(session.notificationStatusVersion, 0) + 1;
+  session.notificationStatusUpdatedAt = Date.now();
+}
+
+export function getNotificationStatusSnapshot(session: SessionLike): NotificationStatusSnapshot {
+  let activeNotificationCount = 0;
+  let hasNeedsInput = false;
+  let hasReview = false;
+  for (const notification of session.notifications ?? []) {
+    if (notification.done) continue;
+    activeNotificationCount += 1;
+    if (notification.category === "needs-input") hasNeedsInput = true;
+    if (notification.category === "review") hasReview = true;
+  }
+  return {
+    notificationUrgency: hasNeedsInput ? "needs-input" : hasReview ? "review" : null,
+    activeNotificationCount,
+    notificationStatusVersion: normalizeStatusNumber(session.notificationStatusVersion, 0),
+    notificationStatusUpdatedAt: normalizeStatusNumber(
+      session.notificationStatusUpdatedAt,
+      deriveNotificationStatusUpdatedAt(session.notifications ?? []),
+    ),
+  };
+}
+
+function buildNotificationUpdateMessage(session: SessionLike): BrowserIncomingMessage {
+  const status = getNotificationStatusSnapshot(session);
+  return {
+    type: "notification_update",
+    notifications: session.notifications,
+    notificationStatusVersion: status.notificationStatusVersion,
+    notificationStatusUpdatedAt: status.notificationStatusUpdatedAt,
+  } as BrowserIncomingMessage;
+}
+
+function broadcastNotificationStatus(
+  session: SessionLike,
+  deps: Pick<SessionRegistryDeps, "broadcastToBrowsers">,
+): void {
+  deps.broadcastToBrowsers?.(session, {
+    type: "session_update",
+    session: { attentionReason: session.attentionReason ?? null },
+  } as BrowserIncomingMessage);
+}
+
 export function notifyUser(
   session: SessionLike,
   category: "needs-input" | "review",
@@ -969,6 +1057,7 @@ export function notifyUser(
     done: false,
   };
   session.notifications.push(notif);
+  touchNotificationStatus(session);
 
   if (deps.isHerdedWorkerSession?.(session)) {
     if (category === "needs-input") {
@@ -990,13 +1079,11 @@ export function notifyUser(
 
   if (createdFallbackMessage) deps.broadcastToBrowsers?.(session, createdFallbackMessage);
 
-  deps.broadcastToBrowsers?.(session, {
-    type: "notification_update",
-    notifications: session.notifications,
-  } as BrowserIncomingMessage);
+  deps.broadcastToBrowsers?.(session, buildNotificationUpdateMessage(session));
 
   const reason = category === "needs-input" ? "action" : "review";
   setAttention(session, reason, deps);
+  broadcastNotificationStatus(session, deps);
 
   deps.scheduleNotification?.(session.id, category === "needs-input" ? "question" : "completed", summary, {
     skipReadCheck: true,
@@ -1083,17 +1170,17 @@ export function markNotificationDone(
 ): boolean {
   const notif = session.notifications.find((entry: SessionNotification) => entry.id === notifId);
   if (!notif) return false;
+  if (notif.done === done) return true;
   notif.done = done;
+  touchNotificationStatus(session);
   const clearedBoardWaits =
     done && notif.category === "needs-input" ? removeNotificationLinksFromBoardRows(session, notifId) : false;
-  deps.broadcastToBrowsers?.(session, {
-    type: "notification_update",
-    notifications: session.notifications,
-  } as BrowserIncomingMessage);
+  deps.broadcastToBrowsers?.(session, buildNotificationUpdateMessage(session));
   if (clearedBoardWaits) {
     deps.broadcastBoard?.(session, getSortedBoardRows(session), getSortedCompletedBoardRows(session));
   }
   if (done) clearActionAttentionIfNoNotifications(session, deps);
+  broadcastNotificationStatus(session, deps);
   deps.persistSession(session);
   return true;
 }
@@ -1126,14 +1213,13 @@ export function markAllNotificationsDone(
     count += 1;
   }
   if (count > 0) {
-    deps.broadcastToBrowsers?.(session, {
-      type: "notification_update",
-      notifications: session.notifications,
-    } as BrowserIncomingMessage);
+    touchNotificationStatus(session);
+    deps.broadcastToBrowsers?.(session, buildNotificationUpdateMessage(session));
     if (clearedBoardWaits) {
       deps.broadcastBoard?.(session, getSortedBoardRows(session), getSortedCompletedBoardRows(session));
     }
     if (done) clearActionAttentionIfNoNotifications(session, deps);
+    broadcastNotificationStatus(session, deps);
     deps.persistSession(session);
   }
   return count;
@@ -1425,12 +1511,18 @@ export function getSessionActivitySnapshot(session: SessionLike): {
   lastReadAt?: number;
   pendingPermissionCount: number;
   pendingPermissionSummary: string | null;
+  notificationUrgency: NotificationUrgency;
+  activeNotificationCount: number;
+  notificationStatusVersion: number;
+  notificationStatusUpdatedAt: number;
 } {
+  const notificationStatus = getNotificationStatusSnapshot(session);
   return {
     attentionReason: (session.attentionReason as AttentionReason | null) ?? null,
     ...(typeof session.lastReadAt === "number" ? { lastReadAt: session.lastReadAt } : {}),
     pendingPermissionCount: countPendingUserPermissions(session),
     pendingPermissionSummary: summarizePendingPermissions(session),
+    ...notificationStatus,
   };
 }
 

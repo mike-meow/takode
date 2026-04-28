@@ -1,13 +1,16 @@
 import { access as accessAsync } from "node:fs/promises";
 import type { CliLauncher } from "../cli-launcher.js";
-import { countPendingUserPermissions, summarizePendingPermissions } from "../bridge/session-registry-controller.js";
-import type { SessionNotification } from "../session-types.js";
+import {
+  countPendingUserPermissions,
+  getNotificationStatusSnapshot,
+  summarizePendingPermissions,
+  type NotificationStatusSnapshot,
+} from "../bridge/session-registry-controller.js";
 import { getSettings } from "../settings-manager.js";
 import type { TimerManager } from "../timer-manager.js";
 import type { WsBridge } from "../ws-bridge.js";
 import * as sessionNames from "../session-names.js";
 
-type NotificationUrgency = "needs-input" | "review" | null;
 type SessionListEntry = ReturnType<CliLauncher["listSessions"]>[number];
 
 export interface BuildEnrichedSessionsSnapshotDeps {
@@ -30,9 +33,11 @@ export async function buildEnrichedSessionsSnapshot(
     pool.map(async (session) => {
       let s = session;
       const pendingTimerCount = timerManager?.listTimers(s.sessionId).length ?? 0;
-      let notificationSummary: ReturnType<typeof summarizeActiveNotifications> = {
+      let notificationSummary: NotificationStatusSnapshot = {
         notificationUrgency: null,
         activeNotificationCount: 0,
+        notificationStatusVersion: 0,
+        notificationStatusUpdatedAt: 0,
       };
       try {
         if (s.worktreeCleanupStatus === "pending" && !pendingWorktreeCleanups.has(s.sessionId)) {
@@ -47,7 +52,10 @@ export async function buildEnrichedSessionsSnapshot(
 
         const { sessionAuthToken: _token, injectedSystemPrompt: _prompt, ...safeSession } = s;
         const bridgeSession = wsBridge.getSession(s.sessionId);
-        notificationSummary = summarizeActiveNotifications(bridgeSession?.notifications);
+        // Herded worker notifications route through the leader/board flow and
+        // should not create direct user-facing sidebar markers for the worker.
+        notificationSummary =
+          bridgeSession && !safeSession.herdedBy ? getNotificationStatusSnapshot(bridgeSession) : notificationSummary;
         if (bridgeSession?.state?.is_worktree && !safeSession.archived && !heavyRepoModeEnabled) {
           await wsBridge.refreshWorktreeGitStateForSnapshot(s.sessionId, {
             broadcastUpdate: true,
@@ -107,24 +115,6 @@ export async function buildEnrichedSessionsSnapshot(
       }
     }),
   );
-}
-
-function summarizeActiveNotifications(
-  notifications: ReadonlyArray<Pick<SessionNotification, "category" | "done">> | undefined,
-): { notificationUrgency: NotificationUrgency; activeNotificationCount: number } {
-  let activeNotificationCount = 0;
-  let hasNeedsInput = false;
-  let hasReview = false;
-  for (const notification of notifications ?? []) {
-    if (notification.done) continue;
-    activeNotificationCount += 1;
-    if (notification.category === "needs-input") hasNeedsInput = true;
-    if (notification.category === "review") hasReview = true;
-  }
-  return {
-    notificationUrgency: hasNeedsInput ? "needs-input" : hasReview ? "review" : null,
-    activeNotificationCount,
-  };
 }
 
 async function archivedWorktreeExists(cwd: string): Promise<boolean> {

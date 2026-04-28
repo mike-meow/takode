@@ -18,6 +18,7 @@ import { Sidebar } from "./components/Sidebar.js";
 import { ChatView } from "./components/ChatView.js";
 import { TopBar } from "./components/TopBar.js";
 import { EmptyState } from "./components/EmptyState.js";
+import { setSdkSessionsWithNotificationFreshness } from "./notification-status.js";
 import { TaskPanel } from "./components/TaskPanel.js";
 import { DiffPanel } from "./components/DiffPanel.js";
 import { Playground } from "./components/Playground.js";
@@ -243,7 +244,7 @@ export default function App() {
       .listSessions()
       .then((sessions) => {
         if (cancelled) return;
-        useStore.getState().setSdkSessions(sessions.map(stripSessionSearchMetadata));
+        setSdkSessionsWithNotificationFreshness(sessions.map(stripSessionSearchMetadata));
       })
       .catch((err) => {
         console.warn("[app] failed to hydrate sessions for numeric route:", err);

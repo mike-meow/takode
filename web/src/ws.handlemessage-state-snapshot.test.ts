@@ -194,4 +194,40 @@ describe("handleMessage: state_snapshot", () => {
     expect(useStore.getState().cliConnected.get("s1")).toBe(false);
     expect(useStore.getState().sessionStatus.get("s1")).toBeNull();
   });
+
+  it("does not let an older state snapshot restore stale notification status", () => {
+    // A reconnect snapshot can arrive after a newer global notification-status
+    // update. Version ordering prevents the older inbox from reviving an amber dot.
+    useStore.getState().setSdkSessions([
+      {
+        sessionId: "s1",
+        state: "connected",
+        cwd: "/repo",
+        createdAt: 1,
+        notificationUrgency: null,
+        activeNotificationCount: 0,
+        notificationStatusVersion: 5,
+        notificationStatusUpdatedAt: 5000,
+      },
+    ]);
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+
+    fireMessage({
+      type: "state_snapshot",
+      sessionStatus: "idle",
+      permissionMode: "default",
+      backendConnected: true,
+      uiMode: null,
+      askPermission: true,
+      notifications: [{ id: "n1", category: "needs-input", timestamp: 1000, messageId: null, done: false }],
+      notificationStatusVersion: 4,
+      notificationStatusUpdatedAt: 4000,
+    });
+
+    const sdkSession = useStore.getState().sdkSessions.find((session) => session.sessionId === "s1")!;
+    expect(sdkSession.notificationUrgency).toBeNull();
+    expect(sdkSession.activeNotificationCount).toBe(0);
+    expect(useStore.getState().sessionNotifications.get("s1")).toBeUndefined();
+  });
 });

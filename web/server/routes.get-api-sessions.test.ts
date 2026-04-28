@@ -574,6 +574,8 @@ describe("GET /api/sessions", () => {
         pendingTimerCount: 0,
         notificationUrgency: null,
         activeNotificationCount: 0,
+        notificationStatusVersion: 0,
+        notificationStatusUpdatedAt: 0,
       },
       {
         sessionId: "s2",
@@ -600,6 +602,8 @@ describe("GET /api/sessions", () => {
         pendingTimerCount: 0,
         notificationUrgency: null,
         activeNotificationCount: 0,
+        notificationStatusVersion: 0,
+        notificationStatusUpdatedAt: 0,
       },
     ]);
   });
@@ -637,6 +641,8 @@ describe("GET /api/sessions", () => {
         { id: "n2", category: "needs-input", timestamp: 2000, messageId: null, done: true },
         { id: "n3", category: "needs-input", timestamp: 3000, messageId: null, done: false },
       ],
+      notificationStatusVersion: 7,
+      notificationStatusUpdatedAt: 4000,
       pendingPermissions: new Map(),
       taskHistory: [],
       keywords: [],
@@ -653,6 +659,41 @@ describe("GET /api/sessions", () => {
       sessionId: "s1",
       notificationUrgency: "needs-input",
       activeNotificationCount: 2,
+      notificationStatusVersion: 7,
+      notificationStatusUpdatedAt: 4000,
+    });
+  });
+
+  it("suppresses herded worker notification summaries in regular session snapshots", async () => {
+    // Herded worker notifications route through the leader/board flow; the
+    // worker row should not surface a direct notification marker from /api/sessions.
+    launcher.listSessions.mockReturnValue([{ sessionId: "s1", state: "connected", cwd: "/a", herdedBy: "leader" }]);
+    vi.mocked(sessionNames.getAllNames).mockReturnValue({});
+    bridge._sessions.s1 = {
+      id: "s1",
+      state: {},
+      messageHistory: [],
+      notifications: [{ id: "n1", category: "needs-input", timestamp: 1000, messageId: null, done: false }],
+      notificationStatusVersion: 3,
+      notificationStatusUpdatedAt: 2000,
+      pendingPermissions: new Map(),
+      taskHistory: [],
+      keywords: [],
+      lastReadAt: 0,
+      attentionReason: null,
+      isGenerating: false,
+    };
+
+    const res = await app.request("/api/sessions", { method: "GET" });
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json[0]).toMatchObject({
+      sessionId: "s1",
+      notificationUrgency: null,
+      activeNotificationCount: 0,
+      notificationStatusVersion: 0,
+      notificationStatusUpdatedAt: 0,
     });
   });
 

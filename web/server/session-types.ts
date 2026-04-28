@@ -678,6 +678,8 @@ export type BrowserIncomingMessageBase =
       completedBoard?: BoardRow[];
       rowSessionStatuses?: Record<string, BoardRowSessionStatus>;
       notifications?: SessionNotification[];
+      notificationStatusVersion?: number;
+      notificationStatusUpdatedAt?: number;
     }
   | { type: "session_stuck" }
   | { type: "session_unstuck" }
@@ -707,7 +709,12 @@ export type BrowserIncomingMessageBase =
       completedBoard: BoardRow[];
       rowSessionStatuses?: Record<string, BoardRowSessionStatus>;
     }
-  | { type: "notification_update"; notifications: SessionNotification[] }
+  | {
+      type: "notification_update";
+      notifications: SessionNotification[];
+      notificationStatusVersion?: number;
+      notificationStatusUpdatedAt?: number;
+    }
   | { type: "timer_update"; timers: import("./timer-types.js").SessionTimer[] }
   | {
       type: "session_activity_update";
@@ -718,6 +725,10 @@ export type BrowserIncomingMessageBase =
         lastReadAt?: number;
         pendingPermissionCount?: number;
         pendingPermissionSummary?: string | null;
+        notificationUrgency?: NotificationUrgency;
+        activeNotificationCount?: number;
+        notificationStatusVersion?: number;
+        notificationStatusUpdatedAt?: number;
       };
     }
   | {
@@ -881,6 +892,8 @@ export interface SessionState {
   /** Per-session notification inbox entries (server-only, never from CLI) */
   notifications?: SessionNotification[];
 }
+
+export type NotificationUrgency = "needs-input" | "review" | null;
 
 /** A notification collected when `takode notify` fires. Persisted per session. */
 export interface SessionNotification {

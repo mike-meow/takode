@@ -27,6 +27,7 @@ import { SidebarUsageBar } from "./SidebarUsageBar.js";
 import { YarnBallSpinner } from "./CatIcons.js";
 import { deriveSessionStatus } from "./SessionStatusDot.js";
 import type { SessionTaskEntry, SdkSessionInfo } from "../types.js";
+import { setSdkSessionsWithNotificationFreshness } from "../notification-status.js";
 
 import { buildSidebarVisibleSessions } from "../utils/sidebar-visible-sessions.js";
 import { buildReviewerByParent } from "../utils/reviewer-by-parent.js";
@@ -224,7 +225,7 @@ export function Sidebar() {
 
     function hydrateSessionList(list: SdkSessionInfo[]) {
       const store = useStore.getState();
-      store.setSdkSessions(list.map(stripSearchMetadata));
+      setSdkSessionsWithNotificationFreshness(list.map(stripSearchMetadata));
       // Hydrate session names from server (server is source of truth for auto-generated names)
       let batchedAttention: Map<string, "action" | "error" | "review" | null> | null = null;
       for (const s of list) {
@@ -659,7 +660,7 @@ export function Sidebar() {
     }
     try {
       const list = await api.listSessions();
-      useStore.getState().setSdkSessions(list);
+      setSdkSessionsWithNotificationFreshness(list);
     } catch {
       // best-effort
     }
@@ -702,7 +703,7 @@ export function Sidebar() {
       }
       try {
         const list = await api.listSessions();
-        useStore.getState().setSdkSessions(list);
+        setSdkSessionsWithNotificationFreshness(list);
       } catch {
         // best-effort
       }
@@ -733,7 +734,7 @@ export function Sidebar() {
     }
     try {
       const list = await api.listSessions();
-      useStore.getState().setSdkSessions(list);
+      setSdkSessionsWithNotificationFreshness(list);
     } catch {
       // best-effort
     }

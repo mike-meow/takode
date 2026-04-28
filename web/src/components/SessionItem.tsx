@@ -107,6 +107,8 @@ function useNotificationUrgency(sessionId: string, fallbackUrgency: Notification
     const activeNotifications = notifications?.filter((n) => !n.done);
     const liveUrgency = getHighestNotificationUrgency(activeNotifications);
     if (liveUrgency) return liveUrgency;
+    const snapshot = s.sdkSessions?.find((session) => session.sessionId === sessionId);
+    if (snapshot?.activeNotificationCount === 0 || snapshot?.notificationStatusVersion !== undefined) return null;
     return s.currentSessionId === sessionId ? null : fallbackUrgency;
   });
 }

@@ -108,6 +108,10 @@ export interface PersistedSession {
   completedBoard?: BoardRow[];
   /** Per-session notification inbox entries */
   notifications?: SessionNotification[];
+  /** Monotonic status version for ordering notification summary updates. */
+  notificationStatusVersion?: number;
+  /** Epoch ms for the latest notification status mutation. */
+  notificationStatusUpdatedAt?: number;
 
   /** Lightweight search excerpts extracted at archive time. Only user_message
    *  content and compact_marker summaries — enough for search without loading

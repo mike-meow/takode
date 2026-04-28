@@ -245,6 +245,10 @@ export interface SdkSessionInfo {
   notificationUrgency?: "needs-input" | "review" | null;
   /** Number of unresolved Takode notifications for sidebar snapshots. */
   activeNotificationCount?: number;
+  /** Monotonic server-owned notification status version for stale update rejection. */
+  notificationStatusVersion?: number;
+  /** Epoch ms when notification status last changed on the server. */
+  notificationStatusUpdatedAt?: number;
   /** Truncated preview of the last user message */
   lastMessagePreview?: string;
   /** Whether the CLI process is currently connected (from REST API) */

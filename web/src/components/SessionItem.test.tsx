@@ -13,6 +13,7 @@ const mockStoreState = {
   sessionAttention: new Map<string, "action" | "error" | "review" | null>(),
   sessionNotifications: new Map<string, Array<any>>(),
   sessionTimers: new Map<string, Array<{ id: string }>>(),
+  sdkSessions: [] as Array<any>,
   currentSessionId: "s1",
 };
 
@@ -456,6 +457,7 @@ describe("SessionItem notification marker", () => {
     mockStoreState.sessionAttention.clear();
     mockStoreState.sessionNotifications.clear();
     mockStoreState.sessionTimers.clear();
+    mockStoreState.sdkSessions = [];
   });
 
   it("shows a blue notification marker when review is the highest active inbox urgency", () => {
@@ -482,6 +484,26 @@ describe("SessionItem notification marker", () => {
     renderSessionItem();
     const marker = screen.getByTestId("session-notification-marker");
     expect(marker).toHaveAttribute("data-urgency", "needs-input");
+  });
+
+  it("does not fall back to a stale snapshot marker after the live inbox is known cleared", () => {
+    // A loaded empty inbox is authoritative for the session row. Falling back to
+    // an older /api/sessions amber marker would resurrect a resolved needs-input dot.
+    setSessionNotifications("s1", []);
+    mockStoreState.sdkSessions = [
+      {
+        sessionId: "s1",
+        notificationUrgency: null,
+        activeNotificationCount: 0,
+        notificationStatusVersion: 5,
+      },
+    ];
+
+    const { container } = renderSessionItem({
+      session: makeSession({ notificationUrgency: "needs-input", activeNotificationCount: 1 }),
+    });
+
+    expect(container.querySelector('[data-testid="session-notification-marker"]')).toBeNull();
   });
 
   it("suppresses the inbox marker when a higher-priority attention badge is already active", () => {

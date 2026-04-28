@@ -59,6 +59,7 @@ vi.mock("./api.js", async (importOriginal) => {
 });
 
 import { resetQuestRefreshStateForTests, reconcileQuestList, useStore } from "./store.js";
+import { setSdkSessionsWithNotificationFreshness } from "./notification-status.js";
 import type { SessionState, PermissionRequest, ChatMessage, TaskItem, SdkSessionInfo } from "./types.js";
 
 function makeSession(id: string): SessionState {
@@ -403,6 +404,43 @@ describe("Session management", () => {
     expect(state.sdkSessions[0]).toMatchObject({
       notificationUrgency: "needs-input",
       activeNotificationCount: 1,
+    });
+  });
+
+  it("setSdkSessionsWithNotificationFreshness: keeps newer cleared notification status over stale REST data", () => {
+    // A slow /api/sessions response may contain an older needs-input summary.
+    // The freshness wrapper must preserve the newer resolved status already in the store.
+    useStore.getState().setSdkSessions([
+      {
+        sessionId: "worker",
+        state: "connected",
+        cwd: "/repo",
+        createdAt: 123,
+        notificationUrgency: null,
+        activeNotificationCount: 0,
+        notificationStatusVersion: 5,
+        notificationStatusUpdatedAt: 5000,
+      },
+    ]);
+
+    setSdkSessionsWithNotificationFreshness([
+      {
+        sessionId: "worker",
+        state: "connected",
+        cwd: "/repo",
+        createdAt: 123,
+        notificationUrgency: "needs-input",
+        activeNotificationCount: 1,
+        notificationStatusVersion: 4,
+        notificationStatusUpdatedAt: 4000,
+      },
+    ]);
+
+    expect(useStore.getState().sdkSessions[0]).toMatchObject({
+      notificationUrgency: null,
+      activeNotificationCount: 0,
+      notificationStatusVersion: 5,
+      notificationStatusUpdatedAt: 5000,
     });
   });
 

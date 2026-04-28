@@ -7,6 +7,11 @@ import { playNotificationSound, playReviewSound, playNeedsInputSound } from "./u
 import { extractTextFromBlocks, normalizeHistoryMessageToChatMessages } from "./utils/history-message-normalization.js";
 import { questOwnsSessionName } from "./utils/quest-helpers.js";
 import { formatReplyContentForPreview } from "./utils/reply-context.js";
+import {
+  applyNotificationStatusUpdate,
+  applySessionNotifications,
+  setSdkSessionsWithNotificationFreshness,
+} from "./notification-status.js";
 
 const taskCounters = new Map<string, number>();
 const pendingCliDisconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -524,6 +529,7 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
           ? { pendingPermissionSummary: update.pendingPermissionSummary }
           : {}),
       });
+      applyNotificationStatusUpdate(targetSessionId, update);
       if (update.status !== undefined) {
         store.setSessionStatus(targetSessionId, update.status === "compacting" ? "compacting" : update.status);
       }
@@ -1095,7 +1101,7 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
           api
             .listSessions()
             .then((list) => {
-              store.setSdkSessions(list);
+              setSdkSessionsWithNotificationFreshness(list);
             })
             .catch((err) => {
               console.warn("[ws] Failed to refresh sessions after session_created:", err);
@@ -1143,7 +1149,11 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
       const oldIds = new Set(oldNotifications.map((n: { id: string }) => n.id));
       const added = newNotifications.filter((n: { id: string; done: boolean }) => !n.done && !oldIds.has(n.id));
 
-      store.setSessionNotifications(sessionId, newNotifications);
+      const applied = applySessionNotifications(sessionId, newNotifications, {
+        notificationStatusVersion: data.notificationStatusVersion,
+        notificationStatusUpdatedAt: data.notificationStatusUpdatedAt,
+      });
+      if (!applied) break;
 
       // Play differentiated sounds for new notifications (when tab is not focused).
       // Debounce to prevent overlapping sounds from rapid notification_update messages.
@@ -1223,7 +1233,10 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
       }
       // Sync notification inbox from server on connect/reconnect
       if (data.notifications) {
-        store.setSessionNotifications(sessionId, data.notifications);
+        applySessionNotifications(sessionId, data.notifications, {
+          notificationStatusVersion: data.notificationStatusVersion,
+          notificationStatusUpdatedAt: data.notificationStatusUpdatedAt,
+        });
       }
       break;
     }

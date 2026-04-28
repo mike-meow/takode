@@ -48,6 +48,8 @@ export interface BrowserTransportSessionLike {
   attentionReason: "action" | "error" | "review" | null;
   generationStartedAt: number | null;
   notifications: unknown[];
+  notificationStatusVersion?: number;
+  notificationStatusUpdatedAt?: number;
   processedClientMessageIds: string[];
   processedClientMessageIdSet: Set<string>;
 }
@@ -543,6 +545,8 @@ export function sendStateSnapshot(
     completedBoard,
     rowSessionStatuses: deps.getBoardRowSessionStatuses(session.id, board, completedBoard),
     notifications: session.notifications,
+    notificationStatusVersion: session.notificationStatusVersion,
+    notificationStatusUpdatedAt: session.notificationStatusUpdatedAt,
   } as BrowserIncomingMessage);
 }
 

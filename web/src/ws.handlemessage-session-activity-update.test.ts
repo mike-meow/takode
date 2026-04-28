@@ -143,12 +143,19 @@ describe("handleMessage: session_activity_update", () => {
         pendingPermissionSummary: "pending plan",
         attentionReason: "action",
         status: "running",
+        notificationUrgency: "needs-input",
+        activeNotificationCount: 1,
+        notificationStatusVersion: 2,
+        notificationStatusUpdatedAt: 2000,
       },
     });
 
     const worker = useStore.getState().sdkSessions.find((session) => session.sessionId === "worker")!;
     expect(worker.pendingPermissionCount).toBe(1);
     expect(worker.pendingPermissionSummary).toBe("pending plan");
+    expect(worker.notificationUrgency).toBe("needs-input");
+    expect(worker.activeNotificationCount).toBe(1);
+    expect(worker.notificationStatusVersion).toBe(2);
     expect(useStore.getState().sessionAttention.get("worker")).toBe("action");
     expect(useStore.getState().sessionStatus.get("worker")).toBe("running");
 
@@ -160,13 +167,57 @@ describe("handleMessage: session_activity_update", () => {
         pendingPermissionSummary: null,
         attentionReason: null,
         status: "idle",
+        notificationUrgency: null,
+        activeNotificationCount: 0,
+        notificationStatusVersion: 3,
+        notificationStatusUpdatedAt: 3000,
       },
     });
 
     const updatedWorker = useStore.getState().sdkSessions.find((session) => session.sessionId === "worker")!;
     expect(updatedWorker.pendingPermissionCount).toBe(0);
     expect(updatedWorker.pendingPermissionSummary).toBeNull();
+    expect(updatedWorker.notificationUrgency).toBeNull();
+    expect(updatedWorker.activeNotificationCount).toBe(0);
+    expect(updatedWorker.notificationStatusVersion).toBe(3);
     expect(useStore.getState().sessionAttention.get("worker")).toBeNull();
     expect(useStore.getState().sessionStatus.get("worker")).toBe("idle");
+  });
+
+  it("rejects older notification status updates for inactive sidebar rows", () => {
+    // Notification status broadcasts and REST snapshots can cross in flight.
+    // The sidebar must keep the newer clear instead of restoring an older amber marker.
+    wsModule.connectSession("leader");
+    fireMessage({ type: "session_init", session: makeSession("leader") });
+    useStore.getState().setCurrentSession("leader");
+    useStore.getState().setSdkSessions([
+      {
+        sessionId: "worker",
+        state: "connected",
+        cwd: "/home/user",
+        createdAt: 2,
+        archived: false,
+        notificationUrgency: null,
+        activeNotificationCount: 0,
+        notificationStatusVersion: 5,
+        notificationStatusUpdatedAt: 5000,
+      },
+    ]);
+
+    fireMessage({
+      type: "session_activity_update",
+      session_id: "worker",
+      session: {
+        notificationUrgency: "needs-input",
+        activeNotificationCount: 1,
+        notificationStatusVersion: 4,
+        notificationStatusUpdatedAt: 4000,
+      },
+    });
+
+    const worker = useStore.getState().sdkSessions.find((session) => session.sessionId === "worker")!;
+    expect(worker.notificationUrgency).toBeNull();
+    expect(worker.activeNotificationCount).toBe(0);
+    expect(worker.notificationStatusVersion).toBe(5);
   });
 });
