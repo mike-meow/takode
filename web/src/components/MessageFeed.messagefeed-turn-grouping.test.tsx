@@ -564,10 +564,10 @@ describe("MessageFeed - turn grouping", () => {
     expect(screen.getByText("1 message")).toBeTruthy();
   });
 
-  it("shows leader-session durations inside activity summary rows", () => {
-    // Leader mode: turns split at user messages only. Each non-last turn
-    // with collapsible agent activity shows a duration in its summary row.
-    // Turns need tool calls so agentEntries isn't empty after text promotion.
+  it("shows orchestrator Main durations using full-stream turn semantics", () => {
+    // q-941: Main leader chat is the full old-style stream, not the
+    // leader-private collapsed activity projection. Orchestrator Main should
+    // therefore show normal per-turn response durations for completed turns.
     const sid = "test-turn-duration-summary-leader";
     setStoreSdkSessionRole(sid, { isOrchestrator: true });
     setStoreMessages(sid, [
@@ -598,10 +598,8 @@ describe("MessageFeed - turn grouping", () => {
 
     render(<MessageFeed sessionId={sid} />);
 
-    // First turn: leader duration is boundary-to-boundary (u1 at 1s → u2 at 130s = 2m 9s)
     const durations = screen.getAllByTestId("turn-summary-duration");
-    expect(durations).toHaveLength(1);
-    expect(durations[0].textContent).toBe("2m 9s");
+    expect(durations.map((duration) => duration.textContent)).toEqual(["2m 0s", "3m 3s"]);
   });
 
   it("does not show normal-session summary duration when no final assistant response exists", () => {
