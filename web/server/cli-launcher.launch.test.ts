@@ -382,6 +382,15 @@ function getMaiWrapperSessionEnvPath(wrapperRoot: string, sessionId = "test-sess
   return join(wrapperRoot, ".run", `.env-${overlayHost}`);
 }
 
+function dockerExecEnvValue(args: string[], key: string): string | undefined {
+  for (let i = 0; i < args.length - 1; i++) {
+    if (args[i] !== "-e") continue;
+    const [name, ...valueParts] = args[i + 1].split("=");
+    if (name === key) return valueParts.join("=");
+  }
+  return undefined;
+}
+
 const mockSpawn = vi.fn();
 const bunGlobal = globalThis as typeof globalThis & { Bun?: any };
 const hadBunGlobal = typeof bunGlobal.Bun !== "undefined";
@@ -671,6 +680,46 @@ describe("launch", () => {
     expect(options.env.CLAUDECODE).toBeUndefined();
   });
 
+  it("enforces noninteractive Git editors for host Claude sessions", async () => {
+    // Regression coverage: agent launch policy must win over user/env-profile
+    // Git editor settings while leaving generic editor variables alone.
+    await launcher.launch({
+      cwd: "/tmp",
+      env: {
+        GIT_EDITOR: "code --wait",
+        GIT_SEQUENCE_EDITOR: "vim",
+        EDITOR: "code --wait",
+        VISUAL: "code --wait",
+      },
+    });
+
+    const [, options] = mockSpawn.mock.calls[0];
+    expect(options.env.GIT_EDITOR).toBe("true");
+    expect(options.env.GIT_SEQUENCE_EDITOR).toBe("true");
+    expect(options.env.EDITOR).toBe("code --wait");
+    expect(options.env.VISUAL).toBe("code --wait");
+  });
+
+  it("passes noninteractive Git editors into containerized Claude sessions", async () => {
+    // Containerized agents receive session env through docker exec -e rather
+    // than Bun.spawn env, so verify the policy crosses that boundary.
+    await launcher.launch({
+      cwd: "/tmp/project",
+      containerId: "abc123def456",
+      containerName: "companion-session-1",
+      env: {
+        GIT_EDITOR: "code --wait",
+        GIT_SEQUENCE_EDITOR: "vim",
+        EDITOR: "code --wait",
+      },
+    });
+
+    const [cmdAndArgs] = mockSpawn.mock.calls[0];
+    expect(dockerExecEnvValue(cmdAndArgs, "GIT_EDITOR")).toBe("true");
+    expect(dockerExecEnvValue(cmdAndArgs, "GIT_SEQUENCE_EDITOR")).toBe("true");
+    expect(dockerExecEnvValue(cmdAndArgs, "EDITOR")).toBe("code --wait");
+  });
+
   // spawnCodex is async (prepareCodexHome uses async fs), so wait for the
   // actual spawn call instead of a fixed delay to avoid timing flakes.
   const waitForSpawnCalls = async (count: number) => {
@@ -911,6 +960,86 @@ describe("launch", () => {
       expect(updatedConfig).toContain("multi_agent = true");
       expect(updatedConfig).toContain("[shell_environment_policy]");
       expect(updatedConfig).toContain('"PATH"');
+    } finally {
+      rmSync(customHome, { recursive: true, force: true });
+    }
+  });
+
+  it("enforces noninteractive Git editors for host Codex and shell commands", async () => {
+    // Codex filters child shell environment through config.toml, so process env
+    // and shell_environment_policy both need the Git-specific editor keys.
+    mockResolveBinary.mockReturnValue("/opt/fake/codex");
+    mockSpawn.mockReturnValueOnce(createMockCodexProc());
+
+    const customHome = mkdtempSync(join(tmpdir(), "codex-home-test-"));
+    const sessionHome = join(customHome, "test-session-id");
+    const configPath = join(sessionHome, "config.toml");
+    const { readFileSync: realReadFileSync } = require("node:fs");
+
+    try {
+      await launcher.launch({
+        backendType: "codex",
+        cwd: "/tmp/project",
+        codexSandbox: "workspace-write",
+        codexHome: customHome,
+        env: {
+          GIT_EDITOR: "code --wait",
+          GIT_SEQUENCE_EDITOR: "vim",
+          EDITOR: "code --wait",
+          VISUAL: "code --wait",
+        },
+      });
+      await waitForSpawnCalls(1);
+
+      const [, options] = mockSpawn.mock.calls[0];
+      expect(options.env.GIT_EDITOR).toBe("true");
+      expect(options.env.GIT_SEQUENCE_EDITOR).toBe("true");
+      expect(options.env.EDITOR).toBe("code --wait");
+      expect(options.env.VISUAL).toBe("code --wait");
+
+      const updatedConfig = realReadFileSync(configPath, "utf-8");
+      expect(updatedConfig).toContain('"GIT_EDITOR"');
+      expect(updatedConfig).toContain('"GIT_SEQUENCE_EDITOR"');
+    } finally {
+      rmSync(customHome, { recursive: true, force: true });
+    }
+  });
+
+  it("passes noninteractive Git editors into containerized Codex sessions and generated config", async () => {
+    // Container Codex can generate config.toml inside the docker exec script;
+    // that generated config must preserve the shell-command Git editor policy.
+    mockSpawn.mockReturnValueOnce(createMockCodexProc());
+
+    const customHome = mkdtempSync(join(tmpdir(), "codex-container-home-test-"));
+
+    try {
+      await launcher.launch({
+        backendType: "codex",
+        cwd: "/tmp/project",
+        codexSandbox: "workspace-write",
+        codexHome: customHome,
+        codexLeaderContextWindowOverrideTokens: 1_000_000,
+        containerId: "abc123def456",
+        containerName: "companion-session-1",
+        containerImage: "ubuntu:22.04",
+        env: {
+          GIT_EDITOR: "code --wait",
+          GIT_SEQUENCE_EDITOR: "vim",
+          EDITOR: "code --wait",
+        },
+      });
+      await waitForSpawnCalls(1);
+
+      const [cmdAndArgs] = mockSpawn.mock.calls[0];
+      expect(dockerExecEnvValue(cmdAndArgs, "GIT_EDITOR")).toBe("true");
+      expect(dockerExecEnvValue(cmdAndArgs, "GIT_SEQUENCE_EDITOR")).toBe("true");
+      expect(dockerExecEnvValue(cmdAndArgs, "EDITOR")).toBe("code --wait");
+
+      const bashIndex = cmdAndArgs.indexOf("-lc");
+      expect(bashIndex).toBeGreaterThan(-1);
+      const innerScript = cmdAndArgs[bashIndex + 1];
+      expect(innerScript).toContain('"GIT_EDITOR"');
+      expect(innerScript).toContain('"GIT_SEQUENCE_EDITOR"');
     } finally {
       rmSync(customHome, { recursive: true, force: true });
     }

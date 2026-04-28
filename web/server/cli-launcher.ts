@@ -24,7 +24,7 @@ import {
   getOrchestratorGuardrails as renderOrchestratorGuardrails,
 } from "./cli-launcher-instructions.js";
 import { MissingCodexBinaryError, prepareCodexSpawn } from "./cli-launcher-codex.js";
-import { stripInheritedTelemetryEnv } from "./cli-launcher-env.js";
+import { stripInheritedTelemetryEnv, withNonInteractiveGitEditorEnv } from "./cli-launcher-env.js";
 import { prepareWorktreeSessionArtifacts } from "./cli-launcher-worktree.js";
 import { isRecoverableCodexInitError } from "./codex-adapter-utils.js";
 import { sessionTag } from "./session-tag.js";
@@ -1097,12 +1097,11 @@ export class CliLauncher {
       // Keeping stdin open avoids premature EOF-driven exits in SDK mode.
       // Environment variables are passed via -e flags to docker exec.
       const dockerArgs = ["docker", "exec", "-i"];
+      const containerEnv = withNonInteractiveGitEditorEnv(options.env ?? {});
 
       // Pass env vars via -e flags
-      if (options.env) {
-        for (const [k, v] of Object.entries(options.env)) {
-          dockerArgs.push("-e", `${k}=${v}`);
-        }
+      for (const [k, v] of Object.entries(containerEnv)) {
+        dockerArgs.push("-e", `${k}=${v}`);
       }
       // Ensure CLAUDECODE is unset inside container
       dockerArgs.push("-e", "CLAUDECODE=");
@@ -1119,12 +1118,12 @@ export class CliLauncher {
     } else {
       // Host-based spawn (original behavior)
       spawnCmd = [binary, ...args];
-      spawnEnv = {
+      spawnEnv = withNonInteractiveGitEditorEnv({
         ...stripInheritedTelemetryEnv(process.env),
         CLAUDECODE: undefined,
         ...options.env,
         PATH: getEnrichedPath({ serverId: this.serverId }),
-      };
+      });
       spawnCwd = info.cwd;
     }
 

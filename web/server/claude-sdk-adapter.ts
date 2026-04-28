@@ -12,6 +12,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { withNonInteractiveGitEditorEnv } from "./cli-launcher-env.js";
 import { getEnrichedPath } from "./path-resolver.js";
 import {
   formatVsCodeSelectionPrompt,
@@ -164,11 +165,11 @@ export class ClaudeSdkAdapter
     // Enrich PATH so the SDK can find the `claude` binary and companion skills
     // (e.g., quest CLI in ~/.companion/bin). Without this, SDK sessions can't
     // find binaries that aren't on the default system PATH.
-    const mergedEnv: Record<string, string | undefined> = {
+    const mergedEnv: Record<string, string | undefined> = withNonInteractiveGitEditorEnv({
       ...process.env,
       ...(this.options.env || {}),
       PATH: getEnrichedPath({ serverId: this.options.env?.COMPANION_SERVER_ID }),
-    };
+    });
 
     // Build the plugins list from pluginDirs
     const plugins = (this.options.pluginDirs ?? []).map((path) => ({ type: "local" as const, path }));

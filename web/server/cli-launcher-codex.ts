@@ -19,7 +19,11 @@ import {
 import { join, resolve, relative, dirname, basename } from "node:path";
 import { homedir, hostname } from "node:os";
 import { getLegacyCodexHome, resolveCompanionCodexHome, resolveCompanionCodexSessionHome } from "./codex-home.js";
-import { stripInheritedTelemetryEnv } from "./cli-launcher-env.js";
+import {
+  NON_INTERACTIVE_GIT_EDITOR_ENV_KEYS,
+  stripInheritedTelemetryEnv,
+  withNonInteractiveGitEditorEnv,
+} from "./cli-launcher-env.js";
 import { resolveBinary, getEnrichedPath, captureUserShellEnv } from "./path-resolver.js";
 import { sessionTag } from "./session-tag.js";
 
@@ -879,7 +883,7 @@ async function ensureCodexSessionConfig(
   if (usesMaiLitellmProvider(next)) {
     next = upsertBooleanSettingInSection(next, codexFeaturesHeader, codexImageGenerationFeature, false);
   }
-  next = upsertShellEnvironmentIncludeOnly(next, ["PATH", ...envVars]);
+  next = upsertShellEnvironmentIncludeOnly(next, ["PATH", ...NON_INTERACTIVE_GIT_EDITOR_ENV_KEYS, ...envVars]);
   const leaderContextWindowOverrideTokens = options?.leaderContextWindowOverrideTokens;
   const nonLeaderAutoCompactThresholdPercent = options?.nonLeaderAutoCompactThresholdPercent;
   let modelCatalogJson: string | undefined;
@@ -1042,10 +1046,9 @@ export async function prepareCodexSpawn(
 
   if (isContainerized) {
     const dockerArgs = ["docker", "exec", "-i"];
-    if (options.env) {
-      for (const [key, value] of Object.entries(options.env)) {
-        dockerArgs.push("-e", `${key}=${value}`);
-      }
+    const containerEnv = withNonInteractiveGitEditorEnv(options.env ?? {});
+    for (const [key, value] of Object.entries(containerEnv)) {
+      dockerArgs.push("-e", `${key}=${value}`);
     }
     dockerArgs.push("-e", "CLAUDECODE=");
     dockerArgs.push("-e", "CODEX_HOME=/root/.codex");
@@ -1107,7 +1110,7 @@ export async function prepareCodexSpawn(
 
   return {
     spawnCmd,
-    spawnEnv: {
+    spawnEnv: withNonInteractiveGitEditorEnv({
       ...stripInheritedTelemetryEnv(process.env),
       ...shellEnv,
       CLAUDECODE: undefined,
@@ -1116,7 +1119,7 @@ export async function prepareCodexSpawn(
       CODEX_HOME: codexHome,
       ...(dotslashCache ? { DOTSLASH_CACHE: dotslashCache } : {}),
       PATH: spawnPath,
-    },
+    }),
     spawnCwd: info.cwd,
     sandboxMode,
   };
