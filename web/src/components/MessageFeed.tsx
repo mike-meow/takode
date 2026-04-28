@@ -184,22 +184,64 @@ interface FeedViewportAnchor {
   offsetTop: number;
 }
 
+function contentBlockToolUseId(block: ContentBlock): string | null {
+  if (block.type === "tool_use") return block.id;
+  if (block.type === "tool_result") return block.tool_use_id;
+  return null;
+}
+
+function messageToolUseIds(message: ChatMessage): string[] {
+  return (message.contentBlocks ?? []).map(contentBlockToolUseId).filter((id): id is string => Boolean(id));
+}
+
+function messageHasThreadRef(message: ChatMessage, threadKey: string): boolean {
+  const normalized = threadKey.toLowerCase();
+  const metadata = message.metadata;
+  if (!metadata) return false;
+  if (metadata.threadKey?.toLowerCase() === normalized) return true;
+  if (metadata.questId?.toLowerCase() === normalized) return true;
+  if (metadata.quest?.questId.toLowerCase() === normalized) return true;
+  return (metadata.threadRefs ?? []).some((ref) => ref.threadKey.toLowerCase() === normalized);
+}
+
+function filterMessagesForThread(messages: ChatMessage[], threadKey: string): ChatMessage[] {
+  const normalized = threadKey.toLowerCase();
+  if (normalized === "main") return messages;
+
+  const includedToolUseIds = new Set<string>();
+  for (const message of messages) {
+    if (!messageHasThreadRef(message, normalized)) continue;
+    for (const toolUseId of messageToolUseIds(message)) {
+      includedToolUseIds.add(toolUseId);
+    }
+  }
+
+  return messages.filter((message) => {
+    if (messageHasThreadRef(message, normalized)) return true;
+    if (message.parentToolUseId && includedToolUseIds.has(message.parentToolUseId)) return true;
+    return messageToolUseIds(message).some((toolUseId) => includedToolUseIds.has(toolUseId));
+  });
+}
+
 // ─── Main Feed ───────────────────────────────────────────────────────────────
 
 export function MessageFeed({
   sessionId,
+  threadKey = "main",
   sectionTurnCount = FEED_SECTION_TURN_COUNT,
   latestIndicatorMode = "overlay",
   onLatestIndicatorVisibleChange,
   onJumpToLatestReady,
 }: {
   sessionId: string;
+  threadKey?: string;
   sectionTurnCount?: number;
   latestIndicatorMode?: "overlay" | "external";
   onLatestIndicatorVisibleChange?: (visible: boolean) => void;
   onJumpToLatestReady?: ((scrollToLatest: (() => void) | null) => void) | undefined;
 }) {
-  const messages = useStore((s) => s.messages.get(sessionId) ?? EMPTY_MESSAGES);
+  const allMessages = useStore((s) => s.messages.get(sessionId) ?? EMPTY_MESSAGES);
+  const messages = useMemo(() => filterMessagesForThread(allMessages, threadKey), [allMessages, threadKey]);
   const pendingUserUploads = useStore((s) => s.pendingUserUploads.get(sessionId) ?? EMPTY_PENDING_USER_UPLOADS);
   const pendingCodexInputs = useStore((s) => s.pendingCodexInputs.get(sessionId) ?? EMPTY_PENDING_CODEX_INPUTS);
   const frozenCount = useStore((s) => s.messageFrozenCounts.get(sessionId) ?? 0);
@@ -215,9 +257,6 @@ export function MessageFeed({
   const sessionNotifications = useStore((s) => s.sessionNotifications.get(sessionId));
   const currentSessionStatus = useStore((s) => s.sessionStatus.get(sessionId) ?? null);
   const parentStreamingByToolUseId = useStore((s) => s.streamingByParentToolUseId.get(sessionId));
-  const isLeaderSession = useStore((s) =>
-    s.sdkSessions.some((session) => session.sessionId === sessionId && session.isOrchestrator === true),
-  );
   const shouldBottomAlignNextUserMessage = useStore((s) => s.bottomAlignNextUserMessage.has(sessionId));
   const pawCounter = useRef<import("./PawTrail.js").PawCounterState>({ next: 0, cache: new Map() });
   const containerRef = useRef<HTMLDivElement>(null);
@@ -266,7 +305,7 @@ export function MessageFeed({
     [sessionNotifications],
   );
   const { turns } = useFeedModel(messages, {
-    leaderMode: isLeaderSession,
+    leaderMode: false,
     frozenCount,
     frozenRevision,
     anchoredNotificationMessageIds,
@@ -545,7 +584,7 @@ export function MessageFeed({
   const { turnStates, toggleTurn } = useCollapsePolicy({
     sessionId,
     turns: visibleTurns,
-    leaderMode: isLeaderSession,
+    leaderMode: false,
   });
   const collapseLayoutSignature = useMemo(
     () => turnStates.map((state) => `${state.turnId}:${state.isActivityExpanded ? "1" : "0"}`).join("|"),
@@ -1524,7 +1563,7 @@ export function MessageFeed({
                 <TurnEntries
                   sections={visibleSections}
                   sessionId={sessionId}
-                  leaderMode={isLeaderSession}
+                  leaderMode={false}
                   isCodexSession={isCodexSession}
                   activeCodexTerminalIds={activeCodexTerminalIds}
                   onOpenCodexTerminal={setSelectedCodexTerminalId}

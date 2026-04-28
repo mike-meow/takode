@@ -1222,7 +1222,7 @@ export function PlaygroundInteractiveSections() {
 
       <Section
         title="Quest Status Panel"
-        description="Compact right-side quest/status summary used by leader sessions to avoid repeating rendered quest facts in prose."
+        description="Compact quest/status summary used in thread-aware leader surfaces."
       >
         <div className="grid gap-4 md:grid-cols-2">
           <Card label="Selected session quest">

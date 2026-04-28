@@ -674,11 +674,17 @@ Options:
 
 const USER_MESSAGE_HELP = `Usage: takode user-message --text-file <path|-> [--json]
 
-Publish Markdown from a leader session into its user-visible left-panel chat. This command is for leader/orchestrator sessions only; normal worker and reviewer sessions should not use it.
+Deprecated compatibility command. New leader thread routing uses mandatory [thread:main] / [thread:q-N] assistant prefixes instead.
 
 Options:
   --text-file <path|->  Read the complete Markdown message from a file, or '-' for stdin
   --json                Output JSON
+`;
+
+const THREAD_HELP = `Usage: takode thread attach <quest-id> --message <index> [--json]
+       takode thread attach <quest-id> --range <start-end> [--json]
+
+Associate existing Main-thread history entries with a quest thread without moving or duplicating them.
 `;
 
 const RENAME_HELP = `Usage: takode rename <session> <name> [--json]
@@ -939,6 +945,9 @@ function printCommandHelp(command: string, argv: string[]): boolean {
       return true;
     case "user-message":
       console.log(USER_MESSAGE_HELP);
+      return true;
+    case "thread":
+      console.log(THREAD_HELP);
       return true;
     case "rename":
       console.log(RENAME_HELP);
@@ -2490,6 +2499,49 @@ async function handleUserMessage(base: string, args: string[]): Promise<void> {
     return;
   }
   console.log(`[${formatTime(Date.now())}] \u2713 User-visible message published`);
+}
+
+async function handleThread(base: string, args: string[]): Promise<void> {
+  const sub = args[0];
+  if (sub !== "attach") err(THREAD_HELP.trim());
+
+  const questId = args[1]?.trim().toLowerCase();
+  if (!questId) err(THREAD_HELP.trim());
+  if (!isValidQuestId(questId)) err(`Invalid quest ID "${questId}": must match q-NNN format (e.g., q-1, q-42)`);
+
+  const flags = parseFlags(args.slice(2));
+  assertKnownFlags(flags, new Set(["json", "message", "range"]), THREAD_HELP.trim());
+  const message = flags.message;
+  const range = flags.range;
+  if (message === undefined && range === undefined) {
+    err(`${THREAD_HELP.trim()}\n\nProvide --message <index> or --range <start-end>.`);
+  }
+  if (message !== undefined && message === true) err("--message requires a numeric history index.");
+  if (range !== undefined && range === true) err("--range requires a start-end value.");
+
+  const body: Record<string, unknown> = { questId };
+  if (message !== undefined) {
+    const parsed = Number(message);
+    if (!Number.isInteger(parsed) || parsed < 0) err("--message must be a non-negative integer history index.");
+    body.message = parsed;
+  }
+  if (range !== undefined) {
+    if (!/^\d+-\d+$/.test(range)) err("--range must use start-end message indices, e.g. 174-182.");
+    body.range = range;
+  }
+
+  const selfId = getCallerSessionId();
+  const result = (await apiPost(base, `/sessions/${encodeURIComponent(selfId)}/thread/attach`, body)) as {
+    attached?: number[];
+    outOfRange?: number[];
+  };
+  if (flags.json === true) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+  const attached = result.attached?.join(", ") || "none";
+  const skipped = result.outOfRange?.length ? ` (${result.outOfRange.length} out of range)` : "";
+  console.log(`[${formatTime(Date.now())}] \u2713 Attached ${attached} to ${questId}${skipped}`);
 }
 
 // ─── Spawn handler ───────────────────────────────────────────────────────────
@@ -4906,7 +4958,8 @@ Commands:
   logs     Query and tail structured server logs
   export   Export full session history to a text file
   send     Send a message to a herded session
-  user-message  Publish leader Markdown to the user-visible left panel
+  thread   Associate Main history entries with quest threads
+  user-message  Deprecated compatibility publisher
   rename   Rename a session (e.g. takode rename 5 My Session Name)
   herd     Herd sessions (e.g. takode herd 5,6,7 or takode herd --force 5)
   unherd   Release a session from your herd (e.g. takode unherd 5)
@@ -4967,6 +5020,7 @@ Examples:
   takode phases
   takode board --help
   takode board advance q-12
+  takode thread attach q-12 --message 42
   takode help timer create
 `);
 }
@@ -4999,6 +5053,7 @@ try {
     ["export", {}],
     ["send", { requireOrchestrator: true }],
     ["user-message", { requireOrchestrator: true }],
+    ["thread", { requireOrchestrator: true }],
     ["rename", { requireOrchestrator: true }],
     ["herd", { requireOrchestrator: true }],
     ["unherd", { requireOrchestrator: true }],
@@ -5100,6 +5155,9 @@ try {
       break;
     case "user-message":
       await handleUserMessage(base, args);
+      break;
+    case "thread":
+      await handleThread(base, args);
       break;
     case "rename":
       await handleRename(base, args);

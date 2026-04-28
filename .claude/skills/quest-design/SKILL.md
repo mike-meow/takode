@@ -61,7 +61,7 @@ Please confirm or correct.
 
 After sending the confirmation, stop and wait for the user.
 
-If you are acting as a leader/orchestrator and the confirmation asks a blocking question, publish the confirmation text with `takode user-message --text-file -`, then run `takode notify needs-input "<brief summary>"` so the user notices. For obvious short choices, add one to three `--suggest <answer>` flags, but never use suggestions instead of the written confirmation context. Normal worker and reviewer sessions should ignore `takode user-message` and use ordinary chat.
+If you are acting as a leader/orchestrator and the confirmation asks a blocking question, send the confirmation as a normal leader response with the correct first-line thread marker (`[thread:main]` or `[thread:q-N]`), then run `takode notify needs-input "<brief summary>"` so the user notices. For obvious short choices, add one to three `--suggest <answer>` flags, but never use suggestions instead of the written confirmation context. Normal worker and reviewer sessions should use ordinary chat.
 
 If the user corrects the understanding and ambiguity remains, repeat the same structure with the updated understanding. If the user clarifies enough to remove the ambiguity, draft the quest and Journey/scheduling plan together instead of sending a separate restated-understanding-only round.
 

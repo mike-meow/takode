@@ -265,6 +265,23 @@ export interface VsCodeSelectionMetadata {
   lineCount: number;
 }
 
+export type ThreadRefSource = "explicit" | "inferred" | "backfill";
+
+export interface ThreadRef {
+  threadKey: string;
+  questId?: string;
+  source: ThreadRefSource;
+  attachedAt?: number;
+  attachedBy?: string;
+}
+
+export interface ThreadRoutingError {
+  reason: "missing" | "invalid";
+  expected: string;
+  rawContent?: string;
+  marker?: string;
+}
+
 /**
  * Format a VSCode selection into a text prompt that tells the model which file
  * and line range the user has selected. Used by ws-bridge (CLI path),
@@ -358,6 +375,10 @@ export type BrowserOutgoingMessage =
       replyContext?: ReplyContext;
       vscodeSelection?: VsCodeSelectionMetadata;
       client_msg_id?: string;
+      /** UI-only thread routing metadata. Main is implicit; quest threads are optional projections. */
+      threadKey?: string;
+      questId?: string;
+      threadRefs?: ThreadRef[];
       /** Present when the message was injected programmatically (e.g. via takode CLI or cron). */
       agentSource?: { sessionId: string; sessionLabel?: string };
       /** Server-only metadata for rebuilding/pruning queued herd batches before delivery. */
@@ -549,6 +570,10 @@ export type BrowserIncomingMessageBase =
       replyContext?: ReplyContext;
       agentSource?: { sessionId: string; sessionLabel?: string };
       vscodeSelection?: VsCodeSelectionMetadata;
+      threadKey?: string;
+      questId?: string;
+      threadRefs?: ThreadRef[];
+      threadRoutingError?: ThreadRoutingError;
     }
   | {
       type: "leader_user_message";
@@ -556,6 +581,10 @@ export type BrowserIncomingMessageBase =
       timestamp: number;
       id: string;
       notification?: TakodeNotificationPayload;
+      threadKey?: string;
+      questId?: string;
+      threadRefs?: ThreadRef[];
+      threadRoutingError?: ThreadRoutingError;
     }
   | { type: "codex_pending_inputs"; inputs: PendingCodexInput[] }
   | { type: "codex_pending_input_cancelled"; input: PendingCodexInput }
@@ -695,7 +724,14 @@ export type BrowserIncomingMessageBase =
       treeNodeOrder: Record<string, string[]>;
     };
 
-export type BrowserIncomingMessage = BrowserIncomingMessageBase & { seq?: number };
+export type BrowserIncomingMessage = BrowserIncomingMessageBase & {
+  seq?: number;
+  /** Optional quest/thread memberships. Main is implicit for every history entry. */
+  threadRefs?: ThreadRef[];
+  threadKey?: string;
+  questId?: string;
+  threadRoutingError?: ThreadRoutingError;
+};
 
 export type ReplayableBrowserIncomingMessage = Exclude<BrowserIncomingMessageBase, { type: "event_replay" }>;
 

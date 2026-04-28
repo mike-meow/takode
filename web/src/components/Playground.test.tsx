@@ -50,18 +50,17 @@ describe("Playground", () => {
     expect(appendToggle.compareDocumentPosition(appendRecordingLabel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("documents explicit leader messages and collapsed private activity", () => {
+  it("documents leader thread routing and full Main activity", () => {
     render(<Playground />);
 
-    expect(screen.getByText("Collapsed leader turn — explicit user-message visible")).toBeTruthy();
-    expect(screen.getByText("Collapsed leader turn — private activity only")).toBeTruthy();
-    expect(screen.getAllByText("Leader activity").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText("Leader Main stream — full activity visible")).toBeTruthy();
+    expect(screen.getByText("Leader thread switcher")).toBeTruthy();
+    expect(screen.getByText("Checked worker state, inspected the board, and prepared the next dispatch.")).toBeTruthy();
     expect(
       screen.getByText(
         "Approved #70's plan for q-43. It's a clean unification: resize once at store time (1920px max).",
       ),
     ).toBeTruthy();
     expect(screen.queryByText(/@to\(user\)/)).toBeNull();
-    expect(screen.queryByText("Dispatched #264 to work on q-42. Spawned skeptic reviewer #265.")).toBeNull();
   });
 });

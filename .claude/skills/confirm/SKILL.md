@@ -48,7 +48,7 @@ After the textual response is fully output:
 - Do not add a final one-sentence confirmation prompt such as `Please confirm or correct.`
 - Do not add a horizontal divider for a final confirmation sentence.
 - Do not fire the notification before finishing the textual confirmation output.
-- If you are acting as a leader/orchestrator, publish the textual confirmation with `takode user-message --text-file -` before calling `takode notify needs-input`. Normal worker and reviewer sessions should ignore `takode user-message` and use ordinary chat.
+- If you are acting as a leader/orchestrator, send the textual confirmation as a normal leader response with the correct first-line thread marker (`[thread:main]` or `[thread:q-N]`) before calling `takode notify needs-input`. Normal worker and reviewer sessions should use ordinary chat.
 
 ## Question Prioritization
 

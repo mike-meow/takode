@@ -608,6 +608,40 @@ describe("Takode server-authoritative auth", () => {
     expect(workerJson).toHaveLength(3);
   });
 
+  it("attaches existing Main history entries to a quest thread without moving history", async () => {
+    // Backfill must only add projection metadata. Main remains the flat
+    // authoritative transcript, while quest threads filter over threadRefs.
+    setupTakodeSessions();
+    bridge._sessions["orch-1"].messageHistory = [
+      { type: "assistant", message: { id: "a1", content: [] } },
+      { type: "assistant", message: { id: "a2", content: [] } },
+      { type: "assistant", message: { id: "a3", content: [] } },
+    ];
+
+    const res = await app.request("/api/sessions/orch-1/thread/attach", {
+      method: "POST",
+      headers: authHeaders("orch-1", "tok-1"),
+      body: JSON.stringify({ questId: "q-941", range: "1-2" }),
+    });
+
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json).toMatchObject({ ok: true, questId: "q-941", attached: [1, 2], outOfRange: [] });
+    expect(bridge._sessions["orch-1"].messageHistory).toHaveLength(3);
+    expect(bridge._sessions["orch-1"].messageHistory[0].threadRefs).toBeUndefined();
+    expect(bridge._sessions["orch-1"].messageHistory[1].threadRefs).toMatchObject([
+      { threadKey: "q-941", questId: "q-941", source: "backfill", attachedBy: "orch-1" },
+    ]);
+    expect(bridge._sessions["orch-1"].messageHistory[2].threadRefs).toMatchObject([
+      { threadKey: "q-941", questId: "q-941", source: "backfill", attachedBy: "orch-1" },
+    ]);
+    expect(bridge.broadcastToSession).toHaveBeenCalledWith("orch-1", {
+      type: "message_history",
+      messages: bridge._sessions["orch-1"].messageHistory,
+    });
+    expect(bridge.persistSessionById).toHaveBeenCalledWith("orch-1");
+  });
+
   it("returns cached takode worktree rows in heavy repo mode without scheduling git refreshes", async () => {
     const defaultSettings = vi.mocked(settingsManager.getSettings).getMockImplementation()?.() as ReturnType<
       typeof settingsManager.getSettings

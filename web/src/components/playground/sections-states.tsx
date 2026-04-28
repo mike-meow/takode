@@ -1052,27 +1052,16 @@ export function PlaygroundStateSections() {
               </button>
             </div>
           </Card>
-          <Card label="Collapsed leader turn — explicit user-message visible">
+          <Card label="Leader Main stream — full activity visible">
             <div className="space-y-3">
-              <div className="flex items-start gap-3">
-                <PawTrailAvatar />
-                <div className="flex-1 min-w-0 rounded-xl border border-cc-border/20 bg-cc-card/20 overflow-hidden">
-                  <button className="w-full flex items-center gap-1.5 py-1.5 px-3 border-l-2 border-cc-border/40 bg-cc-hover/10 hover:bg-cc-hover/30 transition-colors cursor-pointer text-[11px] text-cc-muted font-mono-code">
-                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 shrink-0 text-cc-muted/60">
-                      <path d="M6 4l4 4-4 4" />
-                    </svg>
-                    <span>Leader activity</span>
-                    <span className="text-cc-muted/40">&middot;</span>
-                    <span>3 messages</span>
-                    <span className="text-cc-muted/40">&middot;</span>
-                    <span>6 tools</span>
-                    <span className="text-cc-muted/40">&middot;</span>
-                    <span>3 herd events</span>
-                    <span className="text-cc-muted/40">&middot;</span>
-                    <span>17m 33s</span>
-                  </button>
-                </div>
-              </div>
+              <MessageBubble
+                message={{
+                  id: "playground-leader-private-detail",
+                  role: "assistant",
+                  content: "Checked worker state, inspected the board, and prepared the next dispatch.",
+                  timestamp: Date.now() - 120000,
+                }}
+              />
               <MessageBubble
                 message={{
                   id: "playground-collapsed-touser",
@@ -1080,31 +1069,24 @@ export function PlaygroundStateSections() {
                   content:
                     "Approved #70's plan for q-43. It's a clean unification: resize once at store time (1920px max).",
                   timestamp: Date.now() - 60000,
-                  metadata: { leaderUserMessage: true },
+                  metadata: {
+                    threadKey: "q-43",
+                    threadRefs: [{ threadKey: "q-43", questId: "q-43", source: "explicit" }],
+                  },
                 }}
               />
             </div>
           </Card>
-          <Card label="Collapsed leader turn — private activity only">
-            <div className="space-y-3">
-              <div className="flex items-start gap-3">
-                <PawTrailAvatar />
-                <div className="flex-1 min-w-0 rounded-xl border border-cc-border/20 bg-cc-card/20 overflow-hidden">
-                  <button className="w-full flex items-center gap-1.5 py-1.5 px-3 border-l-2 border-cc-border/40 bg-cc-hover/10 hover:bg-cc-hover/30 transition-colors cursor-pointer text-[11px] text-cc-muted font-mono-code">
-                    <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3 shrink-0 text-cc-muted/60">
-                      <path d="M6 4l4 4-4 4" />
-                    </svg>
-                    <span>Leader activity</span>
-                    <span className="text-cc-muted/40">&middot;</span>
-                    <span>12 messages</span>
-                    <span className="text-cc-muted/40">&middot;</span>
-                    <span>15 tools</span>
-                    <span className="text-cc-muted/40">&middot;</span>
-                    <span>4 herd events</span>
-                    <span className="text-cc-muted/40">&middot;</span>
-                    <span>45m</span>
-                  </button>
-                </div>
+          <Card label="Leader thread switcher">
+            <div className="rounded-lg border border-cc-border bg-cc-card/60 p-2 text-xs">
+              <div className="rounded-md bg-cc-hover px-2 py-1.5 text-cc-fg">
+                <div className="font-semibold">Main</div>
+                <div className="text-[10px] text-cc-muted">Complete leader transcript</div>
+              </div>
+              <div className="mt-1 rounded-md px-2 py-1.5 text-cc-muted">
+                <div className="font-mono-code text-[11px] text-blue-400">q-43</div>
+                <div className="truncate text-cc-fg">Resize images at store time</div>
+                <div className="text-[10px]">3 associated messages</div>
               </div>
             </div>
           </Card>

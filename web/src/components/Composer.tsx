@@ -68,7 +68,15 @@ const EMPTY_CHAT_MESSAGES: ChatMessage[] = [];
 const EMPTY_PENDING_USER_UPLOADS: PendingUserUpload[] = [];
 const EMPTY_COMPOSER_IMAGES: ComposerDraftImage[] = [];
 
-export function Composer({ sessionId }: { sessionId: string }) {
+export function Composer({
+  sessionId,
+  threadKey = "main",
+  questId,
+}: {
+  sessionId: string;
+  threadKey?: string;
+  questId?: string;
+}) {
   const draft = useStore((s) => s.composerDrafts.get(sessionId));
   const pendingUserUploads = useStore((s) => s.pendingUserUploads.get(sessionId)) ?? EMPTY_PENDING_USER_UPLOADS;
   const replyContext = useStore((s) => s.replyContexts.get(sessionId));
@@ -751,6 +759,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
         imageRefs,
         session_id: sessionId,
         client_msg_id: pendingId,
+        ...(threadKey !== "main" ? { threadKey, questId: questId ?? threadKey } : {}),
         ...(vscodeSelectionPayload ? { vscodeSelection: vscodeSelectionPayload } : {}),
       });
 
@@ -769,6 +778,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
       content: finalContent,
       ...(currentReplyContext ? { deliveryContent: replyDeliveryContent, replyContext: currentReplyContext } : {}),
       session_id: sessionId,
+      ...(threadKey !== "main" ? { threadKey, questId: questId ?? threadKey } : {}),
       ...(vscodeSelectionPayload ? { vscodeSelection: vscodeSelectionPayload } : {}),
     });
 

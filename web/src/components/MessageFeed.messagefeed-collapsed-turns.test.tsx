@@ -500,257 +500,50 @@ function makeDomRect(height: number, width = 0): DOMRect {
 }
 
 describe("MessageFeed - collapsed turns", () => {
-  it("passes defaultExpanded=false when expanding a collapsed leader activity row", () => {
-    // Leader turns keep ordinary assistant text private by default; the activity
-    // row is a heartbeat, not a response preview.
-    const sid = "test-leader-latest-toggle";
-    setStoreSdkSessionRole(sid, { isOrchestrator: true });
-    setStoreMessages(sid, [
-      makeMessage({ id: "u1", role: "user", content: "status" }),
-      makeMessage({ id: "a1", role: "assistant", content: "Checking workers..." }),
-      makeMessage({ id: "a2", role: "assistant", content: "Assigned q-400 to #9" }),
-    ]);
-
-    render(<MessageFeed sessionId={sid} />);
-
-    fireEvent.click(screen.getByText("Leader activity"));
-    expect(mockToggleTurnActivity).toHaveBeenCalledWith(sid, "u1", false);
-  });
-
-  it("leader mode hides deprecated tag text in the collapsed card", () => {
-    const sid = "test-leader-promotion";
-    setStoreSdkSessionRole(sid, { isOrchestrator: true });
-    setStoreMessages(sid, [
-      makeMessage({ id: "u1", role: "user", content: "Kick off orchestration" }),
-      makeMessage({ id: "a1", role: "assistant", content: "Assigned q-600 to #2" }),
-      makeMessage({
-        id: "a2",
-        role: "assistant",
-        content: "First update from the herd. @to(user)",
-      }),
-      makeMessage({ id: "a3", role: "assistant", content: "Nudged #2 about test coverage" }),
-      makeMessage({
-        id: "a4",
-        role: "assistant",
-        content: "Second update with progress. @to(user)",
-      }),
-      makeMessage({ id: "a5", role: "assistant", content: "Internal coordination @to(self)" }),
-      // New user message creates turn boundary
-      makeMessage({ id: "u2", role: "user", content: "Thanks" }),
-    ]);
-
-    render(<MessageFeed sessionId={sid} />);
-
-    expect(screen.getByText("Kick off orchestration")).toBeTruthy();
-    expect(screen.getByText("Leader activity")).toBeTruthy();
-    expect(screen.queryByText("Internal coordination @to(self)")).toBeNull();
-    expect(screen.queryByText("Assigned q-600 to #2")).toBeNull();
-    expect(screen.queryByText("Nudged #2 about test coverage")).toBeNull();
-    expect(screen.queryByText("Second update with progress. @to(user)")).toBeNull();
-    expect(screen.queryByText("First update from the herd. @to(user)")).toBeNull();
-  });
-
-  it("leader mode keeps mixed assistant messages private while collapsed", () => {
-    const sid = "test-leader-multi-text-boundary";
-    setStoreSdkSessionRole(sid, { isOrchestrator: true });
-    setStoreMessages(sid, [
-      makeMessage({ id: "u1", role: "user", content: "Need a status update" }),
-      makeMessage({ id: "a1", role: "assistant", content: "Assigned q-777 to #4" }),
-      makeMessage({
-        id: "a2",
-        role: "assistant",
-        content:
-          "I investigated worker logs and reproduced the failure.\nRoot cause confirmed; patch queued. @to(user)",
-        contentBlocks: [
-          { type: "text", text: "I investigated worker logs and reproduced the failure." },
-          { type: "tool_use", id: "tu-200", name: "Bash", input: { command: 'rg -n "leader" web/src/components' } },
-          { type: "text", text: "Root cause confirmed; patch queued. @to(user)" },
-        ],
-      }),
-      makeMessage({ id: "a3", role: "assistant", content: "Queued follow-up validation for #4" }),
-    ]);
-
-    render(<MessageFeed sessionId={sid} />);
-
-    expect(screen.getByText("Leader activity")).toBeTruthy();
-    expect(screen.queryByText("I investigated worker logs and reproduced the failure.")).toBeNull();
-    expect(screen.queryByText("Root cause confirmed; patch queued. @to(user)")).toBeNull();
-    expect(screen.queryByText("Assigned q-777 to #4")).toBeNull();
-    expect(screen.queryByText("Queued follow-up validation for #4")).toBeNull();
-  });
-
-  it("passes defaultExpanded=false when expanding the latest leader turn with tool activity", () => {
-    // Turns no longer split at @to(user) — all entries stay in one turn.
-    // Add a tool call so there's a collapsible activity bar to click.
-    const sid = "test-leader-last-user-boundary";
-    setStoreSdkSessionRole(sid, { isOrchestrator: true });
-    setStoreMessages(sid, [
-      makeMessage({ id: "u1", role: "user", content: "status" }),
-      makeMessage({
-        id: "a1",
-        role: "assistant",
-        content: "",
-        contentBlocks: [{ type: "tool_use", id: "tu-1", name: "Bash", input: { command: "ls" } }],
-      }),
-      makeMessage({
-        id: "a2",
-        role: "assistant",
-        content: "#9 is implementing now. @to(user)",
-      }),
-    ]);
-
-    render(<MessageFeed sessionId={sid} />);
-
-    // The turn has tool activity → click the activity bar
-    const activityRows = screen.getAllByText("1 tool");
-    fireEvent.click(activityRows[activityRows.length - 1]);
-    expect(mockToggleTurnActivity).toHaveBeenCalledWith(sid, "u1", false);
-  });
-
-  it("leader mode hides deprecated tags from the response preview", () => {
-    const sid = "test-leader-collapse";
-    setStoreSdkSessionRole(sid, { isOrchestrator: true });
-    setStoreMessages(sid, [
-      makeMessage({ id: "u1", role: "user", content: "Coordinate workers" }),
-      makeMessage({ id: "a1", role: "assistant", content: "Assigned q-127 to #3" }),
-      makeMessage({ id: "a_self", role: "assistant", content: "internal check @to(self)" }),
-      makeMessage({
-        id: "a2",
-        role: "assistant",
-        content: "I delegated auth + tests. Waiting for your review. @to(user)",
-      }),
-      makeMessage({ id: "u2", role: "user", content: "continue" }),
-      makeMessage({ id: "a3", role: "assistant", content: "peeked #3 and nudged #4" }),
-    ]);
-
-    render(<MessageFeed sessionId={sid} />);
-
-    expect(screen.getAllByText("Leader activity").length).toBeGreaterThan(0);
-    expect(screen.queryByText("I delegated auth + tests. Waiting for your review. @to(user)")).toBeNull();
-    expect(screen.queryByText("Assigned q-127 to #3")).toBeNull();
-    expect(screen.queryByText("internal check")).toBeNull();
-    expect(screen.queryByText("peeked #3 and nudged #4")).toBeNull();
-  });
-
-  it("leader mode shows explicit user-message output while keeping private output collapsed", () => {
-    const sid = "test-leader-user-message-visible";
+  it("leader sessions render the full Main stream instead of private collapsed activity", () => {
+    // q-941 pivot: Main is the complete old-style leader transcript. Filtering
+    // comes from selected quest threads, not global leader activity hiding.
+    const sid = "test-leader-main-full-stream";
     setStoreSdkSessionRole(sid, { isOrchestrator: true });
     setStoreMessages(sid, [
       makeMessage({ id: "u1", role: "user", content: "Coordinate workers" }),
       makeMessage({ id: "a1", role: "assistant", content: "Private orchestration detail" }),
-      makeMessage({
-        id: "a2",
-        role: "assistant",
-        content: "Visible leader update",
-        metadata: { leaderUserMessage: true },
-      }),
+      makeMessage({ id: "a2", role: "assistant", content: "Published leader update" }),
     ]);
 
     render(<MessageFeed sessionId={sid} />);
 
-    expect(screen.getByText("Visible leader update")).toBeTruthy();
-    expect(screen.queryByText("Private orchestration detail")).toBeNull();
-    expect(screen.getByText("Leader activity")).toBeTruthy();
+    expect(screen.getByText("Coordinate workers")).toBeTruthy();
+    expect(screen.getByText("Private orchestration detail")).toBeTruthy();
+    expect(screen.getByText("Published leader update")).toBeTruthy();
+    expect(screen.queryByText("Leader activity")).toBeNull();
   });
 
-  it("leader mode keeps the latest turn tool activity collapsed by default", () => {
-    // Tool activity a3 is hidden because leader turns behave like collapsed activity heartbeats.
-    const sid = "test-leader-latest-tools-expanded";
-    setStoreSdkSessionRole(sid, { isOrchestrator: true });
+  it("filters quest-thread views to associated messages while Main stays implicit", () => {
+    // Quest threads are metadata projections over the flat history. Unrelated
+    // Main messages remain out of the selected quest view.
+    const sid = "test-quest-thread-filter";
     setStoreMessages(sid, [
-      makeMessage({ id: "u1", role: "user", content: "Status?" }),
-      makeMessage({ id: "a1", role: "assistant", content: "Assigned q-333 to #6" }),
+      makeMessage({ id: "u1", role: "user", content: "Main-only setup" }),
+      makeMessage({
+        id: "a1",
+        role: "assistant",
+        content: "q-941 routed update",
+        metadata: { threadRefs: [{ threadKey: "q-941", questId: "q-941", source: "explicit" }] },
+      }),
       makeMessage({
         id: "a2",
         role: "assistant",
-        content: "Worker #6 is implementing now. @to(user)",
-      }),
-      makeMessage({
-        id: "a3",
-        role: "assistant",
-        content: "",
-        contentBlocks: [{ type: "tool_use", id: "tu-1", name: "Bash", input: { command: "npm test" } }],
+        content: "q-942 routed update",
+        metadata: { threadRefs: [{ threadKey: "q-942", questId: "q-942", source: "explicit" }] },
       }),
     ]);
 
-    render(<MessageFeed sessionId={sid} />);
+    render(<MessageFeed sessionId={sid} threadKey="q-941" />);
 
-    expect(screen.queryByText("Assigned q-333 to #6")).toBeNull();
-    expect(screen.queryByText("npm test")).toBeNull();
-    expect(screen.getByText("Leader activity")).toBeTruthy();
-  });
-
-  it("leader mode keeps the active latest turn collapsed while streaming with a collapsed override", () => {
-    const sid = "test-leader-streaming-latest-forces-expanded";
-    setStoreSdkSessionRole(sid, { isOrchestrator: true });
-    setStoreStatus(sid, "running");
-    setStoreMessages(sid, [
-      makeMessage({ id: "u1", role: "user", content: "Status?" }),
-      makeMessage({ id: "a1", role: "assistant", content: "Assigned q-333 to #6" }),
-      makeMessage({
-        id: "a2",
-        role: "assistant",
-        content: "Worker #6 is implementing now. @to(user)",
-      }),
-      makeMessage({
-        id: "a3",
-        role: "assistant",
-        content: "",
-        contentBlocks: [{ type: "tool_use", id: "tu-1", name: "Bash", input: { command: "npm test" } }],
-      }),
-    ]);
-    setStoreTurnOverrides(sid, [["u1", false]]);
-
-    render(<MessageFeed sessionId={sid} />);
-
-    expect(screen.queryByText("npm test")).toBeNull();
-    expect(screen.getByText("Leader activity")).toBeTruthy();
-  });
-
-  it("leader mode still collapses the older turn when a fresh follow-up arrives", () => {
-    const sid = "test-leader-streaming-penultimate-collapses";
-    setStoreSdkSessionRole(sid, { isOrchestrator: true });
-    setStoreStatus(sid, "running");
-    setStoreMessages(sid, [
-      makeMessage({ id: "u1", role: "user", content: "Status?" }),
-      makeMessage({ id: "a1", role: "assistant", content: "Assigned q-333 to #6" }),
-      makeMessage({
-        id: "a2",
-        role: "assistant",
-        content: "Worker #6 is implementing now. @to(user)",
-      }),
-      makeMessage({
-        id: "a3",
-        role: "assistant",
-        content: "",
-        contentBlocks: [{ type: "tool_use", id: "tu-1", name: "Bash", input: { command: "npm test" } }],
-      }),
-      makeMessage({ id: "u2", role: "user", content: "Follow-up while streaming" }),
-    ]);
-
-    render(<MessageFeed sessionId={sid} />);
-
-    expect(screen.queryByText("npm test")).toBeNull();
-    expect(screen.getByText(/1 tool/)).toBeTruthy();
-  });
-
-  it("leader mode shows internal messages when the activity row is expanded", () => {
-    const sid = "test-leader-expand";
-    setStoreSdkSessionRole(sid, { isOrchestrator: true });
-    setStoreMessages(sid, [
-      makeMessage({ id: "u1", role: "user", content: "Status?" }),
-      makeMessage({ id: "a1", role: "assistant", content: "Assigned q-200 to #7" }),
-      makeMessage({
-        id: "a2",
-        role: "assistant",
-        content: "Worker #7 is implementing the fix now. @to(user)",
-      }),
-    ]);
-    setStoreTurnOverrides(sid, [["u1", true]]);
-
-    render(<MessageFeed sessionId={sid} />);
-
-    expect(screen.getByText("Assigned q-200 to #7")).toBeTruthy();
+    expect(screen.getByText("q-941 routed update")).toBeTruthy();
+    expect(screen.queryByText("q-942 routed update")).toBeNull();
+    expect(screen.queryByText("Main-only setup")).toBeNull();
   });
 
   it("non-last turns default to collapsed, showing activity bar + response", () => {

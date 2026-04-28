@@ -27,6 +27,7 @@ import type {
   PermissionRequest,
   SessionNotification,
   SessionState,
+  ThreadRef,
 } from "../session-types.js";
 import { sessionTag } from "../session-tag.js";
 import type { BrowserTransportSessionLike, BrowserTransportSocketLike } from "./browser-transport-controller.js";
@@ -34,6 +35,7 @@ import type { UserDispatchTurnTarget } from "./generation-lifecycle.js";
 import { extractAskUserAnswers } from "./compaction-recovery.js";
 import { LONG_SLEEP_REMINDER_TEXT } from "./bash-sleep-policy.js";
 import { formatReplyContentForPreview } from "../../shared/reply-context.js";
+import { normalizeThreadTarget } from "../../shared/thread-routing.js";
 import { emitStoredUserMessageTakodeEvent, type UserMessageTakodeTurnTarget } from "./user-message-takode-event.js";
 export {
   hasPendingForceCompact,
@@ -1465,6 +1467,21 @@ export function ingestUserMessage(
   const ts = Date.now();
   const commit = options?.commit !== false;
   const needsInputReminderText = buildNeedsInputReminderTextForDirectUserMessage(session, msg, deps);
+  const explicitTarget =
+    typeof msg.threadKey === "string"
+      ? normalizeThreadTarget(msg.threadKey)
+      : typeof msg.questId === "string"
+        ? normalizeThreadTarget(msg.questId)
+        : null;
+  const explicitThreadRef: ThreadRef | undefined =
+    explicitTarget && explicitTarget.threadKey !== "main"
+      ? {
+          threadKey: explicitTarget.threadKey,
+          ...(explicitTarget.questId ? { questId: explicitTarget.questId } : {}),
+          source: "explicit",
+          attachedAt: ts,
+        }
+      : undefined;
   const finalize = (imageRefs?: ImageRef[]): IngestedUserMessage => {
     const wasGenerating = session.isGenerating;
     const userHistoryEntry: Extract<BrowserIncomingMessage, { type: "user_message" }> = {
@@ -1477,6 +1494,9 @@ export function ingestUserMessage(
       ...(msg.client_msg_id ? { client_msg_id: msg.client_msg_id } : {}),
       ...(msg.vscodeSelection ? { vscodeSelection: msg.vscodeSelection } : {}),
       ...(msg.agentSource ? { agentSource: msg.agentSource } : {}),
+      ...(explicitTarget ? { threadKey: explicitTarget.threadKey } : {}),
+      ...(explicitTarget?.questId ? { questId: explicitTarget.questId } : {}),
+      ...(explicitThreadRef ? { threadRefs: [explicitThreadRef] } : {}),
     };
     let userMsgHistoryIdx = -1;
     if (commit) {

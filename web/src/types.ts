@@ -20,6 +20,8 @@ import type {
   VsCodeSelectionMetadata,
   VsCodeSelectionState,
   SessionNotification,
+  ThreadRef,
+  ThreadRoutingError,
 } from "../server/session-types.js";
 import { assertNever, isClaudeFamily } from "../server/session-types.js";
 import type { ImageRef } from "../server/image-store.js";
@@ -61,6 +63,8 @@ export type {
   VsCodeSelectionState,
   SessionTimer,
   SessionNotification,
+  ThreadRef,
+  ThreadRoutingError,
 };
 export type { TreeGroup, TreeGroupState } from "../server/tree-group-store.js";
 export type {
@@ -133,6 +137,11 @@ export interface ChatMessage {
     autoApprovalReason?: string;
     /** Explicit leader-to-user publication created by `takode user-message`. */
     leaderUserMessage?: boolean;
+    /** Optional quest/thread memberships. Main is implicit for every message. */
+    threadRefs?: ThreadRef[];
+    threadKey?: string;
+    questId?: string;
+    threadRoutingError?: ThreadRoutingError;
     replyContext?: ReplyContext;
     vscodeSelection?: VsCodeSelectionMetadata;
     quest?: {

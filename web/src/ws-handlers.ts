@@ -573,7 +573,13 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
         role: "assistant",
         content: data.content,
         timestamp: data.timestamp,
-        metadata: { leaderUserMessage: true },
+        metadata: {
+          leaderUserMessage: true,
+          ...(data.threadRefs ? { threadRefs: data.threadRefs } : {}),
+          ...(data.threadKey ? { threadKey: data.threadKey } : {}),
+          ...(data.questId ? { questId: data.questId } : {}),
+          ...(data.threadRoutingError ? { threadRoutingError: data.threadRoutingError } : {}),
+        },
         ...(data.notification ? { notification: data.notification } : {}),
       });
       break;
@@ -599,6 +605,16 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
         turnDurationMs: data.turn_duration_ms,
         cliUuid: (data as Record<string, unknown>).uuid as string | undefined,
         ...(data.notification ? { notification: data.notification } : {}),
+        ...(data.threadRefs || data.threadKey || data.questId || data.threadRoutingError
+          ? {
+              metadata: {
+                ...(data.threadRefs ? { threadRefs: data.threadRefs } : {}),
+                ...(data.threadKey ? { threadKey: data.threadKey } : {}),
+                ...(data.questId ? { questId: data.questId } : {}),
+                ...(data.threadRoutingError ? { threadRoutingError: data.threadRoutingError } : {}),
+              },
+            }
+          : {}),
       };
       // Server accumulates content blocks for same-ID messages (parallel tool calls).
       // If this ID already exists, merge content blocks rather than replace — this
@@ -614,6 +630,17 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
           timestamp: data.timestamp || existing.timestamp,
           stopReason: msg.stop_reason || existing.stopReason,
           ...(data.notification ? { notification: data.notification } : {}),
+          ...(data.threadRefs || data.threadKey || data.questId || data.threadRoutingError
+            ? {
+                metadata: {
+                  ...existing.metadata,
+                  ...(data.threadRefs ? { threadRefs: data.threadRefs } : {}),
+                  ...(data.threadKey ? { threadKey: data.threadKey } : {}),
+                  ...(data.questId ? { questId: data.questId } : {}),
+                  ...(data.threadRoutingError ? { threadRoutingError: data.threadRoutingError } : {}),
+                },
+              }
+            : {}),
           ...(typeof data.turn_duration_ms === "number" ? { turnDurationMs: data.turn_duration_ms } : {}),
         });
       } else {
@@ -685,6 +712,13 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
           const delta = evt.delta as Record<string, unknown> | undefined;
           if (delta?.type === "text_delta" && typeof delta.text === "string") {
             const parentToolUseId = data.parent_tool_use_id;
+            const isTopLevelLeaderText =
+              !parentToolUseId &&
+              (store.sessions.get(sessionId)?.isOrchestrator === true ||
+                store.sdkSessions.some(
+                  (session) => session.sessionId === sessionId && session.isOrchestrator === true,
+                ));
+            if (isTopLevelLeaderText) break;
             const current = parentToolUseId
               ? store.streamingByParentToolUseId.get(sessionId)?.get(parentToolUseId) || ""
               : store.streaming.get(sessionId) || "";
@@ -987,6 +1021,10 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
       const metadata: ChatMessage["metadata"] = {
         ...(data.replyContext ? { replyContext: data.replyContext } : {}),
         ...(data.vscodeSelection ? { vscodeSelection: data.vscodeSelection } : {}),
+        ...(data.threadRefs ? { threadRefs: data.threadRefs } : {}),
+        ...(data.threadKey ? { threadKey: data.threadKey } : {}),
+        ...(data.questId ? { questId: data.questId } : {}),
+        ...(data.threadRoutingError ? { threadRoutingError: data.threadRoutingError } : {}),
       };
       const userMsg: ChatMessage = {
         id: data.id || nextId(),

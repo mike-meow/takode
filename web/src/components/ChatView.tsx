@@ -16,6 +16,155 @@ import { WorkBoardBar } from "./WorkBoardBar.js";
 import { YarnBallDot } from "./CatIcons.js";
 import { SearchBar } from "./SearchBar.js";
 import { useSessionSearch } from "../hooks/useSessionSearch.js";
+import { orderBoardRows, type BoardRowData } from "./BoardTable.js";
+import { QuestJourneyCompactSummary } from "./QuestJourneyTimeline.js";
+import type { ChatMessage, QuestmasterTask } from "../types.js";
+
+type LeaderThreadRow = {
+  threadKey: string;
+  questId?: string;
+  title: string;
+  status?: string;
+  boardStatus?: string;
+  journey?: BoardRowData["journey"];
+  messageCount: number;
+};
+
+function messageThreadKeys(message: ChatMessage): string[] {
+  const keys = new Set<string>();
+  const metadata = message.metadata;
+  if (!metadata) return [];
+  if (metadata.threadKey && metadata.threadKey !== "main") keys.add(metadata.threadKey.toLowerCase());
+  if (metadata.questId) keys.add(metadata.questId.toLowerCase());
+  if (metadata.quest?.questId) keys.add(metadata.quest.questId.toLowerCase());
+  for (const ref of metadata.threadRefs ?? []) {
+    if (ref.threadKey !== "main") keys.add(ref.threadKey.toLowerCase());
+  }
+  return [...keys];
+}
+
+function buildLeaderThreadRows({
+  activeBoard,
+  completedBoard,
+  messages,
+  quests,
+}: {
+  activeBoard: BoardRowData[];
+  completedBoard: BoardRowData[];
+  messages: ChatMessage[];
+  quests: QuestmasterTask[];
+}): LeaderThreadRow[] {
+  const questById = new Map(quests.map((quest) => [quest.questId.toLowerCase(), quest]));
+  const rows = new Map<string, LeaderThreadRow>();
+  const counts = new Map<string, number>();
+
+  for (const message of messages) {
+    for (const key of messageThreadKeys(message)) {
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+  }
+
+  const addQuestRow = (questId: string, partial: Partial<LeaderThreadRow> = {}) => {
+    const key = questId.toLowerCase();
+    const quest = questById.get(key);
+    const existing = rows.get(key);
+    rows.set(key, {
+      threadKey: key,
+      questId: key,
+      title: partial.title ?? existing?.title ?? quest?.title ?? questId,
+      status: partial.status ?? existing?.status ?? quest?.status,
+      boardStatus: partial.boardStatus ?? existing?.boardStatus,
+      journey: partial.journey ?? existing?.journey,
+      messageCount: counts.get(key) ?? existing?.messageCount ?? 0,
+    });
+  };
+
+  for (const row of orderBoardRows(activeBoard)) {
+    addQuestRow(row.questId, { title: row.title, boardStatus: row.status, journey: row.journey });
+  }
+  for (const row of orderBoardRows(completedBoard, "completed")) {
+    addQuestRow(row.questId, { title: row.title, boardStatus: row.status, journey: row.journey });
+  }
+  for (const key of counts.keys()) {
+    if (/^q-\d+$/.test(key)) addQuestRow(key);
+  }
+
+  return [...rows.values()];
+}
+
+function LeaderThreadSwitcher({
+  sessionId,
+  selectedThreadKey,
+  onSelectThread,
+}: {
+  sessionId: string;
+  selectedThreadKey: string;
+  onSelectThread: (threadKey: string) => void;
+}) {
+  const activeBoard = useStore((s) => s.sessionBoards.get(sessionId) ?? []);
+  const completedBoard = useStore((s) => s.sessionCompletedBoards.get(sessionId) ?? []);
+  const messages = useStore((s) => s.messages.get(sessionId) ?? []);
+  const quests = useStore((s) => s.quests);
+  const openQuestOverlay = useStore((s) => s.openQuestOverlay);
+  const rows = useMemo(
+    () => buildLeaderThreadRows({ activeBoard, completedBoard, messages, quests }),
+    [activeBoard, completedBoard, messages, quests],
+  );
+  const normalizedSelected = selectedThreadKey.toLowerCase();
+
+  return (
+    <aside
+      className="flex shrink-0 overflow-x-auto border-b border-cc-border bg-cc-card/70 sm:w-64 sm:flex-col sm:overflow-x-hidden sm:overflow-y-auto sm:border-b-0 sm:border-r"
+      data-testid="leader-thread-switcher"
+    >
+      <button
+        type="button"
+        onClick={() => onSelectThread("main")}
+        className={`shrink-0 border-r border-cc-border/60 px-3 py-2 text-left transition-colors sm:w-full sm:border-r-0 sm:border-b ${
+          normalizedSelected === "main" ? "bg-cc-hover text-cc-fg" : "text-cc-muted hover:bg-cc-hover/60"
+        }`}
+      >
+        <div className="text-xs font-semibold">Main</div>
+        <div className="text-[10px] text-cc-muted/80 tabular-nums">{messages.length} messages</div>
+      </button>
+      {rows.map((row) => {
+        const selected = normalizedSelected === row.threadKey;
+        return (
+          <div
+            key={row.threadKey}
+            className={`min-w-56 shrink-0 border-r border-cc-border/60 sm:min-w-0 sm:w-full sm:border-r-0 sm:border-b ${
+              selected ? "bg-cc-hover" : "hover:bg-cc-hover/50"
+            }`}
+          >
+            <button type="button" onClick={() => onSelectThread(row.threadKey)} className="w-full px-3 py-2 text-left">
+              <div className="flex items-center gap-2">
+                <span className="font-mono-code text-[11px] text-blue-400">{row.threadKey}</span>
+                {row.boardStatus && <span className="truncate text-[10px] text-cc-muted">{row.boardStatus}</span>}
+              </div>
+              <div className="mt-0.5 truncate text-xs text-cc-fg">{row.title}</div>
+              <div className="mt-1 flex items-center gap-2 text-[10px] text-cc-muted">
+                {row.status && <span className="truncate">{row.status}</span>}
+                <span className="tabular-nums">{row.messageCount} msgs</span>
+              </div>
+              {row.journey && (
+                <QuestJourneyCompactSummary journey={row.journey} status={row.boardStatus} className="mt-1" />
+              )}
+            </button>
+            {row.questId && (
+              <button
+                type="button"
+                onClick={() => openQuestOverlay(row.questId!)}
+                className="mx-3 mb-2 text-[10px] text-blue-400 hover:text-blue-300 hover:underline"
+              >
+                Open quest
+              </button>
+            )}
+          </div>
+        );
+      })}
+    </aside>
+  );
+}
 
 function CompactingIndicator({ sessionId }: { sessionId: string }) {
   const sessionStatus = useStore((s) => s.sessionStatus.get(sessionId));
@@ -38,6 +187,7 @@ export function ChatView({ sessionId, preview = false }: { sessionId: string; pr
     cliEverConnected,
     cliDisconnectReason,
     isArchived,
+    isLeaderSession,
   } = useStore(
     useShallow((s) => ({
       sessionPerms: s.pendingPermissions.get(sessionId),
@@ -48,8 +198,16 @@ export function ChatView({ sessionId, preview = false }: { sessionId: string; pr
       cliEverConnected: s.cliEverConnected.get(sessionId) ?? false,
       cliDisconnectReason: s.cliDisconnectReason.get(sessionId) ?? null,
       isArchived: s.sdkSessions.find((sdk) => sdk.sessionId === sessionId)?.archived ?? false,
+      isLeaderSession:
+        s.sessions.get(sessionId)?.isOrchestrator === true ||
+        s.sdkSessions.some((sdk) => sdk.sessionId === sessionId && sdk.isOrchestrator === true),
     })),
   );
+  const [selectedThreadKey, setSelectedThreadKey] = useState("main");
+
+  useEffect(() => {
+    setSelectedThreadKey("main");
+  }, [sessionId]);
 
   // Within-session search
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -203,7 +361,16 @@ export function ChatView({ sessionId, preview = false }: { sessionId: string; pr
       {!preview && showPlanOverlay ? (
         <PlanReviewOverlay permission={planPerm} sessionId={sessionId} onCollapse={() => setPlanCollapsed(true)} />
       ) : (
-        <MessageFeed sessionId={sessionId} />
+        <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
+          {!preview && isLeaderSession && (
+            <LeaderThreadSwitcher
+              sessionId={sessionId}
+              selectedThreadKey={selectedThreadKey}
+              onSelectThread={setSelectedThreadKey}
+            />
+          )}
+          <MessageFeed sessionId={sessionId} threadKey={isLeaderSession ? selectedThreadKey : "main"} />
+        </div>
       )}
 
       {/* Collapsed plan chip (when plan exists but is collapsed) */}
@@ -267,7 +434,13 @@ export function ChatView({ sessionId, preview = false }: { sessionId: string; pr
       {!preview && <WorkBoardBar sessionId={sessionId} />}
 
       {/* Composer */}
-      {!preview && <Composer sessionId={sessionId} />}
+      {!preview && (
+        <Composer
+          sessionId={sessionId}
+          threadKey={isLeaderSession ? selectedThreadKey : "main"}
+          questId={isLeaderSession && selectedThreadKey !== "main" ? selectedThreadKey : undefined}
+        />
+      )}
     </div>
   );
 }

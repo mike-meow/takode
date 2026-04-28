@@ -38,11 +38,12 @@ Read these files or invoke these skills when performing the corresponding operat
 - **One task at a time per worker.** Mid-task steering is fine; unrelated new tasks queue.
 - **User feedback triggers full rework.** When a user reports issues with a completed quest, record feedback, set the quest back to `refined`, and dispatch for a full quest journey. Never skip review steps for "small" fixes. New human feedback becomes the source of truth for that quest: reset the board to the earliest valid phase for the fresh cycle and do not let stale in-flight review/port completions from the older scope keep advancing it. See [quest-journey.md](quest-journey.md).
 - **Don't echo board state as prose.** `takode board` commands display the board in the terminal with a special UI, and the user already sees the live board state in the Takode Chat UI. Never repeat current board rows as markdown tables or summaries -- just run the command and move on unless the user explicitly asks for a text summary.
-- **Use the right-side quest/status panel as shared state.** For the selected session or leader board attention row, the right panel already shows quest id/title/status, owner/session pointer when known, verification progress, verification inbox unread state, human feedback counts, compact wait/attention state, and existing compact Journey state. Do not repeat those facts in leader prose unless needed to ask a concrete question. Keep reasoning, tradeoffs, decision prompts, worker/reviewer reports, and non-modeled operational facts in chat.
+- **Use quest threads as shared state.** Main remains the complete linear leader transcript. Quest-backed threads are filtered projections over that same history. Use the thread switcher to inspect quest-specific activity and status without hiding the full Main stream.
 - **Use explicit phase plans for every quest.** The built-in tracked-change Quest Journey is alignment → implement → code-review → port, represented on the board as PLANNING → IMPLEMENTING → CODE_REVIEWING → PORTING. Choose richer built-in phases such as `explore`, `mental-simulation`, `execute`, `outcome-review`, or `bookkeeping` when the quest needs them. Repeated phases are allowed, and progress is tracked by phase occurrence. Zero-tracked-change work is not a separate board workflow: assemble a Journey that omits `port` when nothing will be synced. Legacy no-code board flags and shortcut commands are removed, and the older phase ID `planning` remains only as a compatibility alias for `alignment`. While a quest is on the board, its current planned Journey is board-owned draft-or-active state rather than quest-creation metadata. Use `takode board propose` before initial approval, then `takode board promote` to reuse that same Journey for execution.
-- **Publish user-visible leader messages explicitly.** Leader sessions use `takode user-message --text-file -` to publish Markdown into the user-visible left panel. Normal worker/reviewer sessions should ignore this command and respond through ordinary chat.
-- **Never use `AskUserQuestion` or `EnterPlanMode`.** These block your turn and prevent herd event processing. Ask clarifying questions by publishing the detailed question or decision text with `takode user-message --text-file -`, then call `takode notify needs-input` so the user never misses it. For obvious short choices, add one to three `--suggest <answer>` flags.
-- **Use `takode notify` at these moments:** `needs-input` every time you ask the user a question or need a decision before work can continue; first publish the detailed question or decision text with `takode user-message --text-file -`, then call `takode notify needs-input` with a short summary. Use `--suggest` only for concise obvious options, typically binary choices like yes/no. Use `review` only for significant non-quest deliverables that are ready for the user's eyes, not for quest completion.
+- **Route leader messages explicitly.** Every leader text response starts with a first-line thread marker: `[thread:main]` for general conversation or `[thread:q-N]` for a quest thread. The marker is stripped from rendering and used as thread metadata. Shell/terminal commands that belong to a thread should start with `# thread:main` or `# thread:q-N` as their first non-empty line.
+- **Do not use `takode user-message` as the new publishing path.** It remains deprecated compatibility only. Use ordinary leader responses with mandatory thread markers, plus `takode notify` when notification state or suggested answers are needed.
+- **Never use `AskUserQuestion` or `EnterPlanMode`.** These block your turn and prevent herd event processing. Ask clarifying questions in a normal leader response with the right `[thread:...]` marker, then call `takode notify needs-input` so the user never misses it. For obvious short choices, add one to three `--suggest <answer>` flags.
+- **Use `takode notify` at these moments:** `needs-input` every time you ask the user a question or need a decision before work can continue; first send the detailed question or decision text as a marked leader response, then call `takode notify needs-input` with a short summary. Use `--suggest` only for concise obvious options, typically binary choices like yes/no. Use `review` only for significant non-quest deliverables that are ready for the user's eyes, not for quest completion.
 - **Prefer plain-text inspection by default.** When using `takode info`, `takode peek`, `takode scan`, or `quest show` to read for judgment, scanability, or general situational awareness, use the normal plain-text output first. It is usually more token-efficient and easier to reason about than `--json`.
 - **Use `--json` only when exact machine fields matter.** Reach for JSON when you need precise structured data such as feedback `addressed` flags, `commitShas`, version-local quest metadata from `quest history`, exact IDs, or machine-oriented filtering/branching.
 
@@ -89,7 +90,7 @@ Three distinct operations -- never confuse them:
 ## User Notifications
 
 Tie `takode notify` calls to Quest Journey phase events:
-- **`takode notify needs-input "need decision on auth approach for q-42" --suggest yes --suggest no`**: every time you ask the user a question or need a decision before work can continue. First publish the detailed question or decision text with `takode user-message --text-file -`, then call `takode notify needs-input` with a short summary so the user never misses it. Suggested answers are optional and only for short, obvious choices.
+- **`takode notify needs-input "need decision on auth approach for q-42" --suggest yes --suggest no`**: every time you ask the user a question or need a decision before work can continue. First send the detailed question or decision text as a marked leader response, then call `takode notify needs-input` with a short summary so the user never misses it. Suggested answers are optional and only for short, obvious choices.
 - **Do not call `takode notify review` for quest completion**: when a work board item is completed, Takode already fires the review notification automatically. Sending another one creates duplicate quest-completion notifications.
 
 Do not notify for routine progress or intermediate steps.
@@ -256,23 +257,22 @@ Export a session's full conversation history to a text file. The exported file i
 takode export 1 /tmp/session-1.txt
 ```
 
-### `takode user-message --text-file <path|-> [--json]`
+### `takode thread attach <quest-id> --message <index> | --range <start-end>`
 
-Publish Markdown from a leader session into its user-visible left-panel chat. This is for leader/orchestrator sessions only; normal worker and reviewer sessions should ignore it.
-
-Do not pass message text inline. Use `--text-file -` for here-doc/stdin payloads so Markdown, quotes, backticks, and shell-sensitive text are not corrupted.
+Associate existing Main-thread history with a quest thread without moving or duplicating persisted messages. Use this when a quest thread is created after useful context already appeared in Main.
 
 ```bash
-takode user-message --text-file - <<'EOF'
-I need to confirm the dispatch plan before sending the worker.
-EOF
+takode thread attach q-941 --range 120-135
+takode thread attach q-941 --message 140
 ```
 
-Use `takode notify needs-input` separately when the visible message needs notification state or suggested answers.
+### `takode user-message --text-file <path|-> [--json]` (deprecated)
+
+Deprecated compatibility publisher for older leader sessions. New leader workflow uses ordinary marked responses with `[thread:main]` or `[thread:q-N]`; do not use `takode user-message` as the core thread publishing path.
 
 ### `takode notify <category> <summary> [--suggest <answer>]...`
 
-Alert the user when they need to take action. Available to all sessions (not orchestrator-only). For leader sessions, the notification anchors to the most recent explicit `takode user-message` output when present; otherwise a minimal visible needs-input message is created automatically. The summary is required -- always describe what specifically needs attention.
+Alert the user when they need to take action. Available to all sessions (not orchestrator-only). For leader sessions, send the detailed question or decision text as a normal marked leader response first, then use `takode notify needs-input` for attention state and optional suggested answers. The summary is required -- always describe what specifically needs attention.
 
 Categories: `needs-input`, `review`
 
@@ -390,7 +390,7 @@ takode answer 2 --message 52 approve                   # approve the plan shown 
 takode answer 2 --target req_abc reject "add error handling" # target an exact pending id
 ```
 
-Use this when a worker or reviewer asked a clarification question through `takode notify needs-input` and is waiting on you. If you can resolve the question from existing context, answer it directly. If the question reveals genuine ambiguity you cannot resolve, publish the user-facing question with `takode user-message --text-file -`, then call `takode notify needs-input` with a short summary, optionally using one to three short `--suggest <answer>` choices for obvious answers, and do not advance that quest until the ambiguity is resolved.
+Use this when a worker or reviewer asked a clarification question through `takode notify needs-input` and is waiting on you. If you can resolve the question from existing context, answer it directly. If the question reveals genuine ambiguity you cannot resolve, ask the user in a marked leader response, then call `takode notify needs-input` with a short summary, optionally using one to three short `--suggest <answer>` choices for obvious answers, and do not advance that quest until the ambiguity is resolved.
 
 ### `takode board [show|set|advance|rm]`
 

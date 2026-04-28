@@ -482,10 +482,10 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("After the user answers a same-session `takode notify needs-input` prompt");
     expect(guardrails).toContain("Use this only for notifications created by your current session");
     expect(guardrails).toContain("Do not rely on deprecated leader reply suffixes");
-    expect(guardrails).toContain("use `takode user-message --text-file -` plus `takode notify`");
+    expect(guardrails).toContain("use marked leader responses plus `takode notify`");
     expect(guardrails).toContain("Every time you ask the user a question");
-    expect(guardrails).toContain("First publish the detailed question or decision text");
-    expect(guardrails).toContain("`takode user-message --text-file -`");
+    expect(guardrails).toContain("First send the detailed question or decision text");
+    expect(guardrails).toContain("`[thread:main]` or `[thread:q-N]`");
     expect(guardrails).toContain("then call `takode notify needs-input`");
     expect(guardrails).toContain("takode notify list");
     expect(guardrails).toContain("takode notify resolve <notification-id>");
@@ -554,8 +554,8 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("what artifact to produce and to stop afterward");
     expect(guardrails).toContain("send an explicit **port now** instruction");
     expect(guardrails).toContain("Every time you ask the user a question");
-    expect(guardrails).toContain("First publish the detailed question or decision text");
-    expect(guardrails).toContain("`takode user-message --text-file -`");
+    expect(guardrails).toContain("First send the detailed question or decision text");
+    expect(guardrails).toContain("`[thread:main]` or `[thread:q-N]`");
     expect(guardrails).toContain("then call `takode notify needs-input`");
     expect(guardrails).toContain("so the user never misses it");
     expect(guardrails).toContain("Do not rely on deprecated leader reply suffixes");

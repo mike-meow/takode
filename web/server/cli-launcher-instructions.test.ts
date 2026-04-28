@@ -44,9 +44,9 @@ describe("buildCompanionInstructions", () => {
     const result = buildCompanionInstructions({ sessionNum: 1, backend: "codex" });
     // Agents must make the actual question or decision visible before firing
     // the notification chip; otherwise the user sees an alert without context.
-    expect(result).toContain("first publish the detailed question, decision options, or confirmation text");
-    expect(result).toContain("`takode user-message --text-file -`");
-    expect(result).toContain("normal worker and reviewer sessions should ignore `takode user-message`");
+    expect(result).toContain("first send the detailed question, decision options, or confirmation text");
+    expect(result).toContain("`[thread:main]` or `[thread:q-N]`");
+    expect(result).toContain("normal worker and reviewer sessions use ordinary assistant text");
     expect(result).toContain("After that text is visible, call `takode notify needs-input`");
     expect(result).toContain("Do not fire the notification before the detailed text is visible");
     expect(result).toContain("one to three `--suggest <answer>` options");

@@ -75,6 +75,12 @@ export function normalizeHistoryMessageToChatMessages(
   } = options;
 
   if (histMsg.type === "user_message") {
+    const threadMetadata = {
+      ...(histMsg.threadRefs ? { threadRefs: histMsg.threadRefs } : {}),
+      ...(histMsg.threadKey ? { threadKey: histMsg.threadKey } : {}),
+      ...(histMsg.questId ? { questId: histMsg.questId } : {}),
+      ...(histMsg.threadRoutingError ? { threadRoutingError: histMsg.threadRoutingError } : {}),
+    };
     const localImages =
       typeof histMsg.client_msg_id === "string"
         ? pendingLocalImagesByClientMsgId?.get(histMsg.client_msg_id)
@@ -82,6 +88,7 @@ export function normalizeHistoryMessageToChatMessages(
     const metadata: ChatMessage["metadata"] = {
       ...(histMsg.replyContext ? { replyContext: histMsg.replyContext } : {}),
       ...(histMsg.vscodeSelection ? { vscodeSelection: histMsg.vscodeSelection } : {}),
+      ...threadMetadata,
     };
     return [
       {
@@ -107,7 +114,13 @@ export function normalizeHistoryMessageToChatMessages(
         content: histMsg.content,
         timestamp: histMsg.timestamp,
         historyIndex,
-        metadata: { leaderUserMessage: true },
+        metadata: {
+          leaderUserMessage: true,
+          ...(histMsg.threadRefs ? { threadRefs: histMsg.threadRefs } : {}),
+          ...(histMsg.threadKey ? { threadKey: histMsg.threadKey } : {}),
+          ...(histMsg.questId ? { questId: histMsg.questId } : {}),
+          ...(histMsg.threadRoutingError ? { threadRoutingError: histMsg.threadRoutingError } : {}),
+        },
         ...(histMsg.notification ? { notification: histMsg.notification } : {}),
       },
     ];
@@ -130,6 +143,16 @@ export function normalizeHistoryMessageToChatMessages(
         cliUuid: (histMsg as Record<string, unknown>).uuid as string | undefined,
         ...((histMsg as Record<string, unknown>).notification
           ? { notification: (histMsg as Record<string, unknown>).notification as ChatMessage["notification"] }
+          : {}),
+        ...(histMsg.threadRefs || histMsg.threadKey || histMsg.questId || histMsg.threadRoutingError
+          ? {
+              metadata: {
+                ...(histMsg.threadRefs ? { threadRefs: histMsg.threadRefs } : {}),
+                ...(histMsg.threadKey ? { threadKey: histMsg.threadKey } : {}),
+                ...(histMsg.questId ? { questId: histMsg.questId } : {}),
+                ...(histMsg.threadRoutingError ? { threadRoutingError: histMsg.threadRoutingError } : {}),
+              },
+            }
           : {}),
         ...(typeof (histMsg as Record<string, unknown>).turn_duration_ms === "number"
           ? { turnDurationMs: (histMsg as Record<string, unknown>).turn_duration_ms as number }

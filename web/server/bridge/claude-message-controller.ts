@@ -19,8 +19,15 @@ import type {
   PermissionRequest,
   SessionState,
   ContentBlock,
+  ThreadRef,
+  ThreadRoutingError,
   ToolResultPreview,
 } from "../session-types.js";
+import {
+  parseCommandThreadComment,
+  parseThreadTextPrefix,
+  stripCommandThreadComment,
+} from "../../shared/thread-routing.js";
 import {
   computeContextUsedPercent,
   computeResultContextUsedPercent,
@@ -112,6 +119,7 @@ export interface AssistantMessageSessionLike {
   state: {
     model: string;
     context_used_percent: number;
+    isOrchestrator?: boolean;
   };
 }
 
@@ -132,6 +140,104 @@ interface HandleAssistantMessageDeps {
 interface HandleAssistantRuntimeDeps extends HandleAssistantMessageDeps {
   setGenerating: (session: AssistantMessageSessionLike, generating: boolean, reason: string) => void;
   broadcastStatusRunning: (session: AssistantMessageSessionLike) => void;
+}
+
+const THREAD_ROUTING_EXPECTED =
+  "Start with [thread:main] or [thread:q-N]. Bash commands must start with # thread:main or # thread:q-N.";
+
+function threadRefForTarget(target: { threadKey: string; questId?: string }): ThreadRef | undefined {
+  if (target.threadKey === "main") return undefined;
+  return {
+    threadKey: target.threadKey,
+    ...(target.questId ? { questId: target.questId } : {}),
+    source: "explicit",
+    attachedAt: Date.now(),
+  };
+}
+
+function routingReminderContent(error: ThreadRoutingError): ContentBlock[] {
+  const marker = error.marker ? ` Invalid marker: \`${error.marker}\`.` : "";
+  return [
+    {
+      type: "text",
+      text: `Thread routing reminder: this leader message was not routed to a quest thread because it did not start with a valid routing marker.${marker}\n\nResend the intended text starting with \`[thread:main]\` or \`[thread:q-N]\`.`,
+    },
+  ];
+}
+
+function normalizeLeaderAssistantRouting(
+  session: AssistantMessageSessionLike,
+  content: ContentBlock[],
+  parentToolUseId: string | null,
+): {
+  content: ContentBlock[];
+  threadKey?: string;
+  questId?: string;
+  threadRefs?: ThreadRef[];
+  threadRoutingError?: ThreadRoutingError;
+} {
+  if (!session.state.isOrchestrator || parentToolUseId) return { content };
+
+  const nextContent = content.map((block) =>
+    block.type === "tool_use" && block.name === "Bash" && typeof block.input?.command === "string"
+      ? {
+          ...block,
+          input: {
+            ...block.input,
+            command: stripCommandThreadComment(String(block.input.command)),
+          },
+        }
+      : block,
+  );
+
+  const firstTextIndex = nextContent.findIndex((block) => block.type === "text" && block.text.trim());
+  if (firstTextIndex >= 0) {
+    const firstText = nextContent[firstTextIndex] as Extract<ContentBlock, { type: "text" }>;
+    const parsed = parseThreadTextPrefix(firstText.text);
+    if (!parsed.ok) {
+      const error: ThreadRoutingError = {
+        reason: parsed.reason,
+        expected: THREAD_ROUTING_EXPECTED,
+        rawContent: content.map((block) => (block.type === "text" ? block.text : "")).join("\n"),
+        ...(parsed.marker ? { marker: parsed.marker } : {}),
+      };
+      return { content: routingReminderContent(error), threadRoutingError: error };
+    }
+    const routed = nextContent.slice();
+    routed[firstTextIndex] = { ...firstText, text: parsed.body };
+    const ref = threadRefForTarget(parsed.target);
+    return {
+      content: routed,
+      threadKey: parsed.target.threadKey,
+      ...(parsed.target.questId ? { questId: parsed.target.questId } : {}),
+      ...(ref ? { threadRefs: [ref] } : {}),
+    };
+  }
+
+  const bashBlocks = content.filter(
+    (block): block is Extract<ContentBlock, { type: "tool_use" }> =>
+      block.type === "tool_use" && block.name === "Bash" && typeof block.input?.command === "string",
+  );
+  if (bashBlocks.length > 0) {
+    const target = parseCommandThreadComment(String(bashBlocks[0].input.command));
+    if (!target) {
+      const error: ThreadRoutingError = {
+        reason: "missing",
+        expected: THREAD_ROUTING_EXPECTED,
+        rawContent: String(bashBlocks[0].input.command),
+      };
+      return { content: [...routingReminderContent(error), ...nextContent], threadRoutingError: error };
+    }
+    const ref = threadRefForTarget(target);
+    return {
+      content: nextContent,
+      threadKey: target.threadKey,
+      ...(target.questId ? { questId: target.questId } : {}),
+      ...(ref ? { threadRefs: [ref] } : {}),
+    };
+  }
+
+  return { content: nextContent };
 }
 
 export interface ResultMessageSessionLike {
@@ -332,12 +438,17 @@ export function handleAssistantMessage(
       );
       return;
     }
+    const routed = normalizeLeaderAssistantRouting(session, msg.message.content, msg.parent_tool_use_id);
     const browserMsg: BrowserIncomingMessage = {
       type: "assistant",
-      message: msg.message,
+      message: { ...msg.message, content: routed.content },
       parent_tool_use_id: msg.parent_tool_use_id,
       timestamp: Date.now(),
       uuid: msg.uuid,
+      ...(routed.threadKey ? { threadKey: routed.threadKey } : {}),
+      ...(routed.questId ? { questId: routed.questId } : {}),
+      ...(routed.threadRefs ? { threadRefs: routed.threadRefs } : {}),
+      ...(routed.threadRoutingError ? { threadRoutingError: routed.threadRoutingError } : {}),
     };
     session.messageHistory.push(browserMsg);
     deps.broadcastToBrowsers(session, browserMsg);
@@ -363,10 +474,12 @@ export function handleAssistantMessage(
       return;
     }
 
+    const routed = normalizeLeaderAssistantRouting(session, msg.message.content, msg.parent_tool_use_id);
+    const routedMessage = { ...msg.message, content: routed.content };
     const contentBlockIds = new Set<string>();
     const now = Date.now();
     const toolStartTimesMap: Record<string, number> = {};
-    for (const block of msg.message.content) {
+    for (const block of routedMessage.content) {
       if (block.type === "tool_use" && block.id) {
         contentBlockIds.add(block.id);
         if (!session.toolStartTimes.has(block.id)) {
@@ -380,11 +493,15 @@ export function handleAssistantMessage(
 
     const browserMsg: BrowserIncomingMessage = {
       type: "assistant",
-      message: { ...msg.message, content: [...msg.message.content] },
+      message: { ...routedMessage, content: [...routedMessage.content] },
       parent_tool_use_id: msg.parent_tool_use_id,
       timestamp: Date.now(),
       uuid: msg.uuid,
       ...(Object.keys(toolStartTimesMap).length > 0 ? { tool_start_times: toolStartTimesMap } : {}),
+      ...(routed.threadKey ? { threadKey: routed.threadKey } : {}),
+      ...(routed.questId ? { questId: routed.questId } : {}),
+      ...(routed.threadRefs ? { threadRefs: routed.threadRefs } : {}),
+      ...(routed.threadRoutingError ? { threadRoutingError: routed.threadRoutingError } : {}),
     };
     session.assistantAccumulator.set(msgId, { contentBlockIds });
     session.messageHistory.push(browserMsg);

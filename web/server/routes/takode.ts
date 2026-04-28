@@ -55,7 +55,12 @@ import {
 } from "../bridge/session-git-state.js";
 import { buildBoardRowSessionStatuses as buildBoardRowSessionStatusesController } from "../board-row-session-status.js";
 import { getSettings } from "../settings-manager.js";
-import { QUEST_JOURNEY_STATES, type BrowserIncomingMessage, type BrowserOutgoingMessage } from "../session-types.js";
+import {
+  QUEST_JOURNEY_STATES,
+  type BrowserIncomingMessage,
+  type BrowserOutgoingMessage,
+  type ThreadRef,
+} from "../session-types.js";
 import { isSessionIdleRuntime } from "../herd-event-dispatcher.js";
 import type { RouteContext } from "./context.js";
 import { loadQuestJourneyPhaseCatalog } from "../quest-journey-phases.js";
@@ -965,6 +970,68 @@ export function createTakodeRoutes(ctx: RouteContext) {
     wsBridge.broadcastToSession(id, message);
     wsBridge.persistSessionById(id);
     return c.json({ ok: true, sessionId: id, messageId: message.id });
+  });
+
+  api.post("/sessions/:id/thread/attach", async (c) => {
+    const auth = authenticateTakodeCaller(c, { requireOrchestrator: true });
+    if ("response" in auth) return auth.response;
+
+    const id = resolveId(c.req.param("id"));
+    if (!id) return c.json({ error: "Session not found" }, 404);
+    if (id !== auth.callerId) {
+      return c.json({ error: "Can only attach thread history from your own leader session" }, 403);
+    }
+    const session = wsBridge.getSession(id);
+    if (!session) return c.json({ error: "Session not found in bridge" }, 404);
+
+    const body = await c.req.json().catch(() => ({}));
+    const questId = typeof body.questId === "string" ? body.questId.trim().toLowerCase() : "";
+    if (!isValidQuestId(questId)) {
+      return c.json({ error: "questId must match q-N format" }, 400);
+    }
+
+    const indices = new Set<number>();
+    if (Number.isInteger(body.message)) indices.add(body.message);
+    if (typeof body.range === "string") {
+      const match = /^(\d+)-(\d+)$/.exec(body.range.trim());
+      if (!match) return c.json({ error: "range must use start-end message indices" }, 400);
+      const start = Number(match[1]);
+      const end = Number(match[2]);
+      if (end < start) return c.json({ error: "range end must be greater than or equal to start" }, 400);
+      for (let index = start; index <= end; index++) indices.add(index);
+    }
+    if (indices.size === 0) {
+      return c.json({ error: "Provide --message <index> or --range <start-end>" }, 400);
+    }
+
+    const ref: ThreadRef = {
+      threadKey: questId,
+      questId,
+      source: "backfill",
+      attachedAt: Date.now(),
+      attachedBy: auth.callerId,
+    };
+    const attached: number[] = [];
+    const outOfRange: number[] = [];
+    for (const index of [...indices].sort((a, b) => a - b)) {
+      const entry = session.messageHistory[index];
+      if (!entry) {
+        outOfRange.push(index);
+        continue;
+      }
+      const existing = entry.threadRefs ?? [];
+      if (!existing.some((item) => item.threadKey.toLowerCase() === questId)) {
+        entry.threadRefs = [...existing, ref];
+      }
+      attached.push(index);
+    }
+    if (attached.length === 0) {
+      return c.json({ error: "No message indices were in range", outOfRange }, 400);
+    }
+
+    wsBridge.broadcastToSession(id, { type: "message_history", messages: session.messageHistory });
+    wsBridge.persistSessionById(id);
+    return c.json({ ok: true, sessionId: id, questId, attached, outOfRange });
   });
 
   // ─── Cat herding (orchestrator→worker relationships) ──────────────

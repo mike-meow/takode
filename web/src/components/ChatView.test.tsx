@@ -10,6 +10,7 @@ interface MockStoreState {
     {
       backend_state?: "initializing" | "resuming" | "recovering" | "connected" | "disconnected" | "broken";
       backend_error?: string | null;
+      isOrchestrator?: boolean;
     }
   >;
   cliConnected: Map<string, boolean>;
@@ -19,11 +20,15 @@ interface MockStoreState {
   sdkSessions: Array<{ sessionId: string; archived?: boolean; isOrchestrator?: boolean }>;
   sessionBoards: Map<string, unknown[]>;
   sessionCompletedBoards: Map<string, unknown[]>;
+  messages: Map<string, unknown[]>;
+  quests: Array<{ questId: string; title: string; status: string }>;
+  openQuestOverlay: (questId: string) => void;
 }
 
 let mockState: MockStoreState;
 const mockUnarchiveSession = vi.fn().mockResolvedValue({});
 const mockRelaunchSession = vi.fn().mockResolvedValue({});
+const mockOpenQuestOverlay = vi.fn();
 function resetStore(overrides: Partial<MockStoreState> = {}) {
   mockState = {
     pendingPermissions: new Map(),
@@ -36,6 +41,9 @@ function resetStore(overrides: Partial<MockStoreState> = {}) {
     sdkSessions: [{ sessionId: "s1", archived: false }],
     sessionBoards: new Map(),
     sessionCompletedBoards: new Map(),
+    messages: new Map(),
+    quests: [],
+    openQuestOverlay: mockOpenQuestOverlay,
     ...overrides,
   };
 }
@@ -68,15 +76,25 @@ vi.mock("../api.js", () => ({
 }));
 
 vi.mock("./MessageFeed.js", () => ({
-  MessageFeed: ({ sessionId, latestIndicatorMode }: { sessionId: string; latestIndicatorMode?: string }) => (
-    <div data-testid="message-feed" data-latest-indicator-mode={latestIndicatorMode}>
+  MessageFeed: ({
+    sessionId,
+    threadKey,
+    latestIndicatorMode,
+  }: {
+    sessionId: string;
+    threadKey?: string;
+    latestIndicatorMode?: string;
+  }) => (
+    <div data-testid="message-feed" data-thread-key={threadKey} data-latest-indicator-mode={latestIndicatorMode}>
       {sessionId}
     </div>
   ),
 }));
 
 vi.mock("./Composer.js", () => ({
-  Composer: () => <div data-testid="composer" />,
+  Composer: ({ threadKey, questId }: { threadKey?: string; questId?: string }) => (
+    <div data-testid="composer" data-thread-key={threadKey} data-quest-id={questId} />
+  ),
 }));
 
 vi.mock("./PermissionBanner.js", () => ({
@@ -108,6 +126,7 @@ beforeEach(() => {
   resetStore();
   mockUnarchiveSession.mockClear();
   mockRelaunchSession.mockClear();
+  mockOpenQuestOverlay.mockClear();
 });
 
 describe("ChatView archived banner", () => {
@@ -208,5 +227,39 @@ describe("ChatView backend banners", () => {
     expect(scope.queryByTestId("permission-banner")).not.toBeInTheDocument();
     expect(scope.queryByTestId("plan-review-overlay")).not.toBeInTheDocument();
     expect(scope.queryByTestId("todo-status-line")).not.toBeInTheDocument();
+  });
+
+  it("renders a leader thread switcher and routes selected quest thread metadata", () => {
+    // q-941: leader sessions keep Main as the complete stream while exposing
+    // quest-backed filtered views via an explicit thread switcher.
+    resetStore({
+      sessions: new Map([["s1", { backend_state: "connected", backend_error: null, isOrchestrator: true }]]),
+      sdkSessions: [{ sessionId: "s1", archived: false, isOrchestrator: true }],
+      messages: new Map([
+        [
+          "s1",
+          [
+            {
+              id: "m1",
+              role: "assistant",
+              content: "q-941 update",
+              timestamp: 1,
+              metadata: { threadRefs: [{ threadKey: "q-941", questId: "q-941", source: "explicit" }] },
+            },
+          ],
+        ],
+      ]),
+      quests: [{ questId: "q-941", title: "Quest thread MVP", status: "in_progress" }],
+    });
+
+    const view = render(<ChatView sessionId="s1" />);
+    const scope = within(view.container);
+
+    expect(scope.getByTestId("leader-thread-switcher")).toBeInTheDocument();
+    expect(scope.getByTestId("message-feed")).toHaveAttribute("data-thread-key", "main");
+    fireEvent.click(scope.getByRole("button", { name: /q-941/i }));
+    expect(scope.getByTestId("message-feed")).toHaveAttribute("data-thread-key", "q-941");
+    expect(scope.getByTestId("composer")).toHaveAttribute("data-thread-key", "q-941");
+    expect(scope.getByTestId("composer")).toHaveAttribute("data-quest-id", "q-941");
   });
 });
