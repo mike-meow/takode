@@ -37,6 +37,22 @@ describe("normalizeHistoryMessageToChatMessages", () => {
     expect(assistant.historyIndex).toBe(5);
   });
 
+  it("preserves explicit reply metadata on user messages", () => {
+    const user = normalizeHistoryMessageToChatMessages(
+      {
+        type: "user_message",
+        id: "u-reply",
+        content: "Continue the work",
+        replyContext: { previewText: "Original answer", messageId: "msg-1" },
+        timestamp: 100,
+      },
+      3,
+    )[0]!;
+
+    expect(user.content).toBe("Continue the work");
+    expect(user.metadata?.replyContext).toEqual({ previewText: "Original answer", messageId: "msg-1" });
+  });
+
   it("can expose successful result messages for preview-only callers", () => {
     // Preview callers opt into this path so hover cards can show successful
     // `result` text while the main session feed still omits non-error results.

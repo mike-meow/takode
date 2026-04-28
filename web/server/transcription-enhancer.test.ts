@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import type { BrowserIncomingMessage } from "./session-types.js";
 import type { SessionTaskEntry } from "./session-types.js";
+import { injectReplyContext } from "../shared/reply-context.js";
 import {
   _testHelpers,
   buildTranscriptionContext,
@@ -276,6 +277,23 @@ describe("buildTranscriptionContext", () => {
     // Injected messages should be excluded
     expect(ctx).not.toContain("event from 1 session");
     expect(ctx).not.toContain("[System]");
+  });
+
+  it("sanitizes reply marker syntax in conversation context", () => {
+    const legacyReply = injectReplyContext("Original answer", "Continue the work", "codex-agent-random-id");
+    const metadataReply = userMsg("Looks good");
+    (metadataReply as Extract<BrowserIncomingMessage, { type: "user_message" }>).replyContext = {
+      previewText: "Approval request",
+      messageId: "msg-1",
+    };
+    const ctx = buildTranscriptionContext([userMsg(legacyReply), assistantMsg("Continuing"), metadataReply]);
+
+    expect(ctx).toContain("[reply] Original answer");
+    expect(ctx).toContain("Continue the work");
+    expect(ctx).toContain("[reply] Approval request");
+    expect(ctx).toContain("Looks good");
+    expect(ctx).not.toContain("<<<REPLY_TO");
+    expect(ctx).not.toContain("codex-agent-random-id");
   });
 });
 
@@ -783,6 +801,18 @@ describe("buildSttPrompt", () => {
     expect(prompt).toContain("Now add tests");
     expect(prompt).not.toContain("event from 1 session");
     expect(prompt).not.toContain("[System]");
+  });
+
+  it("sanitizes reply marker syntax in STT vocabulary prompt", () => {
+    const legacyReply = injectReplyContext("Original answer", "Continue the work", "codex-agent-random-id");
+    const prompt = buildSttPrompt({
+      messageHistory: [userMsg(legacyReply), assistantMsg("Continuing")],
+    });
+
+    expect(prompt).toContain("[reply] Original answer");
+    expect(prompt).toContain("Continue the work");
+    expect(prompt).not.toContain("<<<REPLY_TO");
+    expect(prompt).not.toContain("codex-agent-random-id");
   });
 
   it("passes through session names as-is (caller handles filtering)", () => {

@@ -8,6 +8,7 @@ import { MessageBubble } from "./MessageBubble.js";
 import { NotificationChip } from "./NotificationChip.js";
 import { TimerChip } from "./TimerWidget.js";
 import { formatElapsed, formatTokens, getFooterFeedBlockId, getPendingCodexFeedBlockId } from "./message-feed-utils.js";
+import { formatReplyContentForPreview } from "../utils/reply-context.js";
 
 export function ElapsedTimer({
   sessionId,
@@ -204,7 +205,7 @@ export function PendingCodexInputList({ sessionId, inputs }: { sessionId: string
       </div>
       <div className="flex flex-col gap-2">
         {inputs.map((input) => {
-          const preview = input.content.trim().replace(/\s+/g, " ");
+          const preview = formatReplyContentForPreview(input.content, input.replyContext).trim().replace(/\s+/g, " ");
           const truncated = preview.length > 120 ? `${preview.slice(0, 120)}...` : preview;
           return (
             <div
@@ -262,7 +263,14 @@ export function PendingUserUploadList({ sessionId, uploads }: { sessionId: strin
               mediaType,
             })),
             timestamp: upload.timestamp,
-            ...(upload.vscodeSelection ? { metadata: { vscodeSelection: upload.vscodeSelection } } : {}),
+            ...(upload.vscodeSelection || upload.replyContext
+              ? {
+                  metadata: {
+                    ...(upload.replyContext ? { replyContext: upload.replyContext } : {}),
+                    ...(upload.vscodeSelection ? { vscodeSelection: upload.vscodeSelection } : {}),
+                  },
+                }
+              : {}),
             ephemeral: true,
             pendingState: upload.stage === "delivering" ? "delivering" : "failed",
             pendingError: upload.error,
@@ -273,6 +281,7 @@ export function PendingUserUploadList({ sessionId, uploads }: { sessionId: strin
             const store = useStore.getState();
             store.removePendingUserUpload(sessionId, upload.id);
             store.setComposerDraft(sessionId, { text: upload.content, images: upload.images });
+            store.setReplyContext(sessionId, upload.replyContext ?? null);
             store.focusComposer();
           };
 
@@ -283,6 +292,7 @@ export function PendingUserUploadList({ sessionId, uploads }: { sessionId: strin
               content: upload.content,
               deliveryContent: upload.prepared.deliveryContent,
               imageRefs: upload.prepared.imageRefs,
+              ...(upload.replyContext ? { replyContext: upload.replyContext } : {}),
               ...(upload.vscodeSelection ? { vscodeSelection: upload.vscodeSelection } : {}),
               session_id: sessionId,
               client_msg_id: upload.id,

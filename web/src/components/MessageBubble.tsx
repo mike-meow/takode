@@ -16,7 +16,7 @@ import { api } from "../api.js";
 import { PawTrailAvatar, HidePawContext } from "./PawTrail.js";
 import { QuestClaimBlock } from "./QuestClaimBlock.js";
 import { generateReplyPreview } from "../utils/reply-preview.js";
-import { parseReplyContext } from "../utils/reply-context.js";
+import { getDisplayReplyContext } from "../utils/reply-context.js";
 import { getSingleAnchoredNotification } from "../utils/anchored-notifications.js";
 import { buildNeedsInputReminderViewModel, type NeedsInputReminderViewModel } from "../utils/needs-input-reminder.js";
 import { FILE_TOOL_NAMES, isToolHiddenFromChat } from "../hooks/use-feed-model.js";
@@ -901,8 +901,10 @@ function UserMessage({
     return true;
   }, [sessionId, isCodex, sessionMessages, message.id]);
 
-  // Parse reply-to context from message content (display only -- raw text still goes to assistant)
-  const replyContext = useMemo(() => parseReplyContext(message.content), [message.content]);
+  const replyContext = useMemo(
+    () => getDisplayReplyContext(message.content, message.metadata?.replyContext),
+    [message.content, message.metadata?.replyContext],
+  );
   const displayContent = replyContext ? replyContext.userMessage : message.content;
   const sessionNotifications = useStore((s) => (sessionId ? s.sessionNotifications.get(sessionId) : undefined));
   const needsInputReminder = useMemo(

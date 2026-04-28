@@ -33,6 +33,7 @@ import type { BrowserTransportSessionLike, BrowserTransportSocketLike } from "./
 import type { UserDispatchTurnTarget } from "./generation-lifecycle.js";
 import { extractAskUserAnswers } from "./compaction-recovery.js";
 import { LONG_SLEEP_REMINDER_TEXT } from "./bash-sleep-policy.js";
+import { formatReplyContentForPreview } from "../../shared/reply-context.js";
 import { emitStoredUserMessageTakodeEvent, type UserMessageTakodeTurnTarget } from "./user-message-takode-event.js";
 export {
   hasPendingForceCompact,
@@ -1472,6 +1473,7 @@ export function ingestUserMessage(
       timestamp: ts,
       id: deps.nextUserMessageId(ts),
       ...(imageRefs?.length ? { images: imageRefs } : {}),
+      ...(msg.replyContext ? { replyContext: msg.replyContext } : {}),
       ...(msg.client_msg_id ? { client_msg_id: msg.client_msg_id } : {}),
       ...(msg.vscodeSelection ? { vscodeSelection: msg.vscodeSelection } : {}),
       ...(msg.agentSource ? { agentSource: msg.agentSource } : {}),
@@ -1485,7 +1487,7 @@ export function ingestUserMessage(
       }
       session.messageHistory.push(userHistoryEntry);
       userMsgHistoryIdx = session.messageHistory.length - 1;
-      session.lastUserMessage = (msg.content || "").slice(0, 80);
+      session.lastUserMessage = formatReplyContentForPreview(msg.content || "", msg.replyContext).slice(0, 80);
       deps.touchUserMessage(session.id);
       deps.broadcastToBrowsers(session, userHistoryEntry);
       emitStoredUserMessageTakodeEvent(deps, session.id, userHistoryEntry, {
@@ -1899,6 +1901,7 @@ export function routeAdapterBrowserMessage(
           cancelable: true,
           ...(userImageRefs?.length ? { imageRefs: userImageRefs } : {}),
           ...(deliveryContent ? { deliveryContent } : {}),
+          ...(msg.replyContext ? { replyContext: msg.replyContext } : {}),
           ...(ingested.needsInputReminderText ? { needsInputReminderText: ingested.needsInputReminderText } : {}),
           ...(msg.agentSource ? { agentSource: msg.agentSource } : {}),
           ...(msg.takodeHerdBatch ? { takodeHerdBatch: msg.takodeHerdBatch } : {}),

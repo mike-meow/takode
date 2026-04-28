@@ -602,6 +602,31 @@ describe("Composer sending messages", () => {
     );
   });
 
+  it("sends reply metadata in history content and concise delivery content to the assistant", () => {
+    (mockStoreState.replyContexts as Map<string, { messageId: string; previewText: string }>).set("s1", {
+      messageId: "codex-agent-long-random-id",
+      previewText: "Original answer",
+    });
+    const { container } = render(<Composer sessionId="s1" />);
+    const textarea = container.querySelector("textarea")!;
+
+    fireEvent.change(textarea, { target: { value: "continue the work" } });
+    fireEvent.click(screen.getByTitle("Send message"));
+
+    expect(mockSendToSession).toHaveBeenCalledWith(
+      "s1",
+      expect.objectContaining({
+        type: "user_message",
+        content: "continue the work",
+        deliveryContent: "[reply] Original answer\n\ncontinue the work",
+        replyContext: {
+          messageId: "codex-agent-long-random-id",
+          previewText: "Original answer",
+        },
+      }),
+    );
+  });
+
   it("uploads image attachments immediately and only enables send after preparation completes", async () => {
     const prepared = deferred<{
       imageRefs: Array<{ imageId: string; media_type: string }>;

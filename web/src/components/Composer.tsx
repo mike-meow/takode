@@ -45,7 +45,7 @@ import {
   type VsCodeSelectionContextPayload,
 } from "../utils/vscode-context.js";
 import { isNarrowComposerLayout } from "../utils/layout.js";
-import { injectReplyContext } from "../utils/reply-context.js";
+import { formatReplyContentForAssistant } from "../utils/reply-context.js";
 import type {
   ChatMessage,
   CodexAppReference,
@@ -679,11 +679,12 @@ export function Composer({ sessionId }: { sessionId: string }) {
       }
     }
 
-    // Prepend reply context if the user is replying to a specific message
+    // Keep reply metadata separate from stored user text; send concise context to the assistant.
     const currentReplyContext = useStore.getState().replyContexts.get(sessionId);
-    const finalContent = currentReplyContext
-      ? injectReplyContext(currentReplyContext.previewText, msg, currentReplyContext.messageId)
-      : msg;
+    const finalContent = msg;
+    const replyDeliveryContent = currentReplyContext
+      ? formatReplyContentForAssistant(finalContent, currentReplyContext)
+      : finalContent;
 
     const clearComposerUi = () => {
       closeAutocompleteMenus();
@@ -702,7 +703,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
 
     const finalizeReplyNotification = () => {
       if (!currentReplyContext?.messageId && !currentReplyContext?.notificationId) return;
-      const notifications = useStore.getState().sessionNotifications.get(sessionId);
+      const notifications = useStore.getState().sessionNotifications?.get(sessionId);
       const notif = currentReplyContext.notificationId
         ? notifications?.find((n) => n.id === currentReplyContext.notificationId && !n.done)
         : notifications?.find((n) => n.messageId === currentReplyContext.messageId && !n.done);
@@ -723,7 +724,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
               .map((path, index) => `Attachment ${index + 1}: ${path}`)
               .join("\n")}]`
           : "";
-      const deliveryContent = `${finalContent}${attachmentAnnotation}`;
+      const deliveryContent = `${replyDeliveryContent}${attachmentAnnotation}`;
 
       store.addPendingUserUpload(sessionId, {
         id: pendingId,
@@ -731,6 +732,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
         images,
         timestamp: Date.now(),
         stage: "delivering",
+        ...(currentReplyContext ? { replyContext: currentReplyContext } : {}),
         ...(vscodeSelectionPayload ? { vscodeSelection: vscodeSelectionPayload } : {}),
         prepared: {
           deliveryContent,
@@ -745,6 +747,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
         type: "user_message",
         content: finalContent,
         deliveryContent,
+        ...(currentReplyContext ? { replyContext: currentReplyContext } : {}),
         imageRefs,
         session_id: sessionId,
         client_msg_id: pendingId,
@@ -764,6 +767,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
     const sent = sendToSession(sessionId, {
       type: "user_message",
       content: finalContent,
+      ...(currentReplyContext ? { deliveryContent: replyDeliveryContent, replyContext: currentReplyContext } : {}),
       session_id: sessionId,
       ...(vscodeSelectionPayload ? { vscodeSelection: vscodeSelectionPayload } : {}),
     });

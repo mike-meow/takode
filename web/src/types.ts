@@ -24,6 +24,7 @@ import type {
 import { assertNever, isClaudeFamily } from "../server/session-types.js";
 import type { ImageRef } from "../server/image-store.js";
 import type { SessionTimer } from "../server/timer-types.js";
+import type { ReplyContext } from "../shared/reply-context.js";
 import type {
   QuestmasterTask,
   QuestStatus,
@@ -132,6 +133,7 @@ export interface ChatMessage {
     autoApprovalReason?: string;
     /** Explicit leader-to-user publication created by `takode user-message`. */
     leaderUserMessage?: boolean;
+    replyContext?: ReplyContext;
     vscodeSelection?: VsCodeSelectionMetadata;
     quest?: {
       questId: string;
@@ -172,6 +174,7 @@ export interface PendingUserUpload {
   timestamp: number;
   stage: "delivering" | "failed";
   error?: string;
+  replyContext?: ReplyContext;
   vscodeSelection?: VsCodeSelectionMetadata;
   prepared?: {
     deliveryContent: string;

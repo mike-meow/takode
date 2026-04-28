@@ -1,10 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   commitPendingCodexInputs,
+  hydrateCodexResumedHistory,
   type CodexRecoveryOrchestratorSessionLike,
   type CodexRecoveryOrchestratorDeps,
 } from "./codex-recovery-orchestrator.js";
 import type { PendingCodexInput, BrowserIncomingMessage } from "../session-types.js";
+import { injectReplyContext } from "../../shared/reply-context.js";
+import type { CodexResumeSnapshot } from "../codex-adapter.js";
 
 function makeSession(pendingInputs: PendingCodexInput[]): CodexRecoveryOrchestratorSessionLike {
   return {
@@ -105,5 +108,38 @@ describe("commitPendingCodexInputs", () => {
     const broadcastedMsg = (deps.broadcastToBrowsers as ReturnType<typeof vi.fn>).mock.calls[0][1];
     expect(broadcastedMsg.type).toBe("user_message");
     expect(broadcastedMsg.client_msg_id).toBeUndefined();
+  });
+});
+
+describe("hydrateCodexResumedHistory", () => {
+  it("sanitizes legacy reply markers before storing the session preview", () => {
+    // Codex external resume can hydrate historical user text that predates
+    // explicit replyContext metadata. The session preview must stay user-facing
+    // and never expose the raw legacy marker payload.
+    const legacyReply = injectReplyContext("Original answer", "Continue the work", "codex-agent-random-id");
+    const session = makeSession([]);
+    const deps = makeDeps();
+
+    const snapshot: CodexResumeSnapshot = {
+      threadId: "thread-history",
+      turnCount: 1,
+      turns: [
+        {
+          id: "turn-1",
+          status: "completed",
+          error: null,
+          items: [{ type: "userMessage", content: [{ type: "text", text: legacyReply }] }],
+        },
+      ],
+      lastTurn: null,
+    };
+
+    const hydrated = hydrateCodexResumedHistory(session, snapshot, deps);
+
+    expect(hydrated).toBe(1);
+    expect(session.messageHistory[0]).toMatchObject({ type: "user_message", content: legacyReply });
+    expect(session.lastUserMessage).toBe("[reply] Continue the work");
+    expect(session.lastUserMessage).not.toContain("<<<REPLY_TO");
+    expect(session.lastUserMessage).not.toContain("codex-agent-random-id");
   });
 });

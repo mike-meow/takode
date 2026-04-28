@@ -12,6 +12,7 @@ import type { TranscriptionConfig } from "./settings-manager.js";
 import { appendFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { formatReplyContentForContext, type ReplyContext } from "../shared/reply-context.js";
 
 // ─── Tunable limits ─────────────────────────────────────────────────────────
 
@@ -307,7 +308,7 @@ export function buildTranscriptionContext(history: BrowserIncomingMessage[]): st
       const content =
         typeof (msg as { content?: unknown }).content === "string" ? (msg as { content: string }).content : "";
       currentTurn = {
-        userContent: content,
+        userContent: formatReplyContentForContext(content, (msg as { replyContext?: ReplyContext }).replyContext),
         assistantText: "",
       };
     } else if (msg.type === "assistant" && currentTurn) {
@@ -668,7 +669,10 @@ export function buildSttPrompt(input: SttPromptInput): string {
         if (currentTurn) turns.push(currentTurn);
         const content =
           typeof (msg as { content?: unknown }).content === "string" ? (msg as { content: string }).content : "";
-        currentTurn = { userText: content, assistantText: "" };
+        currentTurn = {
+          userText: formatReplyContentForContext(content, (msg as { replyContext?: ReplyContext }).replyContext),
+          assistantText: "",
+        };
       } else if (msg.type === "assistant" && currentTurn) {
         const parentId = (msg as { parent_tool_use_id?: string | null }).parent_tool_use_id;
         if (parentId) continue;

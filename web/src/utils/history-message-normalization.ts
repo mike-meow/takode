@@ -79,6 +79,10 @@ export function normalizeHistoryMessageToChatMessages(
       typeof histMsg.client_msg_id === "string"
         ? pendingLocalImagesByClientMsgId?.get(histMsg.client_msg_id)
         : undefined;
+    const metadata: ChatMessage["metadata"] = {
+      ...(histMsg.replyContext ? { replyContext: histMsg.replyContext } : {}),
+      ...(histMsg.vscodeSelection ? { vscodeSelection: histMsg.vscodeSelection } : {}),
+    };
     return [
       {
         id: histMsg.id || `hist-user-${historyIndex}`,
@@ -89,7 +93,7 @@ export function normalizeHistoryMessageToChatMessages(
         ...(histMsg.images?.length ? { images: histMsg.images } : {}),
         ...(localImages?.length ? { localImages } : {}),
         ...(typeof histMsg.client_msg_id === "string" ? { clientMsgId: histMsg.client_msg_id } : {}),
-        ...(histMsg.vscodeSelection ? { metadata: { vscodeSelection: histMsg.vscodeSelection } } : {}),
+        ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
         ...(histMsg.agentSource ? { agentSource: histMsg.agentSource } : {}),
       },
     ];

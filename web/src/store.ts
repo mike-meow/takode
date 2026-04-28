@@ -51,6 +51,7 @@ import {
 } from "./store-initial.js";
 import type { AppState, PendingSession } from "./store-types.js";
 import { isDesktopShellLayout } from "./utils/layout.js";
+import { formatReplyContentForPreview } from "./utils/reply-context.js";
 
 // ─── Color Themes ───────────────────────────────────────────────────────────
 
@@ -1325,7 +1326,7 @@ export const useStore = create<AppState>((set, get) => ({
   setSessionPreview: (sessionId, preview) =>
     set((s) => {
       const sessionPreviews = new Map(s.sessionPreviews);
-      sessionPreviews.set(sessionId, preview.slice(0, 80));
+      sessionPreviews.set(sessionId, formatReplyContentForPreview(preview).slice(0, 80));
       const sessionPreviewUpdatedAt = new Map(s.sessionPreviewUpdatedAt);
       sessionPreviewUpdatedAt.set(sessionId, Date.now());
       return { sessionPreviews, sessionPreviewUpdatedAt };

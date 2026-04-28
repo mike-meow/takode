@@ -1,3 +1,5 @@
+import type { ReplyContext } from "../shared/reply-context.js";
+
 // Types for the WebSocket bridge between Claude Code CLI and the browser
 
 // ─── CLI Message Types (NDJSON from Claude Code CLI) ──────────────────────────
@@ -330,6 +332,7 @@ export interface PendingCodexInput {
   imageRefs?: import("./image-store.js").ImageRef[];
   draftImages?: PendingCodexInputImageDraft[];
   deliveryContent?: string;
+  replyContext?: ReplyContext;
   needsInputReminderText?: string;
   agentSource?: { sessionId: string; sessionLabel?: string };
   takodeHerdBatch?: TakodeHerdBatchSnapshot;
@@ -352,6 +355,7 @@ export type BrowserOutgoingMessage =
       images?: { media_type: string; data: string }[];
       imageRefs?: import("./image-store.js").ImageRef[];
       deliveryContent?: string;
+      replyContext?: ReplyContext;
       vscodeSelection?: VsCodeSelectionMetadata;
       client_msg_id?: string;
       /** Present when the message was injected programmatically (e.g. via takode CLI or cron). */
@@ -542,6 +546,7 @@ export type BrowserIncomingMessageBase =
       client_msg_id?: string;
       cliUuid?: string;
       images?: import("./image-store.js").ImageRef[];
+      replyContext?: ReplyContext;
       agentSource?: { sessionId: string; sessionLabel?: string };
       vscodeSelection?: VsCodeSelectionMetadata;
     }

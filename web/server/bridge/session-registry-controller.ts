@@ -1,4 +1,5 @@
 import { sessionTag } from "../session-tag.js";
+import { formatReplyContentForPreview } from "../../shared/reply-context.js";
 import type { PersistedSession } from "../session-store.js";
 import type { BoardRow, ContentBlock, SessionTaskEntry, SessionNotification } from "../session-types.js";
 import { detectQuestEvent } from "./quest-detector.js";
@@ -285,7 +286,9 @@ export function prepareSessionForRevert(
     .reverse()
     .find((msg) => msg.type === "user_message" && typeof msg.content === "string");
   session.lastUserMessage =
-    lastUser && typeof lastUser.content === "string" ? lastUser.content.slice(0, 80) : undefined;
+    lastUser && typeof lastUser.content === "string"
+      ? formatReplyContentForPreview(lastUser.content, lastUser.replyContext).slice(0, 80)
+      : undefined;
 
   if (session.taskHistory?.length) {
     const remainingUserMsgIds = new Set(
@@ -540,7 +543,7 @@ export async function restorePersistedSessions(
     for (let i = session.messageHistory.length - 1; i >= 0; i--) {
       const m = session.messageHistory[i];
       if (m.type === "user_message" && m.content) {
-        session.lastUserMessage = m.content.slice(0, 80);
+        session.lastUserMessage = formatReplyContentForPreview(m.content, m.replyContext).slice(0, 80);
         break;
       }
     }

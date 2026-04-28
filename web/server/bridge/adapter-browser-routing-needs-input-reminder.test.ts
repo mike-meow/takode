@@ -149,6 +149,64 @@ function sentCliContent(deps: AdapterBrowserRoutingDeps): string {
 }
 
 describe("direct user needs-input reminders", () => {
+  it("delivers concise reply context while storing reply metadata separately for Claude CLI", async () => {
+    const session = makeSession();
+    const deps = makeDeps();
+
+    await handleUserMessage(
+      session,
+      userMessage({
+        content: "Continue the work",
+        deliveryContent: "[reply] Original answer\n\nContinue the work",
+        replyContext: { previewText: "Original answer", messageId: "codex-agent-random-id" },
+      }),
+      deps,
+    );
+
+    expect(session.messageHistory[0]).toMatchObject({
+      type: "user_message",
+      content: "Continue the work",
+      replyContext: { previewText: "Original answer", messageId: "codex-agent-random-id" },
+    });
+    expect(sentCliContent(deps)).toContain("[reply] Original answer\n\nContinue the work");
+    expect(sentCliContent(deps)).not.toContain("<<<REPLY_TO");
+    expect(sentCliContent(deps)).not.toContain("codex-agent-random-id");
+  });
+
+  it("passes concise reply delivery content to Claude SDK adapter", async () => {
+    const session = makeSession();
+    session.backendType = "claude-sdk";
+    const sdkAdapter = { sendBrowserMessage: vi.fn(() => true), isConnected: vi.fn(() => true) };
+    session.claudeSdkAdapter = sdkAdapter as any;
+    const deps = makeDeps();
+
+    const routed = routeAdapterBrowserMessage(
+      session,
+      userMessage({
+        content: "Continue the work",
+        deliveryContent: "[reply] Original answer\n\nContinue the work",
+        replyContext: { previewText: "Original answer", messageId: "codex-agent-random-id" },
+      }),
+      null,
+      deps,
+    );
+
+    expect(routed).toBe(true);
+    expect(session.messageHistory[0]).toMatchObject({
+      content: "Continue the work",
+      replyContext: { previewText: "Original answer", messageId: "codex-agent-random-id" },
+    });
+    expect(sdkAdapter.sendBrowserMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "user_message",
+        content: expect.stringContaining("[reply] Original answer\n\nContinue the work"),
+      }),
+    );
+    expect(sdkAdapter.sendBrowserMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ content: expect.stringContaining("<<<REPLY_TO") }),
+    );
+  });
+
   it("injects a reminder before direct user messages with pending same-session needs-input notifications", async () => {
     // Validates both visible browser history ordering and backend delivery text.
     const session = makeSession([
@@ -295,6 +353,48 @@ describe("direct user needs-input reminders", () => {
       },
     });
     expect(session.messageHistory[1]).toMatchObject({ type: "user_message", content: "Fresh user message" });
+  });
+
+  it("queues concise reply delivery content for Codex while preserving clean committed history", () => {
+    const session = makeSession();
+    session.backendType = "codex";
+    const deps = makeDeps();
+    deps.addPendingCodexInput = vi.fn((targetSession, input) => {
+      targetSession.pendingCodexInputs.push(input);
+    });
+
+    const routed = routeAdapterBrowserMessage(
+      session,
+      userMessage({
+        content: "Continue the work",
+        deliveryContent: "[reply] Original answer\n\nContinue the work",
+        replyContext: { previewText: "Original answer", messageId: "codex-agent-random-id" },
+      }),
+      null,
+      deps,
+    );
+
+    expect(routed).toBe(true);
+    expect(session.pendingCodexInputs[0]).toMatchObject({
+      content: "Continue the work",
+      deliveryContent: "[reply] Original answer\n\nContinue the work",
+      replyContext: { previewText: "Original answer", messageId: "codex-agent-random-id" },
+    });
+
+    commitPendingCodexInputs(session as any, [session.pendingCodexInputs[0]!.id], {
+      broadcastPendingCodexInputs: vi.fn(),
+      broadcastToBrowsers: vi.fn(),
+      persistSession: vi.fn(),
+      touchUserMessage: vi.fn(),
+      onUserMessage: vi.fn(),
+    } as any);
+
+    expect(session.messageHistory[0]).toMatchObject({
+      type: "user_message",
+      content: "Continue the work",
+      replyContext: { previewText: "Original answer", messageId: "codex-agent-random-id" },
+    });
+    expect(session.lastUserMessage).toBe("[reply] Continue the work");
   });
 
   it("does not commit an all-resolved queued Codex reminder into chat history", () => {

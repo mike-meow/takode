@@ -1,4 +1,5 @@
 import { getDefaultModelForBackend } from "../../shared/backend-defaults.js";
+import { formatReplyContentForPreview } from "../../shared/reply-context.js";
 import type { CodexResumeSnapshot, CodexResumeTurnSnapshot } from "../codex-adapter.js";
 import type {
   BrowserIncomingMessage,
@@ -228,7 +229,7 @@ export function addPendingCodexInput(
   deps: Pick<CodexRecoveryOrchestratorDeps, "touchUserMessage" | "broadcastPendingCodexInputs">,
 ): void {
   session.pendingCodexInputs.push(input);
-  session.lastUserMessage = (input.content || "").slice(0, 80);
+  session.lastUserMessage = formatReplyContentForPreview(input.content || "", input.replyContext).slice(0, 80);
   deps.touchUserMessage(session.id);
   deps.broadcastPendingCodexInputs(session);
 }
@@ -265,7 +266,7 @@ export function hydrateCodexResumedHistory(
           id: `codex-resume-user-${turn.id || "turn"}-${i}`,
         };
         session.messageHistory.push(userMessage);
-        session.lastUserMessage = text.slice(0, 80);
+        session.lastUserMessage = formatReplyContentForPreview(text).slice(0, 80);
         deps.broadcastToBrowsers(session, userMessage);
         hydrated += 1;
         continue;
@@ -990,13 +991,14 @@ function commitPendingCodexInput(
     timestamp: pending.timestamp,
     id: pending.id,
     ...(pending.imageRefs?.length ? { images: pending.imageRefs } : {}),
+    ...(pending.replyContext ? { replyContext: pending.replyContext } : {}),
     ...(pending.clientMsgId ? { client_msg_id: pending.clientMsgId } : {}),
     ...(pending.vscodeSelection ? { vscodeSelection: pending.vscodeSelection } : {}),
     ...(pending.agentSource ? { agentSource: pending.agentSource } : {}),
   };
   session.messageHistory.push(userHistoryEntry);
   const userMsgHistoryIdx = session.messageHistory.length - 1;
-  session.lastUserMessage = (pending.content || "").slice(0, 80);
+  session.lastUserMessage = formatReplyContentForPreview(pending.content || "", pending.replyContext).slice(0, 80);
   deps.touchUserMessage(session.id);
   deps.broadcastToBrowsers(session, userHistoryEntry);
   deps.broadcastPendingCodexInputs(session);

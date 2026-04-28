@@ -250,6 +250,33 @@ describe("handleMessage: history_window_sync", () => {
     expect(useStore.getState().sessionPreviews.get("s1")).toBe("newest visible text");
   });
 
+  it("sanitizes reply context in the session preview from loaded history", () => {
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+
+    fireMessage({
+      type: "history_window_sync",
+      messages: [
+        {
+          type: "user_message",
+          id: "u-reply",
+          content: "continue the work",
+          replyContext: { previewText: "Original answer", messageId: "codex-agent-random-id" },
+          timestamp: 1000,
+        },
+      ],
+      window: {
+        from_turn: 450,
+        turn_count: 50,
+        total_turns: 500,
+        section_turn_count: HISTORY_WINDOW_SECTION_TURN_COUNT,
+        visible_section_count: HISTORY_WINDOW_VISIBLE_SECTION_COUNT,
+      },
+    });
+
+    expect(useStore.getState().sessionPreviews.get("s1")).toBe("[reply] continue the work");
+  });
+
   it("clears window metadata when a full history_sync later arrives", () => {
     wsModule.connectSession("s1");
     fireMessage({ type: "session_init", session: makeSession("s1") });

@@ -1,6 +1,7 @@
 import type { PRStatusResponse, CreateSessionOpts, CreationProgressEvent } from "./api.js";
 import type { BoardRowData } from "./components/BoardTable.js";
 import type { SearchMatch, SessionSearchCategory, SessionSearchState } from "./store-session-search.js";
+import type { ReplyContext } from "../shared/reply-context.js";
 import type {
   BoardRowSessionStatus,
   ChatMessage,
@@ -336,11 +337,8 @@ export interface AppState {
   removePendingUserUpload: (sessionId: string, uploadId: string) => void;
   consumePendingUserUpload: (sessionId: string, uploadId: string) => PendingUserUpload | null;
   getPendingUserUploadRestoration: (sessionId: string, uploadId: string) => PendingUserUpload | null;
-  replyContexts: Map<string, { messageId?: string; notificationId?: string; previewText: string }>;
-  setReplyContext: (
-    sessionId: string,
-    context: { messageId?: string; notificationId?: string; previewText: string } | null,
-  ) => void;
+  replyContexts: Map<string, ReplyContext>;
+  setReplyContext: (sessionId: string, context: ReplyContext | null) => void;
   focusComposerTrigger: number;
   focusComposer: () => void;
   turnActivityOverrides: Map<string, Map<string, boolean>>;

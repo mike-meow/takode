@@ -6,6 +6,7 @@ import { generateUniqueSessionName } from "./utils/names.js";
 import { playNotificationSound, playReviewSound, playNeedsInputSound } from "./utils/notification-sound.js";
 import { extractTextFromBlocks, normalizeHistoryMessageToChatMessages } from "./utils/history-message-normalization.js";
 import { questOwnsSessionName } from "./utils/quest-helpers.js";
+import { formatReplyContentForPreview } from "./utils/reply-context.js";
 
 const taskCounters = new Map<string, number>();
 const pendingCliDisconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -370,7 +371,7 @@ function updateSessionPreviewFromHistory(
   for (let i = historyMessages.length - 1; i >= 0; i--) {
     const msg = historyMessages[i];
     if (msg.type === "user_message" && msg.content) {
-      store.setSessionPreview(sessionId, msg.content.slice(0, 80));
+      store.setSessionPreview(sessionId, formatReplyContentForPreview(msg.content, msg.replyContext).slice(0, 80));
       break;
     }
   }
@@ -983,6 +984,10 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
         typeof data.client_msg_id === "string"
           ? useStore.getState().consumePendingUserUpload(sessionId, data.client_msg_id)
           : null;
+      const metadata: ChatMessage["metadata"] = {
+        ...(data.replyContext ? { replyContext: data.replyContext } : {}),
+        ...(data.vscodeSelection ? { vscodeSelection: data.vscodeSelection } : {}),
+      };
       const userMsg: ChatMessage = {
         id: data.id || nextId(),
         role: "user",
@@ -999,11 +1004,11 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
             }
           : {}),
         ...(typeof data.client_msg_id === "string" ? { clientMsgId: data.client_msg_id } : {}),
-        ...(data.vscodeSelection ? { metadata: { vscodeSelection: data.vscodeSelection } } : {}),
+        ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
         ...(data.agentSource ? { agentSource: data.agentSource } : {}),
       };
       store.appendMessage(sessionId, userMsg);
-      store.setSessionPreview(sessionId, data.content.slice(0, 80));
+      store.setSessionPreview(sessionId, formatReplyContentForPreview(data.content, data.replyContext).slice(0, 80));
       break;
     }
 
