@@ -174,6 +174,46 @@ describe("MarkdownContent quest links", () => {
     expect(window.location.hash).toBe("#/session/s1");
   });
 
+  it("auto-links plain quest references with the rich quest link behavior", () => {
+    render(<MarkdownContent text="Please review q-42 before merge." />);
+
+    const link = screen.getByRole("link", { name: "q-42" });
+    expect(link.getAttribute("href")).toBe("#/session/s1?quest=q-42");
+    fireEvent.click(link);
+    expect(useStore.getState().questOverlayId).toBe("q-42");
+  });
+
+  it("auto-links plain session references with the rich session link behavior", () => {
+    useStore.setState((state) => ({
+      ...state,
+      sdkSessions: [
+        {
+          sessionId: "session-abc",
+          state: "connected",
+          cwd: "/repo",
+          createdAt: 1,
+          sessionNum: 123,
+        },
+      ],
+    }));
+
+    render(<MarkdownContent text="Ask #123 to verify the UI." />);
+
+    const link = screen.getByRole("link", { name: "#123" });
+    expect(link.getAttribute("href")).toBe("#/session/123");
+    fireEvent.click(link);
+    expect(window.location.hash).toBe("#/session/session-abc");
+  });
+
+  it("does not auto-link plain references inside code or existing Markdown links", () => {
+    render(<MarkdownContent text="Keep `q-77` literal and leave [#123](session:123) explicit." />);
+
+    expect(screen.getByText("q-77").tagName).toBe("CODE");
+    expect(screen.queryByRole("link", { name: "q-77" })).toBeNull();
+    expect(screen.getAllByRole("link")).toHaveLength(1);
+    expect(screen.getByRole("link", { name: "#123" }).getAttribute("href")).toBe("#");
+  });
+
   it("shows QuestHoverCard content when hovering a quest link", async () => {
     useStore.setState((state) => ({
       ...state,

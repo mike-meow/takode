@@ -21,6 +21,7 @@ import { highlightCode } from "../utils/syntax-highlighting.js";
 import { openFileWithEditorPreference, showEditorOpenError } from "../utils/vscode-bridge.js";
 import { HighlightedText } from "./HighlightedText.js";
 import { SessionInlineLink } from "./SessionInlineLink.js";
+import { splitPlainTakodeReferences } from "./composer-reference-utils.js";
 
 interface MarkdownAstNode {
   type: string;
@@ -28,6 +29,9 @@ interface MarkdownAstNode {
   ordered?: boolean;
   start?: number | null;
   spread?: boolean;
+  value?: string;
+  url?: string;
+  title?: string | null;
 }
 
 function parseQuestIdFromHref(href?: string): string | null {
@@ -143,6 +147,57 @@ function normalizeOrderedListContinuations(node: MarkdownAstNode): void {
 function remarkNormalizeOrderedListContinuations() {
   return (tree: MarkdownAstNode) => {
     normalizeOrderedListContinuations(tree);
+  };
+}
+
+function transformPlainTakodeReferences(node: MarkdownAstNode): void {
+  if (!Array.isArray(node.children) || shouldSkipPlainTakodeReferenceChildren(node)) return;
+
+  const nextChildren: MarkdownAstNode[] = [];
+  for (const child of node.children) {
+    if (child.type !== "text" || typeof child.value !== "string") {
+      transformPlainTakodeReferences(child);
+      nextChildren.push(child);
+      continue;
+    }
+
+    const segments = splitPlainTakodeReferences(child.value);
+    if (segments.length === 1 && segments[0]?.kind === "text") {
+      nextChildren.push(child);
+      continue;
+    }
+
+    for (const segment of segments) {
+      if (segment.kind === "text") {
+        if (segment.text) nextChildren.push({ type: "text", value: segment.text });
+        continue;
+      }
+
+      nextChildren.push({
+        type: "link",
+        url: segment.kind === "quest" ? `quest:${segment.questId}` : `session:${segment.sessionNum}`,
+        title: null,
+        children: [{ type: "text", value: segment.text }],
+      });
+    }
+  }
+
+  node.children = nextChildren;
+}
+
+function shouldSkipPlainTakodeReferenceChildren(node: MarkdownAstNode): boolean {
+  return (
+    node.type === "link" ||
+    node.type === "linkReference" ||
+    node.type === "definition" ||
+    node.type === "code" ||
+    node.type === "inlineCode"
+  );
+}
+
+function remarkPlainTakodeReferences() {
+  return (tree: MarkdownAstNode) => {
+    transformPlainTakodeReferences(tree);
   };
 }
 
@@ -503,7 +558,7 @@ export function MarkdownContent({
   return (
     <div className={`markdown-body ${sizeClass} text-cc-fg leading-relaxed overflow-hidden break-words`}>
       <Markdown
-        remarkPlugins={[remarkGfm, remarkBreaks, remarkNormalizeOrderedListContinuations]}
+        remarkPlugins={[remarkGfm, remarkBreaks, remarkNormalizeOrderedListContinuations, remarkPlainTakodeReferences]}
         urlTransform={transformMarkdownUrl}
         disallowedElements={
           isConservative

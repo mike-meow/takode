@@ -36,6 +36,15 @@ export interface RecentAutocompleteBoosts {
   nextRecencyWeight: number;
 }
 
+export type PlainTakodeReferenceSegment =
+  | { kind: "text"; text: string }
+  | { kind: "quest"; text: string; questId: string }
+  | { kind: "session"; text: string; sessionNum: number };
+
+export type PlainTakodeReference =
+  | { kind: "quest"; text: string; questId: string }
+  | { kind: "session"; text: string; sessionNum: number };
+
 function getPathTail(path: string | null | undefined): string | null {
   const trimmed = path?.trim();
   if (!trimmed) return null;
@@ -44,18 +53,92 @@ function getPathTail(path: string | null | undefined): string | null {
   return parts.at(-1) ?? normalized;
 }
 
-export function buildQuestLinkInsertText(questId: string): string {
-  return `[${questId}](quest:${questId})`;
-}
-
-export function buildSessionLinkInsertText(sessionNum: number): string {
-  return `[#${sessionNum}](session:${sessionNum})`;
-}
-
 export function getSessionSuggestionPreview(session: SdkSessionInfo, sessionName: string | undefined): string {
   const explicitName = sessionName?.trim() || session.name?.trim();
   if (explicitName) return explicitName;
   return getPathTail(session.cwd) || `Session ${session.sessionNum ?? ""}`.trim();
+}
+
+export function splitPlainTakodeReferences(text: string): PlainTakodeReferenceSegment[] {
+  if (!text) return [{ kind: "text", text }];
+
+  const segments: PlainTakodeReferenceSegment[] = [];
+  let pendingTextStart = 0;
+  let index = 0;
+
+  const pushPendingText = (end: number) => {
+    if (end <= pendingTextStart) return;
+    segments.push({ kind: "text", text: text.slice(pendingTextStart, end) });
+  };
+
+  while (index < text.length) {
+    const reference = readPlainTakodeReferenceAt(text, index);
+    if (!reference) {
+      index += 1;
+      continue;
+    }
+
+    pushPendingText(index);
+    segments.push(reference.segment);
+    index = reference.end;
+    pendingTextStart = reference.end;
+  }
+
+  pushPendingText(text.length);
+  return segments.length > 0 ? segments : [{ kind: "text", text }];
+}
+
+export function collectPlainTakodeReferences(text: string): PlainTakodeReference[] {
+  const references: PlainTakodeReference[] = [];
+  const seen = new Set<string>();
+
+  for (const segment of splitPlainTakodeReferences(text)) {
+    if (segment.kind === "text") continue;
+    const key = segment.kind === "quest" ? `quest:${segment.questId}` : `session:${segment.sessionNum}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    references.push(segment);
+  }
+
+  return references;
+}
+
+function isPlainReferenceBoundary(ch: string | undefined): boolean {
+  return ch == null || !/[A-Za-z0-9_#:/-]/.test(ch);
+}
+
+function readPlainTakodeReferenceAt(
+  text: string,
+  start: number,
+): { segment: Exclude<PlainTakodeReferenceSegment, { kind: "text" }>; end: number } | null {
+  if (!isPlainReferenceBoundary(text[start - 1])) return null;
+
+  if (text[start] === "#") {
+    let end = start + 1;
+    while (end < text.length && /\d/.test(text[end]!)) end += 1;
+    if (end === start + 1 || !isPlainReferenceBoundary(text[end])) return null;
+
+    const sessionNum = Number.parseInt(text.slice(start + 1, end), 10);
+    if (!Number.isFinite(sessionNum)) return null;
+    return {
+      segment: { kind: "session", text: text.slice(start, end), sessionNum },
+      end,
+    };
+  }
+
+  if ((text[start] === "q" || text[start] === "Q") && text[start + 1] === "-") {
+    let end = start + 2;
+    while (end < text.length && /\d/.test(text[end]!)) end += 1;
+    if (end === start + 2 || !isPlainReferenceBoundary(text[end])) return null;
+
+    const questId = text.slice(start, end).toLowerCase();
+    return {
+      segment: { kind: "quest", text: text.slice(start, end), questId },
+      end,
+    };
+  }
+
+  return null;
 }
 
 function collectRecentAutocompleteMatches(

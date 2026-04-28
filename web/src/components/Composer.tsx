@@ -17,6 +17,7 @@ import {
 import { isTouchDevice } from "../utils/mobile.js";
 import { ComposerMenus } from "./ComposerMenus.js";
 import { ComposerMetaToolbar } from "./ComposerMetaToolbar.js";
+import { ComposerReferencePreview } from "./ComposerReferencePreview.js";
 import { CollapseAllButton } from "./ComposerCollapseAllButton.js";
 import { CollapsedComposerBar, ComposerInputSurface } from "./ComposerSurface.js";
 import { ComposerStatusBlocks } from "./ComposerStatusBlocks.js";
@@ -29,7 +30,7 @@ import {
   nextPendingUploadId,
   readFileAsBase64,
 } from "./composer-image-utils.js";
-import { parseCodexModeSlashCommand } from "./composer-reference-utils.js";
+import { collectPlainTakodeReferences, parseCodexModeSlashCommand } from "./composer-reference-utils.js";
 import { useComposerAutocomplete } from "./use-composer-autocomplete.js";
 import type { FailedTranscription, VoiceEditProposal } from "./composer-voice-types.js";
 import { useVoiceInput } from "../hooks/useVoiceInput.js";
@@ -1339,6 +1340,7 @@ export function Composer({ sessionId }: { sessionId: string }) {
   const compactVoiceButtonDisabled = voiceButtonDisabled;
   const sendButtonTitle =
     attachmentBlockReason || (activePendingUserUpload ? "Delivering pending message" : "Send message");
+  const plainReferencePreviews = useMemo(() => collectPlainTakodeReferences(text), [text]);
 
   useEffect(() => {
     if (voiceSupported || isRecording || isTranscribing) {
@@ -1478,51 +1480,54 @@ export function Composer({ sessionId }: { sessionId: string }) {
             </>
           }
           bottomChildren={
-            <ComposerMetaToolbar
-              sessionId={sessionId}
-              sessionView={sessionView}
-              diffLinesAdded={diffLinesAdded}
-              diffLinesRemoved={diffLinesRemoved}
-              isCodex={isCodex}
-              isConnected={isConnected}
-              showModelDropdown={showModelDropdown}
-              setShowModelDropdown={setShowModelDropdown}
-              modelDropdownRef={modelDropdownRef}
-              claudeModelOptions={claudeModelOptions}
-              codexModelOptions={codexModelOptions}
-              onSelectModel={(model) => sendToSession(sessionId, { type: "set_model", model })}
-              showCodexReasoningDropdown={showCodexReasoningDropdown}
-              setShowCodexReasoningDropdown={setShowCodexReasoningDropdown}
-              codexReasoningDropdownRef={codexReasoningDropdownRef}
-              codexReasoningEffort={codexReasoningEffort}
-              onSelectCodexReasoning={(effort) =>
-                sendToSession(sessionId, { type: "set_codex_reasoning_effort", effort })
-              }
-              isPlan={isPlan}
-              cycleMode={cycleMode}
-              askConfirmRef={askConfirmRef}
-              toggleAskPermission={toggleAskPermission}
-              askPermission={askPermission}
-              showAskConfirm={showAskConfirm}
-              setShowAskConfirm={setShowAskConfirm}
-              confirmAskPermissionChange={confirmAskPermissionChange}
-              collapseAllButton={<CollapseAllButton sessionId={sessionId} />}
-              onOpenFilePicker={() => fileInputRef.current?.click()}
-              warmMicrophone={warmMicrophone}
-              voiceSupported={voiceSupported}
-              toggleVoiceUnsupportedInfo={toggleVoiceUnsupportedInfo}
-              handleMicClick={handleMicClick}
-              voiceButtonDisabled={voiceButtonDisabled}
-              isPreparing={isPreparing}
-              isRecording={isRecording}
-              voiceButtonTitle={voiceButtonTitle}
-              canSend={canSend}
-              isRunning={isRunning}
-              handleInterrupt={handleInterrupt}
-              handleSend={handleSend}
-              sendButtonTitle={sendButtonTitle}
-              sendPressing={sendPressing}
-            />
+            <>
+              <ComposerReferencePreview references={plainReferencePreviews} />
+              <ComposerMetaToolbar
+                sessionId={sessionId}
+                sessionView={sessionView}
+                diffLinesAdded={diffLinesAdded}
+                diffLinesRemoved={diffLinesRemoved}
+                isCodex={isCodex}
+                isConnected={isConnected}
+                showModelDropdown={showModelDropdown}
+                setShowModelDropdown={setShowModelDropdown}
+                modelDropdownRef={modelDropdownRef}
+                claudeModelOptions={claudeModelOptions}
+                codexModelOptions={codexModelOptions}
+                onSelectModel={(model) => sendToSession(sessionId, { type: "set_model", model })}
+                showCodexReasoningDropdown={showCodexReasoningDropdown}
+                setShowCodexReasoningDropdown={setShowCodexReasoningDropdown}
+                codexReasoningDropdownRef={codexReasoningDropdownRef}
+                codexReasoningEffort={codexReasoningEffort}
+                onSelectCodexReasoning={(effort) =>
+                  sendToSession(sessionId, { type: "set_codex_reasoning_effort", effort })
+                }
+                isPlan={isPlan}
+                cycleMode={cycleMode}
+                askConfirmRef={askConfirmRef}
+                toggleAskPermission={toggleAskPermission}
+                askPermission={askPermission}
+                showAskConfirm={showAskConfirm}
+                setShowAskConfirm={setShowAskConfirm}
+                confirmAskPermissionChange={confirmAskPermissionChange}
+                collapseAllButton={<CollapseAllButton sessionId={sessionId} />}
+                onOpenFilePicker={() => fileInputRef.current?.click()}
+                warmMicrophone={warmMicrophone}
+                voiceSupported={voiceSupported}
+                toggleVoiceUnsupportedInfo={toggleVoiceUnsupportedInfo}
+                handleMicClick={handleMicClick}
+                voiceButtonDisabled={voiceButtonDisabled}
+                isPreparing={isPreparing}
+                isRecording={isRecording}
+                voiceButtonTitle={voiceButtonTitle}
+                canSend={canSend}
+                isRunning={isRunning}
+                handleInterrupt={handleInterrupt}
+                handleSend={handleSend}
+                sendButtonTitle={sendButtonTitle}
+                sendPressing={sendPressing}
+              />
+            </>
           }
         />
       </div>

@@ -177,7 +177,7 @@ vi.mock("../store.js", async () => {
   };
   // Add getState for imperative access (used by Composer for clearComposerDraft etc.)
   useStore.getState = () => mockStoreState;
-  return { useStore };
+  return { useStore, countUserPermissions: () => 0 };
 });
 
 import { Composer } from "./Composer.js";
@@ -314,6 +314,9 @@ function setupMockStore(
     sessionStatus: sessionStatusMap,
     previousPermissionMode: previousPermissionModeMap,
     askPermission: askPermissionMap,
+    cliDisconnectReason: new Map(),
+    sessionPreviews: new Map(),
+    sessionTaskHistory: new Map(),
     composerDrafts: draft
       ? new Map([["s1", draft]])
       : draftText
@@ -532,7 +535,7 @@ beforeEach(() => {
 // ─── Basic rendering ────────────────────────────────────────────────────────
 
 describe("Composer quest/session reference autocomplete", () => {
-  it("shows quest title previews and inserts Takode quest links", () => {
+  it("shows quest title previews and inserts plain quest references", () => {
     setupMockStore({
       quests: [makeQuest({ questId: "q-41", title: "Autocomplete ranking polish" })],
     });
@@ -548,10 +551,10 @@ describe("Composer quest/session reference autocomplete", () => {
 
     fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
 
-    expect(textarea.value).toBe("Please check [q-41](quest:q-41) ");
+    expect(textarea.value).toBe("Please check q-41 ");
   });
 
-  it("shows session label previews and inserts Takode session links", () => {
+  it("shows session label previews and inserts plain session references", () => {
     setupMockStore({
       sdkSessions: [makeSdkSession({ sessionId: "worker-1", sessionNum: 687 })],
       sessionNames: new Map([["worker-1", "Frontend worker"]]),
@@ -568,7 +571,7 @@ describe("Composer quest/session reference autocomplete", () => {
 
     fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
 
-    expect(textarea.value).toBe("Hand off to [#687](session:687) ");
+    expect(textarea.value).toBe("Hand off to #687 ");
   });
 
   it("replaces delimiter-prefixed quest triggers without leaving a stray leading bracket", () => {
@@ -584,7 +587,7 @@ describe("Composer quest/session reference autocomplete", () => {
 
     fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
 
-    expect(textarea.value).toBe("[q-41](quest:q-41) ");
+    expect(textarea.value).toBe("q-41 ");
   });
 
   it("replaces delimiter-prefixed session triggers without leaving a stray leading bracket", () => {
@@ -601,7 +604,7 @@ describe("Composer quest/session reference autocomplete", () => {
 
     fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
 
-    expect(textarea.value).toBe("[#687](session:687) ");
+    expect(textarea.value).toBe("#687 ");
   });
 
   it("closes quest autocomplete when the caret leaves the active reference word", () => {
@@ -653,7 +656,50 @@ describe("Composer quest/session reference autocomplete", () => {
     });
     fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
 
-    expect(textarea.value).toBe("See [q-659](quest:q-659) later");
+    expect(textarea.value).toBe("See q-659 later");
+  });
+
+  it("previews plain quest and session references without changing the editable text", () => {
+    setupMockStore({
+      draftText: "Please review q-41 and sync with #687 ",
+      quests: [makeQuest({ questId: "q-41", title: "Autocomplete ranking polish" })],
+      sdkSessions: [makeSdkSession({ sessionId: "worker-1", sessionNum: 687 })],
+      sessionNames: new Map([["worker-1", "Frontend worker"]]),
+    });
+    const { container } = render(<Composer sessionId="s1" />);
+    const textarea = container.querySelector("textarea")! as HTMLTextAreaElement;
+
+    expect(textarea.value).toBe("Please review q-41 and sync with #687 ");
+    const preview = screen.getByTestId("composer-reference-preview");
+    expect(within(preview).getByRole("link", { name: "q-41" })).toBeTruthy();
+    expect(within(preview).getByRole("link", { name: "#687" })).toBeTruthy();
+  });
+
+  it("sends plain quest and session references without converting them to Markdown", () => {
+    setupMockStore({
+      quests: [makeQuest({ questId: "q-41", title: "Autocomplete ranking polish" })],
+      sdkSessions: [makeSdkSession({ sessionId: "worker-1", sessionNum: 687 })],
+      sessionNames: new Map([["worker-1", "Frontend worker"]]),
+    });
+    const { container } = render(<Composer sessionId="s1" />);
+    const textarea = container.querySelector("textarea")! as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, {
+      target: {
+        value: "Please review q-41 and sync with #687 ",
+        selectionStart: "Please review q-41 and sync with #687 ".length,
+      },
+    });
+    fireEvent.click(screen.getByTitle("Send message"));
+
+    expect(mockSendToSession).toHaveBeenCalledWith(
+      "s1",
+      expect.objectContaining({
+        type: "user_message",
+        content: "Please review q-41 and sync with #687",
+        session_id: "s1",
+      }),
+    );
   });
 
   it("accepts the highlighted quest after arrow navigation and keyup selection refresh", () => {
@@ -678,7 +724,7 @@ describe("Composer quest/session reference autocomplete", () => {
     fireEvent.keyUp(textarea, { key: "ArrowDown", code: "ArrowDown" });
     fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
 
-    expect(textarea.value).toBe("See [q-12](quest:q-12) ");
+    expect(textarea.value).toBe("See q-12 ");
   });
 
   it("boosts recently mentioned quests above newer ids", () => {
