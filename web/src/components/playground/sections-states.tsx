@@ -1284,6 +1284,38 @@ export function PlaygroundStateSections() {
               mode="full"
             />
           </Card>
+          <Card label="Sticky collapsible file headers">
+            <div className="max-h-64 overflow-auto">
+              <DiffViewer
+                unifiedDiff={`diff --git a/src/routes/long-handler.ts b/src/routes/long-handler.ts
+--- a/src/routes/long-handler.ts
++++ b/src/routes/long-handler.ts
+@@ -1,8 +1,10 @@
+ import { Router } from "express";
+ const router = Router();
+
+-router.get("/sessions/:id/diff", async (req, res) => loadDiff(req.params.id).then(res.json));
++router.get("/sessions/:id/diff", async (req, res) => {
++  const diff = await loadDiff(req.params.id, { includeContents: true, preserveWhitespace: true, expandRenames: true });
++  res.json(diff);
++});
+ export default router;
+diff --git a/src/routes/summary.ts b/src/routes/summary.ts
+--- a/src/routes/summary.ts
++++ b/src/routes/summary.ts
+@@ -1,4 +1,5 @@
+ export function summarize(files: string[]) {
+-  return files.join(", ");
++  return files.map((file) => file.replace(process.cwd(), ".")).join(", ");
+ }
++export const summaryVersion = 2;`}
+                mode="full"
+                showLineNumbers
+                stickyFileHeaders
+                collapsibleFiles
+              />
+            </div>
+          </Card>
           <Card label="Unified diff with expandable gap between hunks">
             <DiffViewer
               unifiedDiff={`diff --git a/src/config.ts b/src/config.ts

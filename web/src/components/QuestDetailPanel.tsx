@@ -1601,10 +1601,10 @@ export function QuestDetailPanel() {
             aria-label={`Commit ${activeCommitSha.slice(0, 7)}`}
             data-testid="quest-commit-modal"
           >
-            <div className="flex items-start justify-between gap-3 px-4 py-3 border-b border-cc-border">
-              <div className="min-w-0">
-                <div className="text-[10px] uppercase tracking-[0.08em] text-cc-muted/60">Synced Commit</div>
-                <div className="mt-1 flex items-center gap-2 flex-wrap">
+            <div className="flex items-start justify-between gap-3 px-3 py-2 border-b border-cc-border">
+              <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                  <span className="text-[10px] uppercase tracking-[0.08em] text-cc-muted/60">Synced Commit</span>
                   <span className="text-sm font-semibold text-cc-fg font-mono-code">
                     {activeCommitDetails?.shortSha || activeCommitSha.slice(0, 7)}
                   </span>
@@ -1614,17 +1614,19 @@ export function QuestDetailPanel() {
                   {activeCommitDetails?.timestamp && (
                     <span className="text-[10px] text-cc-muted">{timeAgo(activeCommitDetails.timestamp)}</span>
                   )}
+                  {activeCommitDetails?.message && (
+                    <span className="min-w-[12rem] flex-1 truncate text-sm text-cc-fg">
+                      {activeCommitDetails.message}
+                    </span>
+                  )}
+                  {activeCommitDetails?.available && (
+                    <span className="flex items-center gap-3 text-[11px]">
+                      <span className="text-green-500">+{activeCommitDetails.additions ?? 0} additions</span>
+                      <span className="text-red-400">-{activeCommitDetails.deletions ?? 0} deletions</span>
+                    </span>
+                  )}
                 </div>
-                {activeCommitDetails?.message && (
-                  <div className="mt-1 text-sm text-cc-fg truncate">{activeCommitDetails.message}</div>
-                )}
-                {activeCommitDetails?.available && (
-                  <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px]">
-                    <span className="text-green-500">+{activeCommitDetails.additions ?? 0} additions</span>
-                    <span className="text-red-400">-{activeCommitDetails.deletions ?? 0} deletions</span>
-                  </div>
-                )}
-                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                   {questCommitShas.map((sha, index) => (
                     <button
                       key={sha}
@@ -1647,7 +1649,7 @@ export function QuestDetailPanel() {
                   type="button"
                   onClick={() => setActiveCommitIndex((prev) => (prev && prev > 0 ? prev - 1 : prev))}
                   disabled={activeCommitIndex === null || activeCommitIndex <= 0}
-                  className="px-2.5 py-1.5 text-[11px] rounded-lg bg-cc-hover text-cc-fg border border-cc-border disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                  className="px-2 py-1 text-[11px] rounded-lg bg-cc-hover text-cc-fg border border-cc-border disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                 >
                   Previous
                 </button>
@@ -1659,7 +1661,7 @@ export function QuestDetailPanel() {
                     )
                   }
                   disabled={activeCommitIndex === null || activeCommitIndex >= questCommitShas.length - 1}
-                  className="px-2.5 py-1.5 text-[11px] rounded-lg bg-cc-hover text-cc-fg border border-cc-border disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                  className="px-2 py-1 text-[11px] rounded-lg bg-cc-hover text-cc-fg border border-cc-border disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                 >
                   Next
                 </button>
@@ -1706,6 +1708,8 @@ export function QuestDetailPanel() {
                     fileName={activeCommitDetails.shortSha}
                     mode="full"
                     showLineNumbers
+                    stickyFileHeaders
+                    collapsibleFiles
                   />
                 </div>
               ) : null}

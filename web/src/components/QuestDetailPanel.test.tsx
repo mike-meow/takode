@@ -998,6 +998,7 @@ describe("QuestDetailPanel", () => {
     expect(screen.getByText("First ported commit")).toBeTruthy();
     expect(screen.getByText("+12 additions")).toBeTruthy();
     expect(screen.getByText("-4 deletions")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Collapse file" })).toBeTruthy();
 
     fireEvent.click(screen.getByText("Next"));
 
@@ -1007,6 +1008,10 @@ describe("QuestDetailPanel", () => {
     expect(screen.getByText("Second ported commit")).toBeTruthy();
     expect(screen.getByText("+3 additions")).toBeTruthy();
     expect(screen.getByText("-1 deletions")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse file" }));
+    expect(screen.queryByText("before")).toBeNull();
+    expect(screen.getByRole("button", { name: "Expand file" })).toBeTruthy();
   });
 
   it("shows a graceful unavailable state when a stored commit cannot be loaded", async () => {

@@ -364,6 +364,9 @@ select {
 .diff-full {
   overflow: auto;
 }
+.diff-full.diff-sticky-file-headers {
+  overflow: visible;
+}
 .diff-empty {
   display: flex;
   align-items: center;
@@ -387,22 +390,54 @@ select {
   border-top: 1px solid var(--color-cc-border);
 }
 .diff-file-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
   background: rgba(0,0,0,0.15);
   font-size: 11px;
   border-bottom: 1px solid var(--color-cc-border);
   position: sticky;
   top: 0;
-  z-index: 1;
+  left: 0;
+  z-index: 3;
+  box-shadow: 0 1px 0 var(--color-cc-border);
+}
+.diff-file-header-content {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  width: 100%;
+  padding: 6px 12px;
+}
+.diff-sticky-file-headers .diff-file-header-content {
+  position: sticky;
+  left: 0;
+  width: fit-content;
+  max-width: calc(100vw - 24px);
+}
+.diff-sticky-file-headers .diff-file-header-actions {
+  margin-left: 6px;
 }
 .diff-file-path {
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+.diff-file-collapse-btn {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  color: var(--color-cc-muted);
+  cursor: pointer;
+}
+.diff-file-collapse-btn:hover {
+  color: var(--color-cc-fg);
+  background: var(--color-cc-hover);
+  border-color: var(--color-cc-border);
 }
 .diff-file-header-actions {
   margin-left: auto;

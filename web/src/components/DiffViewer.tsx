@@ -1,4 +1,4 @@
-import { memo, type ReactNode, useEffect, useMemo, useState } from "react";
+import { memo, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import * as Diff from "diff";
 import { buildHighlightedLines, inferLanguageFromPath, splitSourceToLines } from "../utils/syntax-highlighting.js";
@@ -24,6 +24,10 @@ export interface DiffViewerProps {
   headerActions?: ReactNode;
   /** Optional callback for rendering file-specific header actions. */
   renderHeaderActions?: (fileName: string) => ReactNode;
+  /** Keep file headers pinned when a parent container handles scrolling. */
+  stickyFileHeaders?: boolean;
+  /** Allow each rendered file section to be collapsed locally. */
+  collapsibleFiles?: boolean;
 }
 
 interface DiffLine {
@@ -532,30 +536,58 @@ function FileHeader({
   fileName,
   fileStatsLabel,
   headerActions,
+  collapsible,
+  collapsed,
+  onToggleCollapsed,
 }: {
   fileName: string;
   fileStatsLabel?: string;
   headerActions?: ReactNode;
+  collapsible?: boolean;
+  collapsed?: boolean;
+  onToggleCollapsed?: () => void;
 }) {
   const { dirLabel, baseLabel } = formatFileHeaderPath(fileName);
   return (
     <div className="diff-file-header" title={fileName}>
-      <svg
-        viewBox="0 0 16 16"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        className="w-3.5 h-3.5 text-cc-primary shrink-0"
-      >
-        <path d="M9 1H4a1 1 0 00-1 1v12a1 1 0 001 1h8a1 1 0 001-1V5L9 1z" />
-        <polyline points="9 1 9 5 13 5" />
-      </svg>
-      <span className="diff-file-path">
-        {dirLabel && <span className="text-cc-muted">{dirLabel}</span>}
-        <span className="font-semibold text-cc-fg">{baseLabel}</span>
-      </span>
-      {fileStatsLabel && <span className="ml-2 text-cc-muted text-[11px] font-mono-code">{fileStatsLabel}</span>}
-      {headerActions && <div className="diff-file-header-actions">{headerActions}</div>}
+      <div className="diff-file-header-content">
+        {collapsible && (
+          <button
+            type="button"
+            className="diff-file-collapse-btn"
+            onClick={onToggleCollapsed}
+            aria-label={collapsed ? "Expand file" : "Collapse file"}
+            title={collapsed ? "Expand file" : "Collapse file"}
+          >
+            <svg
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              className={`w-3 h-3 transition-transform ${collapsed ? "-rotate-90" : ""}`}
+              aria-hidden="true"
+            >
+              <path d="M4 6l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        )}
+        <svg
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          className="w-3.5 h-3.5 text-cc-primary shrink-0"
+        >
+          <path d="M9 1H4a1 1 0 00-1 1v12a1 1 0 001 1h8a1 1 0 001-1V5L9 1z" />
+          <polyline points="9 1 9 5 13 5" />
+        </svg>
+        <span className="diff-file-path">
+          {dirLabel && <span className="text-cc-muted">{dirLabel}</span>}
+          <span className="font-semibold text-cc-fg">{baseLabel}</span>
+        </span>
+        {fileStatsLabel && <span className="ml-2 text-cc-muted text-[11px] font-mono-code">{fileStatsLabel}</span>}
+        {headerActions && <div className="diff-file-header-actions">{headerActions}</div>}
+      </div>
     </div>
   );
 }
@@ -571,11 +603,17 @@ export const DiffViewer = memo(function DiffViewer({
   expandButtonLabel = "Expand",
   headerActions,
   renderHeaderActions,
+  stickyFileHeaders = false,
+  collapsibleFiles = false,
 }: DiffViewerProps) {
   const isCompact = mode === "compact";
   const showLineNumbers = showLineNumbersProp ?? false;
   const [expanded, setExpanded] = useState(false);
   const [expandedGaps, setExpandedGaps] = useState<Record<string, number>>({});
+  const [collapsedFiles, setCollapsedFiles] = useState<Record<string, boolean>>({});
+  const toggleCollapsedFile = useCallback((key: string) => {
+    setCollapsedFiles((prev) => ({ ...prev, [key]: !prev[key] }));
+  }, []);
 
   const hasSource = oldText !== undefined || newText !== undefined;
   const normalizedOldText = oldText ?? "";
@@ -650,7 +688,11 @@ export const DiffViewer = memo(function DiffViewer({
   }
 
   const renderedDiff = (
-    <div className={`diff-viewer ${isCompact ? "diff-compact" : "diff-full"}`}>
+    <div
+      className={`diff-viewer ${isCompact ? "diff-compact" : "diff-full"} ${
+        stickyFileHeaders ? "diff-sticky-file-headers" : ""
+      }`}
+    >
       {isCompact && (
         <button type="button" onClick={() => setExpanded(true)} className="diff-inline-expand-btn" title="Expand diff">
           {expandButtonLabel}
@@ -660,64 +702,42 @@ export const DiffViewer = memo(function DiffViewer({
         const blocks = buildRenderBlocks(file.hunks, oldSourceLines, newSourceLines);
         const resolvedFileName = file.fileName || fileName || "";
         const resolvedHeaderActions = renderHeaderActions ? renderHeaderActions(resolvedFileName) : headerActions;
+        const fileCollapseKey = `${fi}:${resolvedFileName}`;
+        const isFileCollapsed = !!collapsedFiles[fileCollapseKey];
         return (
-          <div key={fi} className="diff-file">
+          <div key={fi} className={`diff-file ${isFileCollapsed ? "diff-file-collapsed" : ""}`}>
             {resolvedFileName && (
               <FileHeader
                 fileName={resolvedFileName}
                 fileStatsLabel={data.length === 1 ? fileStatsLabel : undefined}
                 headerActions={resolvedHeaderActions}
+                collapsible={collapsibleFiles}
+                collapsed={isFileCollapsed}
+                onToggleCollapsed={() => toggleCollapsedFile(fileCollapseKey)}
               />
             )}
-            {blocks.map((block) => {
-              if (block.type === "hunk") {
-                return (
-                  <HunkBlock
-                    key={`${fi}-${block.key}`}
-                    hunk={block.hunk}
-                    showLineNumbers={showLineNumbers}
-                    highlighted={highlighted}
-                  />
-                );
-              }
-
-              const gapId = `${fi}-${block.key}`;
-              const expandedCount = expandedGaps[gapId] ?? 0;
-              const visibleCount = Math.min(expandedCount, block.lines.length);
-              const remainingCount = block.lines.length - visibleCount;
-              const nextChunkCount = Math.min(GAP_EXPAND_CHUNK, remainingCount);
-
-              if (visibleCount === 0) {
-                return (
-                  <div key={gapId} className="diff-gap-row">
-                    <button
-                      type="button"
-                      className="diff-gap-btn"
-                      onClick={() => {
-                        setExpandedGaps((prev) => ({
-                          ...prev,
-                          [gapId]: Math.min(block.lines.length, (prev[gapId] ?? 0) + GAP_EXPAND_CHUNK),
-                        }));
-                      }}
-                    >
-                      Show {nextChunkCount} unchanged line{nextChunkCount === 1 ? "" : "s"}
-                    </button>
-                  </div>
-                );
-              }
-
-              return (
-                <div key={gapId} className="diff-gap-expanded">
-                  {block.lines.slice(0, visibleCount).map((line) => (
-                    <DiffLineRow
-                      key={`${gapId}-${line.oldLineNo}-${line.newLineNo}`}
-                      line={line}
+            {!isFileCollapsed &&
+              blocks.map((block) => {
+                if (block.type === "hunk") {
+                  return (
+                    <HunkBlock
+                      key={`${fi}-${block.key}`}
+                      hunk={block.hunk}
                       showLineNumbers={showLineNumbers}
-                      highlightedHtml={getLineHtml(line, highlighted)}
+                      highlighted={highlighted}
                     />
-                  ))}
-                  {remainingCount > 0 && (
-                    <div className="diff-gap-row">
+                  );
+                }
+
+                const gapId = `${fi}-${block.key}`;
+                const expandedCount = expandedGaps[gapId] ?? 0;
+                const visibleCount = Math.min(expandedCount, block.lines.length);
+                const remainingCount = block.lines.length - visibleCount;
+                const nextChunkCount = Math.min(GAP_EXPAND_CHUNK, remainingCount);
+
+                if (visibleCount === 0) {
+                  return (
+                    <div key={gapId} className="diff-gap-row">
                       <button
                         type="button"
                         className="diff-gap-btn"
@@ -728,14 +748,42 @@ export const DiffViewer = memo(function DiffViewer({
                           }));
                         }}
                       >
-                        Show {nextChunkCount} more unchanged line{nextChunkCount === 1 ? "" : "s"} ({remainingCount}{" "}
-                        remaining)
+                        Show {nextChunkCount} unchanged line{nextChunkCount === 1 ? "" : "s"}
                       </button>
                     </div>
-                  )}
-                </div>
-              );
-            })}
+                  );
+                }
+
+                return (
+                  <div key={gapId} className="diff-gap-expanded">
+                    {block.lines.slice(0, visibleCount).map((line) => (
+                      <DiffLineRow
+                        key={`${gapId}-${line.oldLineNo}-${line.newLineNo}`}
+                        line={line}
+                        showLineNumbers={showLineNumbers}
+                        highlightedHtml={getLineHtml(line, highlighted)}
+                      />
+                    ))}
+                    {remainingCount > 0 && (
+                      <div className="diff-gap-row">
+                        <button
+                          type="button"
+                          className="diff-gap-btn"
+                          onClick={() => {
+                            setExpandedGaps((prev) => ({
+                              ...prev,
+                              [gapId]: Math.min(block.lines.length, (prev[gapId] ?? 0) + GAP_EXPAND_CHUNK),
+                            }));
+                          }}
+                        >
+                          Show {nextChunkCount} more unchanged line{nextChunkCount === 1 ? "" : "s"} ({remainingCount}{" "}
+                          remaining)
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
           </div>
         );
       })}
@@ -771,6 +819,8 @@ export const DiffViewer = memo(function DiffViewer({
                   showLineNumbers
                   headerActions={headerActions}
                   renderHeaderActions={renderHeaderActions}
+                  stickyFileHeaders={stickyFileHeaders}
+                  collapsibleFiles={collapsibleFiles}
                 />
               </div>
             </div>

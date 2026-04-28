@@ -98,11 +98,11 @@ describe("DiffPanel", () => {
     expect(screen.getByText("No changes yet")).toBeInTheDocument();
   });
 
-  it("uses a dedicated mobile break row in the header for stats and controls", () => {
+  it("keeps diff header controls in a compact top bar", () => {
     render(<DiffPanel sessionId="s1" />);
-    const mobileBreak = screen.getByTestId("diff-header-mobile-break");
-    expect(mobileBreak).toBeInTheDocument();
-    expect(mobileBreak.className).toContain("basis-full");
+    const controls = screen.getByTestId("diff-header-controls");
+    expect(controls).toBeInTheDocument();
+    expect(screen.queryByTestId("diff-header-mobile-break")).toBeNull();
   });
 
   it("displays changed files in file picker dropdown", () => {
@@ -169,6 +169,8 @@ describe("DiffPanel", () => {
     await waitFor(() => {
       expect(container.querySelector(".diff-line-add")).toBeTruthy();
     });
+    expect(container.querySelector(".diff-sticky-file-headers")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Collapse file" })).toBeTruthy();
     // Base branch selector should show the resolved default
     const select = container.querySelector("select") as HTMLSelectElement;
     expect(select).toBeTruthy();

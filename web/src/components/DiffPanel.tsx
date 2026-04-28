@@ -624,8 +624,8 @@ function DiffPanelInner({ sessionId }: { sessionId: string }) {
   return (
     <div className="h-full flex flex-col bg-cc-bg">
       {/* Top bar: branch selector, total stats, file picker, line numbers toggle */}
-      <div className="shrink-0 px-3 py-2 bg-cc-card border-b border-cc-border">
-        <div className="flex flex-wrap items-center gap-2">
+      <div className="shrink-0 px-3 py-1.5 bg-cc-card border-b border-cc-border">
+        <div className="flex items-center gap-1.5 min-w-0">
           {/* Branch selector */}
           <select
             value={selectedBranch ?? ""}
@@ -634,7 +634,7 @@ function DiffPanelInner({ sessionId }: { sessionId: string }) {
               setSelectedBranch(next);
               handleBaseBranchChange(next);
             }}
-            className="w-full sm:w-auto max-w-full sm:max-w-[180px] text-cc-muted text-[11px] bg-transparent border border-cc-border rounded px-1.5 py-0.5 cursor-pointer hover:text-cc-fg hover:border-cc-fg/30 transition-colors"
+            className="min-w-0 max-w-[150px] sm:max-w-[180px] text-cc-muted text-[11px] bg-transparent border border-cc-border rounded px-1.5 py-0.5 cursor-pointer hover:text-cc-fg hover:border-cc-fg/30 transition-colors"
             title="Base branch for diff comparison"
           >
             <option value="">
@@ -663,7 +663,7 @@ function DiffPanelInner({ sessionId }: { sessionId: string }) {
                   handleBaseBranchChange(restoredBranch);
                 }
               }}
-              className="w-full sm:w-auto max-w-full sm:max-w-[200px] text-cc-muted text-[11px] bg-transparent border border-cc-border rounded px-1.5 py-0.5 cursor-pointer hover:text-cc-fg hover:border-cc-fg/30 transition-colors"
+              className="min-w-0 max-w-[150px] sm:max-w-[200px] text-cc-muted text-[11px] bg-transparent border border-cc-border rounded px-1.5 py-0.5 cursor-pointer hover:text-cc-fg hover:border-cc-fg/30 transition-colors"
               title="Compare against a specific commit"
             >
               <option value="">commit...</option>
@@ -679,17 +679,14 @@ function DiffPanelInner({ sessionId }: { sessionId: string }) {
             </select>
           )}
 
-          {/* Move stats + file controls to a second row on mobile */}
-          <div data-testid="diff-header-mobile-break" className="basis-full h-0 sm:basis-auto" />
+          <div data-testid="diff-header-controls" className="ml-auto flex items-center gap-1.5 shrink-0">
+            {(totalStats.additions > 0 || totalStats.deletions > 0) && (
+              <span className="text-[11px] font-mono-code shrink-0 flex items-center gap-1">
+                <span className="text-green-500">+{totalStats.additions}</span>
+                <span className="text-red-400">-{totalStats.deletions}</span>
+              </span>
+            )}
 
-          {(totalStats.additions > 0 || totalStats.deletions > 0) && (
-            <span className="text-[11px] font-mono-code shrink-0 flex items-center gap-1">
-              <span className="text-green-500">+{totalStats.additions}</span>
-              <span className="text-red-400">-{totalStats.deletions}</span>
-            </span>
-          )}
-
-          <div className="ml-auto flex items-center gap-2">
             {/* File picker dropdown */}
             {visibleChangedFiles.length > 0 && (
               <div className="relative" ref={filePickerRef}>
@@ -827,6 +824,8 @@ function DiffPanelInner({ sessionId }: { sessionId: string }) {
                         }
                         mode="full"
                         showLineNumbers={showLineNumbers}
+                        stickyFileHeaders
+                        collapsibleFiles
                       />
                       {diffData?.truncated && (
                         <div className="mt-1 px-3 py-1.5 rounded-b-lg bg-yellow-500/10 border border-yellow-500/20 text-yellow-400 text-[11px] text-center">
