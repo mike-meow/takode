@@ -18,6 +18,12 @@ import { formatRenderedHerdEventBatch } from "../herd-event-dispatcher.js";
 type SessionLike = any;
 
 const BOARD_STALL_THRESHOLD_MS = 3 * 60_000;
+const REVIEW_BOARD_STALL_STAGES = new Set([
+  "CODE_REVIEWING",
+  "MENTAL_SIMULATING",
+  "OUTCOME_REVIEWING",
+  "GROOM_REVIEWING",
+]);
 
 type BoardStallStatus = "running" | "idle" | "disconnected" | "missing";
 
@@ -756,6 +762,10 @@ export function pruneStaleBoardStalledHerdBatch(
   for (let i = 0; i < batch.events.length; i++) {
     const event = batch.events[i];
     const renderedLine = batch.renderedLines[i] ?? "";
+    if (isBoardStalledSupersededBySameBatchTurnEnd(session, event, batch.events, deps)) {
+      changed = true;
+      continue;
+    }
     if (!isLiveBoardStalledEvent(session, event, deps)) {
       changed = true;
       continue;
@@ -772,6 +782,42 @@ export function pruneStaleBoardStalledHerdBatch(
     batch: { events: keptEvents, renderedLines: keptRenderedLines },
     content: formatRenderedHerdEventBatch(keptEvents, keptRenderedLines),
   };
+}
+
+function isBoardStalledSupersededBySameBatchTurnEnd(
+  session: SessionLike,
+  event: TakodeEvent,
+  events: TakodeEvent[],
+  deps: BoardWatchdogDeps,
+): boolean {
+  if (event.event !== "board_stalled") return false;
+  const affectedSessionIds = getBoardStalledAffectedSessionIds(session, event, deps);
+  if (affectedSessionIds.size === 0) return false;
+  return events.some(
+    (candidate) =>
+      candidate.event === "turn_end" && candidate.ts >= event.ts && affectedSessionIds.has(candidate.sessionId),
+  );
+}
+
+function getBoardStalledAffectedSessionIds(
+  session: SessionLike,
+  event: TakodeEvent,
+  deps: BoardWatchdogDeps,
+): Set<string> {
+  if (event.event !== "board_stalled") return new Set();
+  if (isReviewerBoardStalledEvent(event)) {
+    const row = session.board.get(event.data.questId);
+    const reviewerSessionId = row ? resolveBoardReviewerSessionId(row.workerNum, deps) : undefined;
+    if (reviewerSessionId) return new Set([reviewerSessionId]);
+    if (event.data.reason.toLowerCase() === "reviewer missing") return new Set();
+  }
+  return new Set([event.sessionId]);
+}
+
+function isReviewerBoardStalledEvent(event: TakodeEvent): boolean {
+  if (event.event !== "board_stalled") return false;
+  const stage = (event.data.stage || "").trim().toUpperCase();
+  return REVIEW_BOARD_STALL_STAGES.has(stage) || event.data.reason.toLowerCase().startsWith("reviewer ");
 }
 
 function retireBoardDispatchState(session: SessionLike, questId: string, deps: BoardWatchdogDeps): void {

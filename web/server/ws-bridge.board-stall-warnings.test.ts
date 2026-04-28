@@ -686,7 +686,7 @@ describe("board stall warnings", () => {
       ...(opts?.blocked ? { waitFor: ["#9"] } : {}),
       updatedAt: now - 5 * 60_000,
     });
-    return { leaderId, dispatcher, launcherSessions };
+    return { leaderId, workerId, reviewerId, dispatcher, launcherSessions, leaderCli };
   }
 
   function setupCodexLeaderBoardStallHarness() {
@@ -944,6 +944,178 @@ describe("board stall warnings", () => {
     expect(sessionAfterInject.pendingCodexTurns[0]).toMatchObject({
       turnId: "turn-board-stall-active",
     });
+
+    dispatcher.destroy();
+  });
+
+  it("drops same-batch worker board_stalled events when turn_end supersedes them", async () => {
+    const { leaderId, dispatcher } = setupCodexLeaderBoardStallHarness();
+    const now = Date.now();
+    const boardStalled = {
+      id: 1,
+      event: "board_stalled",
+      sessionId: "worker-board-stall-codex",
+      sessionNum: 12,
+      sessionName: "worker-board-stall-codex",
+      ts: now,
+      data: {
+        questId: "q-1",
+        title: "Investigate delayed stall drop",
+        stage: "IMPLEMENTING",
+        signature: "q-1|IMPLEMENTING|disconnected",
+        workerStatus: "disconnected",
+        reviewerStatus: "missing",
+        stalledForMs: 240_000,
+        reason: "worker disconnected",
+        action: "inspect worker; resume or re-dispatch before review",
+      },
+    } as any;
+    const turnEnd = {
+      id: 2,
+      event: "turn_end",
+      sessionId: "worker-board-stall-codex",
+      sessionNum: 12,
+      sessionName: "worker-board-stall-codex",
+      ts: now + 1,
+      data: { duration_ms: 1000, reason: "result" },
+    } as any;
+    const rendered = renderHerdEventBatch([boardStalled, turnEnd]);
+    const expected = renderHerdEventBatch([turnEnd]);
+
+    const delivery = bridge.injectUserMessage(
+      leaderId,
+      rendered.content,
+      {
+        sessionId: "herd-events",
+        sessionLabel: "Herd Events",
+      },
+      {
+        events: [boardStalled, turnEnd],
+        renderedLines: rendered.renderedLines,
+      },
+    );
+    await Promise.resolve();
+
+    expect(delivery).toBe("queued");
+    const sessionAfterInject = bridge.getSession(leaderId)!;
+    expect(sessionAfterInject.pendingCodexInputs).toHaveLength(1);
+    expect(sessionAfterInject.pendingCodexInputs[0]?.content).toBe(expected.content);
+    expect(sessionAfterInject.pendingCodexInputs[0]?.content).toContain("1 event from 1 session\n\n");
+    expect(sessionAfterInject.pendingCodexInputs[0]?.content).toContain("turn_end");
+    expect(sessionAfterInject.pendingCodexInputs[0]?.content).not.toContain("board_stalled");
+
+    dispatcher.destroy();
+  });
+
+  it("drops same-batch reviewer board_stalled events even when attributed to the worker", async () => {
+    const { leaderId, workerId, reviewerId, dispatcher, leaderCli } = setupBoardStallHarness({ reviewer: true });
+    const now = Date.now();
+    leaderCli.send.mockClear();
+    const boardStalled = {
+      id: 1,
+      event: "board_stalled",
+      sessionId: workerId,
+      sessionNum: 2,
+      sessionName: workerId,
+      ts: now,
+      data: {
+        questId: "q-1",
+        title: "Investigate stall warning",
+        stage: "CODE_REVIEWING",
+        signature: "q-1|CODE_REVIEWING|reviewer|disconnected",
+        workerStatus: "disconnected",
+        reviewerStatus: "disconnected",
+        stalledForMs: 240_000,
+        reason: "reviewer disconnected",
+        action: "inspect reviewer; re-dispatch code review if needed",
+      },
+    } as any;
+    const turnEnd = {
+      id: 2,
+      event: "turn_end",
+      sessionId: reviewerId,
+      sessionNum: 3,
+      sessionName: reviewerId,
+      ts: now + 1,
+      data: { duration_ms: 1000, reason: "result" },
+    } as any;
+    const rendered = renderHerdEventBatch([boardStalled, turnEnd]);
+
+    const delivery = bridge.injectUserMessage(
+      leaderId,
+      rendered.content,
+      {
+        sessionId: "herd-events",
+        sessionLabel: "Herd Events",
+      },
+      {
+        events: [boardStalled, turnEnd],
+        renderedLines: rendered.renderedLines,
+      },
+    );
+
+    expect(delivery).toBe("sent");
+    const sentPayload = leaderCli.send.mock.calls.map((call: unknown[]) => String(call[0])).join("\n");
+    expect(sentPayload).toContain("1 event from 1 session");
+    expect(sentPayload).toContain("turn_end");
+    expect(sentPayload).not.toContain("board_stalled");
+
+    dispatcher.destroy();
+  });
+
+  it("keeps same-batch board_stalled events when turn_end is older than the stall event", async () => {
+    const { leaderId, dispatcher } = setupCodexLeaderBoardStallHarness();
+    const now = Date.now();
+    const turnEnd = {
+      id: 1,
+      event: "turn_end",
+      sessionId: "worker-board-stall-codex",
+      sessionNum: 12,
+      sessionName: "worker-board-stall-codex",
+      ts: now - 1,
+      data: { duration_ms: 1000, reason: "result" },
+    } as any;
+    const boardStalled = {
+      id: 2,
+      event: "board_stalled",
+      sessionId: "worker-board-stall-codex",
+      sessionNum: 12,
+      sessionName: "worker-board-stall-codex",
+      ts: now,
+      data: {
+        questId: "q-1",
+        title: "Investigate delayed stall drop",
+        stage: "IMPLEMENTING",
+        signature: "q-1|IMPLEMENTING|disconnected",
+        workerStatus: "disconnected",
+        reviewerStatus: "missing",
+        stalledForMs: 240_000,
+        reason: "worker disconnected",
+        action: "inspect worker; resume or re-dispatch before review",
+      },
+    } as any;
+    const rendered = renderHerdEventBatch([turnEnd, boardStalled]);
+
+    const delivery = bridge.injectUserMessage(
+      leaderId,
+      rendered.content,
+      {
+        sessionId: "herd-events",
+        sessionLabel: "Herd Events",
+      },
+      {
+        events: [turnEnd, boardStalled],
+        renderedLines: rendered.renderedLines,
+      },
+    );
+    await Promise.resolve();
+
+    expect(delivery).toBe("queued");
+    const sessionAfterInject = bridge.getSession(leaderId)!;
+    expect(sessionAfterInject.pendingCodexInputs).toHaveLength(1);
+    expect(sessionAfterInject.pendingCodexInputs[0]?.content).toContain("2 events from 1 session");
+    expect(sessionAfterInject.pendingCodexInputs[0]?.content).toContain("turn_end");
+    expect(sessionAfterInject.pendingCodexInputs[0]?.content).toContain("board_stalled");
 
     dispatcher.destroy();
   });
