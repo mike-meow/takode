@@ -98,6 +98,7 @@ export type QuestJourneyPhaseId = (typeof QUEST_JOURNEY_PHASE_IDS)[number];
 export interface QuestJourneyPhase {
   id: QuestJourneyPhaseId;
   label: string;
+  color: QuestJourneyPhaseColor;
   boardState: QuestJourneyState;
   assigneeRole: QuestJourneyAssigneeRole;
   contract: string;
@@ -105,9 +106,18 @@ export interface QuestJourneyPhase {
   aliases: string[];
 }
 
+export interface QuestJourneyPhaseColor {
+  name: string;
+  accent: string;
+}
+
 type QuestJourneyPhaseFile = {
   id: string;
   label: string;
+  color?: {
+    name?: string;
+    accent?: string;
+  };
   boardState: string;
   assigneeRole: string;
   contract: string;
@@ -127,6 +137,15 @@ function parseQuestJourneyAssigneeRole(value: string): QuestJourneyAssigneeRole 
   throw new Error(`Quest Journey phase metadata mismatch: unknown assignee role ${value}`);
 }
 
+function parseQuestJourneyPhaseColor(value: QuestJourneyPhaseFile["color"]): QuestJourneyPhaseColor {
+  const name = value?.name?.trim();
+  const accent = value?.accent?.trim();
+  if (!name || !accent || !/^#[0-9a-f]{6}$/i.test(accent)) {
+    throw new Error("Quest Journey phase metadata mismatch: phase color requires name and #rrggbb accent");
+  }
+  return { name, accent };
+}
+
 function defineQuestJourneyPhase<Id extends QuestJourneyPhaseId>(
   expectedId: Id,
   phase: QuestJourneyPhaseFile,
@@ -137,6 +156,7 @@ function defineQuestJourneyPhase<Id extends QuestJourneyPhaseId>(
   return {
     ...phase,
     id: expectedId,
+    color: parseQuestJourneyPhaseColor(phase.color),
     boardState: parseQuestJourneyState(phase.boardState),
     assigneeRole: parseQuestJourneyAssigneeRole(phase.assigneeRole),
     aliases: [...(phase.aliases ?? [])],

@@ -122,7 +122,7 @@ describe("BoardTable", () => {
     expect(screen.getByText("CUSTOM_STATUS")).toHaveClass("text-cc-muted");
   });
 
-  it("renders a reusable Quest Journey timeline when phase bookkeeping is present", () => {
+  it("keeps board Journey rendering compact and current-phase-first", () => {
     const board: BoardRowData[] = [
       {
         questId: "q-1",
@@ -131,6 +131,7 @@ describe("BoardTable", () => {
           presetId: "full-code",
           phaseIds: ["alignment", "implement", "code-review", "port"],
           currentPhaseId: "implement",
+          phaseNotes: { "2": "Inspect only the follow-up diff" },
           revisionReason: "Need code review before port",
         },
         updatedAt: 1,
@@ -139,14 +140,17 @@ describe("BoardTable", () => {
 
     render(<BoardTable board={board} />);
 
-    const timeline = screen.getByTestId("quest-journey-timeline");
-    expect(within(timeline).getByText("Alignment")).toHaveClass("text-cc-muted/65");
-    expect(within(timeline).getByText("Implement")).toHaveClass("font-semibold");
-    expect(within(timeline).getByText("Code Review")).toHaveClass("text-violet-400/90");
-    expect(timeline).toHaveAttribute("title", "Journey revised: Need code review before port");
+    const summary = screen.getByTestId("quest-journey-compact-summary");
+    expect(summary).toHaveAttribute("data-journey-mode", "active");
+    expect(within(summary).getByText("Implement")).toBeInTheDocument();
+    expect(within(summary).getByText("2/4")).toBeInTheDocument();
+    expect(within(summary).getByText("1 note")).toBeInTheDocument();
+    expect(summary).toHaveAttribute("title", "Journey revised: Need code review before port");
+    expect(screen.queryByText("Alignment")).not.toBeInTheDocument();
+    expect(screen.queryByText("Inspect only the follow-up diff")).not.toBeInTheDocument();
   });
 
-  it("highlights the correct repeated phase occurrence when activePhaseIndex points to a later match", () => {
+  it("summarizes the active repeated phase occurrence by position", () => {
     const board: BoardRowData[] = [
       {
         questId: "q-720",
@@ -171,11 +175,34 @@ describe("BoardTable", () => {
 
     render(<BoardTable board={board} />);
 
-    const timeline = screen.getByTestId("quest-journey-timeline");
-    const mentalSimulationLabels = within(timeline).getAllByText("Mental Simulation");
-    expect(mentalSimulationLabels).toHaveLength(2);
-    expect(mentalSimulationLabels[0]).not.toHaveClass("font-semibold");
-    expect(mentalSimulationLabels[1]).toHaveClass("font-semibold");
+    const summary = screen.getByTestId("quest-journey-compact-summary");
+    expect(within(summary).getByText("Mental Simulation")).toBeInTheDocument();
+    expect(within(summary).getByText("5/7")).toBeInTheDocument();
+  });
+
+  it("renders proposed Journey rows as scheduling previews in compact board cells", () => {
+    const board: BoardRowData[] = [
+      {
+        questId: "q-924",
+        status: "PROPOSED",
+        journey: {
+          mode: "proposed",
+          presetId: "full-code",
+          phaseIds: ["alignment", "implement", "code-review", "port"],
+          activePhaseIndex: 1,
+          currentPhaseId: "implement",
+        },
+        updatedAt: 1,
+      },
+    ];
+
+    render(<BoardTable board={board} />);
+
+    const summary = screen.getByTestId("quest-journey-compact-summary");
+    expect(summary).toHaveAttribute("data-journey-mode", "proposed");
+    expect(within(summary).getByText("Proposed Journey")).toBeInTheDocument();
+    expect(within(summary).getByText("4 phases")).toBeInTheDocument();
+    expect(screen.queryByText("Implement")).not.toBeInTheDocument();
   });
 
   it("renders worker and reviewer session links in a wrapping same-line row with their own status dots", () => {

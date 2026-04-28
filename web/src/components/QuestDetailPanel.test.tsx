@@ -149,7 +149,7 @@ describe("QuestDetailPanel", () => {
     expect(screen.getByText("mobile")).toBeTruthy();
   });
 
-  it("shows the reusable Journey timeline when the quest is active on the board", () => {
+  it("shows the vertical Journey detail with phase notes when the quest is active on the board", () => {
     const quest = makeVerificationQuest({ questId: "q-42", status: "in_progress" });
     useStore.setState({
       quests: [quest],
@@ -166,6 +166,9 @@ describe("QuestDetailPanel", () => {
                 presetId: "full-code",
                 phaseIds: ["alignment", "implement", "code-review", "port"],
                 currentPhaseId: "implement",
+                phaseNotes: {
+                  "2": "Inspect only the follow-up diff",
+                },
               },
             },
           ],
@@ -176,10 +179,58 @@ describe("QuestDetailPanel", () => {
     render(<QuestDetailPanel />);
 
     const timeline = screen.getByTestId("quest-journey-timeline");
+    expect(timeline).toHaveAttribute("data-journey-mode", "active");
+    expect(screen.getByTestId("quest-journey-detail-list")).toBeInTheDocument();
     expect(within(timeline).getByText("Alignment")).toBeInTheDocument();
     expect(within(timeline).getByText("Implement")).toBeInTheDocument();
     expect(within(timeline).getByText("Code Review")).toBeInTheDocument();
     expect(within(timeline).getByText("Port")).toBeInTheDocument();
+    expect(within(timeline).getByText("Inspect only the follow-up diff")).toBeInTheDocument();
+    expect(within(timeline).getByText("current")).toBeInTheDocument();
+    expect(within(timeline).getByText("Code Review").closest("li")).toHaveAttribute("data-phase-color", "violet");
+  });
+
+  it("shows proposed board Journeys as preview details without current phase semantics", () => {
+    const quest = makeVerificationQuest({ questId: "q-924", status: "refined" });
+    useStore.setState({
+      quests: [quest],
+      questOverlayId: "q-924",
+      sessionBoards: new Map([
+        [
+          "leader-1",
+          [
+            {
+              questId: "q-924",
+              status: "PROPOSED",
+              updatedAt: 1,
+              journey: {
+                mode: "proposed",
+                presetId: "full-code",
+                phaseIds: ["alignment", "implement", "code-review", "port"],
+                activePhaseIndex: 1,
+                currentPhaseId: "implement",
+                phaseNotes: {
+                  "0": "Ask user to approve this Journey before dispatch",
+                },
+              },
+            },
+          ],
+        ],
+      ]),
+    });
+
+    render(<QuestDetailPanel />);
+
+    const timeline = screen.getByTestId("quest-journey-timeline");
+    expect(timeline).toHaveAttribute("data-journey-mode", "proposed");
+    expect(within(timeline).getByText("Proposed Journey")).toBeInTheDocument();
+    expect(within(timeline).getByText("Ask user to approve this Journey before dispatch")).toBeInTheDocument();
+    expect(within(timeline).getAllByText("preview")).toHaveLength(4);
+    expect(within(timeline).queryByText("current")).not.toBeInTheDocument();
+    for (const phaseRow of timeline.querySelectorAll("li")) {
+      expect(phaseRow).toHaveAttribute("data-phase-current", "false");
+      expect(phaseRow).toHaveAttribute("data-phase-state", "proposed");
+    }
   });
 
   it("does not show the Journey timeline when the quest is not active on the board", () => {

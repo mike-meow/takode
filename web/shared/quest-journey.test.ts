@@ -192,6 +192,7 @@ describe("Quest Journey phases", () => {
     expect(getQuestJourneyPhase("implement")).toEqual(
       expect.objectContaining({
         assigneeRole: "worker",
+        color: { name: "green", accent: "#4ade80" },
         contract: expect.stringContaining("cheap, local, reversible evidence"),
         nextLeaderAction: expect.stringContaining("next review, execute, or bookkeeping phase"),
       }),
@@ -210,6 +211,14 @@ describe("Quest Journey phases", () => {
         nextLeaderAction: expect.stringContaining("route to implement, execute, alignment"),
       }),
     );
+  });
+
+  it("loads explicit UI color metadata from every phase definition", () => {
+    for (const phase of QUEST_JOURNEY_PHASES) {
+      expect(phase.color.name).toEqual(expect.any(String));
+      expect(phase.color.accent).toMatch(/^#[0-9a-f]{6}$/i);
+    }
+    expect(getQuestJourneyPhase("code-review")?.color).toEqual({ name: "violet", accent: "#a78bfa" });
   });
 
   it("defines alignment as a lightweight read-in phase and explore as the deeper investigation phase", () => {

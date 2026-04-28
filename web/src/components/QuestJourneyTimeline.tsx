@@ -1,149 +1,195 @@
+import type { CSSProperties } from "react";
 import {
   getQuestJourneyCurrentPhaseIndex,
   getQuestJourneyPhase,
+  type QuestJourneyPhase,
   type QuestJourneyPlanState,
 } from "../../shared/quest-journey.js";
 
-type PhaseTone = {
-  lineClassName: string;
-  dotClassName: string;
-  currentDotClassName: string;
-  labelClassName: string;
-  currentLabelClassName: string;
-};
+type JourneyVariant = "horizontal" | "compact" | "vertical";
+type PhaseState = "proposed" | "completed" | "current" | "upcoming";
 
-const COMPLETED_TONE: PhaseTone = {
-  lineClassName: "bg-cc-muted/30",
-  dotClassName: "border-cc-muted/35 bg-cc-muted/15",
-  currentDotClassName: "border-cc-muted/35 bg-cc-muted/15",
-  labelClassName: "text-cc-muted/65",
-  currentLabelClassName: "text-cc-muted/80",
-};
-
-const PHASE_TONES: Record<string, PhaseTone> = {
-  PLANNING: {
-    lineClassName: "bg-green-400/45",
-    dotClassName: "border-green-400/70 bg-transparent",
-    currentDotClassName: "border-green-400 bg-green-400/25 ring-2 ring-green-400/25",
-    labelClassName: "text-green-400/85",
-    currentLabelClassName: "text-green-300",
-  },
-  EXPLORING: {
-    lineClassName: "bg-amber-400/45",
-    dotClassName: "border-amber-400/70 bg-transparent",
-    currentDotClassName: "border-amber-400 bg-amber-400/20 ring-2 ring-amber-400/25",
-    labelClassName: "text-amber-400/85",
-    currentLabelClassName: "text-amber-300",
-  },
-  IMPLEMENTING: {
-    lineClassName: "bg-green-400/45",
-    dotClassName: "border-green-400/70 bg-transparent",
-    currentDotClassName: "border-green-400 bg-green-400/25 ring-2 ring-green-400/25",
-    labelClassName: "text-green-400/85",
-    currentLabelClassName: "text-green-300",
-  },
-  CODE_REVIEWING: {
-    lineClassName: "bg-violet-500/45",
-    dotClassName: "border-violet-500/70 bg-transparent",
-    currentDotClassName: "border-violet-500 bg-violet-500/20 ring-2 ring-violet-500/25",
-    labelClassName: "text-violet-400/90",
-    currentLabelClassName: "text-violet-300",
-  },
-  MENTAL_SIMULATING: {
-    lineClassName: "bg-fuchsia-400/45",
-    dotClassName: "border-fuchsia-400/70 bg-transparent",
-    currentDotClassName: "border-fuchsia-400 bg-fuchsia-400/20 ring-2 ring-fuchsia-400/25",
-    labelClassName: "text-fuchsia-400/90",
-    currentLabelClassName: "text-fuchsia-300",
-  },
-  EXECUTING: {
-    lineClassName: "bg-orange-400/45",
-    dotClassName: "border-orange-400/70 bg-transparent",
-    currentDotClassName: "border-orange-400 bg-orange-400/20 ring-2 ring-orange-400/25",
-    labelClassName: "text-orange-400/90",
-    currentLabelClassName: "text-orange-300",
-  },
-  OUTCOME_REVIEWING: {
-    lineClassName: "bg-cyan-400/45",
-    dotClassName: "border-cyan-400/70 bg-transparent",
-    currentDotClassName: "border-cyan-400 bg-cyan-400/20 ring-2 ring-cyan-400/25",
-    labelClassName: "text-cyan-400/90",
-    currentLabelClassName: "text-cyan-300",
-  },
-  BOOKKEEPING: {
-    lineClassName: "bg-yellow-300/45",
-    dotClassName: "border-yellow-300/70 bg-transparent",
-    currentDotClassName: "border-yellow-300 bg-yellow-300/20 ring-2 ring-yellow-300/25",
-    labelClassName: "text-yellow-300/90",
-    currentLabelClassName: "text-yellow-200",
-  },
-  PORTING: {
-    lineClassName: "bg-blue-400/45",
-    dotClassName: "border-blue-400/70 bg-transparent",
-    currentDotClassName: "border-blue-400 bg-blue-400/20 ring-2 ring-blue-400/25",
-    labelClassName: "text-blue-400/90",
-    currentLabelClassName: "text-blue-300",
-  },
-};
-
-function toneForPhase(phaseId: string): PhaseTone {
-  const boardState = getQuestJourneyPhase(phaseId)?.boardState;
-  return (boardState && PHASE_TONES[boardState]) || COMPLETED_TONE;
+interface PhaseItem {
+  phase: QuestJourneyPhase;
+  index: number;
+  state: PhaseState;
+  note?: string;
 }
 
-export function QuestJourneyTimeline({
+const MUTED_DOT_CLASS = "border-cc-muted/35 bg-cc-muted/15";
+const MUTED_LABEL_CLASS = "text-cc-muted/65";
+
+function colorWithAlpha(hex: string, alpha: number): string {
+  const value = hex.replace("#", "");
+  const red = Number.parseInt(value.slice(0, 2), 16);
+  const green = Number.parseInt(value.slice(2, 4), 16);
+  const blue = Number.parseInt(value.slice(4, 6), 16);
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+}
+
+function phaseAccentStyle(phase: QuestJourneyPhase, alpha = 1): CSSProperties {
+  return { color: alpha === 1 ? phase.color.accent : colorWithAlpha(phase.color.accent, alpha) };
+}
+
+function phaseBorderStyle(phase: QuestJourneyPhase, alpha = 1): CSSProperties {
+  return { borderColor: alpha === 1 ? phase.color.accent : colorWithAlpha(phase.color.accent, alpha) };
+}
+
+function phaseLineStyle(phase: QuestJourneyPhase, alpha = 0.45): CSSProperties {
+  return { backgroundColor: colorWithAlpha(phase.color.accent, alpha) };
+}
+
+function phaseCurrentDotStyle(phase: QuestJourneyPhase): CSSProperties {
+  return {
+    backgroundColor: phase.color.accent,
+    borderColor: phase.color.accent,
+    boxShadow: `0 0 0 3px ${colorWithAlpha(phase.color.accent, 0.18)}`,
+  };
+}
+
+function isProposedJourney(journey: QuestJourneyPlanState, status?: string | null): boolean {
+  return journey.mode === "proposed" || (status ?? "").trim().toUpperCase() === "PROPOSED";
+}
+
+function getPhaseItems(journey: QuestJourneyPlanState, status?: string | null): PhaseItem[] {
+  const phaseIds = journey.phaseIds ?? [];
+  const proposed = isProposedJourney(journey, status);
+  const currentIndex = proposed ? -1 : (getQuestJourneyCurrentPhaseIndex(journey, status) ?? -1);
+
+  return phaseIds.flatMap((phaseId, index) => {
+    const phase = getQuestJourneyPhase(phaseId);
+    if (!phase) return [];
+
+    const note = journey.phaseNotes?.[String(index)]?.trim() || undefined;
+    const state: PhaseState = proposed
+      ? "proposed"
+      : currentIndex < 0
+        ? "upcoming"
+        : index < currentIndex
+          ? "completed"
+          : index === currentIndex
+            ? "current"
+            : "upcoming";
+    return [{ phase, index, state, note }];
+  });
+}
+
+function phaseDotClassName(item: PhaseItem): string {
+  if (item.state === "completed") return MUTED_DOT_CLASS;
+  if (item.state === "current") return "border";
+  return "border bg-transparent";
+}
+
+function phaseDotStyle(item: PhaseItem): CSSProperties | undefined {
+  if (item.state === "completed") return undefined;
+  if (item.state === "current") return phaseCurrentDotStyle(item.phase);
+  return phaseBorderStyle(item.phase, item.state === "proposed" ? 0.55 : 0.75);
+}
+
+function phaseLabelClassName(item: PhaseItem, compact = false): string {
+  const sizeClass = compact ? "text-[10px]" : "text-[11px]";
+  if (item.state === "completed") return `${sizeClass} ${MUTED_LABEL_CLASS}`;
+  if (item.state === "current") return `${sizeClass} font-semibold text-cc-fg`;
+  if (item.state === "proposed") return `${sizeClass} text-cc-muted`;
+  return `${sizeClass}`;
+}
+
+function phaseLabelStyle(item: PhaseItem): CSSProperties | undefined {
+  if (item.state === "completed" || item.state === "current" || item.state === "proposed") return undefined;
+  return phaseAccentStyle(item.phase, 0.9);
+}
+
+function noteCount(journey: QuestJourneyPlanState): number {
+  return Object.values(journey.phaseNotes ?? {}).filter((note) => note.trim()).length;
+}
+
+export function QuestJourneyCompactSummary({
   journey,
   status,
   className,
-  compact = false,
 }: {
   journey: QuestJourneyPlanState;
   status?: string | null;
   className?: string;
-  compact?: boolean;
 }) {
-  const phaseIds = journey.phaseIds ?? [];
-  if (phaseIds.length === 0) return null;
+  const items = getPhaseItems(journey, status);
+  if (items.length === 0) return null;
 
-  const currentIndex = getQuestJourneyCurrentPhaseIndex(journey, status) ?? -1;
-  const rootTitle = journey.revisionReason ? `Journey revised: ${journey.revisionReason}` : undefined;
+  const proposed = isProposedJourney(journey, status);
+  const currentItem = items.find((item) => item.state === "current");
+  const label = proposed ? "Proposed Journey" : (currentItem?.phase.label ?? "Journey");
+  const position = proposed ? `${items.length} phases` : currentItem ? `${currentItem.index + 1}/${items.length}` : "";
+  const notes = noteCount(journey);
 
   return (
     <div
-      className={`flex max-w-full flex-wrap items-center gap-y-1 ${compact ? "gap-x-0.5" : "gap-x-1"} ${className ?? ""}`.trim()}
-      title={rootTitle}
-      data-testid="quest-journey-timeline"
+      className={`flex min-w-0 max-w-full items-center gap-2 ${className ?? ""}`.trim()}
+      data-testid="quest-journey-compact-summary"
+      data-journey-mode={proposed ? "proposed" : "active"}
+      title={journey.revisionReason ? `Journey revised: ${journey.revisionReason}` : undefined}
     >
-      {phaseIds.map((phaseId, index) => {
-        const phase = getQuestJourneyPhase(phaseId);
-        if (!phase) return null;
+      <span
+        className={`h-2.5 w-2.5 shrink-0 rounded-full border ${currentItem ? "" : "border-cc-muted/45 bg-transparent"}`.trim()}
+        style={currentItem ? phaseCurrentDotStyle(currentItem.phase) : undefined}
+        aria-hidden="true"
+      />
+      <span className="min-w-0 truncate font-medium text-cc-fg">{label}</span>
+      {position && <span className="shrink-0 text-[10px] text-cc-muted">{position}</span>}
+      {notes > 0 && (
+        <span className="shrink-0 text-[10px] text-amber-200/90">{`${notes} note${notes === 1 ? "" : "s"}`}</span>
+      )}
+    </div>
+  );
+}
 
-        const isCompleted = currentIndex >= 0 && index < currentIndex;
-        const isCurrent = currentIndex >= 0 && index === currentIndex;
-        const tone = isCompleted ? COMPLETED_TONE : toneForPhase(phaseId);
-        const previousCompleted = currentIndex >= 0 && index - 1 < currentIndex;
-        const connectorTone =
-          index === 0 ? null : previousCompleted ? COMPLETED_TONE : toneForPhase(phaseIds[index - 1]);
+function HorizontalJourney({
+  items,
+  journey,
+  status,
+  compact,
+  className,
+}: {
+  items: PhaseItem[];
+  journey: QuestJourneyPlanState;
+  status?: string | null;
+  compact: boolean;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`flex max-w-full flex-wrap items-center gap-y-1 ${compact ? "gap-x-0.5" : "gap-x-1"} ${className ?? ""}`.trim()}
+      title={journey.revisionReason ? `Journey revised: ${journey.revisionReason}` : undefined}
+      data-testid="quest-journey-timeline"
+      data-journey-mode={isProposedJourney(journey, status) ? "proposed" : "active"}
+    >
+      {items.map((item, itemIndex) => {
+        const connectorPhase = items[itemIndex - 1]?.phase;
+        const connectorMuted = itemIndex > 0 && items[itemIndex - 1]?.state === "completed";
 
         return (
           <div
-            key={`${phase.id}-${index}`}
+            key={`${item.phase.id}-${item.index}`}
             className="inline-flex min-w-0 items-center"
-            data-phase-index={index}
-            data-phase-current={isCurrent ? "true" : "false"}
+            data-phase-index={item.index}
+            data-phase-current={item.state === "current" ? "true" : "false"}
+            data-phase-state={item.state}
+            data-phase-color={item.phase.color.name}
           >
-            {connectorTone && (
-              <span className={`mx-1 h-px w-3 shrink-0 ${connectorTone.lineClassName}`} aria-hidden="true" />
+            {itemIndex > 0 && (
+              <span
+                className={`mx-1 h-px w-3 shrink-0 ${connectorMuted ? "bg-cc-muted/30" : ""}`}
+                style={connectorMuted || !connectorPhase ? undefined : phaseLineStyle(connectorPhase)}
+                aria-hidden="true"
+              />
             )}
             <span className="inline-flex min-w-0 items-center gap-1">
               <span
-                className={`h-2.5 w-2.5 shrink-0 rounded-full border ${isCurrent ? tone.currentDotClassName : tone.dotClassName}`}
+                className={`h-2.5 w-2.5 shrink-0 rounded-full ${phaseDotClassName(item)}`}
+                style={phaseDotStyle(item)}
                 aria-hidden="true"
               />
-              <span
-                className={`min-w-0 truncate ${compact ? "text-[10px]" : "text-[11px]"} ${isCurrent ? `${tone.currentLabelClassName} font-semibold` : tone.labelClassName}`}
-              >
-                {phase.label}
+              <span className={`min-w-0 truncate ${phaseLabelClassName(item, compact)}`} style={phaseLabelStyle(item)}>
+                {item.phase.label}
               </span>
             </span>
           </div>
@@ -151,4 +197,120 @@ export function QuestJourneyTimeline({
       })}
     </div>
   );
+}
+
+function VerticalJourney({
+  items,
+  journey,
+  status,
+  className,
+}: {
+  items: PhaseItem[];
+  journey: QuestJourneyPlanState;
+  status?: string | null;
+  className?: string;
+}) {
+  const proposed = isProposedJourney(journey, status);
+  return (
+    <div
+      className={`rounded-md border border-cc-border bg-cc-hover/20 p-3 ${className ?? ""}`.trim()}
+      title={journey.revisionReason ? `Journey revised: ${journey.revisionReason}` : undefined}
+      data-testid="quest-journey-timeline"
+      data-journey-mode={proposed ? "proposed" : "active"}
+    >
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="text-[10px] font-medium uppercase tracking-[0.08em] text-cc-muted/70">
+            {proposed ? "Proposed Journey" : "Active Journey"}
+          </div>
+          {journey.revisionReason && (
+            <div className="mt-0.5 truncate text-[11px] text-cc-muted">{journey.revisionReason}</div>
+          )}
+        </div>
+        <div className="shrink-0 text-[10px] text-cc-muted">{`${items.length} phase${items.length === 1 ? "" : "s"}`}</div>
+      </div>
+      <ol className="space-y-0" data-testid="quest-journey-detail-list">
+        {items.map((item, index) => {
+          const hasNext = index < items.length - 1;
+          return (
+            <li
+              key={`${item.phase.id}-${item.index}`}
+              className="grid grid-cols-[18px_1fr] gap-x-2"
+              data-phase-index={item.index}
+              data-phase-current={item.state === "current" ? "true" : "false"}
+              data-phase-state={item.state}
+              data-phase-color={item.phase.color.name}
+            >
+              <div className="flex flex-col items-center">
+                <span
+                  className={`mt-1 h-3 w-3 rounded-full ${phaseDotClassName(item)}`}
+                  style={phaseDotStyle(item)}
+                  aria-hidden="true"
+                />
+                {hasNext && (
+                  <span
+                    className={`mt-1 w-px flex-1 ${item.state === "completed" ? "bg-cc-muted/30" : ""}`}
+                    style={item.state === "completed" ? undefined : phaseLineStyle(item.phase, proposed ? 0.2 : 0.35)}
+                    aria-hidden="true"
+                  />
+                )}
+              </div>
+              <div className={`pb-3 ${hasNext ? "min-h-12" : ""}`}>
+                <div className="flex min-w-0 items-baseline gap-2">
+                  <span className="shrink-0 text-[10px] text-cc-muted">{item.index + 1}</span>
+                  <span
+                    className={`min-w-0 truncate text-xs ${phaseLabelClassName(item)}`}
+                    style={phaseLabelStyle(item)}
+                  >
+                    {item.phase.label}
+                  </span>
+                  {item.state === "current" && (
+                    <span className="shrink-0 rounded-full bg-cc-primary/15 px-1.5 py-0.5 text-[10px] text-cc-primary">
+                      current
+                    </span>
+                  )}
+                  {item.state === "proposed" && (
+                    <span className="shrink-0 rounded-full border border-cc-border px-1.5 py-0.5 text-[10px] text-cc-muted">
+                      preview
+                    </span>
+                  )}
+                </div>
+                {item.note && (
+                  <div className="mt-1 rounded border border-amber-300/20 bg-amber-300/10 px-2 py-1 text-[11px] leading-relaxed text-amber-100/90">
+                    {item.note}
+                  </div>
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
+}
+
+export function QuestJourneyTimeline({
+  journey,
+  status,
+  className,
+  compact = false,
+  variant,
+}: {
+  journey: QuestJourneyPlanState;
+  status?: string | null;
+  className?: string;
+  compact?: boolean;
+  variant?: JourneyVariant;
+}) {
+  const items = getPhaseItems(journey, status);
+  if (items.length === 0) return null;
+
+  const resolvedVariant: JourneyVariant = variant ?? (compact ? "compact" : "horizontal");
+  if (resolvedVariant === "compact") {
+    return <QuestJourneyCompactSummary journey={journey} status={status} className={className} />;
+  }
+  if (resolvedVariant === "vertical") {
+    return <VerticalJourney items={items} journey={journey} status={status} className={className} />;
+  }
+  return <HorizontalJourney items={items} journey={journey} status={status} compact={compact} className={className} />;
 }

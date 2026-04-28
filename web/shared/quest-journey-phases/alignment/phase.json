@@ -1,6 +1,7 @@
 {
   "id": "alignment",
   "label": "Alignment",
+  "color": { "name": "emerald", "accent": "#34d399" },
   "boardState": "PLANNING",
   "assigneeRole": "worker",
   "contract": "Do a lightweight read-in to confirm concrete understanding, ambiguities, clarification questions, and whether deeper exploration is needed before implementation or execution.",

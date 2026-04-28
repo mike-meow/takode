@@ -1,6 +1,7 @@
 {
   "id": "implement",
   "label": "Implement",
+  "color": { "name": "green", "accent": "#4ade80" },
   "boardState": "IMPLEMENTING",
   "assigneeRole": "worker",
   "contract": "Make approved code, docs, prompts, config, or artifact changes and gather cheap, local, reversible evidence when that stays within the approved scope.",

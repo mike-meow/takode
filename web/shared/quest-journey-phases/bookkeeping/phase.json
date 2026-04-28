@@ -1,6 +1,7 @@
 {
   "id": "bookkeeping",
   "label": "Bookkeeping",
+  "color": { "name": "yellow", "accent": "#fde047" },
   "boardState": "BOOKKEEPING",
   "assigneeRole": "worker",
   "contract": "Record durable shared external state such as quest updates, stream updates, artifact locations, handoff facts, and superseded facts.",

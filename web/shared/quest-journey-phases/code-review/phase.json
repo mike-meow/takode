@@ -1,6 +1,7 @@
 {
   "id": "code-review",
   "label": "Code Review",
+  "color": { "name": "violet", "accent": "#a78bfa" },
   "boardState": "CODE_REVIEWING",
   "assigneeRole": "reviewer",
   "contract": "Review tracked code or tracked artifacts for correctness, maintainability, tests, security, and regression risk.",

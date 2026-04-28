@@ -1,6 +1,7 @@
 {
   "id": "execute",
   "label": "Execute",
+  "color": { "name": "orange", "accent": "#fb923c" },
   "boardState": "EXECUTING",
   "assigneeRole": "worker",
   "contract": "Run approved expensive, risky, long-running, externally consequential, or approval-gated operations.",

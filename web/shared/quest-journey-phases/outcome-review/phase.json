@@ -1,6 +1,7 @@
 {
   "id": "outcome-review",
   "label": "Outcome Review",
+  "color": { "name": "cyan", "accent": "#22d3ee" },
   "boardState": "OUTCOME_REVIEWING",
   "assigneeRole": "reviewer",
   "contract": "Reviewer-owned acceptance judgment over external or non-code outcomes such as metrics, logs, artifacts, prompt behavior, or UX trial notes.",

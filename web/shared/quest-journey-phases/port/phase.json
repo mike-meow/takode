@@ -1,6 +1,7 @@
 {
   "id": "port",
   "label": "Port",
+  "color": { "name": "blue", "accent": "#60a5fa" },
   "boardState": "PORTING",
   "assigneeRole": "worker",
   "contract": "Sync accepted tracked changes back to the main repo.",

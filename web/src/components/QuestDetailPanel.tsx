@@ -889,7 +889,11 @@ export function QuestDetailPanel() {
             </div>
             {activeBoardRow?.journey && (
               <div className="mt-2 max-w-full">
-                <QuestJourneyTimeline journey={activeBoardRow.journey} status={activeBoardRow.status} />
+                <QuestJourneyTimeline
+                  journey={activeBoardRow.journey}
+                  status={activeBoardRow.status}
+                  variant="vertical"
+                />
               </div>
             )}
             {quest.tags && quest.tags.length > 0 && (

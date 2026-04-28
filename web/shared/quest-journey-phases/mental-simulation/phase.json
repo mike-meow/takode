@@ -1,6 +1,7 @@
 {
   "id": "mental-simulation",
   "label": "Mental Simulation",
+  "color": { "name": "fuchsia", "accent": "#e879f9" },
   "boardState": "MENTAL_SIMULATING",
   "assigneeRole": "reviewer",
   "contract": "Review a new design, workflow, or implementation against concrete scenarios or historical data.",
