@@ -73,7 +73,10 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
 
     // Gather session context if available
     let history = sessionId ? (wsBridge.getSession(sessionId)?.messageHistory ?? null) : null;
-    const extra: Parameters<typeof enhanceTranscript>[4] = { mode: "dictation" };
+    const extra: Parameters<typeof enhanceTranscript>[4] = {
+      mode: "dictation",
+      customVocabulary: settings.transcriptionConfig.customVocabulary || undefined,
+    };
     if (sessionId) {
       const taskHistory = wsBridge.getSession(sessionId)?.taskHistory ?? [];
       extra.taskTitles = taskHistory.map((t) => t.title);
@@ -298,6 +301,7 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
               taskTitles: taskHistory.map((t) => t.title),
               sessionName: sessionId ? sessionNames.getName(sessionId) : undefined,
               activeSessionNames: enhOtherNames.length > 0 ? enhOtherNames : undefined,
+              customVocabulary: settings.transcriptionConfig.customVocabulary || undefined,
             },
           );
 
@@ -351,6 +355,7 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
               taskTitles: taskHistory.map((t) => t.title),
               sessionName: sessionId ? sessionNames.getName(sessionId) : undefined,
               activeSessionNames: enhOtherNames.length > 0 ? enhOtherNames : undefined,
+              customVocabulary: settings.transcriptionConfig.customVocabulary || undefined,
             },
           );
 
@@ -399,6 +404,7 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
             taskTitles: taskHistory.map((t) => t.title),
             sessionName: sessionNames.getName(sessionId!),
             activeSessionNames: enhOtherNames.length > 0 ? enhOtherNames : undefined,
+            customVocabulary: settings.transcriptionConfig.customVocabulary || undefined,
           });
 
           // Log for debug panel

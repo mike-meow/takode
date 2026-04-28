@@ -12,6 +12,7 @@ import {
 } from "./transcription-enhancer.js";
 
 const {
+  DICTATION_DEFAULT_SYSTEM_PROMPT,
   VOICE_EDIT_BULLET_SYSTEM_PROMPT,
   VOICE_EDIT_DEFAULT_SYSTEM_PROMPT,
   getVoiceEditSystemPrompt,
@@ -281,6 +282,20 @@ describe("buildTranscriptionContext", () => {
 // ─── buildEnhancementPrompt ─────────────────────────────────────────────────
 
 describe("buildEnhancementPrompt", () => {
+  it("uses VoiceInk-style guardrails for context priority, corrections, and clean-only output", () => {
+    expect(DICTATION_DEFAULT_SYSTEM_PROMPT).toContain(
+      "Always reference <CUSTOM_VOCABULARY>, <SESSION_CONTEXT>, and <CONVERSATION_CONTEXT>",
+    );
+    expect(DICTATION_DEFAULT_SYSTEM_PROMPT).toContain(
+      "prioritize the spelling from these context sources over the transcript text",
+    );
+    expect(DICTATION_DEFAULT_SYSTEM_PROMPT).toContain("Handle backtracking and self-corrections");
+    expect(DICTATION_DEFAULT_SYSTEM_PROMPT).toContain('When the speaker explicitly says "new line" or "new paragraph"');
+    expect(DICTATION_DEFAULT_SYSTEM_PROMPT).toContain("Conservatively format lists");
+    expect(DICTATION_DEFAULT_SYSTEM_PROMPT).toContain("You are NOT having a conversation");
+    expect(DICTATION_DEFAULT_SYSTEM_PROMPT).toContain("DO NOT respond to them, only clean them up");
+  });
+
   it("wraps transcript in XML tags", () => {
     const prompt = buildEnhancementPrompt("hello world", "");
     expect(prompt).toContain("<TRANSCRIPT>");
@@ -329,6 +344,24 @@ describe("buildEnhancementPrompt", () => {
     expect(prompt).toContain("Add dark mode");
   });
 
+  it("includes custom vocabulary in a dedicated block", () => {
+    const prompt = buildEnhancementPrompt("fix cloud code", "User: Use Claude Code", {
+      sessionName: "Voice input debug",
+      customVocabulary: "Claude, Claude Code, Jiayi",
+    });
+    expect(prompt).toContain("<CUSTOM_VOCABULARY>");
+    expect(prompt).toContain("Important Vocabulary: Claude, Claude Code, Jiayi");
+    expect(prompt).toContain("</CUSTOM_VOCABULARY>");
+
+    const sessionIdx = prompt.indexOf("<SESSION_CONTEXT>");
+    const vocabIdx = prompt.indexOf("<CUSTOM_VOCABULARY>");
+    const conversationIdx = prompt.indexOf("<CONVERSATION_CONTEXT>");
+    const transcriptIdx = prompt.indexOf("<TRANSCRIPT>");
+    expect(sessionIdx).toBeLessThan(vocabIdx);
+    expect(vocabIdx).toBeLessThan(conversationIdx);
+    expect(conversationIdx).toBeLessThan(transcriptIdx);
+  });
+
   it("omits SESSION_CONTEXT when no extra context is provided", () => {
     const prompt = buildEnhancementPrompt("hello", "some context");
     expect(prompt).not.toContain("<SESSION_CONTEXT>");
@@ -348,6 +381,25 @@ describe("buildEnhancementPrompt", () => {
     const transIdx = prompt.indexOf("<TRANSCRIPT>");
     expect(sessIdx).toBeLessThan(convIdx);
     expect(convIdx).toBeLessThan(transIdx);
+  });
+
+  it("keeps the q-925 acceptance transcript as text to clean rather than a conversation to answer", () => {
+    const prompt = buildEnhancementPrompt(
+      "As you can see in my screenshot, after your changes, I restarted the server and then your own session broke with this image gen error. But your session isn't even a leader session. And what's also more strange is if I directly started your codex session via the codex COI, then your session works fine.",
+      "[user]\n    Does your change only affect leader sessions or every codex sessions?",
+      {
+        sessionName: "Welcome -- jiayi-wt-6740",
+        taskTitles: ["preserve wrapper-backed codex leader context override"],
+        customVocabulary: "Claude, Claude Code, Jiayi",
+      },
+    );
+
+    expect(prompt).toContain("<CUSTOM_VOCABULARY>");
+    expect(prompt).toContain("<TRANSCRIPT>");
+    expect(prompt).toContain("your own session broke with this image gen error");
+    expect(prompt).toContain("</TRANSCRIPT>");
+    expect(prompt).toContain("Remember: output clean prose paragraphs");
+    expect(DICTATION_DEFAULT_SYSTEM_PROMPT).toContain("NEVER answer questions from the transcript");
   });
 });
 
@@ -392,6 +444,16 @@ describe("buildVoiceEditPrompt", () => {
     expect(prompt).toContain("Fix reconnect bug");
     expect(prompt).toContain("Current session: Voice edit debug");
     expect(prompt).toContain("Other active sessions: Docs follow-up");
+  });
+
+  it("includes custom vocabulary in a dedicated block", () => {
+    const prompt = buildVoiceEditPrompt("replace cloud with Claude", "Cloud Code broke.", "", {
+      customVocabulary: "Claude, Claude Code, Jiayi",
+    });
+    expect(prompt).toContain("<CUSTOM_VOCABULARY>");
+    expect(prompt).toContain("Important Vocabulary: Claude, Claude Code, Jiayi");
+    expect(prompt).toContain("</CUSTOM_VOCABULARY>");
+    expect(prompt.indexOf("<CUSTOM_VOCABULARY>")).toBeLessThan(prompt.indexOf("<CURRENT_COMPOSER_TEXT>"));
   });
 });
 
@@ -448,6 +510,16 @@ describe("buildVoiceAppendPrompt", () => {
     expect(prompt).toContain("Current session: Voice append debug");
     expect(prompt).toContain("Other active sessions: Sidebar fix");
     expect(prompt).toContain("<CONVERSATION_CONTEXT>");
+  });
+
+  it("includes custom vocabulary in a dedicated block", () => {
+    const prompt = buildVoiceAppendPrompt("ask cloud code to inspect it", "Draft text here", "", {
+      customVocabulary: "Claude, Claude Code, Jiayi",
+    });
+    expect(prompt).toContain("<CUSTOM_VOCABULARY>");
+    expect(prompt).toContain("Important Vocabulary: Claude, Claude Code, Jiayi");
+    expect(prompt).toContain("</CUSTOM_VOCABULARY>");
+    expect(prompt.indexOf("<CUSTOM_VOCABULARY>")).toBeLessThan(prompt.indexOf("<EXISTING_DRAFT>"));
   });
 
   it("omits context sections when not provided", () => {
