@@ -55,10 +55,13 @@ describe("session-names", () => {
     expect(getName("s3")).toBeUndefined();
   });
 
-  it("removeName deletes a name", async () => {
+  it("removeName deletes a name and clears userNamed flag", async () => {
     setName("s1", "Session One");
+    setUserNamed("s1");
+    expect(isUserNamed("s1")).toBe(true);
     removeName("s1");
     expect(getName("s1")).toBeUndefined();
+    expect(isUserNamed("s1")).toBe(false);
     await _flushForTest();
     const raw = readFileSync(join(tempDir, "session-names.json"), "utf-8");
     expect(JSON.parse(raw)).toEqual({ names: {}, leaderCounter: 0, userNamed: [] });

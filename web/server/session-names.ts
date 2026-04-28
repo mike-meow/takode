@@ -84,6 +84,7 @@ export function getAllNames(): Record<string, string> {
 export function removeName(sessionId: string): void {
   ensureLoaded();
   delete names[sessionId];
+  userNamed.delete(sessionId);
   persist();
 }
 
