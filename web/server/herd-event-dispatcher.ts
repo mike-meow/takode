@@ -1185,6 +1185,9 @@ function formatSingleEvent(evt: TakodeEvent, nowTs: number, options?: FormatBatc
           ? ` | turn ${evt.data.turn_target}`
           : "";
       const turnId = typeof evt.data.turn_id === "string" && evt.data.turn_id ? ` ${evt.data.turn_id}` : "";
+      if (!agentSource?.sessionId) {
+        return `${label} | user_message | user sent to ${formatSessionLink(evt)}${msgRef}${messageId}${turnTarget}${turnId}: "${content}"${ageSuffix}\n---\nThe worker should be reacting to this user message now.`;
+      }
       return `${label} | user_message [${sender}]${msgRef}${messageId}${turnTarget}${turnId} | "${content}"${ageSuffix}`;
     }
     case "notification_needs_input": {
@@ -1271,6 +1274,12 @@ function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
   const s = ms / 1000;
   return s < 60 ? `${s.toFixed(1)}s` : `${Math.floor(s / 60)}m ${Math.round(s % 60)}s`;
+}
+
+function formatSessionLink(evt: TakodeEvent): string {
+  return typeof evt.sessionNum === "number" && evt.sessionNum > 0
+    ? `[#${evt.sessionNum}](session:${evt.sessionNum})`
+    : evt.sessionName;
 }
 
 function formatToolCounts(tools: Record<string, number> | undefined): string {

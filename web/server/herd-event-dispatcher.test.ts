@@ -353,11 +353,12 @@ describe("HerdEventDispatcher", () => {
 
     expect(bridge.injectUserMessage).toHaveBeenCalledTimes(1);
     const content = vi.mocked(bridge.injectUserMessage).mock.calls[0][1];
-    expect(content).toContain("user_message [User]");
+    expect(content).toContain("user_message | user sent to [#5](session:5)");
     expect(content).toContain("msg [42]");
     expect(content).toContain("id user-42");
     expect(content).toContain("turn current");
     expect(content).toContain("please check latest logs");
+    expect(content).toContain("---\nThe worker should be reacting to this user message now.");
 
     dispatcher.destroy();
   });
@@ -383,10 +384,11 @@ describe("HerdEventDispatcher", () => {
 
     expect(bridge.injectUserMessage).toHaveBeenCalledTimes(1);
     const content = vi.mocked(bridge.injectUserMessage).mock.calls[0][1];
-    expect(content).toContain("#7 | user_message [User]");
+    expect(content).toContain("#7 | user_message | user sent to [#7](session:7)");
     expect(content).toContain("msg [12]");
     expect(content).toContain("turn queued");
     expect(content).toContain("please review the patch");
+    expect(content).toContain("---\nThe worker should be reacting to this user message now.");
 
     dispatcher.destroy();
   });
@@ -1468,11 +1470,37 @@ describe("formatHerdEventBatch", () => {
       }),
     ];
     const result = formatHerdEventBatch(events);
-    expect(result).toContain("user_message [User]");
+    expect(result).toContain("user_message | user sent to [#5](session:5)");
     expect(result).toContain("msg [77]");
     expect(result).toContain("id user-77");
     expect(result).toContain("turn current turn-abc");
     expect(result).toContain(`${"x".repeat(4999)}…`);
+    expect(result).toContain("---\nThe worker should be reacting to this user message now.");
+  });
+
+  it("keeps injected user_message events on their existing sender labels without the direct-user reminder", () => {
+    const events = [
+      makeEvent({
+        event: "user_message",
+        data: {
+          content: "leader dispatch",
+          agentSource: { sessionId: "leader-1", sessionLabel: "#1 Leader" },
+        },
+      }),
+      makeEvent({
+        event: "user_message",
+        data: {
+          content: "herd event delivery",
+          agentSource: { sessionId: "herd-events", sessionLabel: "Herd Events" },
+        },
+      }),
+    ];
+
+    const result = formatHerdEventBatch(events);
+    expect(result).toContain('user_message [Agent #1 Leader] | "leader dispatch"');
+    expect(result).toContain('user_message [Herd] | "herd event delivery"');
+    expect(result).not.toContain("user sent to");
+    expect(result).not.toContain("The worker should be reacting to this user message now.");
   });
 
   it("formats turn_end with user message count and IDs", () => {
