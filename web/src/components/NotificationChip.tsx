@@ -128,7 +128,26 @@ function NotificationItem({ notif, sessionId }: { notif: SessionNotification; se
     // Don't close panel -- user may want to click multiple notifications
   }, [sessionId, notif.messageId]);
 
+  const startReply = useCallback(
+    (answer?: string) => (e: React.MouseEvent) => {
+      e.stopPropagation();
+      const store = useStore.getState();
+      const current = store.composerDrafts.get(sessionId);
+      store.setReplyContext(sessionId, {
+        ...(notif.messageId ? { messageId: notif.messageId } : {}),
+        notificationId: notif.id,
+        previewText: notif.summary || "Needs your input",
+      });
+      if (answer !== undefined) {
+        store.setComposerDraft(sessionId, { text: answer, images: current?.images ?? [] });
+      }
+      store.focusComposer();
+    },
+    [sessionId, notif.id, notif.messageId, notif.summary],
+  );
+
   const isNeedsInput = notif.category === "needs-input";
+  const suggestedAnswers = isNeedsInput && !notif.done ? (notif.suggestedAnswers ?? []) : [];
   const compactReviewSummary = !isNeedsInput ? getCompactReviewSummary(notif.summary) : null;
   const label = compactReviewSummary?.text || notif.summary || (isNeedsInput ? "Needs your input" : "Ready for review");
   const questSummary = compactReviewSummary?.questSummary ?? null;
@@ -204,6 +223,28 @@ function NotificationItem({ notif, sessionId }: { notif: SessionNotification; se
           )}
         </div>
         <div className="text-[10px] text-cc-muted/60 mt-0.5 pl-3">{formatRelativeTime(notif.timestamp)}</div>
+        {isNeedsInput && !notif.done && (
+          <div className="mt-1.5 flex flex-wrap items-center gap-1 pl-3">
+            {suggestedAnswers.map((answer) => (
+              <button
+                key={answer}
+                type="button"
+                onClick={startReply(answer)}
+                className="max-w-full truncate rounded border border-amber-400/25 bg-amber-400/10 px-2 py-0.5 text-[11px] text-amber-200 transition-colors hover:bg-amber-400/20 cursor-pointer"
+                title={`Use suggested answer: ${answer}`}
+              >
+                {answer}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={startReply()}
+              className="rounded border border-cc-border/60 px-2 py-0.5 text-[11px] text-cc-muted transition-colors hover:border-cc-primary/40 hover:text-cc-fg cursor-pointer"
+            >
+              {suggestedAnswers.length > 0 ? "Custom" : "Reply"}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

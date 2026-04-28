@@ -8,9 +8,21 @@ const mockRequestScrollToMessage = vi.fn();
 const mockSetExpandAllInTurn = vi.fn();
 const mockOpenQuestOverlay = vi.fn();
 const mockNotifications = new Map<string, Array<any>>();
+const mockComposerDrafts = new Map<string, any>();
+const mockReplyContexts = new Map<string, any>();
+const mockSetComposerDraft = vi.fn((sessionId: string, draft: any) => {
+  mockComposerDrafts.set(sessionId, draft);
+});
+const mockSetReplyContext = vi.fn((sessionId: string, context: any) => {
+  if (context) mockReplyContexts.set(sessionId, context);
+  else mockReplyContexts.delete(sessionId);
+});
+const mockFocusComposer = vi.fn();
 
 const mockStoreState: Record<string, any> = {
   sessionNotifications: mockNotifications,
+  composerDrafts: mockComposerDrafts,
+  replyContexts: mockReplyContexts,
   messages: new Map(),
   quests: [],
   sessionNames: new Map(),
@@ -19,6 +31,9 @@ const mockStoreState: Record<string, any> = {
   requestScrollToMessage: mockRequestScrollToMessage,
   setExpandAllInTurn: mockSetExpandAllInTurn,
   openQuestOverlay: mockOpenQuestOverlay,
+  setComposerDraft: mockSetComposerDraft,
+  setReplyContext: mockSetReplyContext,
+  focusComposer: mockFocusComposer,
 };
 
 vi.mock("../store.js", () => {
@@ -52,6 +67,8 @@ function setQuests(quests: Array<any>) {
 describe("NotificationChip", () => {
   beforeEach(() => {
     mockNotifications.clear();
+    mockComposerDrafts.clear();
+    mockReplyContexts.clear();
     mockStoreState.messages = new Map();
     mockStoreState.quests = [];
     mockStoreState.sessionNames = new Map();
@@ -61,6 +78,9 @@ describe("NotificationChip", () => {
     mockRequestScrollToMessage.mockClear();
     mockSetExpandAllInTurn.mockClear();
     mockOpenQuestOverlay.mockClear();
+    mockSetComposerDraft.mockClear();
+    mockSetReplyContext.mockClear();
+    mockFocusComposer.mockClear();
   });
 
   it("renders nothing when there are no active notifications", () => {
@@ -126,6 +146,68 @@ describe("NotificationChip", () => {
     fireEvent.click(screen.getByRole("button", { name: "Notification inbox: 1 review notification" }));
     expect(screen.getByRole("dialog", { name: "Notification inbox" })).toBeInTheDocument();
     expect(screen.getByText("Needs review")).toBeInTheDocument();
+  });
+
+  it("renders suggested answers and prefills the composer without sending", () => {
+    mockComposerDrafts.set("s1", {
+      text: "old draft",
+      images: [{ id: "img-1", name: "keep.png", base64: "abc", mediaType: "image/png", status: "ready" }],
+    });
+    setNotifications("s1", [
+      {
+        id: "n-1",
+        category: "needs-input",
+        summary: "Deploy now?",
+        suggestedAnswers: ["yes", "no"],
+        timestamp: Date.now(),
+        messageId: "msg-123",
+        done: false,
+      },
+    ]);
+
+    render(<NotificationChip sessionId="s1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Notification inbox: 1 needs-input notification" }));
+    fireEvent.click(screen.getByRole("button", { name: "yes" }));
+
+    expect(mockSetReplyContext).toHaveBeenCalledWith("s1", {
+      messageId: "msg-123",
+      notificationId: "n-1",
+      previewText: "Deploy now?",
+    });
+    expect(mockSetComposerDraft).toHaveBeenCalledWith("s1", {
+      text: "yes",
+      images: [{ id: "img-1", name: "keep.png", base64: "abc", mediaType: "image/png", status: "ready" }],
+    });
+    expect(mockFocusComposer).toHaveBeenCalledTimes(1);
+    expect(mockMarkNotificationDone).not.toHaveBeenCalled();
+  });
+
+  it("starts a custom needs-input reply without replacing draft text", () => {
+    mockComposerDrafts.set("s1", { text: "keep my draft", images: [] });
+    setNotifications("s1", [
+      {
+        id: "n-1",
+        category: "needs-input",
+        summary: "Choose rollout mode",
+        suggestedAnswers: ["fast", "slow"],
+        timestamp: Date.now(),
+        messageId: "msg-123",
+        done: false,
+      },
+    ]);
+
+    render(<NotificationChip sessionId="s1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Notification inbox: 1 needs-input notification" }));
+    fireEvent.click(screen.getByRole("button", { name: "Custom" }));
+
+    expect(mockSetReplyContext).toHaveBeenCalledWith("s1", {
+      messageId: "msg-123",
+      notificationId: "n-1",
+      previewText: "Choose rollout mode",
+    });
+    expect(mockSetComposerDraft).not.toHaveBeenCalled();
+    expect(mockComposerDrafts.get("s1")?.text).toBe("keep my draft");
+    expect(mockFocusComposer).toHaveBeenCalledTimes(1);
   });
 
   it("renders the quest mention as a quest link while keeping the row clickable for jump-to-message", () => {

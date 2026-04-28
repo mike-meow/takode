@@ -16,6 +16,7 @@ import {
   PlaygroundReviewNotificationMarker,
   PlaygroundSectionGroup,
   PlaygroundSelectionContextMenu,
+  PlaygroundSuggestedAnswerNotificationMarker,
   Section,
   TimerModalDemo,
 } from "./shared.js";
@@ -853,6 +854,13 @@ export function PlaygroundInteractiveSections() {
               <NotificationMarker category="needs-input" summary="Need decision on auth approach" />
             </div>
           </Card>
+          <Card label="needs-input with suggested answers">
+            <div className="text-cc-fg text-sm">
+              <p className="mb-1">The canary is healthy and ready for the next step.</p>
+              <p className="text-cc-muted">Choose whether to continue the rollout now or hold for manual checks.</p>
+              <PlaygroundSuggestedAnswerNotificationMarker />
+            </div>
+          </Card>
           <Card label="review (green, no summary)">
             <div className="text-cc-fg text-sm">
               <p>All changes have been committed and tests pass. The PR is ready for your review.</p>
@@ -1115,6 +1123,7 @@ export function PlaygroundInteractiveSections() {
                             id: "n-2",
                             category: "needs-input" as const,
                             summary: "Should we use JPEG q85 or q75 for the transport tier?",
+                            suggestedAnswers: ["q85", "q75"],
                             timestamp: now - 120_000,
                             messageId: "mock-msg-87",
                             done: false,

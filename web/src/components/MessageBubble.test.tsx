@@ -1198,6 +1198,110 @@ describe("MessageBubble - assistant messages", () => {
     expect(screen.queryByTitle("Reply to this notification")).toBeNull();
   });
 
+  it("prefills a suggested answer while replying to the exact needs-input notification", () => {
+    const prevNotifications = useStore.getState().sessionNotifications;
+    const prevDrafts = useStore.getState().composerDrafts;
+    const prevReplyContexts = useStore.getState().replyContexts;
+    const prevFocusTrigger = useStore.getState().focusComposerTrigger;
+    const notifications = new Map(prevNotifications);
+    notifications.set("notify-session", [
+      {
+        id: "n-17",
+        category: "needs-input",
+        summary: "Deploy now?",
+        suggestedAnswers: ["yes", "no"],
+        timestamp: Date.now(),
+        messageId: "asst-notify",
+        done: false,
+      },
+    ]);
+    const drafts = new Map(prevDrafts);
+    drafts.set("notify-session", {
+      text: "existing draft",
+      images: [{ id: "img-1", name: "keep.png", base64: "abc", mediaType: "image/png", status: "ready" }],
+    });
+    useStore.setState({ sessionNotifications: notifications, composerDrafts: drafts });
+
+    try {
+      render(
+        <NotificationMarker
+          category="needs-input"
+          summary="Deploy now?"
+          sessionId="notify-session"
+          messageId="asst-notify"
+          notificationId="n-17"
+        />,
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: "Use suggested answer: yes" }));
+
+      expect(useStore.getState().replyContexts.get("notify-session")).toEqual({
+        messageId: "asst-notify",
+        notificationId: "n-17",
+        previewText: "Deploy now?",
+      });
+      expect(useStore.getState().composerDrafts.get("notify-session")).toMatchObject({
+        text: "yes",
+        images: [{ id: "img-1" }],
+      });
+      expect(useStore.getState().focusComposerTrigger).toBe(prevFocusTrigger + 1);
+    } finally {
+      useStore.setState({
+        sessionNotifications: prevNotifications,
+        composerDrafts: prevDrafts,
+        replyContexts: prevReplyContexts,
+        focusComposerTrigger: prevFocusTrigger,
+      });
+    }
+  });
+
+  it("uses the custom answer action without replacing the existing draft", () => {
+    const prevNotifications = useStore.getState().sessionNotifications;
+    const prevDrafts = useStore.getState().composerDrafts;
+    const prevReplyContexts = useStore.getState().replyContexts;
+    const notifications = new Map(prevNotifications);
+    notifications.set("notify-session", [
+      {
+        id: "n-18",
+        category: "needs-input",
+        summary: "Choose rollout mode",
+        suggestedAnswers: ["fast", "slow"],
+        timestamp: Date.now(),
+        messageId: "asst-notify",
+        done: false,
+      },
+    ]);
+    const drafts = new Map(prevDrafts);
+    drafts.set("notify-session", { text: "keep this text", images: [] });
+    useStore.setState({ sessionNotifications: notifications, composerDrafts: drafts });
+
+    try {
+      render(
+        <NotificationMarker
+          category="needs-input"
+          summary="Choose rollout mode"
+          sessionId="notify-session"
+          messageId="asst-notify"
+          notificationId="n-18"
+        />,
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: "Write a custom answer" }));
+
+      expect(useStore.getState().replyContexts.get("notify-session")).toMatchObject({
+        messageId: "asst-notify",
+        notificationId: "n-18",
+      });
+      expect(useStore.getState().composerDrafts.get("notify-session")?.text).toBe("keep this text");
+    } finally {
+      useStore.setState({
+        sessionNotifications: prevNotifications,
+        composerDrafts: prevDrafts,
+        replyContexts: prevReplyContexts,
+      });
+    }
+  });
+
   it("does not render Task tool_use blocks (they render as SubagentContainers in MessageFeed)", () => {
     // Task tool_use blocks must be filtered out in MessageBubble to prevent
     // duplicate subagent chips: one from SubagentContainer (correct) and one

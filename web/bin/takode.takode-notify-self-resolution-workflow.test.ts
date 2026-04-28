@@ -112,6 +112,7 @@ describe("takode notify self-resolution workflow", () => {
                 notificationId: 7,
                 rawNotificationId: "n-7",
                 summary: "Need config confirmation",
+                suggestedAnswers: ["yes", "no"],
                 timestamp: 1001,
                 messageId: "asst-7",
               },
@@ -158,6 +159,24 @@ describe("takode notify self-resolution workflow", () => {
     expect(requestBodies[0]).toEqual({ category: "needs-input", summary: "Need approval" });
   });
 
+  it("passes repeated suggested answers for needs-input notifications", async () => {
+    const result = await runTakode(
+      ["notify", "needs-input", "Need", "approval", "--suggest", "yes", "--suggest", "no", "--port", String(port)],
+      {
+        ...process.env,
+        COMPANION_SESSION_ID: "worker-7",
+        COMPANION_AUTH_TOKEN: "auth-7",
+      },
+    );
+
+    expect(result.status).toBe(0);
+    expect(requestBodies[0]).toEqual({
+      category: "needs-input",
+      summary: "Need approval",
+      suggestedAnswers: ["yes", "no"],
+    });
+  });
+
   it("lists unresolved same-session needs-input notifications", async () => {
     const result = await runTakode(["notify", "list", "--port", String(port)], {
       ...process.env,
@@ -169,6 +188,7 @@ describe("takode notify self-resolution workflow", () => {
     expect(result.stdout).toContain("Unresolved same-session needs-input notifications: 2. Resolved: 3.");
     expect(result.stdout).toContain("2. Need rollout decision");
     expect(result.stdout).toContain("7. Need config confirmation");
+    expect(result.stdout).toContain("suggestions: yes, no");
   });
 
   it("treats resolving an already-resolved notification as a successful no-op", async () => {

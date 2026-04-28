@@ -906,6 +906,7 @@ export function notifyUser(
     SessionRegistryDeps,
     "isHerdedWorkerSession" | "broadcastToBrowsers" | "persistSession" | "emitTakodeEvent" | "scheduleNotification"
   >,
+  options: { suggestedAnswers?: string[] } = {},
 ): { ok: true; anchoredMessageId: string | null; notificationId: string } {
   const lastAssistantIndex = findLastAssistantMessageIndex(session);
   const lastAssistant =
@@ -934,10 +935,14 @@ export function notifyUser(
         })();
 
   const anchoredMessageId = anchoredAssistant?.message.id ?? null;
+  const timestamp = Date.now();
+  const suggestedAnswers =
+    category === "needs-input" && options.suggestedAnswers?.length ? options.suggestedAnswers : undefined;
   const anchoredNotification = {
     category,
-    timestamp: Date.now(),
+    timestamp,
     summary,
+    ...(suggestedAnswers ? { suggestedAnswers } : {}),
   } as const;
 
   const nextNotificationCounter = Number.isInteger(session.notificationCounter) ? session.notificationCounter + 1 : 1;
@@ -947,7 +952,8 @@ export function notifyUser(
     id: `n-${nextNotificationCounter}`,
     category,
     summary,
-    timestamp: Date.now(),
+    ...(suggestedAnswers ? { suggestedAnswers } : {}),
+    timestamp,
     messageId: anchoredMessageId,
     done: false,
   };
@@ -959,6 +965,7 @@ export function notifyUser(
         summary,
         notificationId: notif.id,
         messageId: anchoredMessageId,
+        ...(suggestedAnswers ? { suggestedAnswers } : {}),
         ...(anchoredAssistantIndex !== undefined ? { msg_index: anchoredAssistantIndex } : {}),
       });
     }
@@ -1003,10 +1010,11 @@ export function notifyUserBySessionId(
     SessionRegistryDeps,
     "isHerdedWorkerSession" | "broadcastToBrowsers" | "persistSession" | "emitTakodeEvent" | "scheduleNotification"
   >,
+  options: { suggestedAnswers?: string[] } = {},
 ): { ok: true; anchoredMessageId: string | null; notificationId: string } | { ok: false; error: string } {
   const session = sessions.get(sessionId);
   if (!session) return { ok: false, error: "Session not found" };
-  return notifyUser(session, category, summary, deps);
+  return notifyUser(session, category, summary, deps, options);
 }
 
 function getSortedBoardRows(session: SessionLike): BoardRow[] {

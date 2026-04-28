@@ -634,6 +634,76 @@ describe("Takode server-authoritative auth", () => {
     ]);
   });
 
+  it("stores normalized suggested answers for needs-input notifications", async () => {
+    setupTakodeSessions();
+
+    const res = await app.request("/api/sessions/orch-1/notify", {
+      method: "POST",
+      headers: authHeaders("orch-1", "tok-1"),
+      body: JSON.stringify({
+        category: "needs-input",
+        summary: "Need deployment approval",
+        suggestedAnswers: ["  yes  ", "not  yet"],
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      ok: true,
+      suggestedAnswers: ["yes", "not yet"],
+    });
+    expect(bridge._sessions["orch-1"].notifications).toMatchObject([
+      {
+        category: "needs-input",
+        summary: "Need deployment approval",
+        suggestedAnswers: ["yes", "not yet"],
+        done: false,
+      },
+    ]);
+  });
+
+  it("rejects suggested answers outside needs-input notifications", async () => {
+    setupTakodeSessions();
+
+    const res = await app.request("/api/sessions/orch-1/notify", {
+      method: "POST",
+      headers: authHeaders("orch-1", "tok-1"),
+      body: JSON.stringify({ category: "review", summary: "Ready", suggestedAnswers: ["ok"] }),
+    });
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toBe("suggestedAnswers are only supported for needs-input notifications");
+    expect(bridge._sessions["orch-1"].notifications).toEqual([]);
+  });
+
+  it("rejects invalid suggested answer sets", async () => {
+    setupTakodeSessions();
+
+    const tooMany = await app.request("/api/sessions/orch-1/notify", {
+      method: "POST",
+      headers: authHeaders("orch-1", "tok-1"),
+      body: JSON.stringify({
+        category: "needs-input",
+        summary: "Need approval",
+        suggestedAnswers: ["one", "two", "three", "four"],
+      }),
+    });
+    expect(tooMany.status).toBe(400);
+
+    const duplicate = await app.request("/api/sessions/orch-1/notify", {
+      method: "POST",
+      headers: authHeaders("orch-1", "tok-1"),
+      body: JSON.stringify({
+        category: "needs-input",
+        summary: "Need approval",
+        suggestedAnswers: ["yes", "YES"],
+      }),
+    });
+    expect(duplicate.status).toBe(400);
+    expect((await duplicate.json()).error).toBe("suggestedAnswers entries must be unique");
+    expect(bridge._sessions["orch-1"].notifications).toEqual([]);
+  });
+
   it("rejects whitespace-only summary", async () => {
     setupTakodeSessions();
 
@@ -688,7 +758,15 @@ describe("Takode server-authoritative auth", () => {
   it("lists only unresolved same-session needs-input notifications with resolved count", async () => {
     setupTakodeSessions();
     bridge._sessions["orch-1"].notifications = [
-      { id: "n-1", category: "needs-input", summary: "Still open", timestamp: 1000, messageId: "m-1", done: false },
+      {
+        id: "n-1",
+        category: "needs-input",
+        summary: "Still open",
+        suggestedAnswers: ["yes", "no"],
+        timestamp: 1000,
+        messageId: "m-1",
+        done: false,
+      },
       { id: "n-2", category: "needs-input", summary: "Already handled", timestamp: 1001, messageId: "m-2", done: true },
       { id: "n-3", category: "review", summary: "Ignore review", timestamp: 1002, messageId: "m-3", done: false },
     ];
@@ -704,6 +782,7 @@ describe("Takode server-authoritative auth", () => {
           notificationId: 1,
           rawNotificationId: "n-1",
           summary: "Still open",
+          suggestedAnswers: ["yes", "no"],
           timestamp: 1000,
           messageId: "m-1",
         },
@@ -873,6 +952,7 @@ describe("Takode server-authoritative auth", () => {
           id: "n-1",
           category: "needs-input",
           summary: "Need decision on rollout",
+          suggestedAnswers: ["ship", "hold"],
           timestamp: 1000,
           messageId: "asst-1",
           done: false,
@@ -894,6 +974,7 @@ describe("Takode server-authoritative auth", () => {
           tool_name: "takode.notify",
           timestamp: 1000,
           summary: "Need decision on rollout",
+          suggestedAnswers: ["ship", "hold"],
           msg_index: 0,
           messageId: "asst-1",
         },

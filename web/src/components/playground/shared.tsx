@@ -625,6 +625,39 @@ export function PlaygroundReviewNotificationMarker({ summary }: { summary?: stri
   );
 }
 
+export function PlaygroundSuggestedAnswerNotificationMarker() {
+  useEffect(() => {
+    const previous = useStore.getState().sessionNotifications;
+    const next = new Map(previous);
+    next.set("playground-suggested-notify", [
+      {
+        id: "n-suggested-1",
+        category: "needs-input",
+        timestamp: Date.now() - 30_000,
+        messageId: "playground-suggested-notify-msg",
+        summary: "Approve the rollout?",
+        suggestedAnswers: ["yes", "no"],
+        done: false,
+      },
+    ]);
+    useStore.setState({ sessionNotifications: next });
+
+    return () => {
+      useStore.setState({ sessionNotifications: previous });
+    };
+  }, []);
+
+  return (
+    <NotificationMarker
+      category="needs-input"
+      summary="Approve the rollout?"
+      sessionId="playground-suggested-notify"
+      messageId="playground-suggested-notify-msg"
+      notificationId="n-suggested-1"
+    />
+  );
+}
+
 export function PlaygroundDedupedNotificationMessage() {
   useEffect(() => {
     const previous = useStore.getState().sessionNotifications;

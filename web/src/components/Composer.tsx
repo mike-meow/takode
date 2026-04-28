@@ -693,9 +693,11 @@ export function Composer({ sessionId }: { sessionId: string }) {
     };
 
     const finalizeReplyNotification = () => {
-      if (!currentReplyContext?.messageId) return;
+      if (!currentReplyContext?.messageId && !currentReplyContext?.notificationId) return;
       const notifications = useStore.getState().sessionNotifications.get(sessionId);
-      const notif = notifications?.find((n) => n.messageId === currentReplyContext.messageId && !n.done);
+      const notif = currentReplyContext.notificationId
+        ? notifications?.find((n) => n.id === currentReplyContext.notificationId && !n.done)
+        : notifications?.find((n) => n.messageId === currentReplyContext.messageId && !n.done);
       if (notif) {
         api.markNotificationDone(sessionId, notif.id, true).catch(() => {});
       }

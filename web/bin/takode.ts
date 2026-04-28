@@ -718,13 +718,16 @@ const REFRESH_BRANCH_HELP = `Usage: takode refresh-branch <session> [--json]
 Refresh git branch info for a session after checkout, rebase, or other branch changes.
 `;
 
-const NOTIFY_HELP = `Usage: takode notify <category> <summary> [--json]
+const NOTIFY_HELP = `Usage: takode notify <category> <summary> [--suggest <answer>]... [--json]
        takode notify list [--json]
        takode notify resolve <notification-id> [--json]
 
 Categories:
   needs-input  User decision or information required
   review       Ready for user review
+
+Options:
+  --suggest <answer>  Suggested answer for needs-input notifications (repeat up to 3 times)
 `;
 
 const BOARD_HELP = `Usage: takode board [show|set|propose|promote|note|advance|rm] ...
@@ -2922,6 +2925,7 @@ async function handlePending(base: string, args: string[]): Promise<void> {
       timestamp: number;
       notification_id?: string;
       summary?: string;
+      suggestedAnswers?: string[];
       msg_index?: number;
       questions?: Array<{
         header?: string;
@@ -2962,6 +2966,9 @@ async function handlePending(base: string, args: string[]): Promise<void> {
       console.log(`\n[needs-input]${msgRef} ${formatInlineText(summary)}`);
       if (msgRef) {
         console.log(`\nFull message: takode read ${safeSessionRef} ${p.msg_index}`);
+      }
+      if (p.suggestedAnswers?.length) {
+        console.log(`Suggestions: ${p.suggestedAnswers.map((answer) => formatInlineText(answer)).join(", ")}`);
       }
       console.log(`Answer: takode answer ${safeSessionRef}${targetHint} <response>`);
     } else if (p.tool_name === "AskUserQuestion" && p.questions) {
@@ -3236,6 +3243,43 @@ async function handleSetBase(base: string, args: string[]): Promise<void> {
   console.log(`Diff base set to: ${result.diff_base_branch || "(default)"}`);
 }
 
+function parseNotifyCreateArgs(args: string[]): {
+  jsonMode: boolean;
+  summary: string | undefined;
+  suggestedAnswers: string[];
+} {
+  let jsonMode = false;
+  const suggestedAnswers: string[] = [];
+  const summaryParts: string[] = [];
+
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === "--json") {
+      jsonMode = true;
+      continue;
+    }
+    if (arg === "--suggest") {
+      const value = args[i + 1];
+      if (value === undefined || value.startsWith("--")) {
+        err("Usage: takode notify needs-input <summary> --suggest <answer> [--suggest <answer>]...");
+      }
+      suggestedAnswers.push(value);
+      i += 1;
+      continue;
+    }
+    if (arg.startsWith("--")) {
+      err(`Unknown notify option: ${arg}`);
+    }
+    summaryParts.push(arg);
+  }
+
+  return {
+    jsonMode,
+    summary: summaryParts.length > 0 ? summaryParts.join(" ") : undefined,
+    suggestedAnswers,
+  };
+}
+
 async function handleNotify(base: string, args: string[]): Promise<void> {
   const subcommand = args[0];
   const selfId = getCallerSessionId();
@@ -3248,6 +3292,7 @@ async function handleNotify(base: string, args: string[]): Promise<void> {
         notificationId: number;
         rawNotificationId: string;
         summary?: string;
+        suggestedAnswers?: string[];
         timestamp: number;
         messageId: string | null;
       }>;
@@ -3267,6 +3312,11 @@ async function handleNotify(base: string, args: string[]): Promise<void> {
     for (const notification of result.notifications) {
       const summary = notification.summary?.trim() || "(no summary)";
       console.log(`  ${notification.notificationId}. ${formatInlineText(summary)}`);
+      if (notification.suggestedAnswers?.length) {
+        console.log(
+          `     suggestions: ${notification.suggestedAnswers.map((answer) => formatInlineText(answer)).join(", ")}`,
+        );
+      }
     }
     return;
   }
@@ -3306,23 +3356,23 @@ async function handleNotify(base: string, args: string[]): Promise<void> {
   if (!category || (category !== "needs-input" && category !== "review")) {
     err(`${NOTIFY_HELP.trim()}\n`);
   }
-  const remaining = args.slice(1).filter((a) => !a.startsWith("--"));
-  const summary = remaining.length > 0 ? remaining.join(" ") : undefined;
+  const parsed = parseNotifyCreateArgs(args.slice(1));
+  const summary = parsed.summary;
   if (!summary) {
     err("Usage: takode notify <category> <summary>\nSummary is required -- describe what needs attention.");
   }
-  const flags = parseFlags(args.slice(1));
-  const jsonMode = flags.json === true;
   const payload: Record<string, unknown> = { category };
   if (summary) payload.summary = summary;
+  if (parsed.suggestedAnswers.length > 0) payload.suggestedAnswers = parsed.suggestedAnswers;
   const result = (await apiPost(base, `/sessions/${encodeURIComponent(selfId)}/notify`, payload)) as {
     ok: boolean;
     category: string;
     anchoredMessageId: string | null;
     notificationId: number | null;
     rawNotificationId: string;
+    suggestedAnswers?: string[];
   };
-  if (jsonMode) {
+  if (parsed.jsonMode) {
     console.log(JSON.stringify(result, null, 2));
     return;
   }

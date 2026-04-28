@@ -47,6 +47,8 @@ describe("buildCompanionInstructions", () => {
     expect(result).toContain("first output the detailed question, decision options, or confirmation text");
     expect(result).toContain("After that text is complete, call `takode notify needs-input`");
     expect(result).toContain("Do not fire the notification before the detailed text is visible");
+    expect(result).toContain("one to three `--suggest <answer>` options");
+    expect(result).toContain("never use suggestions instead of writing the full context in chat");
   });
 
   it("appends extraInstructions at the end", () => {

@@ -336,8 +336,11 @@ export interface AppState {
   removePendingUserUpload: (sessionId: string, uploadId: string) => void;
   consumePendingUserUpload: (sessionId: string, uploadId: string) => PendingUserUpload | null;
   getPendingUserUploadRestoration: (sessionId: string, uploadId: string) => PendingUserUpload | null;
-  replyContexts: Map<string, { messageId: string; previewText: string }>;
-  setReplyContext: (sessionId: string, context: { messageId: string; previewText: string } | null) => void;
+  replyContexts: Map<string, { messageId?: string; notificationId?: string; previewText: string }>;
+  setReplyContext: (
+    sessionId: string,
+    context: { messageId?: string; notificationId?: string; previewText: string } | null,
+  ) => void;
   focusComposerTrigger: number;
   focusComposer: () => void;
   turnActivityOverrides: Map<string, Map<string, boolean>>;

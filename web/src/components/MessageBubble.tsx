@@ -843,6 +843,7 @@ export function NotificationMarker({
   summary,
   sessionId,
   messageId,
+  notificationId,
   doneOverride,
   onToggleDone,
   showReplyAction = true,
@@ -851,6 +852,7 @@ export function NotificationMarker({
   summary?: string;
   sessionId?: string;
   messageId?: string;
+  notificationId?: string;
   doneOverride?: boolean;
   onToggleDone?: () => void;
   showReplyAction?: boolean;
@@ -862,13 +864,16 @@ export function NotificationMarker({
   const notif = useStore((s) => {
     if (!sessionId) return null;
     const notifications = s.sessionNotifications?.get(sessionId);
-    if (!notifications || !messageId) return null;
+    if (!notifications) return null;
+    if (notificationId) return notifications.find((n) => n.id === notificationId && n.category === category) ?? null;
+    if (!messageId) return null;
     return notifications.find((n) => n.messageId === messageId && n.category === category) ?? null;
   });
 
   const canToggleDone = !!onToggleDone || (!!sessionId && !!messageId);
   const isDone = doneOverride ?? notif?.done ?? false;
   const isToggleReady = !!onToggleDone || !!notif;
+  const suggestedAnswers = isAction && !isDone ? (notif?.suggestedAnswers ?? []) : [];
   const toggleLabel =
     category === "review"
       ? isDone
@@ -900,11 +905,49 @@ export function NotificationMarker({
   const handleReply = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation();
-      if (!sessionId || !messageId) return;
+      if (!sessionId) return;
       const previewText = label;
-      useStore.getState().setReplyContext(sessionId, { messageId, previewText });
+      const liveNotif =
+        notif ??
+        (messageId
+          ? (useStore
+              .getState()
+              .sessionNotifications.get(sessionId)
+              ?.find((n) => n.messageId === messageId && n.category === category) ?? null)
+          : null);
+      useStore.getState().setReplyContext(sessionId, {
+        ...(messageId ? { messageId } : {}),
+        ...(liveNotif ? { notificationId: liveNotif.id } : {}),
+        previewText,
+      });
+      useStore.getState().focusComposer();
     },
-    [sessionId, messageId, label],
+    [sessionId, messageId, label, notif, category],
+  );
+
+  const handleSuggestedAnswer = useCallback(
+    (answer: string) => (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (!sessionId) return;
+      const previewText = label;
+      const current = useStore.getState().composerDrafts.get(sessionId);
+      const liveNotif =
+        notif ??
+        (messageId
+          ? (useStore
+              .getState()
+              .sessionNotifications.get(sessionId)
+              ?.find((n) => n.messageId === messageId && n.category === category) ?? null)
+          : null);
+      useStore.getState().setReplyContext(sessionId, {
+        ...(messageId ? { messageId } : {}),
+        ...(liveNotif ? { notificationId: liveNotif.id } : {}),
+        previewText,
+      });
+      useStore.getState().setComposerDraft(sessionId, { text: answer, images: current?.images ?? [] });
+      useStore.getState().focusComposer();
+    },
+    [sessionId, messageId, label, notif, category],
   );
 
   return (
@@ -944,16 +987,39 @@ export function NotificationMarker({
       {/* Label */}
       <span className={isDone ? "line-through" : ""}>{label}</span>
 
+      {suggestedAnswers.length > 0 && (
+        <span className="ml-0.5 inline-flex min-w-0 items-center gap-1">
+          {suggestedAnswers.map((answer) => (
+            <button
+              key={answer}
+              onClick={handleSuggestedAnswer(answer)}
+              className="max-w-[7rem] truncate rounded border border-amber-400/25 bg-amber-400/10 px-1.5 py-0.5 text-[10px] text-amber-200 transition-colors hover:bg-amber-400/20 cursor-pointer"
+              title={`Use suggested answer: ${answer}`}
+              aria-label={`Use suggested answer: ${answer}`}
+            >
+              {answer}
+            </button>
+          ))}
+        </span>
+      )}
+
       {/* Reply button (only when interactive) */}
-      {showReplyAction && notif && sessionId && messageId && (
+      {showReplyAction && notif && sessionId && (
         <button
           onClick={handleReply}
-          className="shrink-0 ml-0.5 cursor-pointer hover:opacity-80 transition-opacity"
-          title="Reply to this notification"
+          className={`shrink-0 ml-0.5 cursor-pointer hover:opacity-80 transition-opacity ${
+            suggestedAnswers.length > 0 ? "rounded border border-amber-400/20 px-1 py-0.5 text-[10px]" : ""
+          }`}
+          title={suggestedAnswers.length > 0 ? "Write a custom answer" : "Reply to this notification"}
+          aria-label={suggestedAnswers.length > 0 ? "Write a custom answer" : "Reply to this notification"}
         >
-          <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
-            <path d="M6.78 1.97a.75.75 0 010 1.06L3.81 6h6.44A4.75 4.75 0 0115 10.75v1.5a.75.75 0 01-1.5 0v-1.5a3.25 3.25 0 00-3.25-3.25H3.81l2.97 2.97a.75.75 0 11-1.06 1.06l-4.25-4.25a.75.75 0 010-1.06l4.25-4.25a.75.75 0 011.06 0z" />
-          </svg>
+          {suggestedAnswers.length > 0 ? (
+            "Custom"
+          ) : (
+            <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
+              <path d="M6.78 1.97a.75.75 0 010 1.06L3.81 6h6.44A4.75 4.75 0 0115 10.75v1.5a.75.75 0 01-1.5 0v-1.5a3.25 3.25 0 00-3.25-3.25H3.81l2.97 2.97a.75.75 0 11-1.06 1.06l-4.25-4.25a.75.75 0 010-1.06l4.25-4.25a.75.75 0 011.06 0z" />
+            </svg>
+          )}
         </button>
       )}
     </div>
@@ -1427,6 +1493,7 @@ function AssistantMessage({
             <NotificationMarker
               category={resolvedNotification.category}
               summary={resolvedNotification.summary}
+              notificationId={"id" in resolvedNotification ? String(resolvedNotification.id) : undefined}
               sessionId={sessionId}
               messageId={message.id}
             />
@@ -1493,6 +1560,7 @@ function AssistantMessage({
           <NotificationMarker
             category={resolvedNotification.category}
             summary={resolvedNotification.summary}
+            notificationId={"id" in resolvedNotification ? String(resolvedNotification.id) : undefined}
             sessionId={sessionId}
             messageId={message.id}
           />

@@ -60,7 +60,7 @@ export function buildOrchestratorSystemPrompt(backend: "claude" | "codex" | "cla
     `- If you asked the user a question, WAIT for their answer. Don't let herd events override your decision to wait.\n` +
     `- Be faithful to user's words. Don't embellish or add details the user didn't say. Ask follow-up questions instead of assuming.\n` +
     `- When workers or reviewers ask clarifying questions, answer from existing context when you can. Use \`takode answer <session> ...\` for pending question/plan prompts and \`needs-input\` herd events, or send a targeted follow-up message.\n` +
-    `- If a worker/reviewer question exposes ambiguity you cannot resolve, ask the user in plain text first, then call \`takode notify needs-input\` after that detailed text is visible, and do not keep advancing that quest until it is resolved.\n` +
+    `- If a worker/reviewer question exposes ambiguity you cannot resolve, ask the user in plain text first, then call \`takode notify needs-input\` after that detailed text is visible, optionally with one to three short \`--suggest <answer>\` choices for obvious answers, and do not keep advancing that quest until it is resolved.\n` +
     `- If new human feedback lands for a quest that is already on the board, immediately treat it as the new source of truth: reset the board row to the earliest valid phase for the fresh rework cycle and do not let stale review/port completions from the older scope advance the quest.\n` +
     `- Always spawn workers with worktrees (never --no-worktree) unless the user explicitly asks.\n` +
     `- Archiving a worktree worker deletes its worktree and any uncommitted changes. Do not archive until anything worth keeping has been ported, committed, or otherwise synced.\n` +

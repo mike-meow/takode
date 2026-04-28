@@ -146,7 +146,12 @@ export interface ChatMessage {
   /** Assistant message UUID from CLI, for revert support */
   cliUuid?: string;
   /** Notification anchored to this message (set by takode notify). */
-  notification?: { category: "needs-input" | "review"; timestamp: number; summary?: string };
+  notification?: {
+    category: "needs-input" | "review";
+    timestamp: number;
+    summary?: string;
+    suggestedAnswers?: string[];
+  };
   /** Browser-only message not present in server messageHistory; excluded from sync hash verification. */
   ephemeral?: boolean;
   /** Browser-only pending upload/send state for local user messages. */

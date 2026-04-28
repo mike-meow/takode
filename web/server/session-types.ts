@@ -492,6 +492,13 @@ export interface SessionTaskEntry {
   questId?: string;
 }
 
+export interface TakodeNotificationPayload {
+  category: "needs-input" | "review";
+  summary?: string;
+  suggestedAnswers?: string[];
+  timestamp: number;
+}
+
 /** Messages the bridge sends to the browser */
 export type BrowserIncomingMessageBase =
   | { type: "session_init"; session: SessionState; nextEventSeq?: number }
@@ -504,7 +511,7 @@ export type BrowserIncomingMessageBase =
       uuid?: string;
       tool_start_times?: Record<string, number>;
       turn_duration_ms?: number;
-      notification?: { category: "needs-input" | "review"; timestamp: number };
+      notification?: TakodeNotificationPayload;
     }
   | { type: "stream_event"; event: unknown; parent_tool_use_id: string | null }
   | { type: "result"; data: CLIResultMessage; interrupted?: boolean }
@@ -647,7 +654,7 @@ export type BrowserIncomingMessageBase =
   | {
       type: "notification_anchored";
       messageId: string | null;
-      notification: { category: "needs-input" | "review"; timestamp: number; summary?: string };
+      notification: TakodeNotificationPayload;
     }
   | {
       type: "board_updated";
@@ -826,6 +833,7 @@ export interface SessionNotification {
   id: string;
   category: "needs-input" | "review";
   summary?: string;
+  suggestedAnswers?: string[];
   timestamp: number;
   /** Assistant message ID for jump-to-message links (null if no message was anchored) */
   messageId: string | null;
