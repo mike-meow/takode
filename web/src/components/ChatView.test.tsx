@@ -49,7 +49,16 @@ function resetStore(overrides: Partial<MockStoreState> = {}) {
 }
 
 vi.mock("../store.js", () => ({
-  useStore: (selector: (s: MockStoreState) => unknown) => selector(mockState),
+  useStore: (selector: (s: MockStoreState) => unknown) => {
+    // Simulates the useSyncExternalStore stability check so selectors do not
+    // reintroduce fresh empty arrays/objects that can loop in React.
+    const selected = selector(mockState);
+    const repeated = selector(mockState);
+    if (!Object.is(selected, repeated)) {
+      throw new Error("Unstable useStore selector result");
+    }
+    return selected;
+  },
   getSessionSearchState: () => ({
     query: "",
     isOpen: false,

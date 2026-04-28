@@ -30,6 +30,9 @@ type LeaderThreadRow = {
   messageCount: number;
 };
 
+const EMPTY_BOARD_ROWS: BoardRowData[] = [];
+const EMPTY_MESSAGES: ChatMessage[] = [];
+
 function messageThreadKeys(message: ChatMessage): string[] {
   const keys = new Set<string>();
   const metadata = message.metadata;
@@ -101,9 +104,9 @@ function LeaderThreadSwitcher({
   selectedThreadKey: string;
   onSelectThread: (threadKey: string) => void;
 }) {
-  const activeBoard = useStore((s) => s.sessionBoards.get(sessionId) ?? []);
-  const completedBoard = useStore((s) => s.sessionCompletedBoards.get(sessionId) ?? []);
-  const messages = useStore((s) => s.messages.get(sessionId) ?? []);
+  const activeBoard = useStore((s) => s.sessionBoards.get(sessionId) ?? EMPTY_BOARD_ROWS);
+  const completedBoard = useStore((s) => s.sessionCompletedBoards.get(sessionId) ?? EMPTY_BOARD_ROWS);
+  const messages = useStore((s) => s.messages.get(sessionId) ?? EMPTY_MESSAGES);
   const quests = useStore((s) => s.quests);
   const openQuestOverlay = useStore((s) => s.openQuestOverlay);
   const rows = useMemo(
