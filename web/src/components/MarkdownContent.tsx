@@ -524,12 +524,14 @@ export function MarkdownContent({
   variant = "full",
   sessionId,
   searchHighlight,
+  enableChatSelectionMenu = false,
 }: {
   text: string;
   size?: "default" | "sm";
   variant?: "full" | "conservative";
   sessionId?: string;
   searchHighlight?: { query: string; mode: "strict" | "fuzzy"; isCurrent: boolean } | null;
+  enableChatSelectionMenu?: boolean;
 }) {
   const sizeClass =
     size === "sm"
@@ -556,7 +558,10 @@ export function MarkdownContent({
   );
 
   return (
-    <div className={`markdown-body ${sizeClass} text-cc-fg leading-relaxed overflow-hidden break-words`}>
+    <div
+      className={`markdown-body ${sizeClass} text-cc-fg leading-relaxed overflow-hidden break-words`}
+      data-chat-selection-scope={enableChatSelectionMenu ? "true" : undefined}
+    >
       <Markdown
         remarkPlugins={[remarkGfm, remarkBreaks, remarkNormalizeOrderedListContinuations, remarkPlainTakodeReferences]}
         urlTransform={transformMarkdownUrl}

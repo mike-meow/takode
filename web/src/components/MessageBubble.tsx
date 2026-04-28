@@ -1385,7 +1385,12 @@ function AssistantMessage({
       <div className={`group/msg relative flex items-start ${hidePaw ? "" : "gap-3"}`}>
         {!hidePaw && <PawTrailAvatar />}
         <div ref={contentRef} className="flex-1 min-w-0 pr-6">
-          <MarkdownContent text={message.content} sessionId={sessionId} searchHighlight={searchHighlight} />
+          <MarkdownContent
+            text={message.content}
+            sessionId={sessionId}
+            searchHighlight={searchHighlight}
+            enableChatSelectionMenu
+          />
           {resolvedNotification && (
             <NotificationMarker
               category={resolvedNotification.category}
@@ -1406,7 +1411,12 @@ function AssistantMessage({
       {!hidePaw && <PawTrailAvatar />}
       <div ref={contentRef} className="flex-1 min-w-0 space-y-3 pr-6">
         {shouldRenderContentFallback && (
-          <MarkdownContent text={message.content} sessionId={sessionId} searchHighlight={searchHighlight} />
+          <MarkdownContent
+            text={message.content}
+            sessionId={sessionId}
+            searchHighlight={searchHighlight}
+            enableChatSelectionMenu
+          />
         )}
         {grouped.map((group, i) => {
           if (group.kind === "content") {
@@ -1689,7 +1699,7 @@ function CompactMarker({ message, sessionId }: { message: ChatMessage; sessionId
       </div>
       {expanded && hasSummary && (
         <div className="mt-2 mx-4 max-h-96 overflow-y-auto rounded-lg border border-cc-border bg-cc-card p-3">
-          <MarkdownContent text={message.content} sessionId={sessionId} />
+          <MarkdownContent text={message.content} sessionId={sessionId} enableChatSelectionMenu />
         </div>
       )}
     </div>
@@ -1710,7 +1720,14 @@ function ContentBlockRenderer({
   const isCodex = useStore((s) => (sessionId ? s.sessions.get(sessionId)?.backend_type === "codex" : false));
 
   if (block.type === "text") {
-    return <MarkdownContent text={block.text} sessionId={sessionId} searchHighlight={searchHighlight} />;
+    return (
+      <MarkdownContent
+        text={block.text}
+        sessionId={sessionId}
+        searchHighlight={searchHighlight}
+        enableChatSelectionMenu
+      />
+    );
   }
 
   if (block.type === "thinking") {

@@ -1665,7 +1665,7 @@ export function MessageFeed({
         )}
 
         {/* Floating context menu for text selection within assistant messages */}
-        <SelectionContextMenu selection={textSelection} sessionId={sessionId} onClose={textSelection.clear} />
+        <SelectionContextMenu selection={textSelection} sessionId={sessionId} onClose={textSelection.dismiss} />
       </div>
     </div>
   );

@@ -11,9 +11,11 @@ export interface TextSelectionState {
   position: { x: number; y: number } | null;
   /** Clears the selection and resets state */
   clear: () => void;
+  /** Hides Takode's selection menu without changing the browser selection */
+  dismiss: () => void;
 }
 
-const EMPTY_STATE: Omit<TextSelectionState, "clear"> = {
+const EMPTY_STATE: Omit<TextSelectionState, "clear" | "dismiss"> = {
   isActive: false,
   plainText: "",
   range: null,
@@ -32,6 +34,18 @@ function findMessageAncestor(node: Node | null): HTMLElement | null {
   return null;
 }
 
+/** Walk up from a node to find an explicit chat-selection Markdown scope. */
+function findChatSelectionScope(node: Node | null): HTMLElement | null {
+  let current: Node | null = node;
+  while (current) {
+    if (current instanceof HTMLElement && current.dataset.chatSelectionScope === "true") {
+      return current;
+    }
+    current = current.parentNode;
+  }
+  return null;
+}
+
 /** Calculate menu position: above the selection on desktop, below on touch
  *  (where the native iOS callout and handles appear above). */
 function computeMenuPosition(rect: DOMRect, preferBelow: boolean): { x: number; y: number } {
@@ -43,10 +57,13 @@ function computeMenuPosition(rect: DOMRect, preferBelow: boolean): { x: number; 
   x = Math.max(8, Math.min(x, window.innerWidth - MENU_WIDTH_ESTIMATE - 8));
 
   if (preferBelow) {
-    // Touch: place below selection to avoid overlapping native iOS callout above
-    const belowY = rect.bottom + GAP;
-    const aboveY = rect.top - GAP - MENU_HEIGHT_ESTIMATE;
-    return { x, y: belowY + MENU_HEIGHT_ESTIMATE > window.innerHeight - 4 ? Math.max(4, aboveY) : belowY };
+    // Touch: keep the DOM selection intact and move Takode's menu away from
+    // the native callout zone around the selected text.
+    const edgeGap = Math.max(12, GAP);
+    const selectionMidpoint = rect.top + rect.height / 2;
+    const y =
+      selectionMidpoint < window.innerHeight / 2 ? window.innerHeight - MENU_HEIGHT_ESTIMATE - edgeGap : edgeGap;
+    return { x, y: Math.max(4, Math.min(y, window.innerHeight - MENU_HEIGHT_ESTIMATE - 4)) };
   }
 
   // Desktop: place above selection so the highlighted text stays visible
@@ -63,7 +80,7 @@ function computeMenuPosition(rect: DOMRect, preferBelow: boolean): { x: number; 
  * On touch devices, delays evaluation to let the native selection UI finalize.
  */
 export function useTextSelection(containerRef: RefObject<HTMLElement | null>): TextSelectionState {
-  const [state, setState] = useState<Omit<TextSelectionState, "clear">>(EMPTY_STATE);
+  const [state, setState] = useState<Omit<TextSelectionState, "clear" | "dismiss">>(EMPTY_STATE);
   const rafRef = useRef<number>(0);
   const touchDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Track whether we should suppress the next selectionchange (after programmatic clear)
@@ -92,6 +109,10 @@ export function useTextSelection(containerRef: RefObject<HTMLElement | null>): T
     });
   }, [suppressSelectionChanges]);
 
+  const dismiss = useCallback(() => {
+    setState(EMPTY_STATE);
+  }, []);
+
   const container = containerRef.current;
 
   useEffect(() => {
@@ -104,8 +125,16 @@ export function useTextSelection(containerRef: RefObject<HTMLElement | null>): T
         return;
       }
 
-      const anchorMsg = findMessageAncestor(sel.anchorNode);
-      const focusMsg = findMessageAncestor(sel.focusNode);
+      const anchorScope = findChatSelectionScope(sel.anchorNode);
+      const focusScope = findChatSelectionScope(sel.focusNode);
+
+      if (!anchorScope || !focusScope || anchorScope !== focusScope) {
+        setState(EMPTY_STATE);
+        return;
+      }
+
+      const anchorMsg = findMessageAncestor(anchorScope);
+      const focusMsg = findMessageAncestor(focusScope);
 
       if (!anchorMsg || !focusMsg || anchorMsg !== focusMsg) {
         setState(EMPTY_STATE);
@@ -137,14 +166,6 @@ export function useTextSelection(containerRef: RefObject<HTMLElement | null>): T
       };
 
       setState(nextState);
-
-      if (isTouchInteractionRef.current) {
-        // iOS keeps the native callout visible while the DOM selection remains active.
-        // Clear the browser selection after caching the range so our own menu isn't blocked.
-        suppressSelectionChanges(() => {
-          sel.removeAllRanges();
-        });
-      }
     }
 
     function scheduleEvaluation() {
@@ -210,5 +231,5 @@ export function useTextSelection(containerRef: RefObject<HTMLElement | null>): T
     };
   }, [container, suppressSelectionChanges]);
 
-  return { ...state, clear };
+  return { ...state, clear, dismiss };
 }
