@@ -188,7 +188,8 @@ describe("QuestDetailPanel", () => {
     expect(within(timeline).getByText("Port")).toBeInTheDocument();
     expect(within(timeline).getByText("Inspect only the follow-up diff")).toBeInTheDocument();
     const completedNote = within(timeline).getByText("Finished alignment note dims with the title");
-    expect(completedNote.tagName).toBe("SPAN");
+    expect(completedNote.tagName).toBe("DIV");
+    expect(completedNote).toHaveClass("ml-[1.375rem]");
     expect(completedNote.className).toContain("text-cc-muted");
     expect(completedNote.className).not.toContain("bg-amber");
     expect(within(timeline).getByText("Alignment").closest("li")).toHaveAttribute("data-phase-state", "completed");
@@ -232,7 +233,7 @@ describe("QuestDetailPanel", () => {
     const timeline = screen.getByTestId("quest-journey-timeline");
     expect(timeline).toHaveAttribute("data-journey-mode", "proposed");
     expect(within(timeline).getByText("Proposed Journey")).toBeInTheDocument();
-    expect(within(timeline).getByText("Ask user to approve this Journey before dispatch")).toBeInTheDocument();
+    expect(within(timeline).getByText("Ask user to approve this Journey before dispatch")).toHaveClass("ml-[1.375rem]");
     expect(within(timeline).getByText(/Make approved code, docs, prompts/)).toHaveAttribute(
       "data-purpose-kind",
       "default",

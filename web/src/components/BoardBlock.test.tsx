@@ -135,5 +135,6 @@ describe("BoardBlock", () => {
     expect(screen.getByText("Presented Journey Proposal")).toBeInTheDocument();
     expect(screen.getByText("Proposed Journey for approval")).toBeInTheDocument();
     expect(screen.getByText("Build the draft and present paths.")).toHaveAttribute("data-purpose-kind", "authored");
+    expect(screen.getByText("Build the draft and present paths.")).toHaveClass("ml-[1.375rem]");
   });
 });

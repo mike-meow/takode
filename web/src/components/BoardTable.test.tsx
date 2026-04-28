@@ -270,6 +270,7 @@ describe("BoardTable", () => {
     expect(within(card).getByText("Implement")).toBeInTheDocument();
     expect(within(card).getByText("Code Review")).toBeInTheDocument();
     expect(within(card).getByText("Build the compact preview UI")).toHaveAttribute("data-purpose-kind", "authored");
+    expect(within(card).getByText("Build the compact preview UI")).toHaveClass("ml-[1.375rem]");
     expect(within(card).getByText(/Do a lightweight read-in/)).toHaveAttribute("data-purpose-kind", "default");
 
     fireEvent.click(within(card).getByRole("button", { name: /q-924 Make Journey UI useful/ }));

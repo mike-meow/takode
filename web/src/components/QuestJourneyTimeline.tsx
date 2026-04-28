@@ -282,7 +282,7 @@ function VerticalJourney({
               </div>
               <div className={hasNext ? "pb-1.5" : "pb-0"}>
                 <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-                  <span className="shrink-0 text-[10px] text-cc-muted">{item.index + 1}</span>
+                  <span className="w-4 shrink-0 text-right text-[10px] text-cc-muted">{item.index + 1}</span>
                   <span
                     className={`min-w-0 truncate text-xs ${phaseLabelClassName(item)}`}
                     style={phaseLabelStyle(item)}
@@ -294,15 +294,16 @@ function VerticalJourney({
                       current
                     </span>
                   )}
-                  {purpose && (
-                    <span
-                      className={`min-w-[10rem] flex-1 text-[10px] leading-snug ${phasePurposeClassName(item, purpose.kind)}`}
-                      data-purpose-kind={purpose.kind}
-                    >
-                      {purpose.text}
-                    </span>
-                  )}
                 </div>
+                {purpose && (
+                  <div
+                    className={`ml-[1.375rem] mt-0.5 text-[10px] leading-snug ${phasePurposeClassName(item, purpose.kind)}`}
+                    data-purpose-kind={purpose.kind}
+                    data-testid="quest-journey-phase-purpose"
+                  >
+                    {purpose.text}
+                  </div>
+                )}
               </div>
             </li>
           );
