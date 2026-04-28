@@ -296,4 +296,30 @@ describe("direct user needs-input reminders", () => {
     });
     expect(session.messageHistory[1]).toMatchObject({ type: "user_message", content: "Fresh user message" });
   });
+
+  it("does not commit an all-resolved queued Codex reminder into chat history", () => {
+    // Codex can queue a reminder while a notification is active, then commit the
+    // pending input after the user has already resolved that notification. The
+    // queued user message should still land, but the stale reminder card should not.
+    const session = makeSession([needsInput("n-1", "Pending question", 100)]);
+    session.backendType = "codex";
+    const deps = makeDeps({ isOrchestrator: true });
+    deps.addPendingCodexInput = vi.fn((targetSession, input) => {
+      targetSession.pendingCodexInputs.push(input);
+    });
+
+    routeAdapterBrowserMessage(session, userMessage(), null, deps);
+    session.notifications![0]!.done = true;
+
+    commitPendingCodexInputs(session as any, [session.pendingCodexInputs[0]!.id], {
+      broadcastPendingCodexInputs: vi.fn(),
+      broadcastToBrowsers: vi.fn(),
+      persistSession: vi.fn(),
+      touchUserMessage: vi.fn(),
+      onUserMessage: vi.fn(),
+    } as any);
+
+    expect(session.messageHistory).toHaveLength(1);
+    expect(session.messageHistory[0]).toMatchObject({ type: "user_message", content: "Fresh user message" });
+  });
 });

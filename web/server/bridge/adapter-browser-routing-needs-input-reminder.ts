@@ -1,4 +1,4 @@
-import type { BrowserIncomingMessage, BrowserOutgoingMessage } from "../session-types.js";
+import type { BrowserIncomingMessage, BrowserOutgoingMessage, SessionNotification } from "../session-types.js";
 import type {
   AdapterBrowserRoutingDeps,
   AdapterBrowserRoutingSessionLike,
@@ -13,6 +13,36 @@ function parseNotificationNumericId(notificationId: string): number | null {
 
 function formatReminderSummary(summary: string | undefined): string {
   return summary?.trim().replace(/\s+/g, " ") || "(no summary)";
+}
+
+function extractReminderNotificationIds(reminderText: string): string[] {
+  const ids: string[] = [];
+  for (const line of reminderText.split(/\r?\n/)) {
+    const match = /^\s*(n-\d+|\d+)\.\s+/.exec(line);
+    if (!match) continue;
+    ids.push(match[1].startsWith("n-") ? match[1] : `n-${Number.parseInt(match[1], 10)}`);
+  }
+  return ids;
+}
+
+export function shouldCommitNeedsInputReminderHistoryEntry(
+  reminderText: string,
+  notifications: ReadonlyArray<SessionNotification> | undefined,
+): boolean {
+  const referencedIds = extractReminderNotificationIds(reminderText);
+  if (referencedIds.length === 0) return true;
+
+  let knownCount = 0;
+  for (const notificationId of referencedIds) {
+    const notification = notifications?.find(
+      (entry) => entry.id === notificationId && entry.category === "needs-input",
+    );
+    if (!notification) continue;
+    knownCount += 1;
+    if (!notification.done) return true;
+  }
+
+  return knownCount !== referencedIds.length;
 }
 
 export function buildNeedsInputReminderTextForDirectUserMessage(

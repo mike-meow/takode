@@ -6,11 +6,15 @@ import type {
   BrowserOutgoingMessage,
   CodexOutboundTurn,
   PendingCodexInput,
+  SessionNotification,
   SessionState,
 } from "../session-types.js";
 import { sessionTag } from "../session-tag.js";
 import type { UserDispatchTurnTarget } from "./generation-lifecycle.js";
-import { buildNeedsInputReminderHistoryEntry } from "./adapter-browser-routing-needs-input-reminder.js";
+import {
+  buildNeedsInputReminderHistoryEntry,
+  shouldCommitNeedsInputReminderHistoryEntry,
+} from "./adapter-browser-routing-needs-input-reminder.js";
 import { LEADER_COMPACTION_RECOVERY_PROMPT } from "./compaction-recovery.js";
 import {
   armCodexFreshTurnRequirement as armCodexFreshTurnRequirementState,
@@ -27,6 +31,7 @@ export interface CodexRecoveryOrchestratorSessionLike {
   backendType: "codex" | "claude" | "claude-sdk";
   state: Pick<SessionState, "backend_state" | "backend_type" | "cwd" | "model" | "is_compacting">;
   messageHistory: BrowserIncomingMessage[];
+  notifications?: SessionNotification[];
   pendingMessages: string[];
   pendingCodexInputs: PendingCodexInput[];
   pendingCodexTurns: CodexOutboundTurn[];
@@ -967,7 +972,10 @@ function commitPendingCodexInput(
   if (idx < 0) return null;
   const pending = session.pendingCodexInputs[idx];
   session.pendingCodexInputs.splice(idx, 1);
-  if (pending.needsInputReminderText) {
+  if (
+    pending.needsInputReminderText &&
+    shouldCommitNeedsInputReminderHistoryEntry(pending.needsInputReminderText, session.notifications)
+  ) {
     const reminderHistoryEntry = buildNeedsInputReminderHistoryEntry(
       pending.needsInputReminderText,
       pending.timestamp,
