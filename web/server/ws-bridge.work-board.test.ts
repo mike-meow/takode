@@ -1505,6 +1505,39 @@ describe("work board", () => {
     expect(final?.previousState).toBe("PORTING");
   });
 
+  it("advanceBoardRow fails closed when a repeated current phase lacks an active index", () => {
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+
+    bridge.upsertBoardRow("s1", {
+      questId: "q-1",
+      status: "MENTAL_SIMULATING",
+      journey: {
+        presetId: "simulation-loop",
+        phaseIds: [
+          "alignment",
+          "implement",
+          "mental-simulation",
+          "implement",
+          "mental-simulation",
+          "code-review",
+          "port",
+        ],
+        currentPhaseId: "mental-simulation",
+      },
+    });
+
+    const row = (bridge as any).sessions.get("s1").board.get("q-1");
+    delete row.journey.activePhaseIndex;
+    row.journey.currentPhaseId = "mental-simulation";
+
+    const result = bridge.advanceBoardRow("s1", "q-1");
+    expect(result).toMatchObject({
+      error: expect.stringContaining("lacks journey.activePhaseIndex"),
+      previousState: "MENTAL_SIMULATING",
+    });
+  });
+
   it("advanceBoardRow removes row at final phase PORTING", () => {
     const browser = makeBrowserSocket("s1");
     bridge.handleBrowserOpen(browser, "s1");

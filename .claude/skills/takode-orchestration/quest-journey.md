@@ -1,6 +1,6 @@
 # Quest Journey Lifecycle
 
-Every dispatched task follows a **Quest Journey** assembled from built-in phases. The work board (`takode board show`) tracks proposed pre-dispatch Journeys, active current phases, remaining phases, indexed phase notes, and next required leader action.
+Every dispatched task follows a **Quest Journey** assembled from built-in phases. The work board (`takode board show`) tracks proposed pre-dispatch Journeys, active current phases, remaining phases, numbered Journey paths, indexed phase notes, and next required leader action.
 
 The planned Journey is board-owned state associated with the quest while that quest is on the board. Quest creation or refinement defines the quest text; it does not freeze either the proposed draft or the active Journey.
 
@@ -87,6 +87,7 @@ Rules:
 - Repeated phases are first-class. Insert or append them directly instead of pretending the Journey reset to an earlier abstract state.
 - Indexed phase notes rebase by phase occurrence, not raw index. If the same occurrence still exists after a phase-list revision, the note follows it even when its position shifts.
 - If a revision removes the intended occurrence, `takode board set` / `takode board propose` warns about the dropped note so the leader can reattach or rewrite it deliberately.
+- Repeated active phases are tracked by occurrence index, not just by `currentPhaseId`. When a repeated phase is active and `--status` alone would be ambiguous, set `--active-phase-position` so the board row and UI point at the correct occurrence.
 - If the active boundary itself changes, set an explicit `--status` that matches the revised phase plan.
 - `takode board advance` always follows the row's planned phases, not a hard-coded global order.
 

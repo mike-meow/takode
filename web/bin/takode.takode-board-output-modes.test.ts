@@ -319,8 +319,78 @@ describe("takode board output modes", () => {
       });
 
       expect(result.status).toBe(0);
+      expect(result.stdout).toContain(
+        "journey: 1. Alignment -> 2. Implement -> 3. Code Review -> 4. Implement -> 5. Code Review -> 6. Port",
+      );
       expect(result.stdout).toContain("note[3] Code Review: focus on stream migration behavior");
       expect(result.stdout).toContain("note[5] Code Review: inspect only the follow-up diff");
+    } finally {
+      server.close();
+    }
+  });
+
+  it("shows the active repeated phase occurrence in the Journey path", async () => {
+    const server = createServer((req, res) => {
+      const method = req.method || "";
+      const url = req.url || "";
+
+      if (method === "GET" && url === "/api/takode/me") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ sessionId: "leader-board-repeated", isOrchestrator: true }));
+        return;
+      }
+
+      if (method === "GET" && url === "/api/sessions/leader-board-repeated/board?resolve=true") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            board: [
+              {
+                questId: "q-720",
+                title: "Repeated simulation loop",
+                status: "MENTAL_SIMULATING",
+                createdAt: 1,
+                updatedAt: 2,
+                journey: {
+                  phaseIds: [
+                    "alignment",
+                    "implement",
+                    "mental-simulation",
+                    "implement",
+                    "mental-simulation",
+                    "code-review",
+                    "port",
+                  ],
+                  activePhaseIndex: 4,
+                  currentPhaseId: "mental-simulation",
+                },
+              },
+            ],
+            rowSessionStatuses: {},
+          }),
+        );
+        return;
+      }
+
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    });
+
+    server.listen(0);
+    await once(server, "listening");
+    const port = (server.address() as AddressInfo).port;
+
+    try {
+      const result = await runTakode(["board", "show", "--port", String(port)], {
+        ...process.env,
+        COMPANION_SESSION_ID: "leader-board-repeated",
+        COMPANION_AUTH_TOKEN: "auth-board-repeated",
+      });
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain(
+        "journey: 1. Alignment -> 2. Implement -> 3. Mental Simulation -> 4. Implement -> [5. Mental Simulation] -> 6. Code Review -> 7. Port",
+      );
     } finally {
       server.close();
     }

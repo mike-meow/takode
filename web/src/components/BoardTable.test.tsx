@@ -146,6 +146,38 @@ describe("BoardTable", () => {
     expect(timeline).toHaveAttribute("title", "Journey revised: Need code review before port");
   });
 
+  it("highlights the correct repeated phase occurrence when activePhaseIndex points to a later match", () => {
+    const board: BoardRowData[] = [
+      {
+        questId: "q-720",
+        status: "MENTAL_SIMULATING",
+        journey: {
+          presetId: "simulation-loop",
+          phaseIds: [
+            "alignment",
+            "implement",
+            "mental-simulation",
+            "implement",
+            "mental-simulation",
+            "code-review",
+            "port",
+          ],
+          activePhaseIndex: 4,
+          currentPhaseId: "mental-simulation",
+        },
+        updatedAt: 1,
+      },
+    ];
+
+    render(<BoardTable board={board} />);
+
+    const timeline = screen.getByTestId("quest-journey-timeline");
+    const mentalSimulationLabels = within(timeline).getAllByText("Mental Simulation");
+    expect(mentalSimulationLabels).toHaveLength(2);
+    expect(mentalSimulationLabels[0]).not.toHaveClass("font-semibold");
+    expect(mentalSimulationLabels[1]).toHaveClass("font-semibold");
+  });
+
   it("renders worker and reviewer session links with their own status dots", () => {
     const board: BoardRowData[] = [{ questId: "q-1", worker: "worker-1", workerNum: 11, updatedAt: 1 }];
 

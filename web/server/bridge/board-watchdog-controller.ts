@@ -3,6 +3,7 @@ import {
   FREE_WORKER_WAIT_FOR_TOKEN,
   formatWaitForRefLabel,
   getQuestJourneyPhase,
+  getQuestJourneyPhaseIndices,
   getQuestJourneyPhaseForState,
   getWaitForRefKind,
   normalizeQuestJourneyPlan,
@@ -76,6 +77,11 @@ const LEGACY_NO_CODE_COMPAT_PHASE_IDS = [
 ] as const satisfies readonly QuestJourneyPhaseId[];
 
 export function getBoard(session: SessionLike): BoardRow[] {
+  for (const row of session.board.values() as Iterable<BoardRow>) {
+    if (!row.journey) continue;
+    row.journey = normalizeBoardRowJourneyPlan(row, row.status);
+    session.board.set(row.questId, row);
+  }
   return Array.from(session.board.values() as Iterable<BoardRow>).sort((a, b) => a.createdAt - b.createdAt);
 }
 
@@ -94,6 +100,11 @@ export function getBoardRowForSession(
 }
 
 export function getCompletedBoard(session: SessionLike): BoardRow[] {
+  for (const row of session.completedBoard.values() as Iterable<BoardRow>) {
+    if (!row.journey) continue;
+    row.journey = normalizeBoardRowJourneyPlan(row, row.status);
+    session.completedBoard.set(row.questId, row);
+  }
   return Array.from(session.completedBoard.values() as Iterable<BoardRow>).sort(
     (a, b) => (b.completedAt ?? 0) - (a.completedAt ?? 0),
   );
@@ -470,10 +481,22 @@ export function advanceBoardRow(
     };
   }
   const currentPhaseId = statusPhaseId ?? rawCurrentPhaseId ?? normalizedJourney.currentPhaseId;
+  const currentPhaseMatches = currentPhaseId ? getQuestJourneyPhaseIndices(plannedPhaseIds, currentPhaseId) : [];
+  if (
+    rawCurrentPhaseIndex === undefined &&
+    normalizedJourney.activePhaseIndex === undefined &&
+    currentPhaseId &&
+    currentPhaseMatches.length > 1
+  ) {
+    return {
+      error: `Cannot advance ${questId}: repeated journey.currentPhaseId ${currentPhaseId} lacks journey.activePhaseIndex. Reconcile the row with takode board set --active-phase-position before advancing.`,
+      previousState,
+    };
+  }
   const currentPhaseIdx =
     rawCurrentPhaseIndex ??
     normalizedJourney.activePhaseIndex ??
-    (currentPhaseId ? plannedPhaseIds.indexOf(currentPhaseId) : -1);
+    (currentPhaseMatches.length === 1 ? currentPhaseMatches[0] : -1);
 
   if (currentPhaseIdx >= 0 && currentPhaseIdx >= plannedPhaseIds.length - 1) {
     const { board } = completeBoardRow(session, questId, deps);

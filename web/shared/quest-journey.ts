@@ -261,6 +261,22 @@ export function getQuestJourneyPhaseForState(status?: string | null): QuestJourn
   return canonical ? getQuestJourneyPhase(QUEST_JOURNEY_PHASE_ID_BY_STATE[canonical] ?? null) : null;
 }
 
+export function getQuestJourneyPhaseIndices(
+  phaseIds: readonly QuestJourneyPhaseId[],
+  targetPhaseId: QuestJourneyPhaseId,
+): number[] {
+  return phaseIds.flatMap((phaseId, index) => (phaseId === targetPhaseId ? [index] : []));
+}
+
+function getUniqueQuestJourneyPhaseIndex(
+  phaseIds: readonly QuestJourneyPhaseId[],
+  targetPhaseId: QuestJourneyPhaseId | undefined,
+): number | undefined {
+  if (!targetPhaseId) return undefined;
+  const matches = getQuestJourneyPhaseIndices(phaseIds, targetPhaseId);
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
 export function rebaseQuestJourneyPhaseNotes(
   existingNotes: Record<string, string> | undefined,
   previousPhaseIds: readonly QuestJourneyPhaseId[],
@@ -361,20 +377,13 @@ function normalizeQuestJourneyActivePhaseIndex(
 
   if (statusPhaseId) {
     if (explicitIndex !== undefined && phaseIds[explicitIndex] === statusPhaseId) return explicitIndex;
-    if (plannedCurrentPhaseId === statusPhaseId) {
-      const currentIndex = phaseIds.indexOf(plannedCurrentPhaseId);
-      if (currentIndex >= 0) return currentIndex;
-    }
-    const statusIndex = phaseIds.indexOf(statusPhaseId);
-    return statusIndex >= 0 ? statusIndex : undefined;
+    if (plannedCurrentPhaseId === statusPhaseId)
+      return getUniqueQuestJourneyPhaseIndex(phaseIds, plannedCurrentPhaseId);
+    return getUniqueQuestJourneyPhaseIndex(phaseIds, statusPhaseId);
   }
   if (normalizedStatus === "QUEUED" || normalizedStatus === "PROPOSED") return undefined;
   if (explicitIndex !== undefined) return explicitIndex;
-  if (plannedCurrentPhaseId) {
-    const currentIndex = phaseIds.indexOf(plannedCurrentPhaseId);
-    if (currentIndex >= 0) return currentIndex;
-  }
-  return undefined;
+  return getUniqueQuestJourneyPhaseIndex(phaseIds, plannedCurrentPhaseId);
 }
 
 export function getQuestJourneyCurrentPhaseIndex(

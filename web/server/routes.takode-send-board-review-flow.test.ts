@@ -1171,6 +1171,81 @@ describe("Takode server-authoritative auth", () => {
     });
   });
 
+  it("accepts an explicit active phase index for repeated active phases", async () => {
+    setupTakodeSessions();
+
+    const res = await app.request("/api/sessions/orch-1/board", {
+      method: "POST",
+      headers: authHeaders("orch-1", "tok-1"),
+      body: JSON.stringify({
+        questId: "q-9",
+        status: "MENTAL_SIMULATING",
+        activePhaseIndex: 4,
+        phases: [
+          "alignment",
+          "implement",
+          "mental-simulation",
+          "implement",
+          "mental-simulation",
+          "code-review",
+          "port",
+        ],
+        presetId: "simulation-loop",
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      board: [
+        {
+          questId: "q-9",
+          status: "MENTAL_SIMULATING",
+          journey: {
+            activePhaseIndex: 4,
+            currentPhaseId: "mental-simulation",
+            phaseIds: [
+              "alignment",
+              "implement",
+              "mental-simulation",
+              "implement",
+              "mental-simulation",
+              "code-review",
+              "port",
+            ],
+          },
+        },
+      ],
+    });
+  });
+
+  it("rejects repeated active statuses without an explicit active phase index", async () => {
+    setupTakodeSessions();
+
+    const res = await app.request("/api/sessions/orch-1/board", {
+      method: "POST",
+      headers: authHeaders("orch-1", "tok-1"),
+      body: JSON.stringify({
+        questId: "q-9",
+        status: "MENTAL_SIMULATING",
+        phases: [
+          "alignment",
+          "implement",
+          "mental-simulation",
+          "implement",
+          "mental-simulation",
+          "code-review",
+          "port",
+        ],
+        presetId: "simulation-loop",
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({
+      error: expect.stringContaining("active occurrence is ambiguous"),
+    });
+  });
+
   it("stores per-phase Journey notes keyed by phase occurrence", async () => {
     setupTakodeSessions();
     bridge._sessions["orch-1"].board = new Map([

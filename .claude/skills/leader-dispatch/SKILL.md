@@ -29,16 +29,18 @@ This skill covers leader discipline and the step-by-step dispatch process. Invok
 - **Never hallucinate user intent.** If the user says "fix the sidebar bug", don't turn it into "fix the sidebar bug by adjusting the CSS grid layout and adding a media query for mobile breakpoints". Pass through what the user said and let the worker investigate.
 - **Added details need confirmation.** If you want to add specifics to make instructions more actionable (e.g. suggesting an approach, naming specific files, or scoping the fix), confirm with the user first. An over-specified instruction based on wrong assumptions wastes more time than a brief clarifying question.
 - **Use `/quest-design` before quest creation/refinement.** Before creating a quest or refining an `idea` quest into worker-ready scope, invoke `/quest-design` and wait for user confirmation or correction. A user-approved plan that explicitly covers the quest text counts as this confirmation. Routine feedback, claims, completion, verification checks, board updates, and already-approved phase transitions do not need a separate confirmation round. `/quest-design` confirms quest understanding and finalizes quest text; it does not own initial Journey proposal.
-- **`/leader-dispatch` owns the initial Journey proposal.** Before dispatching a fresh or newly refined quest, present the planned initial Journey to the user, wait for approval, and only then dispatch the worker into the `alignment` phase (`PLANNING` on the board).
+- **`/leader-dispatch` owns the initial Journey proposal.** Before dispatching a fresh or newly refined quest, put the proposed Journey on the board, present that proposed row to the user, revise it there if needed, and only then dispatch the worker into the `alignment` phase (`PLANNING` on the board).
 - **Treat worker/reviewer confusion as a quest-scoped blocking signal.** When a herded worker or reviewer raises a clarification question, answer it from existing context if you can. If not, ask the user via plain text plus `takode notify needs-input`, keep that specific quest blocked until the ambiguity is resolved, and continue unrelated orchestration. If you intentionally pause the quest on human input, make that an explicit board decision rather than inferring the pause from `/confirm` alone.
 
 ## Pre-Dispatch Approval Contract
 
-Before you dispatch a quest, or intentionally leave it `QUEUED` for a later dispatch, present one combined proposal and get approval on the whole thing.
+Before you dispatch a quest, or intentionally leave it `QUEUED` for a later dispatch, create or revise the proposed board row first, then present that combined proposal and get approval on the whole thing.
 
 That pre-dispatch approval surface must include both:
 - the planned initial Quest Journey phases
 - the planned scheduling/orchestration approach
+
+The approval surface should be the proposed Journey row already visible on the board/UI, not an off-board phase list that you plan to write down later. If the user asks for changes, revise that same proposed row with `takode board propose ...` and present the updated row again.
 
 The scheduling/orchestration plan must state at least:
 - which worker you expect to use, or that you will spawn fresh
@@ -165,7 +167,7 @@ Default to your own backend type unless the user specifies otherwise.
 
 ### 5. Propose the Initial Journey
 
-Before dispatching a fresh or newly refined quest, present the planned initial Journey to the user and wait for approval.
+Before dispatching a fresh or newly refined quest, put the planned initial Journey on the board, present that proposed row to the user, and wait for approval.
 
 This is the `/leader-dispatch` contract:
 - `/quest-design` confirms quest understanding and finalizes the quest text.
@@ -176,7 +178,7 @@ The proposal should:
 - explain why that initial Journey fits the quest's risk boundary and evidence needs
 - make it explicit that the first worker dispatch will enter the `alignment` phase (`PLANNING` on the board) only after approval
 
-Put that proposed Journey on the board before approval with `takode board propose ...`, then present it from there. Do not spawn a worker, send the standard dispatch message, or promote the row into active execution until the user approves that initial Journey. If the user changes scope, risk, or evidence needs, revise the proposed Journey on the board and wait again.
+Put that proposed Journey on the board before approval with `takode board propose ...`, then present it from there. Treat the proposed row/UI as the source of truth for the draft Journey. Do not spawn a worker, send the standard dispatch message, or promote the row into active execution until the user approves that initial Journey. If the user changes scope, risk, evidence needs, or sequencing, revise that same proposed Journey on the board and wait again.
 
 Once approved, promote that same board row into active execution with `takode board promote ...`; do not restate or rebuild the Journey from scratch.
 
@@ -252,12 +254,14 @@ Do not let a stale review acceptance, stale port confirmation, or any other old-
 
 **Forward user screenshots.** When the user provides screenshots alongside a task request, attach them to the quest via `quest feedback q-XX --image <path>` before dispatching. If no quest exists (e.g. ad-hoc investigation), send the image file path to the worker via `takode send` so they can Read it. `takode spawn` does not support images -- always use a follow-up message or quest attachment.
 
-### 8. Update the Board
+### 8. Board Commands for Proposal and Promotion
 
 ```bash
 takode board propose <quest-id> --phases alignment,implement,code-review,port --preset full-code --wait-for-input <notif-id>
 takode board promote <quest-id> --worker <N>
 ```
+
+Use `takode board propose` before approval to create or revise the board-owned draft row the user will inspect. Use `takode board promote` only after approval to turn that same Journey object into active execution.
 
 ## Task Delegation Style
 

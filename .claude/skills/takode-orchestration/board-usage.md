@@ -8,7 +8,7 @@ While a quest is on the board, the current planned Journey shown there is board-
 
 ### `takode board show`
 
-Display the board with phase boundaries, indexed phase notes, and next-action hints.
+Display the board with phase boundaries, the full Journey path, indexed phase notes, and next-action hints.
 
 ### `takode board propose <quest-id> --phases phase-a,phase-b [--preset preset-id] [--revise-reason "why"] [--wait-for-input 3,4 | --clear-wait-for-input]`
 
@@ -19,7 +19,7 @@ Draft or revise a proposed pre-dispatch Journey row. Proposed rows:
 - do not pretend to be generic `QUEUED` worker-capacity rows
 - do not assign a worker yet
 
-### `takode board promote <quest-id> [--worker N] [--status STATE] [--wait-for q-X,#Y,free-worker] [--wait-for-input 3,4 | --clear-wait-for-input]`
+### `takode board promote <quest-id> [--worker N] [--status STATE] [--active-phase-position N] [--wait-for q-X,#Y,free-worker] [--wait-for-input 3,4 | --clear-wait-for-input]`
 
 Promote an existing proposed Journey into active execution without redefining its phase sequence. Use this after approval.
 
@@ -27,7 +27,7 @@ Promote an existing proposed Journey into active execution without redefining it
 
 Add or clear one lightweight free-form note for a specific phase occurrence. Phase positions are 1-based in the CLI, so repeated phases can carry different notes.
 
-### `takode board set <quest-id> [--worker N] [--status STATE] [--wait-for q-X,#Y,free-worker] [--wait-for-input 3,4 | --clear-wait-for-input] [--phases phase-a,phase-b] [--preset preset-id] [--revise-reason "why"]`
+### `takode board set <quest-id> [--worker N] [--status STATE] [--active-phase-position N] [--wait-for q-X,#Y,free-worker] [--wait-for-input 3,4 | --clear-wait-for-input] [--phases phase-a,phase-b] [--preset preset-id] [--revise-reason "why"]`
 
 Add or update a row.
 
@@ -40,6 +40,7 @@ Add or update a row.
 - `--phases` assembles the row's Journey from built-in phase IDs; repeated phases are allowed
 - `--preset` labels the planned phase sequence
 - `--revise-reason` records why an existing Journey's remaining phases changed
+- `--active-phase-position` pins the active occurrence for repeated phases using a 1-based position when `--status` alone would be ambiguous
 - phase notes rebase by phase occurrence during revisions; when a revision removes the target occurrence, the CLI warns so the leader can reattach the dropped reminder explicitly
 
 Built-in phase IDs are:
@@ -70,6 +71,7 @@ Examples:
   `takode board note q-12 5 --text "inspect only the follow-up diff"`
 
 When `--phases` is supplied for a new active row and `--status` is omitted, the board starts that row at the first planned phase. When revising an existing active row, omitting `--status` preserves the current phase occurrence by index as long as the revised phase list still includes that active boundary.
+If a repeated phase is active and the occurrence itself matters, use `--active-phase-position` so the board state and UI do not have to guess which occurrence is current.
 
 ### `takode board advance <quest-id>`
 
@@ -82,6 +84,7 @@ Remove row(s) manually.
 ## Rules
 
 - Every command outputs the full board after the operation.
+- The CLI board output shows the full Journey path with numbered positions and brackets around the active occurrence when known.
 - Use `takode board propose` for the initial pre-dispatch draft row.
 - Use `takode board promote` to reuse that same Journey object after approval.
 - Set `--worker N` when dispatching active work, but proposed rows intentionally have no worker.

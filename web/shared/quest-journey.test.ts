@@ -329,6 +329,41 @@ describe("Quest Journey phases", () => {
     expect(getQuestJourneyCurrentPhaseId(normalized, "IMPLEMENTING")).toBe("implement");
   });
 
+  it("does not guess the active occurrence for repeated phases without an explicit index", () => {
+    const normalized = normalizeQuestJourneyPlan(
+      {
+        phaseIds: [
+          "alignment",
+          "implement",
+          "mental-simulation",
+          "implement",
+          "mental-simulation",
+          "code-review",
+          "port",
+        ],
+        currentPhaseId: "mental-simulation",
+      },
+      "MENTAL_SIMULATING",
+    );
+
+    expect(normalized).toEqual(
+      expect.objectContaining({
+        phaseIds: [
+          "alignment",
+          "implement",
+          "mental-simulation",
+          "implement",
+          "mental-simulation",
+          "code-review",
+          "port",
+        ],
+      }),
+    );
+    expect(normalized).not.toHaveProperty("activePhaseIndex");
+    expect(normalized).not.toHaveProperty("currentPhaseId");
+    expect(getQuestJourneyCurrentPhaseIndex(normalized, "MENTAL_SIMULATING")).toBeUndefined();
+  });
+
   it("normalizes proposed Journeys without active phase semantics", () => {
     expect(
       normalizeQuestJourneyPlan(

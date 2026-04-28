@@ -292,6 +292,64 @@ describe("takode board set --worker auto-clears waitFor", () => {
     });
   });
 
+  it("sends explicit active phase positions as zero-based activePhaseIndex", async () => {
+    nextBoardResponse = {
+      board: [
+        {
+          questId: "q-1",
+          status: "MENTAL_SIMULATING",
+          createdAt: 1,
+          updatedAt: 2,
+          journey: {
+            phaseIds: [
+              "alignment",
+              "implement",
+              "mental-simulation",
+              "implement",
+              "mental-simulation",
+              "code-review",
+              "port",
+            ],
+            activePhaseIndex: 4,
+            currentPhaseId: "mental-simulation",
+          },
+        },
+      ],
+    };
+
+    const result = await runTakode(
+      [
+        "board",
+        "set",
+        "q-1",
+        "--status",
+        "MENTAL_SIMULATING",
+        "--active-phase-position",
+        "5",
+        "--phases",
+        "alignment,implement,mental-simulation,implement,mental-simulation,code-review,port",
+        "--port",
+        String(port),
+      ],
+      {
+        ...process.env,
+        COMPANION_SESSION_ID: "leader-1",
+        COMPANION_AUTH_TOKEN: "auth-1",
+      },
+    );
+
+    expect(result.status).toBe(0);
+    expect(capturedBodies[0]).toMatchObject({
+      questId: "q-1",
+      status: "MENTAL_SIMULATING",
+      activePhaseIndex: 4,
+      phases: ["alignment", "implement", "mental-simulation", "implement", "mental-simulation", "code-review", "port"],
+    });
+    expect(result.stdout).toContain(
+      "journey: 1. Alignment -> 2. Implement -> 3. Mental Simulation -> 4. Implement -> [5. Mental Simulation] -> 6. Code Review -> 7. Port",
+    );
+  });
+
   it("prints explicit warnings when a Journey revision drops rebased notes", async () => {
     nextBoardResponse = {
       phaseNoteRebaseWarnings: [

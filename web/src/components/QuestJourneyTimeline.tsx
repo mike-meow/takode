@@ -1,7 +1,6 @@
 import {
   getQuestJourneyCurrentPhaseIndex,
   getQuestJourneyPhase,
-  getQuestJourneyPhaseForState,
   type QuestJourneyPlanState,
 } from "../../shared/quest-journey.js";
 
@@ -106,9 +105,7 @@ export function QuestJourneyTimeline({
   const phaseIds = journey.phaseIds ?? [];
   if (phaseIds.length === 0) return null;
 
-  const fallbackCurrentPhaseId = getQuestJourneyPhaseForState(status)?.id;
-  const fallbackCurrentIndex = fallbackCurrentPhaseId ? phaseIds.indexOf(fallbackCurrentPhaseId) : -1;
-  const currentIndex = getQuestJourneyCurrentPhaseIndex(journey, status) ?? fallbackCurrentIndex;
+  const currentIndex = getQuestJourneyCurrentPhaseIndex(journey, status) ?? -1;
   const rootTitle = journey.revisionReason ? `Journey revised: ${journey.revisionReason}` : undefined;
 
   return (
@@ -129,7 +126,12 @@ export function QuestJourneyTimeline({
           index === 0 ? null : previousCompleted ? COMPLETED_TONE : toneForPhase(phaseIds[index - 1]);
 
         return (
-          <div key={`${phase.id}-${index}`} className="inline-flex min-w-0 items-center">
+          <div
+            key={`${phase.id}-${index}`}
+            className="inline-flex min-w-0 items-center"
+            data-phase-index={index}
+            data-phase-current={isCurrent ? "true" : "false"}
+          >
             {connectorTone && (
               <span className={`mx-1 h-px w-3 shrink-0 ${connectorTone.lineClassName}`} aria-hidden="true" />
             )}

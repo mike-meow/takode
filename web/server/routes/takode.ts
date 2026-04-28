@@ -9,6 +9,7 @@ import {
   getQuestJourneyPhase,
   getQuestJourneyCurrentPhaseIndex,
   getQuestJourneyPhaseForState,
+  getQuestJourneyPhaseIndices,
   getInvalidQuestJourneyPhaseIds,
   isValidQuestId,
   isValidWaitForRef,
@@ -114,7 +115,7 @@ function findPreservedPhaseIndex(
     .filter((entry) => entry.phaseId === currentPhaseId)
     .map((entry) => entry.index);
   if (matches.length === 0) return undefined;
-  if (previousIndex === undefined) return matches[0];
+  if (previousIndex === undefined) return matches.length === 1 ? matches[0] : undefined;
   return matches.find((index) => index >= previousIndex) ?? matches[matches.length - 1];
 }
 
@@ -1595,6 +1596,13 @@ export function createTakodeRoutes(ctx: RouteContext) {
     if (body.phaseNoteEdits !== undefined && phaseNoteEdits === null) {
       return c.json({ error: "phaseNoteEdits must be an array of { index, note } edits when provided" }, 400);
     }
+    const explicitActivePhaseIndex =
+      typeof body.activePhaseIndex === "number" && Number.isInteger(body.activePhaseIndex)
+        ? body.activePhaseIndex
+        : null;
+    if (body.activePhaseIndex !== undefined && (explicitActivePhaseIndex === null || explicitActivePhaseIndex < 0)) {
+      return c.json({ error: "activePhaseIndex must be a non-negative integer when provided" }, 400);
+    }
     if (targetMode === "proposed" && explicitStatus && explicitStatusUpper !== "PROPOSED") {
       return c.json({ error: "Proposed Journey rows must use status PROPOSED." }, 400);
     }
@@ -1661,6 +1669,36 @@ export function createTakodeRoutes(ctx: RouteContext) {
         400,
       );
     }
+    if (targetMode === "proposed" && explicitActivePhaseIndex !== null) {
+      return c.json({ error: "Proposed Journey rows cannot set an activePhaseIndex." }, 400);
+    }
+    if (targetMode === "active" && explicitActivePhaseIndex !== null && resolvedPhaseIds.length === 0) {
+      return c.json({ error: "activePhaseIndex requires an existing Journey row or explicit --phases." }, 400);
+    }
+    if (
+      targetMode === "active" &&
+      explicitActivePhaseIndex !== null &&
+      explicitActivePhaseIndex >= resolvedPhaseIds.length
+    ) {
+      return c.json(
+        {
+          error: `activePhaseIndex ${explicitActivePhaseIndex} is out of range for the current Journey.`,
+        },
+        400,
+      );
+    }
+    const explicitActivePhaseId =
+      explicitActivePhaseIndex !== null && explicitActivePhaseIndex < resolvedPhaseIds.length
+        ? resolvedPhaseIds[explicitActivePhaseIndex]
+        : undefined;
+    if (explicitStatusPhase && explicitActivePhaseId && explicitStatusPhase !== explicitActivePhaseId) {
+      return c.json(
+        {
+          error: `activePhaseIndex ${explicitActivePhaseIndex} points to ${explicitActivePhaseId}, which does not match status ${body.status}.`,
+        },
+        400,
+      );
+    }
 
     let phaseNoteRebaseWarnings: QuestJourneyPhaseNoteRebaseWarning[] = [];
     let phaseNotes = existingJourney?.phaseNotes;
@@ -1681,16 +1719,44 @@ export function createTakodeRoutes(ctx: RouteContext) {
     if (targetMode === "active" && resolvedPhaseIds.length > 0) {
       const existingCurrentPhaseId = getQuestJourneyPhase(existingJourney?.currentPhaseId)?.id;
       const existingCurrentPhaseIndex = getQuestJourneyCurrentPhaseIndex(existingJourney, existingRow?.status);
-      if (explicitStatusPhase) {
+      if (explicitActivePhaseIndex !== null) {
+        activePhaseIndex = explicitActivePhaseIndex;
+      } else if (explicitStatusPhase) {
         activePhaseIndex = findPreservedPhaseIndex(resolvedPhaseIds, explicitStatusPhase, existingCurrentPhaseIndex);
       } else if (typedPhaseIds && existingMode === "active" && existingCurrentPhaseId) {
         activePhaseIndex = findPreservedPhaseIndex(resolvedPhaseIds, existingCurrentPhaseId, existingCurrentPhaseIndex);
+        if (
+          activePhaseIndex === undefined &&
+          getQuestJourneyPhaseIndices(resolvedPhaseIds, existingCurrentPhaseId).length > 1
+        ) {
+          return c.json(
+            {
+              error:
+                "The current Journey phase is repeated but the active occurrence is ambiguous. Re-run with activePhaseIndex (CLI: --active-phase-position).",
+            },
+            400,
+          );
+        }
       } else if ((requestedMode === "active" && existingMode === "proposed") || !existingRow?.status) {
         activePhaseIndex = 0;
       }
+      if (
+        explicitStatusPhase &&
+        explicitActivePhaseIndex === null &&
+        activePhaseIndex === undefined &&
+        getQuestJourneyPhaseIndices(resolvedPhaseIds, explicitStatusPhase).length > 1
+      ) {
+        return c.json(
+          {
+            error:
+              "Status points to a repeated Journey phase but the active occurrence is ambiguous. Re-run with activePhaseIndex (CLI: --active-phase-position).",
+          },
+          400,
+        );
+      }
     }
 
-    if (typedPhaseIds || phaseNoteEdits || revisionReason || requestedMode) {
+    if (typedPhaseIds || phaseNoteEdits || revisionReason || requestedMode || explicitActivePhaseIndex !== null) {
       journey = {
         phaseIds: resolvedPhaseIds.length > 0 ? resolvedPhaseIds : [],
         presetId:
@@ -1706,13 +1772,17 @@ export function createTakodeRoutes(ctx: RouteContext) {
 
     const implicitQueuedStatus =
       !explicitStatus &&
+      explicitActivePhaseIndex === null &&
       targetMode === "active" &&
       typeof body.worker !== "string" &&
       waitFor !== undefined &&
       !existingRow?.status
         ? "QUEUED"
         : undefined;
+    const explicitActiveStatus =
+      explicitActivePhaseId !== undefined ? getQuestJourneyPhase(explicitActivePhaseId)?.boardState : undefined;
     const defaultActiveStatus =
+      explicitActiveStatus ??
       firstPlannedPhaseState ??
       (resolvedPhaseIds.length > 0 ? getQuestJourneyPhase(resolvedPhaseIds[0])?.boardState : undefined);
     const mergedStatus =
