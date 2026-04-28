@@ -879,6 +879,7 @@ await ensureBuiltInQuestJourneyPhaseData({ packageRoot });
 await ensureSkillSymlinks([
   "takode-orchestration",
   "leader-dispatch",
+  "confirm",
   "self-groom",
   "reviewer-groom",
   "skeptic-review",

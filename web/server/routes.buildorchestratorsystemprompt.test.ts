@@ -559,6 +559,8 @@ describe("buildOrchestratorSystemPrompt", () => {
     expect(prompt).toContain("takode-orchestration");
     expect(prompt).toContain("quest");
     expect(prompt).toContain("wait for the user's instructions");
+    expect(prompt).toContain("ask the user in plain text first");
+    expect(prompt).toContain("then call `takode notify needs-input` after that detailed text is visible");
     expect(prompt).toContain(
       "Use the orchestration instructions already loaded in this session as your source of truth",
     );

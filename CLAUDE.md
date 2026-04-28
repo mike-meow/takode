@@ -19,6 +19,7 @@ The Takode server symlinks project skills into global skill directories at start
 |-------|--------|---------|
 | `takode-orchestration` | `.claude/skills/takode-orchestration/` | Cross-session orchestration: CLI reference, quest journey, board, herd events |
 | `leader-dispatch` | `.claude/skills/leader-dispatch/` | Leader dispatch workflow: worker selection, templates, discipline rules |
+| `confirm` | `.claude/skills/confirm/` | Confirmation workflow for instruction-scoped `/confirm` requests |
 | `quest-journey-planning` | `.claude/skills/quest-journey-planning/` | Quest Journey phase: planning-only worker dispatch |
 | `quest-journey-explore` | `.claude/skills/quest-journey-explore/` | Quest Journey phase: evidence gathering before deciding the next action |
 | `quest-journey-implement` | `.claude/skills/quest-journey-implement/` | Quest Journey phase: approved code/docs/prompt/config/artifact changes |

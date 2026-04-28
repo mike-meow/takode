@@ -387,6 +387,7 @@ describe("getOrchestratorGuardrails", () => {
     // CLI, quest, and leader-dispatch references point to skills loaded on startup
     expect(guardrails).toContain("takode-orchestration");
     expect(guardrails).toContain("leader-dispatch");
+    expect(guardrails).toContain("confirm");
     expect(guardrails).toContain("quest");
     expect(guardrails).toContain("/quest-design");
     expect(guardrails).toContain("sub-agent");
@@ -482,12 +483,13 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("Do not rely on deprecated leader reply suffixes");
     expect(guardrails).toContain("use normal assistant text plus `takode notify` instead");
     expect(guardrails).toContain("Every time you ask the user a question");
-    expect(guardrails).toContain("also call `takode notify needs-input`");
+    expect(guardrails).toContain("first write the detailed question or decision options");
+    expect(guardrails).toContain("after that text is complete, call `takode notify needs-input`");
     expect(guardrails).toContain("takode notify list");
     expect(guardrails).toContain("takode notify resolve <notification-id>");
     expect(guardrails).toContain("After the user answers a same-session `takode notify needs-input` prompt");
     expect(guardrails).toContain("Use this only for notifications created by your current session");
-    expect(guardrails).toContain("so the user never misses the leader's question");
+    expect(guardrails).toContain("so the user never misses it");
     expect(guardrails).toContain("Fresh human feedback outranks stale completions");
     expect(guardrails).toContain("Do **not** call `takode notify review` for quest completion");
     expect(guardrails).toContain("Takode already sends that review notification automatically");
@@ -550,8 +552,9 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("what artifact to produce and to stop afterward");
     expect(guardrails).toContain("send an explicit **port now** instruction");
     expect(guardrails).toContain("Every time you ask the user a question");
-    expect(guardrails).toContain("also call `takode notify needs-input`");
-    expect(guardrails).toContain("so the user never misses the leader's question");
+    expect(guardrails).toContain("first write the detailed question or decision options");
+    expect(guardrails).toContain("after that text is complete, call `takode notify needs-input`");
+    expect(guardrails).toContain("so the user never misses it");
     expect(guardrails).toContain("Do not rely on deprecated leader reply suffixes");
     expect(guardrails).toContain("Do **not** call `takode notify review` for quest completion");
     expect(guardrails).toContain("Takode already sends that review notification automatically");

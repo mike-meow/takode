@@ -7,7 +7,7 @@ const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const INDEX_PATH = join(SERVER_DIR, "index.ts");
 
 describe("index startup skill registration", () => {
-  it("registers canonical Journey skills plus legacy compatibility aliases", async () => {
+  it("registers canonical startup skills without stale hardcoded slugs", async () => {
     // q-275: if a nonexistent project skill is reintroduced here, startup will
     // recreate warning spam and potentially broken symlink state. Guard the
     // actual ensureSkillSymlinks(...) registration list in index.ts directly.
@@ -20,6 +20,7 @@ describe("index startup skill registration", () => {
     expect(registered).not.toContain("cron-scheduling");
     expect(registered).toContain("takode-orchestration");
     expect(registered).toContain("leader-dispatch");
+    expect(registered).toContain("confirm");
     expect(registered).not.toContain("quest-journey-planning");
     expect(registered).not.toContain("quest-journey-explore");
     expect(registered).not.toContain("quest-journey-implement");

@@ -40,6 +40,15 @@ describe("buildCompanionInstructions", () => {
     expect(result).toContain("test-branch");
   });
 
+  it("orders needs-input notifications after detailed text", () => {
+    const result = buildCompanionInstructions({ sessionNum: 1, backend: "codex" });
+    // Agents must make the actual question or decision visible before firing
+    // the notification chip; otherwise the user sees an alert without context.
+    expect(result).toContain("first output the detailed question, decision options, or confirmation text");
+    expect(result).toContain("After that text is complete, call `takode notify needs-input`");
+    expect(result).toContain("Do not fire the notification before the detailed text is visible");
+  });
+
   it("appends extraInstructions at the end", () => {
     const result = buildCompanionInstructions({
       backend: "claude",
@@ -70,6 +79,7 @@ describe("getOrchestratorGuardrails", () => {
     expect(result).toContain("approval-gated runs");
     expect(result).toContain("route back deliberately: `implement`");
     expect(result).toContain("point the worker at the exact prior messages, quests, or discussions");
+    expect(result).toContain("after that text is complete, call `takode notify needs-input`");
   });
 
   it("returns codex-flavored guardrails for codex backend", () => {

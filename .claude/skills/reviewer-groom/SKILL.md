@@ -151,7 +151,7 @@ Usually the leader's message immediately before this skill invocation gives you 
 In practice, the best scope strings often name the quest, the worker, and the message range containing the worker's follow-up.
 
 If you cannot tell which worker or which change is being referenced, stop and ask for clarification instead of guessing.
-If the scope is nominally clear but you still see real misunderstanding risk, ask the leader immediately in plain text, call `takode notify needs-input` with a short summary, and stop until you get an answer.
+If the scope is nominally clear but you still see real misunderstanding risk, ask the leader immediately in plain text first, then call `takode notify needs-input` with a short summary, and stop until you get an answer.
 
 Scope resolution is still part of context gathering, not evaluation.
 Do not start writing findings during this step.
