@@ -1,14 +1,22 @@
 // @vitest-environment jsdom
 import type { ReactNode } from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { BoardTable, formatCompletedTime, orderBoardRows, type BoardRowData } from "./BoardTable.js";
 import { getQuestJourneyPhaseForState } from "../../shared/quest-journey.js";
 
 interface MockStoreState {
-  quests: Array<{ questId: string }>;
+  quests: Array<{
+    questId: string;
+    title?: string;
+    status?: string;
+    createdAt?: number;
+    version?: number;
+    id?: string;
+  }>;
   sdkSessions: Array<{ sessionId: string; sessionNum?: number }>;
+  zoomLevel?: number;
 }
 
 const { openQuestOverlay, useStoreMock } = vi.hoisted(() => {
@@ -197,7 +205,7 @@ describe("BoardTable", () => {
     expect(within(summary).getByText("5/7")).toBeInTheDocument();
   });
 
-  it("renders proposed Journey rows as scheduling previews in compact board cells", () => {
+  it("renders proposed Journey rows as scheduling previews with the phase sequence in compact board cells", () => {
     const board: BoardRowData[] = [
       {
         questId: "q-924",
@@ -217,9 +225,55 @@ describe("BoardTable", () => {
 
     const summary = screen.getByTestId("quest-journey-compact-summary");
     expect(summary).toHaveAttribute("data-journey-mode", "proposed");
-    expect(within(summary).getByText("Proposed Journey")).toBeInTheDocument();
+    expect(within(summary).getByText("Proposed")).toBeInTheDocument();
+    expect(within(summary).getByTestId("quest-journey-compact-sequence")).toHaveTextContent(
+      "Alignment -> Implement -> Code Review -> Port",
+    );
     expect(within(summary).getByText("4 phases")).toBeInTheDocument();
-    expect(screen.queryByText("Implement")).not.toBeInTheDocument();
+  });
+
+  it("shows the full Journey preview on Work Board Journey hover", async () => {
+    mockState.quests = [
+      {
+        id: "q-924-v1",
+        questId: "q-924",
+        version: 1,
+        title: "Make Journey UI useful",
+        status: "refined",
+        createdAt: 1,
+      },
+    ];
+    const board: BoardRowData[] = [
+      {
+        questId: "q-924",
+        title: "Fallback title",
+        status: "PROPOSED",
+        journey: {
+          mode: "proposed",
+          presetId: "full-code",
+          phaseIds: ["alignment", "implement", "code-review"],
+          phaseNotes: {
+            "1": "Build the compact preview UI",
+          },
+        },
+        updatedAt: 1,
+      },
+    ];
+
+    render(<BoardTable board={board} />);
+    fireEvent.mouseEnter(screen.getByTestId("board-journey-hover-target"));
+
+    const card = await screen.findByTestId("board-journey-hover-card");
+    expect(within(card).getByText("q-924")).toBeInTheDocument();
+    expect(within(card).getByText("Make Journey UI useful")).toBeInTheDocument();
+    expect(within(card).getByText("Alignment")).toBeInTheDocument();
+    expect(within(card).getByText("Implement")).toBeInTheDocument();
+    expect(within(card).getByText("Code Review")).toBeInTheDocument();
+    expect(within(card).getByText("Build the compact preview UI")).toHaveAttribute("data-purpose-kind", "authored");
+    expect(within(card).getByText(/Do a lightweight read-in/)).toHaveAttribute("data-purpose-kind", "default");
+
+    fireEvent.click(within(card).getByRole("button", { name: /q-924 Make Journey UI useful/ }));
+    expect(openQuestOverlay).toHaveBeenCalledWith("q-924");
   });
 
   it("renders worker and reviewer session links in a wrapping same-line row with their own status dots", () => {

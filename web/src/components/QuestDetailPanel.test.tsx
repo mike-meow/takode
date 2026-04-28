@@ -186,6 +186,7 @@ describe("QuestDetailPanel", () => {
     expect(within(timeline).getByText("Code Review")).toBeInTheDocument();
     expect(within(timeline).getByText("Port")).toBeInTheDocument();
     expect(within(timeline).getByText("Inspect only the follow-up diff")).toBeInTheDocument();
+    expect(within(timeline).getByText(/Do a lightweight read-in/)).toHaveAttribute("data-purpose-kind", "default");
     expect(within(timeline).getByText("current")).toBeInTheDocument();
     expect(within(timeline).getByText("Code Review").closest("li")).toHaveAttribute("data-phase-color", "violet");
   });
@@ -225,7 +226,11 @@ describe("QuestDetailPanel", () => {
     expect(timeline).toHaveAttribute("data-journey-mode", "proposed");
     expect(within(timeline).getByText("Proposed Journey")).toBeInTheDocument();
     expect(within(timeline).getByText("Ask user to approve this Journey before dispatch")).toBeInTheDocument();
-    expect(within(timeline).getAllByText("preview")).toHaveLength(4);
+    expect(within(timeline).getByText(/Make approved code, docs, prompts/)).toHaveAttribute(
+      "data-purpose-kind",
+      "default",
+    );
+    expect(within(timeline).queryByText("preview")).not.toBeInTheDocument();
     expect(within(timeline).queryByText("current")).not.toBeInTheDocument();
     for (const phaseRow of timeline.querySelectorAll("li")) {
       expect(phaseRow).toHaveAttribute("data-phase-current", "false");

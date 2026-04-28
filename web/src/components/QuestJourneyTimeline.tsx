@@ -103,6 +103,15 @@ function noteCount(journey: QuestJourneyPlanState): number {
   return Object.values(journey.phaseNotes ?? {}).filter((note) => note.trim()).length;
 }
 
+function phasePurpose(
+  item: PhaseItem,
+  showPhasePurpose: boolean,
+): { text: string; kind: "authored" | "default" } | null {
+  if (item.note) return { text: item.note, kind: "authored" };
+  if (!showPhasePurpose) return null;
+  return { text: item.phase.contract, kind: "default" };
+}
+
 export function QuestJourneyCompactSummary({
   journey,
   status,
@@ -117,7 +126,8 @@ export function QuestJourneyCompactSummary({
 
   const proposed = isProposedJourney(journey, status);
   const currentItem = items.find((item) => item.state === "current");
-  const label = proposed ? "Proposed Journey" : (currentItem?.phase.label ?? "Journey");
+  const label = proposed ? "Proposed" : (currentItem?.phase.label ?? "Journey");
+  const sequence = proposed ? items.map((item) => item.phase.label).join(" -> ") : "";
   const position = proposed ? `${items.length} phases` : currentItem ? `${currentItem.index + 1}/${items.length}` : "";
   const notes = noteCount(journey);
 
@@ -133,7 +143,12 @@ export function QuestJourneyCompactSummary({
         style={currentItem ? phaseCurrentDotStyle(currentItem.phase) : undefined}
         aria-hidden="true"
       />
-      <span className="min-w-0 truncate font-medium text-cc-fg">{label}</span>
+      <span className="shrink-0 font-medium text-cc-fg">{label}</span>
+      {sequence && (
+        <span className="min-w-0 truncate text-cc-muted" data-testid="quest-journey-compact-sequence">
+          {sequence}
+        </span>
+      )}
       {position && <span className="shrink-0 text-[10px] text-cc-muted">{position}</span>}
       {notes > 0 && (
         <span className="shrink-0 text-[10px] text-amber-200/90">{`${notes} note${notes === 1 ? "" : "s"}`}</span>
@@ -204,21 +219,23 @@ function VerticalJourney({
   journey,
   status,
   className,
+  showPhasePurpose,
 }: {
   items: PhaseItem[];
   journey: QuestJourneyPlanState;
   status?: string | null;
   className?: string;
+  showPhasePurpose: boolean;
 }) {
   const proposed = isProposedJourney(journey, status);
   return (
     <div
-      className={`rounded-md border border-cc-border bg-cc-hover/20 p-3 ${className ?? ""}`.trim()}
+      className={`rounded-md border border-cc-border bg-cc-hover/20 p-2 ${className ?? ""}`.trim()}
       title={journey.revisionReason ? `Journey revised: ${journey.revisionReason}` : undefined}
       data-testid="quest-journey-timeline"
       data-journey-mode={proposed ? "proposed" : "active"}
     >
-      <div className="mb-2 flex items-center justify-between gap-3">
+      <div className="mb-1.5 flex items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="text-[10px] font-medium uppercase tracking-[0.08em] text-cc-muted/70">
             {proposed ? "Proposed Journey" : "Active Journey"}
@@ -232,10 +249,11 @@ function VerticalJourney({
       <ol className="space-y-0" data-testid="quest-journey-detail-list">
         {items.map((item, index) => {
           const hasNext = index < items.length - 1;
+          const purpose = phasePurpose(item, showPhasePurpose);
           return (
             <li
               key={`${item.phase.id}-${item.index}`}
-              className="grid grid-cols-[18px_1fr] gap-x-2"
+              className="grid grid-cols-[16px_1fr] gap-x-2"
               data-phase-index={item.index}
               data-phase-current={item.state === "current" ? "true" : "false"}
               data-phase-state={item.state}
@@ -243,20 +261,20 @@ function VerticalJourney({
             >
               <div className="flex flex-col items-center">
                 <span
-                  className={`mt-1 h-3 w-3 rounded-full ${phaseDotClassName(item)}`}
+                  className={`mt-1 h-2.5 w-2.5 rounded-full ${phaseDotClassName(item)}`}
                   style={phaseDotStyle(item)}
                   aria-hidden="true"
                 />
                 {hasNext && (
                   <span
-                    className={`mt-1 w-px flex-1 ${item.state === "completed" ? "bg-cc-muted/30" : ""}`}
+                    className={`mt-0.5 w-px flex-1 ${item.state === "completed" ? "bg-cc-muted/30" : ""}`}
                     style={item.state === "completed" ? undefined : phaseLineStyle(item.phase, proposed ? 0.2 : 0.35)}
                     aria-hidden="true"
                   />
                 )}
               </div>
-              <div className={`pb-3 ${hasNext ? "min-h-12" : ""}`}>
-                <div className="flex min-w-0 items-baseline gap-2">
+              <div className={hasNext ? "pb-2" : "pb-0"}>
+                <div className="flex min-w-0 items-center gap-1.5">
                   <span className="shrink-0 text-[10px] text-cc-muted">{item.index + 1}</span>
                   <span
                     className={`min-w-0 truncate text-xs ${phaseLabelClassName(item)}`}
@@ -269,15 +287,17 @@ function VerticalJourney({
                       current
                     </span>
                   )}
-                  {item.state === "proposed" && (
-                    <span className="shrink-0 rounded-full border border-cc-border px-1.5 py-0.5 text-[10px] text-cc-muted">
-                      preview
-                    </span>
-                  )}
                 </div>
-                {item.note && (
-                  <div className="mt-1 rounded border border-amber-300/20 bg-amber-300/10 px-2 py-1 text-[11px] leading-relaxed text-amber-100/90">
-                    {item.note}
+                {purpose && (
+                  <div
+                    className={
+                      purpose.kind === "authored"
+                        ? "mt-0.5 rounded border border-amber-300/20 bg-amber-300/10 px-1.5 py-0.5 text-[10px] leading-snug text-amber-100/90"
+                        : "mt-0.5 text-[10px] leading-snug text-cc-muted/65"
+                    }
+                    data-purpose-kind={purpose.kind}
+                  >
+                    {purpose.text}
                   </div>
                 )}
               </div>
@@ -295,12 +315,14 @@ export function QuestJourneyTimeline({
   className,
   compact = false,
   variant,
+  showPhasePurpose,
 }: {
   journey: QuestJourneyPlanState;
   status?: string | null;
   className?: string;
   compact?: boolean;
   variant?: JourneyVariant;
+  showPhasePurpose?: boolean;
 }) {
   const items = getPhaseItems(journey, status);
   if (items.length === 0) return null;
@@ -310,7 +332,57 @@ export function QuestJourneyTimeline({
     return <QuestJourneyCompactSummary journey={journey} status={status} className={className} />;
   }
   if (resolvedVariant === "vertical") {
-    return <VerticalJourney items={items} journey={journey} status={status} className={className} />;
+    return (
+      <VerticalJourney
+        items={items}
+        journey={journey}
+        status={status}
+        className={className}
+        showPhasePurpose={showPhasePurpose ?? true}
+      />
+    );
   }
   return <HorizontalJourney items={items} journey={journey} status={status} compact={compact} className={className} />;
+}
+
+export function QuestJourneyPreviewCard({
+  journey,
+  status,
+  quest,
+  onQuestClick,
+  className,
+}: {
+  journey: QuestJourneyPlanState;
+  status?: string | null;
+  quest?: { questId: string; title?: string };
+  onQuestClick?: () => void;
+  className?: string;
+}) {
+  return (
+    <div className={`max-w-full ${className ?? ""}`.trim()} data-testid="quest-journey-preview-card">
+      {quest && (
+        <>
+          {onQuestClick ? (
+            <button
+              type="button"
+              onClick={onQuestClick}
+              aria-label={`${quest.questId}${quest.title ? ` ${quest.title}` : ""}`}
+              className="mb-2 flex w-full min-w-0 items-baseline gap-2 border-b border-cc-border/50 pb-1.5 text-left"
+            >
+              <span className="shrink-0 font-mono-code text-[11px] text-blue-400 hover:text-blue-300">
+                {quest.questId}
+              </span>
+              {quest.title && <span className="min-w-0 truncate text-xs font-medium text-cc-fg">{quest.title}</span>}
+            </button>
+          ) : (
+            <div className="mb-2 flex min-w-0 items-baseline gap-2 border-b border-cc-border/50 pb-1.5">
+              <span className="shrink-0 font-mono-code text-[11px] text-blue-400">{quest.questId}</span>
+              {quest.title && <span className="min-w-0 truncate text-xs font-medium text-cc-fg">{quest.title}</span>}
+            </div>
+          )}
+        </>
+      )}
+      <QuestJourneyTimeline journey={journey} status={status} variant="vertical" showPhasePurpose />
+    </div>
+  );
 }

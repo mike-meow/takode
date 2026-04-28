@@ -5,7 +5,8 @@
  * Extracted so the table layout, QuestLink hover cards, and WorkerLink hover
  * cards are defined once and reused.
  */
-import { useState, useRef, useMemo, useEffect, useCallback, memo, type MouseEvent } from "react";
+import { useState, useRef, useMemo, useEffect, useCallback, useLayoutEffect, memo, type MouseEvent } from "react";
+import { createPortal } from "react-dom";
 import { useStore } from "../store.js";
 import {
   QUEST_JOURNEY_STATES,
@@ -18,8 +19,9 @@ import {
 import { QuestHoverCard } from "./QuestHoverCard.js";
 import { SessionInlineLink } from "./SessionInlineLink.js";
 import { SessionStatusDot } from "./SessionStatusDot.js";
-import { QuestJourneyTimeline } from "./QuestJourneyTimeline.js";
+import { QuestJourneyPreviewCard, QuestJourneyTimeline } from "./QuestJourneyTimeline.js";
 import type { BoardParticipantStatus, BoardRowSessionStatus } from "../types.js";
+import type { QuestmasterTask } from "../types.js";
 
 /** A row in the leader's work board (matches server BoardRow). */
 export interface BoardRowData {
@@ -286,12 +288,120 @@ function WaitForInputRef({ notificationId }: { notificationId: string }) {
   return <span className="text-amber-200/90">{`input ${match ? match[1] : notificationId}`}</span>;
 }
 
+function JourneyHoverCard({
+  row,
+  quest,
+  anchorRect,
+  onMouseEnter,
+  onMouseLeave,
+}: {
+  row: BoardRowData;
+  quest?: QuestmasterTask;
+  anchorRect: DOMRect;
+  onMouseEnter: () => void;
+  onMouseLeave: () => void;
+}) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  const zoomLevel = useStore((state) => state.zoomLevel ?? 1);
+  const cardWidth = 380;
+  const gap = 6;
+  const left = anchorRect.left;
+  const top = anchorRect.bottom + gap;
+
+  useLayoutEffect(() => {
+    if (!cardRef.current) return;
+    const rect = cardRef.current.getBoundingClientRect();
+    const el = cardRef.current;
+    if (rect.right > window.innerWidth - 8) {
+      el.style.left = `${Math.max(8, window.innerWidth - cardWidth - 8)}px`;
+    }
+    if (rect.bottom > window.innerHeight - 8) {
+      el.style.top = `${Math.max(8, anchorRect.top - rect.height - gap)}px`;
+    }
+    if (rect.top < 8) {
+      el.style.top = "8px";
+    }
+  }, [anchorRect]);
+
+  if (!row.journey) return null;
+
+  return createPortal(
+    <div
+      ref={cardRef}
+      className="fixed z-50 pointer-events-auto hidden-on-touch"
+      style={{ left, top, width: cardWidth, transform: `scale(${zoomLevel})`, transformOrigin: "top left" }}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      data-testid="board-journey-hover-card"
+    >
+      <div className="rounded-lg border border-cc-border bg-cc-card p-2.5 shadow-xl">
+        <QuestJourneyPreviewCard
+          journey={row.journey}
+          status={row.status}
+          quest={{ questId: row.questId, title: quest?.title ?? row.title }}
+          onQuestClick={() => useStore.getState().openQuestOverlay(row.questId)}
+        />
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 function StatusCell({ row }: { row: BoardRowData }) {
   const status = row.status;
+  const quests = useStore((s) => s.quests);
+  const [hoverRect, setHoverRect] = useState<DOMRect | null>(null);
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    },
+    [],
+  );
+
+  const quest = useMemo(
+    () => quests.find((candidate) => candidate.questId.toLowerCase() === row.questId.toLowerCase()),
+    [quests, row.questId],
+  );
+
+  function handleJourneyMouseEnter(e: MouseEvent<HTMLDivElement>) {
+    if (!row.journey?.phaseIds?.length) return;
+    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    setHoverRect(e.currentTarget.getBoundingClientRect());
+  }
+
+  function handleJourneyMouseLeave() {
+    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    hideTimerRef.current = setTimeout(() => setHoverRect(null), 100);
+  }
+
   if (!status) return <span className="text-cc-muted">{"\u2014"}</span>;
 
   if (row.journey?.phaseIds?.length) {
-    return <QuestJourneyTimeline journey={row.journey} status={row.status} compact />;
+    return (
+      <>
+        <div
+          className="max-w-full"
+          onMouseEnter={handleJourneyMouseEnter}
+          onMouseLeave={handleJourneyMouseLeave}
+          data-testid="board-journey-hover-target"
+        >
+          <QuestJourneyTimeline journey={row.journey} status={row.status} compact />
+        </div>
+        {hoverRect && (
+          <JourneyHoverCard
+            row={row}
+            quest={quest}
+            anchorRect={hoverRect}
+            onMouseEnter={() => {
+              if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+            }}
+            onMouseLeave={() => setHoverRect(null)}
+          />
+        )}
+      </>
+    );
   }
 
   const phase = getQuestJourneyPhaseForState(status);
