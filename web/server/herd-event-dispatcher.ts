@@ -553,6 +553,7 @@ export class HerdEventDispatcher {
     const renderedBatch = renderHerdEventBatch(events, {
       getMessages: (sid, from, to) => getSessionMessageSlice(this.wsBridge, sid, from, to),
       lastEmittedMsgTo: inbox.lastEmittedMsgTo,
+      leaderSessionId: orchId,
     });
     const delivery = this.wsBridge.injectUserMessage(
       orchId,
@@ -642,6 +643,7 @@ export class HerdEventDispatcher {
     const renderedBatch = renderHerdEventBatch(events, {
       getMessages: (sid, from, to) => getSessionMessageSlice(this.wsBridge, sid, from, to),
       lastEmittedMsgTo: inbox.lastEmittedMsgTo,
+      leaderSessionId: orchId,
     });
     const delivery = this.wsBridge.injectUserMessage(
       orchId,
@@ -824,6 +826,8 @@ export interface FormatBatchOptions {
   /** Per-worker deduplication watermark: highest msgRange.to already delivered.
    *  Prevents re-injecting overlapping activity across consecutive batches. */
   lastEmittedMsgTo?: Map<string, number>;
+  /** Current leader session id, used to compact echoed leader instructions in activity. */
+  leaderSessionId?: string;
 }
 
 export interface RenderedHerdEventBatch {
@@ -1036,6 +1040,7 @@ function buildActivityForEvent(evt: TakodeEvent, options?: FormatBatchOptions): 
   const activity = formatActivitySummaryDetailed(messages, {
     startIdx: range.from,
     deduplicatedFrom,
+    leaderSessionId: options.leaderSessionId,
   });
   return activity.text || null;
 }

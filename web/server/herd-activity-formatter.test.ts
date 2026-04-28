@@ -124,6 +124,42 @@ describe("formatActivitySummary", () => {
     expect(result).toContain('[2] agent(#5): "agent dispatched"');
   });
 
+  it("truncates leader-authored user messages with a short leader label", () => {
+    const leaderInstruction =
+      "Address the code-review finding, then stop and report back.\n\n" + "Read this phase brief. ".repeat(20);
+    const workerResult = "Worker result detail: ".repeat(120);
+    const messages = [
+      userMsg(leaderInstruction, { sessionId: "leader-1", sessionLabel: "#9 Quest Journey Leader" }),
+      resultMsg(workerResult),
+    ];
+
+    const result = formatActivitySummary(messages, { startIdx: 1091, leaderSessionId: "leader-1" });
+    const leaderLine = result.split("\n").find((line) => line.includes("[1091]"));
+    const resultLine = result.split("\n").find((line) => line.includes("[1092]"));
+
+    expect(leaderLine).toContain(
+      '[1091] leader: "Address the code-review finding, then stop and report back.\\n\\nRead this phase brief.',
+    );
+    expect(leaderLine).toContain("+421 chars");
+    expect(leaderLine).not.toContain("Quest Journey Leader");
+    expect(resultLine).toContain("Worker result detail:");
+    expect(resultLine).not.toContain("+");
+  });
+
+  it("does not apply leader truncation to other agent-authored user messages", () => {
+    const workerInstruction = "Worker-authored update: ".repeat(80);
+    const messages = [
+      userMsg(workerInstruction, { sessionId: "worker-1", sessionLabel: "#5 Worker" }),
+      resultMsg("done"),
+    ];
+
+    const result = formatActivitySummary(messages, { startIdx: 0, leaderSessionId: "leader-1" });
+
+    expect(result).toContain("[0] agent(#5 Worker):");
+    expect(result).toContain("+920 chars");
+    expect(result).not.toContain("[0] leader:");
+  });
+
   it("compresses tool-only periods into a placeholder plus aggregated counts", () => {
     const messages = [
       assistantMsg("", [

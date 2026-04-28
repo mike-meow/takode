@@ -1527,6 +1527,47 @@ describe("formatHerdEventBatch with activity injection", () => {
     expect(result).toContain("Bug fixed");
   });
 
+  it("truncates leader-authored activity entries in automatic herd event batches", () => {
+    const leaderInstruction =
+      "Address the code-review finding for [q-725](quest:q-725), then stop and report back.\n\n" +
+      "Read this phase brief first. ".repeat(20);
+    const workerResult = "Worker result detail: ".repeat(120);
+    const events = [
+      makeEvent({
+        event: "turn_end",
+        sessionId: "worker-1",
+        data: {
+          duration_ms: 5000,
+          msgRange: { from: 1091, to: 1092 },
+        },
+      }),
+    ];
+    const mockMessages = [
+      {
+        type: "user_message",
+        content: leaderInstruction,
+        timestamp: Date.now(),
+        agentSource: { sessionId: "leader-1", sessionLabel: "#9 Quest Journey Leader" },
+      },
+      { type: "result", data: { result: workerResult, is_error: false, duration_ms: 5000 } },
+    ];
+
+    const result = formatHerdEventBatch(events, {
+      getMessages: () => mockMessages as any,
+      leaderSessionId: "leader-1",
+    });
+
+    const leaderLine = result.split("\n").find((line) => line.includes("[1091] leader:"));
+    const resultLine = result.split("\n").find((line) => line.includes("[1092] ✓"));
+    expect(leaderLine).toContain(
+      '[1091] leader: "Address the code-review finding for [q-725](quest:q-725), then stop and report back.\\n\\nRead this',
+    );
+    expect(leaderLine).toContain(" chars");
+    expect(leaderLine).not.toContain("Quest Journey Leader");
+    expect(resultLine).toContain("Worker result detail:");
+    expect(resultLine).not.toContain("+");
+  });
+
   it("does not include activity when getMessages is not provided", () => {
     const events = [
       makeEvent({

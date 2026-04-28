@@ -34,6 +34,8 @@ const MAX_LINES = 15;
 const HIGH_SIGNAL_LIMIT = 1000;
 /** Content limit for assistant narration text (lower signal -- tools carry the info). */
 const ASST_TEXT_LIMIT = 120;
+/** Content limit for leader-authored instructions echoed in herd activity. */
+const LEADER_INSTRUCTION_LIMIT = 100;
 /** Content limit for the key message in each event (the triggering message). */
 export const KEY_MESSAGE_LIMIT = 5000;
 
@@ -46,6 +48,8 @@ export interface FormatActivityOptions {
   maxLines?: number;
   /** Messages with idx < deduplicatedFrom are skipped as already emitted. */
   deduplicatedFrom?: number;
+  /** Current leader session id for automatic herd events. */
+  leaderSessionId?: string;
 }
 
 export interface FormattedActivitySummary {
@@ -101,7 +105,7 @@ export function formatActivitySummaryDetailed(
     if (idx < deduplicatedFrom) continue;
 
     const isKeyMessage = i === keyMessageIdx;
-    const formatted = formatMessage(msg, idx, isKeyMessage);
+    const formatted = formatMessage(msg, idx, isKeyMessage, options.leaderSessionId);
     if (formatted?.hiddenToolCounts) {
       if (firstHiddenToolIdx == null) firstHiddenToolIdx = idx;
       lastHiddenToolIdx = idx;
@@ -190,12 +194,14 @@ function formatMessage(
   msg: BrowserIncomingMessage,
   idx: number,
   isKeyMessage: boolean,
+  leaderSessionId?: string,
 ): { lines: string[] | null; hiddenToolCounts?: Map<string, number> } | null {
   switch (msg.type) {
     case "user_message": {
       const content = msg.content || "";
-      const source = formatUserSource(msg);
-      const limit = isKeyMessage ? KEY_MESSAGE_LIMIT : HIGH_SIGNAL_LIMIT;
+      const isLeaderMessage = isLeaderAuthoredUserMessage(msg, leaderSessionId);
+      const source = isLeaderMessage ? "leader" : formatUserSource(msg);
+      const limit = isLeaderMessage ? LEADER_INSTRUCTION_LIMIT : isKeyMessage ? KEY_MESSAGE_LIMIT : HIGH_SIGNAL_LIMIT;
       return { lines: [`[${idx}] ${source}: ${formatQuotedContent(content, limit)}`] };
     }
 
@@ -310,6 +316,12 @@ function formatUserSource(msg: BrowserIncomingMessage): string {
   if (!agentSource) return "user";
   if (agentSource.sessionId === "herd-events") return "herd";
   return agentSource.sessionLabel ? `agent(${agentSource.sessionLabel})` : "agent";
+}
+
+function isLeaderAuthoredUserMessage(msg: BrowserIncomingMessage, leaderSessionId: string | undefined): boolean {
+  if (!leaderSessionId) return false;
+  const agentSource = (msg as { agentSource?: { sessionId?: string } }).agentSource;
+  return agentSource?.sessionId === leaderSessionId;
 }
 
 function truncate(s: string, max: number): string {
