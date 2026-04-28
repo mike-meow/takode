@@ -1,4 +1,10 @@
-import type { LegacyQuestStatus, QuestDone, QuestFeedbackEntry, QuestmasterTask, QuestVerificationItem } from "./quest-types.js";
+import type {
+  LegacyQuestStatus,
+  QuestDone,
+  QuestFeedbackEntry,
+  QuestmasterTask,
+  QuestVerificationItem,
+} from "./quest-types.js";
 import { hasQuestReviewMetadata } from "./quest-types.js";
 
 /** Normalize verification items: accept strings or {text,checked} objects.
