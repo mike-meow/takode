@@ -401,8 +401,9 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("Code Review");
     expect(guardrails).toContain("BOOKKEEPING");
     expect(guardrails).toContain("~/.companion/quest-journey-phases/<phase-id>/");
-    expect(guardrails).toContain("`alignment/leader.md`");
-    expect(guardrails).toContain("`alignment/assignee.md`");
+    expect(guardrails).toContain("`~/.companion/quest-journey-phases/alignment/leader.md`");
+    expect(guardrails).toContain("`~/.companion/quest-journey-phases/alignment/assignee.md`");
+    expect(guardrails).toContain("one confirmation can approve quest text, Journey, and dispatch plan");
     expect(guardrails).toContain("board-owned draft-or-active state for the quest");
     expect(guardrails).toContain("Work Board");
     // Spawn backend default note
@@ -516,8 +517,8 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("Quest Journey");
     expect(guardrails).toContain("Code Review");
     expect(guardrails).toContain("~/.companion/quest-journey-phases/<phase-id>/");
-    expect(guardrails).toContain("`alignment/leader.md`");
-    expect(guardrails).toContain("`alignment/assignee.md`");
+    expect(guardrails).toContain("`~/.companion/quest-journey-phases/alignment/leader.md`");
+    expect(guardrails).toContain("`~/.companion/quest-journey-phases/alignment/assignee.md`");
     // CLI reference delegated to skill
     expect(guardrails).toContain("takode-orchestration");
     expect(guardrails).toContain("default to your own backend type");

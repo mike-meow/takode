@@ -58,6 +58,7 @@ import { getSettings } from "../settings-manager.js";
 import { QUEST_JOURNEY_STATES, type BrowserIncomingMessage, type BrowserOutgoingMessage } from "../session-types.js";
 import { isSessionIdleRuntime } from "../herd-event-dispatcher.js";
 import type { RouteContext } from "./context.js";
+import { loadQuestJourneyPhaseCatalog } from "../quest-journey-phases.js";
 
 interface PhaseNoteEdit {
   index: number;
@@ -539,6 +540,14 @@ export function createTakodeRoutes(ctx: RouteContext) {
       state: auth.caller.state,
       backendType: auth.caller.backendType || "claude",
     });
+  });
+
+  api.get("/takode/quest-journey-phases", async (c) => {
+    const auth = authenticateTakodeCaller(c);
+    if ("response" in auth) return auth.response;
+
+    const phases = await loadQuestJourneyPhaseCatalog();
+    return c.json({ phases });
   });
 
   api.get("/takode/sessions", async (c) => {

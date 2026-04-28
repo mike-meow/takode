@@ -28,13 +28,19 @@ This skill covers leader discipline and the step-by-step dispatch process. Invok
 - **Ask, don't assume.** If the user's instruction is ambiguous or underspecified, ask a quick follow-up question before dispatching. Every interaction with the user is an opportunity to clarify. Workers can figure out implementation details themselves -- you don't need to fill in gaps with guesses.
 - **Never hallucinate user intent.** If the user says "fix the sidebar bug", don't turn it into "fix the sidebar bug by adjusting the CSS grid layout and adding a media query for mobile breakpoints". Pass through what the user said and let the worker investigate.
 - **Added details need confirmation.** If you want to add specifics to make instructions more actionable (e.g. suggesting an approach, naming specific files, or scoping the fix), confirm with the user first. An over-specified instruction based on wrong assumptions wastes more time than a brief clarifying question.
-- **Use `/quest-design` before quest creation/refinement.** Before creating a quest or refining an `idea` quest into worker-ready scope, invoke `/quest-design` and wait for user confirmation or correction. A user-approved plan that explicitly covers the quest text counts as this confirmation. Routine feedback, claims, completion, verification checks, board updates, and already-approved phase transitions do not need a separate confirmation round. `/quest-design` confirms quest understanding and finalizes quest text; it does not own initial Journey proposal.
+- **Use `/quest-design` before quest creation/refinement.** Before creating a quest or refining an `idea` quest into worker-ready scope, invoke `/quest-design` and wait for user confirmation or correction. When the user clearly wants a quest created and dispatched, combine quest-design with this dispatch approval: present the proposed quest draft plus Journey/scheduling draft together so one confirmation can approve quest text, Journey, and dispatch plan. Routine feedback, claims, completion, verification checks, board updates, and already-approved phase transitions do not need a separate confirmation round.
 - **`/leader-dispatch` owns the initial Journey proposal.** Before dispatching a fresh or newly refined quest, put the proposed Journey on the board, present that proposed row to the user, revise it there if needed, and only then dispatch the worker into the `alignment` phase (`PLANNING` on the board).
 - **Do not duplicate right-panel quest facts.** The right-side quest/status panel already shows quest id/title/status, owner/session pointer, verification progress, inbox unread state, human feedback counts, compact wait/attention state, and compact existing Journey state for the selected session or leader board attention row. In user-facing prose, rely on that surface for those facts and spend chat on reasoning, dispatch/review reports, decision prompts, and non-modeled operational details.
 - **Publish user-visible leader messages explicitly.** When a leader needs Markdown to appear in the user-visible left panel, use `takode user-message --text-file -`. Normal worker/reviewer sessions should ignore that command and use ordinary chat.
 - **Treat worker/reviewer confusion as a quest-scoped blocking signal.** When a herded worker or reviewer raises a clarification question, answer it from existing context if you can. If not, publish the user-facing question with `takode user-message --text-file -`, then call `takode notify needs-input` with a short summary, optionally using one to three short `--suggest <answer>` choices for obvious answers, keep that specific quest blocked until the ambiguity is resolved, and continue unrelated orchestration. If you intentionally pause the quest on human input, make that an explicit board decision rather than inferring the pause from `/confirm` alone.
 
 ## Pre-Dispatch Approval Contract
+
+If the user clearly asked for a quest to be created and dispatched, optimize for a single combined confirmation round. The first leader response should include:
+- the proposed quest draft: title, scope/description, assumptions, non-goals, and tags when useful
+- the proposed Journey/scheduling draft: planned phases, concise phase-purpose notes when useful, worker choice or fresh-spawn intent, and dispatch/queueing plan
+
+If meaningful clarification is needed, ask those questions with the quest framing. After the user clarifies and no major ambiguity remains, the next response should include both the drafted quest and the drafted Journey/scheduling plan. Avoid a separate round that only restates understanding after clarification when there are no new questions and no quest/Journey draft yet. More than two confirmation rounds should happen only when genuine additional clarification is needed.
 
 Before you dispatch a quest, or intentionally leave it `QUEUED` for a later dispatch, create or revise the proposed board row first, then run `takode board present <quest-id>` so the user sees one stable proposal review artifact and can approve the whole thing.
 
@@ -174,6 +180,7 @@ Before dispatching a fresh or newly refined quest, put the planned initial Journ
 This is the `/leader-dispatch` contract:
 - `/quest-design` confirms quest understanding and finalizes the quest text.
 - `/leader-dispatch` proposes the initial board-owned Journey for execution.
+- When the user asked for quest creation plus dispatch and the scope is clear, combine those into one approval surface instead of running a quest-text confirmation and a separate Journey confirmation.
 
 The proposal should:
 - name the built-in phases you intend to put on the board first
@@ -196,7 +203,11 @@ Only send this after the user approved the combined pre-dispatch proposal: initi
 
 ```
 Work on [q-XX](quest:q-XX). Load the quest skill first, then read the quest and claim it: `quest show q-XX && quest claim q-XX`.
-Return an alignment read-in for approval covering your concrete understanding, ambiguities, clarification questions, and when suitable a recommended next phase. After you send it, stop and wait for approval.
+
+Read this phase brief first:
+- `~/.companion/quest-journey-phases/alignment/assignee.md`
+
+Return an alignment read-in for approval covering your concrete understanding, ambiguities, clarification questions, blockers, surprises, and any evidence that may justify leader-owned Journey revision. After you send it, stop and wait for approval.
 ```
 
 When sending this template through the shell, prefer `takode spawn --message-file -` or `takode spawn --message-file <path>` over inline `--message` if you might include shell-like text or multi-line additions.
@@ -208,7 +219,8 @@ This dispatch happens only after the user has approved the initial Journey from 
 **Workers must stop after each phase boundary.** The dispatch message only authorizes alignment. After alignment approval, the worker performs the approved next phase. After implementation, the worker STOPS and waits -- it does NOT self-review, run review skills on its own, run `/self-groom`, or self-port. The leader advances the quest through Quest Journey phases.
 
 **Make every follow-up message phase-explicit.**
-- **Initial dispatch**: invoke the alignment phase. The worker returns a lightweight read-in with concrete understanding, ambiguities, clarification questions, and when suitable a recommended next phase, then stops. The user-approved proposal that led to this dispatch must already have stated the scheduling/orchestration plan, even in the simple case: "spawn fresh and dispatch immediately if approved."
+- **Initial dispatch**: invoke the alignment phase and include the exact assignee brief path: `~/.companion/quest-journey-phases/alignment/assignee.md`. The worker returns a lightweight read-in with concrete understanding, ambiguities, clarification questions, blockers, surprises, and any evidence that may justify leader-owned Journey revision, then stops. The user-approved proposal that led to this dispatch must already have stated the scheduling/orchestration plan, even in the simple case: "spawn fresh and dispatch immediately if approved."
+- **Every phase dispatch**: include `Read this phase brief first:` plus the exact assignee brief path from `takode phases`, for example `~/.companion/quest-journey-phases/implement/assignee.md`. Do this for workers and reviewers.
 - **Alignment approval**: after the worker returns the read-in, the leader normally approves the next phase directly. Escalate back to the user only when the read-in introduces significant ambiguity, scope change, Journey revision, user-visible tradeoff, or another real blocking issue. If real unknowns remain, route to `explore`; if the next move is already clear, invoke that phase and say so explicitly. Do not imply review, porting, or quest transitions are authorized.
 - **Review or rework follow-up**: say exactly what the worker should do now, then tell them to report back and wait. Tell the worker to refresh the existing quest summary/comment as a user-oriented outcome note covering what changed, why it matters, and what verification passed. Consolidate feedback-addressing details into that same comment when clear instead of adding near-duplicate quest comments. Do not imply porting is authorized.
 - **Reviewer-owned quest hygiene**: reviewers may directly fix clear quest hygiene issues they know how to fix, including stale addressed flags, missing/refreshable summaries, and verification checklist checks backed by evidence. Expect reviewers to report those fixes in ACCEPT/CHALLENGE output. Do not send the worker rework for hygiene the reviewer already fixed; do send substantive failures, critical intention mismatches, missing or dishonest work, and ambiguity back through the normal review loop.
@@ -220,18 +232,30 @@ This dispatch happens only after the user has approved the initial Journey from 
 **Use explicit phrasing when steering between phase boundaries.** Good defaults:
 
 ```
+Read this phase brief first:
+- `~/.companion/quest-journey-phases/implement/assignee.md`
+
 Implement the approved plan, add or refresh the consolidated quest summary comment for the human reader, then stop and report back. The summary should state what changed, why it matters, and what verification passed, without turning into a review/rework timeline. If this also addresses human feedback, explain that in the same comment when it remains clear. Do not run review workflows on your own, run /self-groom, run /port-changes, or change the quest status yourself.
 ```
 
 ```
+Read this phase brief first:
+- `~/.companion/quest-journey-phases/implement/assignee.md`
+
 Address the reviewer findings, add or refresh the consolidated user-oriented quest summary comment, then stop and report back. Do not port yet.
 ```
 
 ```
+Read this phase brief first:
+- `~/.companion/quest-journey-phases/implement/assignee.md`
+
 Address the review findings. If you need more code changes, first commit the current worktree state, then make the fixes in a separate follow-up commit. Add or refresh the consolidated user-oriented quest summary comment, then stop and report back. Do not port yet.
 ```
 
 ```
+Read this phase brief first:
+- `~/.companion/quest-journey-phases/port/assignee.md`
+
 Port now using /port-changes, then report back when sync is complete. Include a dedicated `Synced SHAs: sha1,sha2` line with the ordered synced SHAs from the main repo so the later `quest complete ... --commits ...` handoff can attach structured commit metadata instead of relying on feedback comments alone.
 ```
 
@@ -240,7 +264,11 @@ Port now using /port-changes, then report back when sync is complete. Include a 
 ```
 Work on [q-XX](quest:q-XX). Load the quest skill first, then read the quest and claim it: `quest show q-XX && quest claim q-XX`.
 The quest has unaddressed human feedback -- read it carefully and factor it into your alignment read-in.
-Return an alignment read-in for approval covering your concrete understanding, ambiguities, clarification questions, and when suitable a recommended next phase. After you send it, stop and wait for approval.
+
+Read this phase brief first:
+- `~/.companion/quest-journey-phases/alignment/assignee.md`
+
+Return an alignment read-in for approval covering your concrete understanding, ambiguities, clarification questions, blockers, surprises, and any evidence that may justify leader-owned Journey revision. After you send it, stop and wait for approval.
 ```
 
 This ensures workers load the quest skill (so CLI commands work), read pending feedback before alignment, and stop at the alignment boundary. Feedback addressing happens during implementation, not alignment.

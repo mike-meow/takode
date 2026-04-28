@@ -4,6 +4,7 @@ Use this phase when the right evidence lives in outcomes rather than source diff
 
 Leader actions:
 - Keep the board row in `OUTCOME_REVIEWING`.
+- Include the exact assignee brief path in the instruction: `~/.companion/quest-journey-phases/outcome-review/assignee.md`.
 - Use this as a reviewer-owned acceptance phase after the worker has usually produced the outcome evidence first.
 - Point the reviewer to the exact logs, metrics, artifacts, behaviors, or UX evidence to judge.
 - Ask for an outcome judgment tied to concrete evidence.

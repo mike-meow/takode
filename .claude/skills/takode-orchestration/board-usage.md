@@ -70,6 +70,8 @@ Built-in phase IDs are:
 
 `alignment`, `explore`, `implement`, `code-review`, `mental-simulation`, `execute`, `outcome-review`, `bookkeeping`, `port`
 
+Use `takode phases` for the read-only phase catalog, including descriptions, source metadata, and exact leader/assignee brief paths.
+
 Compatibility aliases remain accepted for older rows and habits:
 
 `planning -> alignment`, `implementation -> implement`, `skeptic-review -> code-review`, `reviewer-groom -> code-review`, `porting -> port`, `stream-update -> bookkeeping`, `state-update -> bookkeeping`

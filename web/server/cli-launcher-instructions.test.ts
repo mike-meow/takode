@@ -132,8 +132,9 @@ describe("buildInjectedSystemPromptForDebug", () => {
     expect(result).toContain("route back deliberately: `implement` for behavior/code changes");
     expect(result).toContain("| Built-in phase | Board state | Leader brief | Assignee brief | Next leader action |");
     expect(result).toContain("~/.companion/quest-journey-phases/<phase-id>/");
-    expect(result).toContain("`alignment/leader.md`");
-    expect(result).toContain("`alignment/assignee.md`");
+    expect(result).toContain("`~/.companion/quest-journey-phases/alignment/leader.md`");
+    expect(result).toContain("`~/.companion/quest-journey-phases/alignment/assignee.md`");
+    expect(result).toContain("one confirmation can approve quest text, Journey, and dispatch plan");
     expect(result).not.toContain("Every dispatched task follows the **Quest Journey** lifecycle");
     expect(result).not.toContain("Every quest goes through the full journey");
   });

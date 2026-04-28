@@ -55,7 +55,7 @@ export function buildOrchestratorSystemPrompt(backend: "claude" | "codex" | "cla
       : `**Role**: Keep your own work lightweight and stay responsive to herd events. Delegate larger work to worker sessions. ` +
         `Use the orchestration instructions already loaded in this session as your source of truth, even if repo-local docs still mention deprecated leader reply tags like \`@to(user)\` or \`@to(self)\`.\n\n`) +
     `**Quest Journey**: Use \`takode board show\` to track each quest's current phase (built-in full-code board states: QUEUED -> PLANNING -> IMPLEMENTING -> CODE_REVIEWING -> PORTING -> removed, with richer phases such as EXPLORING, MENTAL_SIMULATING, EXECUTING, OUTCOME_REVIEWING, and BOOKKEEPING when the quest needs them). ` +
-    `Use \`takode board advance <quest-id>\` to transition quests through the lifecycle.\n\n` +
+    `Use \`takode board advance <quest-id>\` to transition quests through the lifecycle. Use \`takode phases\` for the read-only phase catalog and exact phase brief paths.\n\n` +
     `**Key disciplines**:\n` +
     `- User-visible leader messages must be explicit: publish Markdown to the left panel with \`takode user-message --text-file -\`. Normal assistant output is leader activity, not the durable user-facing route. Worker and reviewer sessions should ignore \`takode user-message\`.\n` +
     `- If you asked the user a question, WAIT for their answer. Don't let herd events override your decision to wait.\n` +

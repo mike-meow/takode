@@ -9,6 +9,7 @@ This phase reviews tracked code or tracked artifacts for landing risk.
 
 Leader actions:
 - Assign a reviewer and define the concrete review scope.
+- Include the exact assignee brief path: `~/.companion/quest-journey-phases/code-review/assignee.md`.
 - Send findings back to the worker when rework is needed.
 - Keep the board row in `CODE_REVIEWING`.
 

@@ -9,6 +9,7 @@ This phase syncs accepted git-tracked work back to the main repository.
 
 Leader actions:
 - Send a separate explicit `/port-changes` instruction only after the required review or outcome phases are accepted.
+- Include the exact assignee brief path: `~/.companion/quest-journey-phases/port/assignee.md`.
 - Require the worker report to include `Synced SHAs: sha1,sha2` when sync completes.
 - Require the appropriate post-port verification gate.
 - Keep the board row in `PORTING`.

@@ -9,6 +9,7 @@ This phase records durable shared state such as quest updates, stream updates, a
 
 Leader actions:
 - Specify what durable state must be updated and where it must live.
+- Include the exact assignee brief path: `~/.companion/quest-journey-phases/bookkeeping/assignee.md`.
 - Keep the board row in `BOOKKEEPING`.
 - Use this phase when the main remaining work is state capture rather than more implementation or review.
 

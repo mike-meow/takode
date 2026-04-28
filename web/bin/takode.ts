@@ -739,6 +739,29 @@ Options:
   --suggest <answer>  Suggested answer for needs-input notifications (repeat up to 3 times)
 `;
 
+const PHASES_HELP = `Usage: takode phases [--json]
+
+List available Quest Journey phases from phase metadata, including exact leader/assignee brief paths.
+`;
+
+interface QuestJourneyPhaseCatalogEntry {
+  id: string;
+  label: string;
+  boardState: string;
+  assigneeRole: string;
+  contract: string;
+  nextLeaderAction: string;
+  aliases: string[];
+  sourceType: string;
+  sourcePath: string;
+  phaseJsonPath: string;
+  leaderBriefPath: string;
+  assigneeBriefPath: string;
+  phaseJsonDisplayPath: string;
+  leaderBriefDisplayPath: string;
+  assigneeBriefDisplayPath: string;
+}
+
 const BOARD_HELP = `Usage: takode board [show|set|propose|present|promote|note|advance|rm] ...
 
 Quest Journey work board for the current leader session.
@@ -946,6 +969,9 @@ function printCommandHelp(command: string, argv: string[]): boolean {
       return true;
     case "notify":
       console.log(NOTIFY_HELP);
+      return true;
+    case "phases":
+      console.log(PHASES_HELP);
       return true;
     case "board": {
       const sub = args[0];
@@ -3441,6 +3467,32 @@ async function handleNotify(base: string, args: string[]): Promise<void> {
   console.log(`Notification sent (${category}, id ${notificationLabel})`);
 }
 
+async function handlePhases(base: string, args: string[]): Promise<void> {
+  const flags = parseFlags(args);
+  const positional = args.filter((arg) => !arg.startsWith("--"));
+  if (positional.length > 0) err(PHASES_HELP.trim());
+
+  const result = (await apiGet(base, "/takode/quest-journey-phases")) as {
+    phases: QuestJourneyPhaseCatalogEntry[];
+  };
+
+  if (flags.json === true) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  console.log(`Quest Journey phases (${result.phases.length}):`);
+  for (const phase of result.phases) {
+    const aliases = phase.aliases.length > 0 ? ` aliases: ${phase.aliases.join(", ")}` : "";
+    console.log(`\n${phase.id} -- ${phase.label} [${phase.sourceType}]`);
+    console.log(`  role: ${phase.assigneeRole}  board: ${phase.boardState}${aliases}`);
+    console.log(`  contract: ${formatInlineText(phase.contract)}`);
+    console.log(`  assignee brief: ${phase.assigneeBriefDisplayPath}`);
+    console.log(`  leader brief: ${phase.leaderBriefDisplayPath}`);
+    console.log(`  phase metadata: ${phase.phaseJsonDisplayPath}`);
+  }
+}
+
 // ─── Board ─────────────────────────────────────────────────────────────────
 
 import {
@@ -4866,6 +4918,7 @@ Commands:
   refresh-branch Refresh git branch info for a session after checkout/rebase
   branch         Branch info and management for the current session
   notify         Alert the user (e.g. takode notify review "ready for verification")
+  phases        List Quest Journey phases and exact phase brief paths
   board          Quest Journey work board (e.g. takode board show, takode board advance q-12)
   timer          Session-scoped timers (create, list, cancel)
   help           Show detailed help for a command or nested subcommand
@@ -4911,6 +4964,7 @@ Examples:
   takode refresh-branch 1
   takode branch status
   takode branch set-base origin/main
+  takode phases
   takode board --help
   takode board advance q-12
   takode help timer create
@@ -4956,6 +5010,7 @@ try {
     ["refresh-branch", {}],
     ["branch", {}],
     ["notify", {}],
+    ["phases", {}],
     ["board", {}],
     ["timer", {}],
   ]);
@@ -5072,6 +5127,9 @@ try {
       break;
     case "notify":
       await handleNotify(base, args);
+      break;
+    case "phases":
+      await handlePhases(base, args);
       break;
     case "board":
       await handleBoard(base, args);

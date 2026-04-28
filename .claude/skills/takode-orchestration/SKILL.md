@@ -30,8 +30,8 @@ Read these files or invoke these skills when performing the corresponding operat
 - **Never implement non-trivial changes yourself.** Leaders brainstorm, create quests, dispatch, steer, and review -- they do not write code. Investigation and research are also work to delegate.
 - **Never run `quest claim` yourself.** Workers claim quests when dispatched. Leaders coordinate, workers claim.
 - **Leaders do not become the quest owner for implementation work.** The worker doing the job claims and completes the quest; the leader only dispatches, reviews, and coordinates later phase boundaries.
-- **Use `/quest-design` before quest creation/refinement.** Before creating a quest or refining an `idea` quest into worker-ready scope, invoke `/quest-design` and wait for user confirmation or correction. A user-approved plan that explicitly covers the quest text counts as this confirmation. Routine feedback, claims, completion, verification checks, board updates, and already-approved lifecycle transitions do not need another round. `/quest-design` owns quest understanding and quest text, not initial Journey proposal.
-- **Before dispatching any quest, *ALWAYS* invoke `/leader-dispatch`.** It owns worker selection, the initial Journey proposal, and the alignment-only dispatch template. The user-facing pre-dispatch approval there must cover both the initial Journey phases and the scheduling/orchestration plan, including the simple immediate-dispatch case such as "spawn fresh and dispatch immediately if approved." Get approval for that combined proposal before spawning a worker. Do not add extra context, file paths, or investigation instructions to the dispatch message -- add any extra information into the quest itself before dispatching.
+- **Use `/quest-design` before quest creation/refinement.** Before creating a quest or refining an `idea` quest into worker-ready scope, invoke `/quest-design` and wait for user confirmation or correction. When the user clearly wants a quest created and dispatched, combine quest-design with `/leader-dispatch`: present the proposed quest draft plus Journey/scheduling draft together so one confirmation can approve quest text, Journey, and dispatch plan. Routine feedback, claims, completion, verification checks, board updates, and already-approved lifecycle transitions do not need another round.
+- **Before dispatching any quest, *ALWAYS* invoke `/leader-dispatch`.** It owns worker selection, the initial Journey proposal, and the alignment-only dispatch template. The user-facing pre-dispatch approval there must cover both the initial Journey phases and the scheduling/orchestration plan, including the simple immediate-dispatch case such as "spawn fresh and dispatch immediately if approved." If clarification was needed first, the next response after the user clarifies should normally include both the drafted quest and drafted Journey/scheduling plan instead of another restated-understanding-only round. Get approval for that combined proposal before spawning a worker. Do not add extra context, file paths, or investigation instructions to the dispatch message -- add any extra information into the quest itself before dispatching.
 - **Events are push-based.** Herd events arrive as `[Herd]` user messages when idle. No polling.
 - **Reference, don't relay.** Point to source messages instead of paraphrasing.
 - **Workers have the same tools you do.** Give them the quest ID; they run `quest show` themselves.
@@ -281,6 +281,15 @@ Suggested answers are supported only for `needs-input`. Use one to three short c
 ```bash
 takode notify needs-input "need decision on auth approach for q-42" --suggest yes --suggest no
 takode notify review "landing page copy draft is ready for review"
+```
+
+### `takode phases [--json]`
+
+List the read-only Quest Journey phase catalog. Available to all sessions. Use this when you need phase descriptions, source metadata, aliases, board states, assignee roles, or the exact `~/.companion/quest-journey-phases/<phase-id>/assignee.md` path to include in a phase dispatch.
+
+```bash
+takode phases
+takode phases --json
 ```
 
 ### `takode pending <session>`

@@ -93,6 +93,7 @@ describe("takode watch deprecation", () => {
     [["send", "--help"], "Usage: takode send"],
     [["logs", "--help"], "Usage: takode logs"],
     [["notify", "--help"], "Usage: takode notify"],
+    [["phases", "--help"], "Usage: takode phases"],
   ])("prints top-level command help without auth for %j", async (argv, expected) => {
     const result = await runTakode(argv, {
       ...process.env,

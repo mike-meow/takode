@@ -9,6 +9,7 @@ This phase authorizes the worker to make the approved low-risk changes and gathe
 
 Leader actions:
 - Send an explicit implementation instruction.
+- Include the exact assignee brief path: `~/.companion/quest-journey-phases/implement/assignee.md`.
 - Require the worker to add or refresh the consolidated human-readable quest summary comment.
 - Tell the worker to stop and report back after implementation.
 - Keep the board row in `IMPLEMENTING`.

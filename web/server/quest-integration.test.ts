@@ -99,6 +99,8 @@ describe("ensureQuestmasterIntegration", () => {
     expect(skill).toContain("Major assumptions");
     expect(skill).toContain("Non-goals");
     expect(skill).toContain("Highest-leverage clarification questions");
+    expect(skill).toContain("combine the `/quest-design` and `/leader-dispatch` approval surfaces");
+    expect(skill).toContain("one user confirmation can approve quest text, Journey, and dispatch plan together");
     expect(skill).toContain("Operations that do not require `/quest-design`");
     expect(skill).toContain("Adding human or agent feedback to an existing quest");
     expect(skill).toContain("Routine progress bookkeeping after approved work");

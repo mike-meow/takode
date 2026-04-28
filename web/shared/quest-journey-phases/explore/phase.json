@@ -4,7 +4,7 @@
   "color": { "name": "amber", "accent": "#fbbf24" },
   "boardState": "EXPLORING",
   "assigneeRole": "worker",
-  "contract": "Investigate real unknowns without making the target-state change, then return major findings, new ambiguities or blockers, and when suitable a high-level next-step plan.",
+  "contract": "Investigate real unknowns without making the target-state change, then return major findings, new ambiguities or blockers, implementation considerations, and evidence that may justify leader-owned Journey revision.",
   "nextLeaderAction": "read the explore leader brief, then wait for the findings summary and decide whether to revise the Journey, advance, or escalate",
   "aliases": []
 }

@@ -47,6 +47,8 @@ The `/quest-design` confirmation must be concise and include:
 - **Non-goals** when relevant: what should stay out of scope.
 - **Highest-leverage clarification questions**: ask only questions that could materially change the quest.
 
+When the user clearly wants a quest created and dispatched, combine the `/quest-design` and `/leader-dispatch` approval surfaces: the leader's first response should include both the proposed quest draft and the proposed Quest Journey/scheduling draft, so one user confirmation can approve quest text, Journey, and dispatch plan together. If meaningful clarification is needed, ask those questions with the quest framing; after the user clarifies and no major ambiguity remains, the next response should include both drafts together. Avoid a separate extra round that only restates understanding after clarification when there are no new questions and no quest/Journey draft yet. More than two confirmation rounds should happen only when genuine additional clarification is needed.
+
 Then stop and wait for the user to confirm or correct the understanding before creating or refining the quest. If the user corrects the understanding and ambiguity remains, do another short `/quest-design` round before writing the quest. If the user has already approved a plan that explicitly covers the quest creation or refinement text, that plan approval can count as the confirmation round.
 
 Operations that do not require `/quest-design`:

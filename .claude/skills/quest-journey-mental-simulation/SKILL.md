@@ -9,6 +9,7 @@ This phase tests a design, workflow, or implementation against concrete real sce
 
 Leader actions:
 - Point the reviewer to the exact scenarios, sessions, quests, or artifacts to simulate.
+- Include the exact assignee brief path: `~/.companion/quest-journey-phases/mental-simulation/assignee.md`.
 - Keep the board row in `MENTAL_SIMULATING`.
 - Revise the remaining Journey if the simulation exposes missing phases or evidence gaps.
 

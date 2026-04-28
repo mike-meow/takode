@@ -18,6 +18,29 @@ export type LoadedQuestJourneyPhase = QuestJourneyPhase & {
   assigneeBrief: string;
 };
 
+export type QuestJourneyPhaseSourceType = "built-in" | "custom";
+
+export interface QuestJourneyPhaseCatalogEntry {
+  id: string;
+  label: string;
+  color?: QuestJourneyPhase["color"];
+  boardState: string;
+  assigneeRole: string;
+  contract: string;
+  nextLeaderAction: string;
+  aliases: string[];
+  sourceType: QuestJourneyPhaseSourceType;
+  sourcePath: string;
+  dirPath: string;
+  phaseJsonPath: string;
+  leaderBriefPath: string;
+  assigneeBriefPath: string;
+  dirDisplayPath: string;
+  phaseJsonDisplayPath: string;
+  leaderBriefDisplayPath: string;
+  assigneeBriefDisplayPath: string;
+}
+
 export interface QuestJourneyPhasePathOptions {
   packageRoot?: string;
   companionHome?: string;
@@ -51,6 +74,14 @@ export function getQuestJourneyPhaseDisplayRoot(): string {
   return QUEST_JOURNEY_PHASE_DISPLAY_ROOT;
 }
 
+export function getQuestJourneyPhaseDirDisplayPath(phaseId: string): string {
+  return `${QUEST_JOURNEY_PHASE_DISPLAY_ROOT}/${phaseId}`;
+}
+
+export function getQuestJourneyPhaseJsonDisplayPath(phaseId: string): string {
+  return `${getQuestJourneyPhaseDirDisplayPath(phaseId)}/phase.json`;
+}
+
 export function getQuestJourneyPhaseDataDir(
   phaseId: QuestJourneyPhaseId,
   options?: QuestJourneyPhasePathOptions,
@@ -72,12 +103,12 @@ export function getQuestJourneyPhaseAssigneeBriefPath(
   return join(getQuestJourneyPhaseDataDir(phaseId, options), "assignee.md");
 }
 
-export function getQuestJourneyPhaseLeaderBriefDisplayPath(phaseId: QuestJourneyPhaseId): string {
-  return `${QUEST_JOURNEY_PHASE_DISPLAY_ROOT}/${phaseId}/leader.md`;
+export function getQuestJourneyPhaseLeaderBriefDisplayPath(phaseId: string): string {
+  return `${getQuestJourneyPhaseDirDisplayPath(phaseId)}/leader.md`;
 }
 
-export function getQuestJourneyPhaseAssigneeBriefDisplayPath(phaseId: QuestJourneyPhaseId): string {
-  return `${QUEST_JOURNEY_PHASE_DISPLAY_ROOT}/${phaseId}/assignee.md`;
+export function getQuestJourneyPhaseAssigneeBriefDisplayPath(phaseId: string): string {
+  return `${getQuestJourneyPhaseDirDisplayPath(phaseId)}/assignee.md`;
 }
 
 export async function ensureBuiltInQuestJourneyPhaseData(options?: QuestJourneyPhasePathOptions): Promise<void> {
@@ -143,4 +174,30 @@ export async function loadBuiltInQuestJourneyPhases(
   options?: QuestJourneyPhasePathOptions,
 ): Promise<LoadedQuestJourneyPhase[]> {
   return Promise.all(QUEST_JOURNEY_PHASES.map((phase) => loadQuestJourneyPhase(phase.id, options)));
+}
+
+export async function loadQuestJourneyPhaseCatalog(
+  options?: QuestJourneyPhasePathOptions,
+): Promise<QuestJourneyPhaseCatalogEntry[]> {
+  const phases = await loadBuiltInQuestJourneyPhases(options);
+  return phases.map((phase) => ({
+    id: phase.id,
+    label: phase.label,
+    color: phase.color,
+    boardState: phase.boardState,
+    assigneeRole: phase.assigneeRole,
+    contract: phase.contract,
+    nextLeaderAction: phase.nextLeaderAction,
+    aliases: [...phase.aliases],
+    sourceType: "built-in",
+    sourcePath: join(getQuestJourneyPhaseCanonicalRoot(options), phase.id),
+    dirPath: phase.dirPath,
+    phaseJsonPath: phase.phaseJsonPath,
+    leaderBriefPath: phase.leaderBriefPath,
+    assigneeBriefPath: phase.assigneeBriefPath,
+    dirDisplayPath: getQuestJourneyPhaseDirDisplayPath(phase.id),
+    phaseJsonDisplayPath: getQuestJourneyPhaseJsonDisplayPath(phase.id),
+    leaderBriefDisplayPath: getQuestJourneyPhaseLeaderBriefDisplayPath(phase.id),
+    assigneeBriefDisplayPath: getQuestJourneyPhaseAssigneeBriefDisplayPath(phase.id),
+  }));
 }

@@ -11,6 +11,7 @@ import {
   getQuestJourneyPhaseDisplayRoot,
   getQuestJourneyPhaseLeaderBriefPath,
   loadBuiltInQuestJourneyPhases,
+  loadQuestJourneyPhaseCatalog,
 } from "./quest-journey-phases.js";
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
@@ -102,6 +103,30 @@ describe("Quest Journey phase directory loading", () => {
     expect(alignmentPhase?.assigneeBrief).toContain("Clarification questions:");
     expect(explorePhase?.leaderBrief).toContain("major findings, newly discovered ambiguities or blockers");
     expect(explorePhase?.assigneeBrief).toContain("major findings");
-    expect(explorePhase?.assigneeBrief).toContain("high-level plan for next steps");
+    expect(explorePhase?.assigneeBrief).toContain("evidence that may justify leader-owned Journey revision");
+  });
+
+  it("builds a read-only phase catalog with source metadata and exact display paths", async () => {
+    const companionHome = await makeCompanionHome();
+    await ensureBuiltInQuestJourneyPhaseData({ packageRoot: PACKAGE_ROOT, companionHome });
+
+    const catalog = await loadQuestJourneyPhaseCatalog({ packageRoot: PACKAGE_ROOT, companionHome });
+
+    expect(catalog.map((phase) => phase.id)).toEqual(QUEST_JOURNEY_PHASES.map((phase) => phase.id));
+    expect(catalog[0]).toEqual(
+      expect.objectContaining({
+        id: "alignment",
+        label: "Alignment",
+        boardState: "PLANNING",
+        assigneeRole: "worker",
+        sourceType: "built-in",
+        dirDisplayPath: "~/.companion/quest-journey-phases/alignment",
+        phaseJsonDisplayPath: "~/.companion/quest-journey-phases/alignment/phase.json",
+        leaderBriefDisplayPath: "~/.companion/quest-journey-phases/alignment/leader.md",
+        assigneeBriefDisplayPath: "~/.companion/quest-journey-phases/alignment/assignee.md",
+      }),
+    );
+    expect(catalog[0]?.sourcePath).toBe(join(PACKAGE_ROOT, "shared", "quest-journey-phases", "alignment"));
+    expect(catalog[0]?.aliases).toContain("planning");
   });
 });

@@ -9,6 +9,7 @@ This phase runs the approved expensive, risky, long-running, externally conseque
 
 Leader actions:
 - State the owner, artifacts, monitor plan, stop conditions, and alert triggers.
+- Include the exact assignee brief path: `~/.companion/quest-journey-phases/execute/assignee.md`.
 - Keep the board row in `EXECUTING`.
 - Use this phase when the worker needs more than cheap local evidence gathering from `implement`.
 - Require explicit external-state and bookkeeping expectations when the action finishes.

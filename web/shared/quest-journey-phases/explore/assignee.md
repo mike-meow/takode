@@ -11,5 +11,5 @@ Deliverable:
 - Return an exploration summary with:
   - major findings
   - newly discovered ambiguities or blockers
-  - a high-level plan for next steps when the right next move is already clear
+  - implementation considerations and evidence that may justify leader-owned Journey revision
   - then stop
