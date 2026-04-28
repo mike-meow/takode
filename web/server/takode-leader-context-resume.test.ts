@@ -894,6 +894,113 @@ describe("takode leader-context-resume", () => {
     expect(rendered).toContain("Active quests: 0");
   });
 
+  it("extracts every quest from aggregate review notifications", async () => {
+    // Board completion can emit one aggregate notification for multiple quests.
+    // The recovery view must surface every referenced quest, not just the first
+    // q-N match, or later quests disappear before the active-board summary.
+    const notification: SessionNotification = {
+      id: "n-aggregate",
+      category: "review",
+      summary: "2 quests ready for review: q-1, q-2",
+      timestamp: 12_000,
+      messageId: "assistant-12000",
+      done: false,
+    };
+    const quests = new Map<string, QuestmasterTask>([
+      ["q-1", makeVerificationQuest("q-1", "First aggregate quest")],
+      ["q-2", makeVerificationQuest("q-2", "Second aggregate quest")],
+    ]);
+
+    const model = await buildLeaderContextResume({
+      leader: {
+        sessionId: "leader-session",
+        sessionNum: 1132,
+        name: "Leader",
+        isOrchestrator: true,
+        messageHistory: [makeAssistant("2 quests ready for review: q-1, q-2", 12_000)],
+        notifications: [notification],
+        board: [],
+      },
+      rowSessionStatuses: {},
+      participants: new Map(),
+      loadQuest: async (questId) => quests.get(questId) ?? null,
+    });
+
+    expect(model.observed.reviewNotificationQuests.map((quest) => quest.questId)).toEqual(["q-1", "q-2"]);
+    expect(model.observed.reviewNotificationQuests[0]).toMatchObject({
+      questId: "q-1",
+      latestNotification: { notificationId: "n-aggregate" },
+      notificationIds: ["n-aggregate"],
+    });
+    expect(model.observed.reviewNotificationQuests[1]).toMatchObject({
+      questId: "q-2",
+      latestNotification: { notificationId: "n-aggregate" },
+      notificationIds: ["n-aggregate"],
+    });
+
+    const rendered = renderLeaderContextResumeText(model);
+    expect(rendered).toContain("Review notifications / verification-ready quests: 2 quests from 1 notification");
+    expect(rendered).toContain("[q-1](quest:q-1) -- First aggregate quest");
+    expect(rendered).toContain("[q-2](quest:q-2) -- Second aggregate quest");
+    expect(rendered).not.toContain("Other unresolved same-session notifications");
+    expect(rendered.indexOf("[q-2](quest:q-2)")).toBeLessThan(rendered.indexOf("Active quests: 0"));
+  });
+
+  it("keeps aggregate review notifications in Other unresolved when a referenced quest is not represented", () => {
+    const rendered = renderLeaderContextResumeText({
+      leader: { sessionId: "leader-session", sessionNum: 1132, name: "Leader" },
+      observed: {
+        unresolvedUserDecisions: [],
+        unresolvedNotifications: [
+          {
+            notificationId: "n-aggregate",
+            category: "review",
+            summary: "2 quests ready for review: q-1, q-2",
+            timestamp: 12_000,
+          },
+        ],
+        reviewNotificationQuests: [
+          {
+            questId: "q-1",
+            title: "First aggregate quest",
+            questStatus: "needs_verification",
+            verificationInboxUnread: true,
+            verificationCheckedCount: 0,
+            verificationTotalCount: 1,
+            commitCount: 1,
+            latestNotification: {
+              notificationId: "n-aggregate",
+              category: "review",
+              summary: "2 quests ready for review: q-1, q-2",
+              timestamp: 12_000,
+            },
+            notificationIds: ["n-aggregate"],
+            notificationCount: 1,
+            activeBoardQuest: false,
+          },
+        ],
+        activeBoardQuests: [],
+        warnings: [],
+      },
+      synthesized: {
+        reviewNotificationQuests: [
+          {
+            questId: "q-1",
+            statusSummary: "verification; unread inbox; verification 0/1; commits 1",
+            nextLeaderAction: "human verification inbox review",
+            warnings: [],
+          },
+        ],
+        activeBoardQuests: [],
+        warnings: [],
+        suggestedCommands: [],
+      },
+    });
+
+    expect(rendered).toContain("Other unresolved same-session notifications: 1");
+    expect(rendered).toContain("2 quests ready for review: q-1, q-2");
+  });
+
   it("bounds large review-notification output while keeping newest verification-ready quests visible", async () => {
     // This prevents 50+ stale review notifications from burying the currently
     // actionable verification inbox work in post-compaction recovery output.

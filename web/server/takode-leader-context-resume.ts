@@ -121,6 +121,7 @@ export interface LeaderContextResumeReviewNotificationQuestObservation {
   commitCount: number;
   latestSummaryPreview?: string;
   latestNotification: LeaderContextResumeNotificationObservation;
+  notificationIds: string[];
   notificationCount: number;
   activeBoardQuest: boolean;
 }
@@ -441,9 +442,8 @@ function formatNotificationId(notificationId: string): string {
   return match ? match[1] : notificationId;
 }
 
-function parseNotificationQuestId(summary: string): string | null {
-  const match = /\bq-\d+\b/i.exec(summary);
-  return match ? match[0].toLowerCase() : null;
+function parseNotificationQuestIds(summary: string): string[] {
+  return [...new Set([...summary.matchAll(/\bq-\d+\b/gi)].map((match) => match[0].toLowerCase()))];
 }
 
 function formatQuestStatus(status: string | null | undefined): string {
@@ -722,11 +722,11 @@ export async function buildLeaderContextResume(input: LeaderContextResumeInput):
   const reviewNotificationsByQuest = new Map<string, LeaderContextResumeNotificationObservation[]>();
   for (const notification of unresolvedNotifications) {
     if (notification.category !== "review") continue;
-    const questId = parseNotificationQuestId(notification.summary);
-    if (!questId) continue;
-    const notifications = reviewNotificationsByQuest.get(questId) ?? [];
-    notifications.push(notification);
-    reviewNotificationsByQuest.set(questId, notifications);
+    for (const questId of parseNotificationQuestIds(notification.summary)) {
+      const notifications = reviewNotificationsByQuest.get(questId) ?? [];
+      notifications.push(notification);
+      reviewNotificationsByQuest.set(questId, notifications);
+    }
   }
 
   const observedReviewNotificationQuests: LeaderContextResumeReviewNotificationQuestObservation[] = [];
@@ -759,6 +759,7 @@ export async function buildLeaderContextResume(input: LeaderContextResumeInput):
       commitCount: quest?.commitShas?.length ?? 0,
       ...(latestSummaryPreview ? { latestSummaryPreview } : {}),
       latestNotification,
+      notificationIds: notifications.map((notification) => notification.notificationId),
       notificationCount: notifications.length,
       activeBoardQuest: activeBoardQuestIds.has(questId),
     });
@@ -999,16 +1000,17 @@ export function renderLeaderContextResumeText(model: LeaderContextResumeModel): 
 
   const reviewNotificationQuests = model.observed.reviewNotificationQuests ?? [];
   const synthesizedReviewNotificationQuests = model.synthesized.reviewNotificationQuests ?? [];
-  const reviewNotificationCount = reviewNotificationQuests.reduce(
-    (total, notificationQuest) => total + notificationQuest.notificationCount,
-    0,
+  const reviewNotificationCount = new Set(
+    reviewNotificationQuests.flatMap(
+      (notificationQuest) => notificationQuest.notificationIds ?? [notificationQuest.latestNotification.notificationId],
+    ),
   );
   lines.push("");
   if (reviewNotificationQuests.length === 0) {
     lines.push("Review notifications / verification-ready quests: none");
   } else {
     lines.push(
-      `Review notifications / verification-ready quests: ${reviewNotificationQuests.length} quest${reviewNotificationQuests.length === 1 ? "" : "s"} from ${reviewNotificationCount} notification${reviewNotificationCount === 1 ? "" : "s"}`,
+      `Review notifications / verification-ready quests: ${reviewNotificationQuests.length} quest${reviewNotificationQuests.length === 1 ? "" : "s"} from ${reviewNotificationCount.size} notification${reviewNotificationCount.size === 1 ? "" : "s"}`,
     );
     const visibleReviewNotificationQuests = reviewNotificationQuests.slice(0, MAX_REVIEW_NOTIFICATION_QUESTS_IN_TEXT);
     for (const [index, observedQuest] of visibleReviewNotificationQuests.entries()) {
@@ -1030,20 +1032,28 @@ export function renderLeaderContextResumeText(model: LeaderContextResumeModel): 
     }
     const omittedCount = reviewNotificationQuests.length - visibleReviewNotificationQuests.length;
     if (omittedCount > 0) {
-      const omittedNotifications = reviewNotificationQuests
-        .slice(visibleReviewNotificationQuests.length)
-        .reduce((total, notificationQuest) => total + notificationQuest.notificationCount, 0);
+      const omittedNotifications = new Set(
+        reviewNotificationQuests
+          .slice(visibleReviewNotificationQuests.length)
+          .flatMap(
+            (notificationQuest) =>
+              notificationQuest.notificationIds ?? [notificationQuest.latestNotification.notificationId],
+          ),
+      );
       lines.push("");
       lines.push(
-        `- omitted ${omittedCount} older/lower-priority review quest${omittedCount === 1 ? "" : "s"} from text output (${omittedNotifications} notification${omittedNotifications === 1 ? "" : "s"}); use \`--json\` or \`takode notify list\` for the full set`,
+        `- omitted ${omittedCount} older/lower-priority review quest${omittedCount === 1 ? "" : "s"} from text output (${omittedNotifications.size} notification${omittedNotifications.size === 1 ? "" : "s"}); use \`--json\` or \`takode notify list\` for the full set`,
       );
     }
   }
 
+  const representedReviewQuestIds = new Set(reviewNotificationQuests.map((quest) => quest.questId));
   const extraNotifications = model.observed.unresolvedNotifications.filter((notification) => {
     if (notification.category === "needs-input") return false;
     if (notification.category !== "review") return true;
-    return !parseNotificationQuestId(notification.summary);
+    const questIds = parseNotificationQuestIds(notification.summary);
+    if (questIds.length === 0) return true;
+    return questIds.some((questId) => !representedReviewQuestIds.has(questId));
   });
   if (extraNotifications.length > 0) {
     const visibleExtraNotifications = extraNotifications.slice(0, 5);
