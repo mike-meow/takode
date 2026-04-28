@@ -1663,6 +1663,15 @@ export function createTakodeRoutes(ctx: RouteContext) {
     }
 
     const resolvedPhaseIds = typedPhaseIds ?? existingPhaseIds;
+    if (requestedMode === "active" && (!existingRow || existingMode !== "proposed" || existingPhaseIds.length === 0)) {
+      return c.json(
+        {
+          error:
+            "Promoting a Journey requires an existing proposed Journey row. Create or revise it first with `takode board propose`.",
+        },
+        400,
+      );
+    }
     if (phaseNoteEdits && resolvedPhaseIds.length === 0) {
       return c.json(
         { error: "Phase notes require an existing Journey row or explicit --phases for the target row." },

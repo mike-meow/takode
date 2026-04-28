@@ -1457,6 +1457,113 @@ describe("Takode server-authoritative auth", () => {
     });
   });
 
+  it("rejects promotion when no proposed Journey row exists", async () => {
+    setupTakodeSessions();
+
+    const res = await app.request("/api/sessions/orch-1/board", {
+      method: "POST",
+      headers: authHeaders("orch-1", "tok-1"),
+      body: JSON.stringify({
+        questId: "q-9",
+        journeyMode: "active",
+        clearWaitForInput: true,
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({
+      error: expect.stringContaining("requires an existing proposed Journey row"),
+    });
+    expect(bridge._sessions["orch-1"].board.has("q-9")).toBe(false);
+  });
+
+  it("rejects promotion when the proposed Journey row has no phases", async () => {
+    setupTakodeSessions();
+    bridge._sessions["orch-1"].board = new Map([
+      [
+        "q-9",
+        {
+          questId: "q-9",
+          title: "Implement board lifecycle",
+          status: "PROPOSED",
+          createdAt: 1,
+          updatedAt: 1,
+          journey: {
+            presetId: "empty",
+            mode: "proposed",
+            phaseIds: [],
+          },
+        },
+      ],
+    ]);
+
+    const res = await app.request("/api/sessions/orch-1/board", {
+      method: "POST",
+      headers: authHeaders("orch-1", "tok-1"),
+      body: JSON.stringify({
+        questId: "q-9",
+        journeyMode: "active",
+        clearWaitForInput: true,
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({
+      error: expect.stringContaining("requires an existing proposed Journey row"),
+    });
+    expect(bridge._sessions["orch-1"].board.get("q-9")).toMatchObject({
+      status: "PROPOSED",
+      journey: {
+        mode: "proposed",
+        phaseIds: [],
+      },
+    });
+  });
+
+  it("rejects promotion from an existing non-proposed Journey row", async () => {
+    setupTakodeSessions();
+    bridge._sessions["orch-1"].board = new Map([
+      [
+        "q-9",
+        {
+          questId: "q-9",
+          title: "Implement board lifecycle",
+          status: "IMPLEMENTING",
+          createdAt: 1,
+          updatedAt: 1,
+          journey: {
+            presetId: "full-code",
+            mode: "active",
+            phaseIds: ["alignment", "implement", "code-review", "port"],
+            activePhaseIndex: 1,
+          },
+        },
+      ],
+    ]);
+
+    const res = await app.request("/api/sessions/orch-1/board", {
+      method: "POST",
+      headers: authHeaders("orch-1", "tok-1"),
+      body: JSON.stringify({
+        questId: "q-9",
+        journeyMode: "active",
+        clearWaitForInput: true,
+      }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({
+      error: expect.stringContaining("requires an existing proposed Journey row"),
+    });
+    expect(bridge._sessions["orch-1"].board.get("q-9")).toMatchObject({
+      status: "IMPLEMENTING",
+      journey: {
+        mode: "active",
+        activePhaseIndex: 1,
+      },
+    });
+  });
+
   it("realigns the current custom Journey phase when board set applies an explicit reset status", async () => {
     setupTakodeSessions();
     bridge._sessions["orch-1"].board = new Map([
