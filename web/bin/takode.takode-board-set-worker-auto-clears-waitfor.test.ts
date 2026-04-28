@@ -268,7 +268,8 @@ describe("takode board set --worker auto-clears waitFor", () => {
         phases: [
           { id: "alignment", note: "Confirm the proposed approval contract." },
           { id: "implement", note: "Build the draft/present path." },
-          { id: "code-review" },
+          { id: "code-review", note: "" },
+          { id: "port" },
         ],
         presentation: {
           summary: "Proposed Journey for approval",
@@ -292,12 +293,14 @@ describe("takode board set --worker auto-clears waitFor", () => {
       title: "Draft proposal workflow",
       journeyMode: "proposed",
       status: "PROPOSED",
-      phases: ["alignment", "implement", "code-review"],
+      phases: ["alignment", "implement", "code-review", "port"],
       presetId: "proposal-flow",
       revisionReason: "Batch draft",
       phaseNoteEdits: [
         { index: 0, note: "Confirm the proposed approval contract." },
         { index: 1, note: "Build the draft/present path." },
+        { index: 2, note: null },
+        { index: 3, note: null },
       ],
       presentation: {
         summary: "Proposed Journey for approval",

@@ -1354,6 +1354,96 @@ describe("Takode server-authoritative auth", () => {
     });
   });
 
+  it("clears omitted and empty spec notes before presenting a revised proposed Journey", async () => {
+    setupTakodeSessions();
+    bridge._sessions["orch-1"].board = new Map([
+      [
+        "q-9",
+        {
+          questId: "q-9",
+          title: "Implement board lifecycle",
+          status: "PROPOSED",
+          createdAt: 1,
+          updatedAt: 1,
+          journey: {
+            presetId: "proposal-flow",
+            mode: "proposed",
+            phaseIds: ["alignment", "implement", "code-review", "port"],
+            phaseNotes: {
+              "0": "Old verbose alignment note",
+              "1": "Old verbose implementation note",
+              "2": "Old verbose review note",
+              "3": "Old verbose port note",
+            },
+          },
+        },
+      ],
+    ]);
+
+    const reviseRes = await app.request("/api/sessions/orch-1/board", {
+      method: "POST",
+      headers: authHeaders("orch-1", "tok-1"),
+      body: JSON.stringify({
+        questId: "q-9",
+        phases: ["alignment", "implement", "code-review", "port"],
+        presetId: "proposal-flow",
+        revisionReason: "Replace noisy draft notes with concise approval notes",
+        // This is the server payload emitted by `takode board propose --spec-file`:
+        // every phase occurrence is authoritative, and null/empty notes clear old text.
+        phaseNoteEdits: [
+          { index: 0, note: "Confirm the approval surface and scope." },
+          { index: 1, note: "" },
+          { index: 2, note: null },
+          { index: 3, note: null },
+        ],
+      }),
+    });
+
+    expect(reviseRes.status).toBe(200);
+    const reviseBody = await reviseRes.json();
+    expect(reviseBody).toMatchObject({
+      board: [
+        {
+          questId: "q-9",
+          status: "PROPOSED",
+          journey: {
+            phaseNotes: {
+              "0": "Confirm the approval surface and scope.",
+            },
+          },
+        },
+      ],
+    });
+    expect(reviseBody.board[0].journey.phaseNotes).toEqual({
+      "0": "Confirm the approval surface and scope.",
+    });
+
+    const presentRes = await app.request("/api/sessions/orch-1/board", {
+      method: "POST",
+      headers: authHeaders("orch-1", "tok-1"),
+      body: JSON.stringify({
+        questId: "q-9",
+        presentProposal: true,
+      }),
+    });
+
+    expect(presentRes.status).toBe(200);
+    const presentBody = await presentRes.json();
+    expect(presentBody).toMatchObject({
+      proposalReview: {
+        questId: "q-9",
+        journey: {
+          phaseNotes: {
+            "0": "Confirm the approval surface and scope.",
+          },
+        },
+      },
+    });
+    expect(presentBody.proposalReview.journey.phaseNotes).toEqual({
+      "0": "Confirm the approval surface and scope.",
+    });
+  });
+
   it("returns explicit warnings when a Journey revision drops unmappable phase notes", async () => {
     setupTakodeSessions();
     bridge._sessions["orch-1"].board = new Map([

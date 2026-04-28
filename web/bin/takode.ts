@@ -3897,8 +3897,7 @@ async function handleBoard(base: string, args: string[]): Promise<void> {
       if (typeof flags.phases === "string") err("Use either --spec-file or --phases, not both.");
       const spec = await readBoardProposalSpec(flags["spec-file"]);
       body.phases = normalizeQuestJourneyPhaseIds(spec.phases.map((phase) => phase.id));
-      const phaseNoteEdits = spec.phases.flatMap((phase, index) => (phase.note ? [{ index, note: phase.note }] : []));
-      if (phaseNoteEdits.length > 0) body.phaseNoteEdits = phaseNoteEdits;
+      body.phaseNoteEdits = spec.phases.map((phase, index) => ({ index, note: phase.note ?? null }));
       if (spec.title && !("title" in body)) body.title = spec.title;
       if (typeof flags.preset === "string" && flags.preset.trim()) body.presetId = flags.preset.trim();
       else if (spec.presetId) body.presetId = spec.presetId;
