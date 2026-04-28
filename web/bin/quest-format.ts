@@ -1,6 +1,7 @@
 import type { QuestmasterTask } from "../server/quest-types.js";
 import { hasQuestReviewMetadata, isQuestReviewInboxUnread } from "../server/quest-types.js";
 import type { SessionMetadata } from "./quest-session-metadata.js";
+import { normalizeTldr } from "../server/quest-tldr.js";
 export type { SessionMetadata } from "./quest-session-metadata.js";
 
 type FormatSessionOptions = {
@@ -100,6 +101,10 @@ export function formatQuestDetail(
   const lines: string[] = [];
   lines.push(`Quest ${q.questId} (rev ${q.version}, ${STATUS_LABELS[q.status] ?? q.status})`);
   lines.push(`Title:       ${q.title}`);
+  const tldr = normalizeTldr((q as { tldr?: unknown }).tldr);
+  if (tldr) {
+    lines.push(`TLDR:        ${tldr}`);
+  }
   if ("description" in q && q.description) {
     lines.push(`Description: ${q.description}`);
   }
@@ -148,6 +153,7 @@ export function formatQuestDetail(
           addressed?: boolean;
           authorSessionId?: string;
           images?: { filename: string; path: string }[];
+          tldr?: string;
         }[];
       }
     ).feedback;
@@ -164,7 +170,11 @@ export function formatQuestDetail(
         const tag = entry.addressed
           ? `${authorLabel}, addressed, ${timeAgo(entry.ts)}`
           : `${authorLabel}, ${timeAgo(entry.ts)}`;
-        lines.push(`  #${index} [${tag}] ${entry.text}`);
+        const entryTldr = normalizeTldr(entry.tldr);
+        lines.push(`  #${index} [${tag}] ${entryTldr ? `TLDR: ${entryTldr}` : entry.text}`);
+        if (entryTldr) {
+          lines.push(`    Full: ${entry.text}`);
+        }
         if (entry.images?.length) {
           for (const img of entry.images) {
             lines.push(`    ${img.filename} → ${img.path}`);

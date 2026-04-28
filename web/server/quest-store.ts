@@ -2,16 +2,15 @@ import { mkdirSync } from "node:fs";
 import { readdir, readFile, writeFile, unlink, mkdir, rm, stat, rename } from "node:fs/promises";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { extname } from "node:path";
 import { randomBytes } from "node:crypto";
 import type {
   QuestmasterTask,
   QuestCreateInput,
   QuestPatchInput,
   QuestTransitionInput,
-  QuestVerificationItem,
   QuestFeedbackEntry,
   QuestImage,
+  QuestVerificationItem,
   QuestIdea,
   QuestRefined,
   QuestInProgress,
@@ -21,182 +20,21 @@ import type {
 } from "./quest-types.js";
 import { hasQuestReviewMetadata } from "./quest-types.js";
 import { getName } from "./session-names.js";
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-/** Normalize verification items: accept strings or {text,checked} objects.
- *  Rejects items with empty text. */
-function normalizeVerificationItems(items: unknown[]): QuestVerificationItem[] {
-  const result: QuestVerificationItem[] = [];
-  for (const item of items) {
-    if (typeof item === "string") {
-      const text = item.trim();
-      if (!text) throw new Error("Verification item text must not be empty");
-      result.push({ text, checked: false });
-    } else if (
-      typeof item === "object" &&
-      item !== null &&
-      "text" in item &&
-      typeof (item as { text: unknown }).text === "string"
-    ) {
-      const text = (item as { text: string }).text.trim();
-      if (!text) throw new Error("Verification item text must not be empty");
-      result.push({
-        text,
-        checked: !!(item as { checked?: boolean }).checked,
-      });
-    } else {
-      throw new Error("Each verification item must be a string or { text: string, checked?: boolean }");
-    }
-  }
-  return result;
-}
-
-/** Normalize stored commit SHAs. */
-function normalizeCommitShas(items: unknown[]): string[] {
-  const result: string[] = [];
-  const seen = new Set<string>();
-  for (const item of items) {
-    if (typeof item !== "string") {
-      throw new Error("Each commit SHA must be a string");
-    }
-    const sha = item.trim().toLowerCase();
-    if (!/^[0-9a-f]{7,40}$/.test(sha)) {
-      throw new Error(`Invalid commit SHA: ${item}`);
-    }
-    if (seen.has(sha)) continue;
-    seen.add(sha);
-    result.push(sha);
-  }
-  return result;
-}
-
-function getActiveSessionId(quest: QuestmasterTask): string | undefined {
-  if (!("sessionId" in quest) || typeof quest.sessionId !== "string") return undefined;
-  const sid = quest.sessionId.trim();
-  return sid.length > 0 ? sid : undefined;
-}
-
-function getPreviousOwnerSessionIds(quest: QuestmasterTask): string[] {
-  const raw = (quest as { previousOwnerSessionIds?: unknown }).previousOwnerSessionIds;
-  if (!Array.isArray(raw)) return [];
-  const unique = new Set<string>();
-  for (const v of raw) {
-    if (typeof v !== "string") continue;
-    const sid = v.trim();
-    if (!sid) continue;
-    unique.add(sid);
-  }
-  return [...unique];
-}
-
-type LegacyQuestRecord = Omit<QuestmasterTask, "status"> & {
-  status: import("./quest-types.js").LegacyQuestStatus;
-  completedAt?: number;
-  verificationItems?: QuestVerificationItem[];
-  verificationInboxUnread?: boolean;
-  sessionId?: string;
-  claimedAt?: number;
-};
-
-function normalizeLegacyNeedsVerificationQuest(quest: LegacyQuestRecord): QuestmasterTask {
-  if (quest.status !== "needs_verification") return quest as QuestmasterTask;
-
-  const previousOwners = getPreviousOwnerSessionIds(quest as QuestmasterTask);
-  const active = getActiveSessionId(quest as QuestmasterTask);
-  if (active && !previousOwners.includes(active)) previousOwners.push(active);
-
-  const updatedAt = (quest as { updatedAt?: number }).updatedAt;
-  const completedAt =
-    typeof quest.completedAt === "number" && quest.completedAt > 0
-      ? quest.completedAt
-      : (quest.statusChangedAt ?? updatedAt ?? quest.createdAt);
-
-  const normalized: QuestDone = {
-    ...(quest as Omit<LegacyQuestRecord, "status">),
-    status: "done",
-    description: typeof quest.description === "string" ? quest.description : "",
-    completedAt,
-    verificationItems: Array.isArray(quest.verificationItems) ? quest.verificationItems : [],
-    verificationInboxUnread: typeof quest.verificationInboxUnread === "boolean" ? quest.verificationInboxUnread : false,
-    ...(previousOwners.length ? { previousOwnerSessionIds: previousOwners } : {}),
-  };
-  return normalized;
-}
-
-function normalizeQuestOwnership(quest: QuestmasterTask): QuestmasterTask {
-  const normalized = { ...normalizeLegacyNeedsVerificationQuest(quest as LegacyQuestRecord) } as QuestmasterTask & {
-    previousOwnerSessionIds?: string[];
-    sessionId?: string;
-  };
-  const previous = getPreviousOwnerSessionIds(normalized);
-  const active = getActiveSessionId(normalized);
-
-  // Legacy normalization: done quests used to carry sessionId. Treat it as past owner.
-  if (normalized.status === "done" && active) {
-    if (!previous.includes(active)) previous.push(active);
-    delete normalized.sessionId;
-  }
-
-  const finalActive = getActiveSessionId(normalized);
-  if (finalActive) {
-    const idx = previous.indexOf(finalActive);
-    if (idx !== -1) previous.splice(idx, 1);
-  }
-
-  if (previous.length > 0) {
-    normalized.previousOwnerSessionIds = previous;
-  } else {
-    delete normalized.previousOwnerSessionIds;
-  }
-  return normalized;
-}
-
-function shouldMarkVerificationInboxUnreadFromFeedbackPatch(
-  current: QuestmasterTask,
-  nextFeedback: QuestFeedbackEntry[] | undefined,
-): boolean {
-  if (!hasQuestReviewMetadata(current)) return false;
-  const previous = current.feedback ?? [];
-  if (previous.length === 0 && (!nextFeedback || nextFeedback.length === 0)) return false;
-
-  const maxLength = Math.max(previous.length, nextFeedback?.length ?? 0);
-  for (let index = 0; index < maxLength; index += 1) {
-    const before = previous[index];
-    const after = nextFeedback?.[index];
-    if (feedbackEntriesEqual(before, after)) continue;
-    if (before?.author === "agent" || after?.author === "agent") return true;
-  }
-  return false;
-}
-
-function feedbackEntriesEqual(a: QuestFeedbackEntry | undefined, b: QuestFeedbackEntry | undefined): boolean {
-  if (!a && !b) return true;
-  if (!a || !b) return false;
-  return (
-    a.author === b.author &&
-    a.text === b.text &&
-    a.ts === b.ts &&
-    a.authorSessionId === b.authorSessionId &&
-    a.addressed === b.addressed &&
-    questImagesEqual(a.images, b.images)
-  );
-}
-
-function questImagesEqual(
-  a: QuestFeedbackEntry["images"] | undefined,
-  b: QuestFeedbackEntry["images"] | undefined,
-): boolean {
-  if (!a && !b) return true;
-  if (!a || !b || a.length !== b.length) return false;
-  return a.every(
-    (image, index) =>
-      image.id === b[index]?.id &&
-      image.filename === b[index]?.filename &&
-      image.mimeType === b[index]?.mimeType &&
-      image.path === b[index]?.path,
-  );
-}
+import { normalizeTldr } from "./quest-tldr.js";
+import {
+  getActiveSessionId,
+  getPreviousOwnerSessionIds,
+  normalizeCommitShas,
+  normalizeQuestOwnership,
+  normalizeVerificationItems,
+  shouldMarkVerificationInboxUnreadFromFeedbackPatch,
+} from "./quest-store-helpers.js";
+import {
+  addQuestImagesToStore,
+  readQuestImageFileFromDirs,
+  removeQuestImageFromStore,
+  saveQuestImageFile,
+} from "./quest-store-images.js";
 
 // ─── Paths ───────────────────────────────────────────────────────────────────
 
@@ -1389,11 +1227,13 @@ function buildCreatedQuest(
   now = Date.now(),
 ): QuestmasterTask {
   const status = input.status || "idea";
+  const tldr = normalizeTldr(input.tldr);
   const base = {
     id: liveStore ? questId : `${questId}-v1`,
     questId,
     version: 1,
     title: input.title.trim(),
+    ...(tldr ? { tldr } : {}),
     createdAt: now,
     ...(liveStore ? { statusChangedAt: now } : {}),
     ...(input.tags?.length ? { tags: input.tags } : {}),
@@ -1450,13 +1290,15 @@ function buildTransitionedQuest(
     !input.commitShas &&
     !input.notes &&
     !input.cancelled &&
-    !(targetStatus === "done" && hasQuestReviewMetadata(current))
+    !(targetStatus === "done" && hasQuestReviewMetadata(current)) &&
+    input.tldr === undefined
   ) {
     return current;
   }
 
   const now = options.now ?? Date.now();
   const newVersion = current.version + 1;
+  const tldr = input.tldr !== undefined ? normalizeTldr(input.tldr) : normalizeTldr(current.tldr);
   const currentFeedback = current.feedback;
   const currentActiveSessionId = getActiveSessionId(current);
   const currentPreviousOwners = getPreviousOwnerSessionIds(current);
@@ -1468,6 +1310,7 @@ function buildTransitionedQuest(
     ...(liveStore ? { statusChangedAt: now, createdAt: current.createdAt } : { prevId: current.id, createdAt: now }),
     ...(liveStore && typeof current.updatedAt === "number" ? { updatedAt: current.updatedAt } : {}),
     title: current.title,
+    ...(tldr ? { tldr } : {}),
     ...(current.tags?.length ? { tags: current.tags } : {}),
     ...(current.parentId ? { parentId: current.parentId } : {}),
     ...(current.images?.length ? { images: current.images } : {}),
@@ -1584,6 +1427,7 @@ function buildTransitionedQuest(
 function buildCancelledQuest(current: QuestmasterTask, notes: string | undefined, liveStore: boolean): QuestDone {
   const now = Date.now();
   const description = "description" in current ? current.description : undefined;
+  const tldr = normalizeTldr(current.tldr);
   const currentActiveSessionId = getActiveSessionId(current);
   const previousOwners = getPreviousOwnerSessionIds(current);
   if (currentActiveSessionId && !previousOwners.includes(currentActiveSessionId)) {
@@ -1605,6 +1449,7 @@ function buildCancelledQuest(current: QuestmasterTask, notes: string | undefined
           createdAt: now,
         }),
     title: current.title,
+    ...(tldr ? { tldr } : {}),
     ...(current.tags?.length ? { tags: current.tags } : {}),
     ...(current.parentId ? { parentId: current.parentId } : {}),
     ...(current.images?.length ? { images: current.images } : {}),
@@ -1710,6 +1555,11 @@ export async function patchQuest(
       if (patch.description !== undefined) {
         (updated as { description?: string }).description = patch.description.trim();
       }
+      if (patch.tldr !== undefined) {
+        const tldr = normalizeTldr(patch.tldr);
+        if (tldr) (updated as { tldr?: string }).tldr = tldr;
+        else delete (updated as { tldr?: string }).tldr;
+      }
       if (patch.tags !== undefined) {
         (updated as { tags?: string[] }).tags = patch.tags;
       }
@@ -1733,6 +1583,11 @@ export async function patchQuest(
   if (patch.title !== undefined) (updated as { title: string }).title = patch.title.trim();
   if (patch.description !== undefined) {
     (updated as { description?: string }).description = patch.description.trim();
+  }
+  if (patch.tldr !== undefined) {
+    const tldr = normalizeTldr(patch.tldr);
+    if (tldr) (updated as { tldr?: string }).tldr = tldr;
+    else delete (updated as { tldr?: string }).tldr;
   }
   if (patch.tags !== undefined) {
     (updated as { tags?: string[] }).tags = patch.tags;
@@ -2033,133 +1888,42 @@ export async function markQuestVerificationInboxUnread(questId: string): Promise
 
 // ─── Image management ────────────────────────────────────────────────────────
 
-// Map quest MIME types to file extensions. Uses image-store's map for common
-// types but also supports .svg via a local lookup since IMAGE_MIME_TO_EXT
-// values don't include the leading dot that quest filenames use.
-const QUEST_MIME_TO_EXT: Record<string, string> = {
-  "image/png": ".png",
-  "image/jpeg": ".jpg",
-  "image/gif": ".gif",
-  "image/webp": ".webp",
-  "image/svg+xml": ".svg",
-};
-
 /** Save an image to disk and return image metadata. */
 export async function saveQuestImage(filename: string, data: Buffer, mimeType: string): Promise<QuestImage> {
-  await ensureLiveImagesDir();
-  const id = randomBytes(8).toString("hex");
-  const ext = QUEST_MIME_TO_EXT[mimeType] || extname(filename) || ".bin";
-  const diskName = `${id}${ext}`;
-  const diskPath = join(LIVE_IMAGES_DIR, diskName);
-  const { resizeForStore } = await import("./image-store.js");
-  const finalData = await resizeForStore(data, mimeType);
-  await writeFile(diskPath, finalData);
-  return { id, filename, mimeType, path: diskPath };
-}
-
-function isManagedLiveQuestPath(path: string): boolean {
-  return path === LIVE_QUESTMASTER_DIR || path.startsWith(`${LIVE_QUESTMASTER_DIR}/`);
+  return saveQuestImageFile({ filename, data, mimeType, liveImagesDir: LIVE_IMAGES_DIR, ensureLiveImagesDir });
 }
 
 /** Add images to a quest (in-place patch, no new version). */
 export async function addQuestImages(questId: string, images: QuestImage[]): Promise<QuestmasterTask | null> {
-  const liveStore = await readLiveQuestStore();
-  if (liveStore) {
-    return mutateLiveQuestStore(async (store) => {
-      const current = getLiveQuestById(store, questId);
-      if (!current) return { store, result: null };
-
-      const existing = current.images ?? [];
-      const updated = {
-        ...current,
-        images: [...existing, ...images],
-        updatedAt: Date.now(),
-      } as QuestmasterTask;
-      return { store: upsertLiveQuest(store, updated), result: normalizeLiveQuest(updated) };
-    });
-  }
-
-  const current = await getQuest(questId);
-  if (!current) return null;
-
-  const existing = current.images ?? [];
-  (current as { images: QuestImage[] }).images = [...existing, ...images];
-  (current as { updatedAt?: number }).updatedAt = Date.now();
-  await writeQuest(current);
-  return current;
+  return addQuestImagesToStore(questId, images, {
+    getLiveQuestById,
+    getQuest,
+    liveQuestmasterDir: LIVE_QUESTMASTER_DIR,
+    mutateLiveQuestStore,
+    normalizeLiveQuest,
+    readLiveQuestStore,
+    upsertLiveQuest,
+    writeQuest,
+  });
 }
 
 /** Remove an image from a quest and delete the file. */
 export async function removeQuestImage(questId: string, imageId: string): Promise<QuestmasterTask | null> {
-  const liveStore = await readLiveQuestStore();
-  if (liveStore) {
-    const result = await mutateLiveQuestStore(async (store) => {
-      const current = getLiveQuestById(store, questId);
-      if (!current)
-        return { store, result: { quest: null as QuestmasterTask | null, imagePath: undefined as string | undefined } };
-      if (!current.images?.length) return { store, result: { quest: current, imagePath: undefined } };
-
-      const image = current.images.find((img) => img.id === imageId);
-      const updated = {
-        ...current,
-        images: current.images.filter((img) => img.id !== imageId),
-        updatedAt: Date.now(),
-      } as QuestmasterTask;
-      return {
-        store: upsertLiveQuest(store, updated),
-        result: { quest: normalizeLiveQuest(updated), imagePath: image?.path },
-      };
-    });
-
-    if (result.imagePath && isManagedLiveQuestPath(result.imagePath)) {
-      try {
-        await unlink(result.imagePath);
-      } catch {
-        // File may already be deleted
-      }
-    }
-    return result.quest;
-  }
-
-  const current = await getQuest(questId);
-  if (!current) return null;
-  if (!current.images?.length) return current;
-
-  const image = current.images.find((img) => img.id === imageId);
-  (current as { images: QuestImage[] }).images = current.images.filter((img) => img.id !== imageId);
-  (current as { updatedAt?: number }).updatedAt = Date.now();
-  await writeQuest(current);
-
-  // Delete the file
-  if (image?.path && isManagedLiveQuestPath(image.path)) {
-    try {
-      await unlink(image.path);
-    } catch {
-      // File may already be deleted
-    }
-  }
-
-  return current;
+  return removeQuestImageFromStore(questId, imageId, {
+    getLiveQuestById,
+    getQuest,
+    liveQuestmasterDir: LIVE_QUESTMASTER_DIR,
+    mutateLiveQuestStore,
+    normalizeLiveQuest,
+    readLiveQuestStore,
+    upsertLiveQuest,
+    writeQuest,
+  });
 }
 
 /** Read an image file from disk. Returns null if not found. */
 export async function readQuestImageFile(imageId: string): Promise<{ data: Buffer; mimeType: string } | null> {
-  for (const imageDir of [LIVE_IMAGES_DIR, IMAGES_DIR]) {
-    try {
-      await mkdir(imageDir, { recursive: true });
-      const files = await readdir(imageDir);
-      const file = files.find((f) => f.startsWith(imageId));
-      if (!file) continue;
-      const fullPath = join(imageDir, file);
-      const data = (await readFile(fullPath)) as Buffer;
-      const ext = extname(file).toLowerCase();
-      const mimeType = Object.entries(QUEST_MIME_TO_EXT).find(([, e]) => e === ext)?.[0] ?? "application/octet-stream";
-      return { data, mimeType };
-    } catch {
-      // Try the next known image directory.
-    }
-  }
-  return null;
+  return readQuestImageFileFromDirs(imageId, [LIVE_IMAGES_DIR, IMAGES_DIR]);
 }
 
 // ─── Test helpers ────────────────────────────────────────────────────────────

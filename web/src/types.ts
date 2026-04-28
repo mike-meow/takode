@@ -148,6 +148,7 @@ export interface ChatMessage {
       questId: string;
       title: string;
       description?: string;
+      tldr?: string;
       status: string;
       tags?: string[];
       images?: QuestImage[];

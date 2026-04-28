@@ -9,6 +9,7 @@ interface QuestClaimData {
   questId: string;
   title: string;
   description?: string;
+  tldr?: string;
   status: string;
   tags?: string[];
   images?: QuestImage[];
@@ -64,7 +65,7 @@ export function QuestClaimBlock({
           ))}
       </div>
 
-      {quest.description && <MarkdownContent text={quest.description} size="sm" />}
+      {(quest.tldr || quest.description) && <MarkdownContent text={quest.tldr || quest.description || ""} size="sm" />}
 
       {quest.verificationItems && quest.verificationItems.length > 0 && (
         <div>

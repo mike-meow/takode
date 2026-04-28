@@ -36,6 +36,8 @@ export interface QuestVerificationItem {
 export interface QuestFeedbackEntry {
   author: "human" | "agent";
   text: string;
+  /** Human-readable scan summary for long feedback/comment text. */
+  tldr?: string;
   ts: number;
   /** Companion session ID that authored this entry (for agent comments). */
   authorSessionId?: string;
@@ -69,6 +71,8 @@ interface QuestBase {
   /** Legacy-only backlink used when reading version-history backups. */
   prevId?: string;
   title: string;
+  /** Human-readable scan summary for long quest descriptions. */
+  tldr?: string;
   /** When the quest was originally created. */
   createdAt: number;
   /** Last in-place modification (checkbox toggle, patch, image change).
@@ -183,6 +187,7 @@ export interface QuestStoreMigrationReport {
 export interface QuestCreateInput {
   title: string;
   description?: string;
+  tldr?: string;
   status?: QuestStatus;
   tags?: string[];
   parentId?: string;
@@ -194,6 +199,7 @@ export interface QuestCreateInput {
 export interface QuestPatchInput {
   title?: string;
   description?: string;
+  tldr?: string;
   tags?: string[];
   /** Replace the feedback thread (used by the append endpoint after adding an entry) */
   feedback?: QuestFeedbackEntry[];
@@ -204,6 +210,8 @@ export interface QuestTransitionInput {
   status: QuestStatus;
   /** Required for refined+ */
   description?: string;
+  /** Human-readable scan summary for long descriptions. */
+  tldr?: string;
   /** Required for in_progress+ */
   sessionId?: string;
   /** Human-review checklist. Accepts strings (normalized to {text, checked:false}) or full objects. */

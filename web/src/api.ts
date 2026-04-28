@@ -1396,12 +1396,18 @@ export const api = {
     text: string,
     author: "human" | "agent" = "human",
     images?: import("./types.js").QuestImage[],
+    tldr?: string,
   ) =>
-    post<import("./types.js").QuestmasterTask>(`/quests/${encodeURIComponent(id)}/feedback`, { text, author, images }),
+    post<import("./types.js").QuestmasterTask>(`/quests/${encodeURIComponent(id)}/feedback`, {
+      text,
+      author,
+      images,
+      ...(tldr ? { tldr } : {}),
+    }),
   editQuestFeedback: (
     id: string,
     index: number,
-    updates: { text?: string; images?: import("./types.js").QuestImage[] },
+    updates: { text?: string; tldr?: string; images?: import("./types.js").QuestImage[] },
   ) => patch<import("./types.js").QuestmasterTask>(`/quests/${encodeURIComponent(id)}/feedback/${index}`, updates),
   deleteQuestFeedback: (id: string, index: number) =>
     del<import("./types.js").QuestmasterTask>(`/quests/${encodeURIComponent(id)}/feedback/${index}`),

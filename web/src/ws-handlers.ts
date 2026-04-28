@@ -1482,6 +1482,7 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
                   questId: quest.questId,
                   title: quest.title,
                   description: "description" in quest ? quest.description : undefined,
+                  tldr: quest.tldr,
                   status: quest.status,
                   tags: quest.tags,
                   images: quest.images,

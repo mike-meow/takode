@@ -14,6 +14,7 @@ import {
   autoResizeTextarea,
   isQuestCancelled,
   getQuestDescription,
+  getQuestTldr,
   getQuestNotes,
   getQuestFeedback,
   getQuestRecencyTs,
@@ -800,6 +801,7 @@ export function QuestDetailPanel() {
   const hasVerification = "verificationItems" in quest && quest.verificationItems?.length > 0;
   const vProgress = hasVerification ? verificationProgress(quest.verificationItems) : null;
   const description = getQuestDescription(quest);
+  const questTldr = getQuestTldr(quest);
   const questNotes = getQuestNotes(quest);
   const questSessionId = getQuestOwnerSessionId(quest);
   const isKnownSession = questSessionId ? sdkSessions.some((s) => s.sessionId === questSessionId) : false;
@@ -1117,12 +1119,32 @@ export function QuestDetailPanel() {
           ) : (
             <>
               {/* Description */}
-              {description && (
-                <MarkdownContent
-                  text={description}
-                  size="sm"
-                  searchHighlight={searchHighlight ? { query: searchHighlight, mode: "fuzzy", isCurrent: false } : null}
-                />
+              {(questTldr || description) && (
+                <div className="space-y-2">
+                  {questTldr && (
+                    <div className="rounded-lg border border-cc-border bg-cc-input-bg px-3 py-2">
+                      <div className="mb-1 text-[10px] font-medium uppercase tracking-[0.08em] text-cc-muted/60">
+                        TLDR
+                      </div>
+                      <MarkdownContent
+                        text={questTldr}
+                        size="sm"
+                        searchHighlight={
+                          searchHighlight ? { query: searchHighlight, mode: "fuzzy", isCurrent: false } : null
+                        }
+                      />
+                    </div>
+                  )}
+                  {description && (
+                    <MarkdownContent
+                      text={description}
+                      size="sm"
+                      searchHighlight={
+                        searchHighlight ? { query: searchHighlight, mode: "fuzzy", isCurrent: false } : null
+                      }
+                    />
+                  )}
+                </div>
               )}
 
               {/* Images (read-only) */}
@@ -1349,7 +1371,19 @@ export function QuestDetailPanel() {
                                   </div>
                                 ) : (
                                   <>
-                                    <MarkdownContent text={entry.text} size="sm" />
+                                    {entry.tldr ? (
+                                      <div className="space-y-1">
+                                        <div className="text-xs font-medium text-cc-fg">{entry.tldr}</div>
+                                        <details className="text-xs text-cc-muted">
+                                          <summary className="cursor-pointer select-none">Full feedback</summary>
+                                          <div className="mt-1 text-cc-fg">
+                                            <MarkdownContent text={entry.text} size="sm" />
+                                          </div>
+                                        </details>
+                                      </div>
+                                    ) : (
+                                      <MarkdownContent text={entry.text} size="sm" />
+                                    )}
                                     {entry.images && entry.images.length > 0 && (
                                       <div className="flex flex-wrap gap-1 mt-1">
                                         {entry.images.map((img) => (

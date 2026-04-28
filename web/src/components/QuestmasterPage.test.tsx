@@ -531,6 +531,32 @@ describe("QuestmasterPage review inbox", () => {
     expect(screen.queryByText("Regular verification quest")).toBeNull();
   });
 
+  it("filters by TLDR and full feedback text when feedback has TLDR metadata", () => {
+    // TLDR should improve visible scan text without making the detailed body unsearchable.
+    mockState.quests = [
+      {
+        ...buildVerificationQuest({ id: "q-30-v1", questId: "q-30", title: "TLDR quest" }),
+        tldr: "Short scanline",
+        feedback: [{ author: "agent", text: "Full implementation detail", tldr: "Short handoff", ts: Date.now() }],
+      } as QuestmasterTask,
+      {
+        ...buildVerificationQuest({ id: "q-31-v1", questId: "q-31", title: "Other quest" }),
+        verificationInboxUnread: false,
+      } as QuestmasterTask,
+    ];
+
+    renderQuestmaster();
+
+    const searchInput = screen.getByPlaceholderText("Search or #tag...");
+    fireEvent.change(searchInput, { target: { value: "scanline" } });
+    expect(document.querySelector('[data-quest-id="q-30"]')).toBeTruthy();
+    expect(document.querySelector('[data-quest-id="q-31"]')).toBeNull();
+
+    fireEvent.change(searchInput, { target: { value: "implementation" } });
+    expect(document.querySelector('[data-quest-id="q-30"]')).toBeTruthy();
+    expect(document.querySelector('[data-quest-id="q-31"]')).toBeNull();
+  });
+
   it("preserves plain-text title search while ignoring negated-tag syntax", () => {
     // q-331: plain-text matching should remain intact after introducing
     // explicit `-#tag` exclusion parsing.

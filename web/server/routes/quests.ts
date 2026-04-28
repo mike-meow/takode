@@ -10,8 +10,9 @@ import {
   updateQuestTaskEntries as updateQuestTaskEntriesController,
 } from "../bridge/session-registry-controller.js";
 import { broadcastQuestUpdate } from "./quest-helpers.js";
-import type { RouteContext } from "./context.js";
+import type { OptionalAuthResult, RouteContext } from "./context.js";
 import { isSharpUnavailableError, SHARP_UNAVAILABLE_MESSAGE } from "../image-store.js";
+import { normalizeTldr, QUEST_TLDR_WARNING_HEADER, tldrWarningForContent } from "../quest-tldr.js";
 
 const DIFF_MAX_BUFFER = 10 * 1024 * 1024;
 const MAX_DIFF_BYTES = 512 * 1024;
@@ -48,6 +49,31 @@ function findLatestAgentSummaryFeedbackIndex(entries: QuestFeedbackEntry[]): num
     if (isAgentSummaryFeedback(entry.text)) return index;
   }
   return -1;
+}
+
+function setTldrWarningHeader(c: { header: (name: string, value: string) => void }, warning: string | null): void {
+  if (warning) c.header(QUEST_TLDR_WARNING_HEADER, warning);
+}
+
+function isAuthenticatedCompanionCaller(
+  auth: OptionalAuthResult,
+): auth is Exclude<OptionalAuthResult, null | { response: Response }> {
+  return auth !== null && !("response" in auth);
+}
+
+function setDescriptionTldrWarningHeaderForAgentWrite(
+  c: { header: (name: string, value: string) => void },
+  auth: OptionalAuthResult,
+  description: unknown,
+  tldr: unknown,
+): void {
+  if (!isAuthenticatedCompanionCaller(auth)) return;
+  setTldrWarningHeader(c, tldrWarningForContent("description", description, tldr));
+}
+
+function feedbackEntryWithoutTldr(entry: QuestFeedbackEntry): QuestFeedbackEntry {
+  const { tldr: _tldr, ...rest } = entry;
+  return rest;
 }
 
 function questRepoCandidates(quest: QuestmasterTask, launcher: RouteContext["launcher"]): string[] {
@@ -282,10 +308,13 @@ export function createQuestRoutes(ctx: RouteContext) {
   });
 
   api.post("/quests", async (c) => {
+    const auth = authenticateCompanionCallerOptional(c);
+    if (auth && "response" in auth) return auth.response;
     const body = await c.req.json().catch(() => ({}));
     try {
       const quest = await questStore.createQuest(body);
       broadcastQuestUpdate(wsBridge);
+      setDescriptionTldrWarningHeaderForAgentWrite(c, auth, body.description, body.tldr);
       return c.json(quest, 201);
     } catch (e: unknown) {
       return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
@@ -293,6 +322,8 @@ export function createQuestRoutes(ctx: RouteContext) {
   });
 
   api.patch("/quests/:questId", async (c) => {
+    const auth = authenticateCompanionCallerOptional(c);
+    if (auth && "response" in auth) return auth.response;
     const body = await c.req.json().catch(() => ({}));
     try {
       const quest = await questStore.patchQuest(c.req.param("questId"), body);
@@ -322,6 +353,13 @@ export function createQuestRoutes(ctx: RouteContext) {
         }
       }
       broadcastQuestUpdate(wsBridge);
+      if (body.description !== undefined || body.tldr !== undefined) {
+        const warningTldr =
+          body.tldr !== undefined ? body.tldr : body.description !== undefined ? undefined : quest.tldr;
+        const warningDescription =
+          body.description !== undefined ? body.description : "description" in quest ? quest.description : undefined;
+        setDescriptionTldrWarningHeaderForAgentWrite(c, auth, warningDescription, warningTldr);
+      }
       return c.json(quest);
     } catch (e: unknown) {
       return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
@@ -329,11 +367,20 @@ export function createQuestRoutes(ctx: RouteContext) {
   });
 
   api.post("/quests/:questId/transition", async (c) => {
+    const auth = authenticateCompanionCallerOptional(c);
+    if (auth && "response" in auth) return auth.response;
     const body = await c.req.json().catch(() => ({}));
     try {
       const questId = c.req.param("questId");
       const quest = await transitionQuestAndSync(questId, body);
       if (!quest) return c.json({ error: "Quest not found" }, 404);
+      if (body.description !== undefined || body.tldr !== undefined) {
+        const warningTldr =
+          body.tldr !== undefined ? body.tldr : body.description !== undefined ? undefined : quest.tldr;
+        const warningDescription =
+          body.description !== undefined ? body.description : "description" in quest ? quest.description : undefined;
+        setDescriptionTldrWarningHeaderForAgentWrite(c, auth, warningDescription, warningTldr);
+      }
       return c.json(quest);
     } catch (e: unknown) {
       return c.json({ error: e instanceof Error ? e.message : String(e) }, 400);
@@ -587,6 +634,7 @@ export function createQuestRoutes(ctx: RouteContext) {
     if (auth && "response" in auth) return auth.response;
     const body = await c.req.json().catch(() => ({}));
     const text = body.text;
+    const tldr = normalizeTldr(body.tldr);
     const author = body.author === "agent" ? "agent" : "human";
     const rawAuthorSessionId = typeof body.sessionId === "string" ? body.sessionId.trim() : "";
     const authSessionId = auth ? auth.callerId : "";
@@ -618,28 +666,39 @@ export function createQuestRoutes(ctx: RouteContext) {
           ? ((current as { feedback?: import("../quest-types.js").QuestFeedbackEntry[] }).feedback ?? [])
           : [];
       const entry: import("../quest-types.js").QuestFeedbackEntry = { author, text: text.trim(), ts: Date.now() };
+      if (tldr) entry.tldr = tldr;
       if (authorSessionId) entry.authorSessionId = authorSessionId;
       const hasImagesField = body.images !== undefined;
       if (Array.isArray(body.images) && body.images.length > 0) entry.images = body.images;
 
       let nextFeedback = [...existing, entry];
+      let entryForWarning = entry;
       if (author === "agent" && isAgentSummaryFeedback(entry.text)) {
         const summaryIndex = findLatestAgentSummaryFeedbackIndex(existing);
         if (summaryIndex !== -1) {
           nextFeedback = [...existing];
           const previousEntry = nextFeedback[summaryIndex]!;
-          nextFeedback[summaryIndex] = {
-            ...previousEntry,
+          const hasTldrField = body.tldr !== undefined;
+          const shouldCarryPreviousTldr = !hasTldrField && previousEntry.text === entry.text;
+          const previousBase = shouldCarryPreviousTldr ? previousEntry : feedbackEntryWithoutTldr(previousEntry);
+          const updatedEntry = {
+            ...previousBase,
             text: entry.text,
+            ...(hasTldrField && entry.tldr ? { tldr: entry.tldr } : {}),
             ts: entry.ts,
             ...(authorSessionId ? { authorSessionId } : {}),
             ...(hasImagesField ? { images: entry.images } : {}),
           };
+          nextFeedback[summaryIndex] = updatedEntry;
+          entryForWarning = updatedEntry;
         }
       }
 
       const quest = await questStore.patchQuest(c.req.param("questId"), { feedback: nextFeedback }, { current });
       if (!quest) return c.json({ error: "Quest not found" }, 404);
+      if (author === "agent") {
+        setTldrWarningHeader(c, tldrWarningForContent("feedback", entryForWarning.text, entryForWarning.tldr));
+      }
       broadcastQuestUpdate(wsBridge);
       return c.json(quest);
     } catch (e: unknown) {
@@ -663,6 +722,9 @@ export function createQuestRoutes(ctx: RouteContext) {
       const updated = [...existing];
       if (typeof body.text === "string" && body.text.trim())
         updated[index] = { ...updated[index], text: body.text.trim() };
+      if (body.tldr !== undefined) {
+        updated[index] = { ...updated[index], tldr: normalizeTldr(body.tldr) };
+      }
       if (body.images !== undefined)
         updated[index] = {
           ...updated[index],
@@ -670,6 +732,9 @@ export function createQuestRoutes(ctx: RouteContext) {
         };
       const quest = await questStore.patchQuest(c.req.param("questId"), { feedback: updated }, { current });
       if (!quest) return c.json({ error: "Quest not found" }, 404);
+      if (updated[index]?.author === "agent") {
+        setTldrWarningHeader(c, tldrWarningForContent("feedback", updated[index]?.text, updated[index]?.tldr));
+      }
       broadcastQuestUpdate(wsBridge);
       return c.json(quest);
     } catch (e: unknown) {

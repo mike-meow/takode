@@ -426,6 +426,33 @@ describe("QuestDetailPanel", () => {
     expect(screen.getByText(/The sidebar overflows/)).toBeTruthy();
   });
 
+  it("shows TLDR metadata before full description and feedback", async () => {
+    const quest = makeVerificationQuest({
+      tldr: "Short quest summary.",
+      feedback: [
+        {
+          author: "agent",
+          text: "Full agent-dense feedback body.",
+          tldr: "Short feedback summary.",
+          ts: Date.now(),
+          authorSessionId: "session-abc",
+        },
+      ],
+    });
+    useStore.setState({ quests: [quest], questOverlayId: "q-42" });
+
+    render(<QuestDetailPanel />);
+
+    expect(screen.getByText("TLDR")).toBeTruthy();
+    expect(screen.getByText("Short quest summary.")).toBeTruthy();
+    expect(screen.getByText("Short feedback summary.")).toBeTruthy();
+    expect(screen.getByText("Full agent-dense feedback body.")).not.toBeVisible();
+
+    fireEvent.click(screen.getByText("Full feedback"));
+    expect(await screen.findByText("Full agent-dense feedback body.")).toBeTruthy();
+    expect(screen.getByText("Full agent-dense feedback body.")).toBeVisible();
+  });
+
   it("renders verification items with correct checked state", () => {
     const quest = makeVerificationQuest();
     useStore.setState({ quests: [quest], questOverlayId: "q-42" });

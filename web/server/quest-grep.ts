@@ -1,4 +1,5 @@
 import type { QuestFeedbackEntry, QuestmasterTask } from "./quest-types.js";
+import { normalizeTldr } from "./quest-tldr.js";
 
 export interface QuestGrepMatch {
   questId: string;
@@ -40,6 +41,21 @@ function buildSnippet(text: string, re: RegExp, maxLen = 120): string {
   const prefix = start > 0 ? "..." : "";
   const suffix = end < text.length ? "..." : "";
   return `${prefix}${text.slice(start, end).trim()}${suffix}`;
+}
+
+function pushContentMatch(args: {
+  re: RegExp;
+  pushMatch: (match: QuestGrepMatch, text: string) => void;
+  match: Omit<QuestGrepMatch, "snippet">;
+  text: string;
+  tldr?: string;
+}): void {
+  const tldr = normalizeTldr(args.tldr);
+  if (tldr && args.re.test(tldr)) {
+    args.pushMatch({ ...args.match, matchedField: `${args.match.matchedField}.tldr`, snippet: "" }, tldr);
+    return;
+  }
+  args.pushMatch({ ...args.match, snippet: "" }, args.text);
 }
 
 export function grepQuests(
@@ -89,33 +105,37 @@ export function grepQuests(
 
     const description = "description" in quest ? quest.description || "" : "";
     if (description) {
-      pushMatch(
-        {
+      pushContentMatch({
+        re,
+        pushMatch,
+        match: {
           questId: quest.questId,
           title: quest.title,
           status: quest.status,
           matchedField: "description",
-          snippet: "",
         },
-        description,
-      );
+        text: description,
+        tldr: quest.tldr,
+      });
     }
 
     const feedback = "feedback" in quest ? quest.feedback || [] : [];
     feedback.forEach((entry, index) => {
       if (!entry.text) return;
-      pushMatch(
-        {
+      pushContentMatch({
+        re,
+        pushMatch,
+        match: {
           questId: quest.questId,
           title: quest.title,
           status: quest.status,
           matchedField: `feedback[${index}]`,
           feedbackIndex: index,
           feedbackAuthor: entry.author,
-          snippet: "",
         },
-        entry.text,
-      );
+        text: entry.text,
+        tldr: entry.tldr,
+      });
     });
   }
 

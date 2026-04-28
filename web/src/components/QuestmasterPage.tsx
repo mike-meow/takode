@@ -619,7 +619,7 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
 
   // ─── Filtering ────────────────────────────────────────────────────────
 
-  // Layer 1: text search (case-insensitive on quest ID + title + description)
+  // Layer 1: text search (case-insensitive on quest ID + title + TLDR/description/feedback)
   // Negated tags like `-#mobile` are parsed separately so free-text matching
   // and highlighting stay focused on the positive portion of the query.
   const searchNormalized = searchText.trim();
@@ -627,7 +627,11 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
     ? quests.filter((q) => {
         if (multiWordMatch(q.questId, searchText)) return true;
         if (multiWordMatch(q.title, searchText)) return true;
+        if (q.tldr && multiWordMatch(q.tldr, searchText)) return true;
         if (q.description && multiWordMatch(q.description, searchText)) return true;
+        const feedbackEntries = "feedback" in q ? ((q as { feedback?: QuestFeedbackEntry[] }).feedback ?? []) : [];
+        if (feedbackEntries.some((entry) => multiWordMatch(entry.tldr || "", searchText))) return true;
+        if (feedbackEntries.some((entry) => multiWordMatch(entry.text, searchText))) return true;
         return false;
       })
     : quests;
@@ -1424,6 +1428,11 @@ const QuestCard = memo(function QuestCard({
                 </span>
               )}
             </div>
+            {quest.tldr && (
+              <div className="mt-0.5 truncate text-xs text-cc-muted">
+                {renderSearchHighlightText(quest.tldr, searchText)}
+              </div>
+            )}
             <div className="flex items-center gap-2 mt-0.5">
               <CopyableQuestId questId={quest.questId} className="text-[10px] text-cc-muted/50 shrink-0">
                 {renderSearchHighlightText(quest.questId, searchText)}
@@ -1590,6 +1599,11 @@ const CompactQuestRow = memo(function CompactQuestRow({
                 #{tag.toLowerCase()}
               </span>
             ))}
+          </div>
+        )}
+        {quest.tldr && (
+          <div className="mt-0.5 max-w-[360px] truncate text-[11px] text-cc-muted">
+            {renderSearchHighlightText(quest.tldr, searchText)}
           </div>
         )}
       </td>

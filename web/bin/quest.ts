@@ -52,6 +52,12 @@ import { grepQuests } from "../server/quest-grep.js";
 import { getName } from "../server/session-names.js";
 import { formatQuestDetail, formatQuestLine, formatSessionLabel } from "./quest-format.js";
 import {
+  normalizeTldr,
+  preferredFeedbackPreview,
+  tldrWarningForContent,
+  QUEST_TLDR_WARNING_HEADER,
+} from "../server/quest-tldr.js";
+import {
   completionHygieneWarnings,
   feedbackAddWarnings,
   filterFeedbackEntries,
@@ -337,6 +343,11 @@ function warnAll(messages: string[]): void {
   for (const message of messages) warn(message);
 }
 
+function tldrWarningsForWrite(kind: "description" | "feedback", text: unknown, tldr: unknown): string[] {
+  const warning = tldrWarningForContent(kind, text, tldr);
+  return warning ? [warning] : [];
+}
+
 function timeAgo(ts: number): string {
   const seconds = Math.floor((Date.now() - ts) / 1000);
   if (seconds < 60) return `${seconds}s ago`;
@@ -485,7 +496,7 @@ function formatFeedbackEntry(entry: IndexedFeedbackEntry, options: { full?: bool
       : isAgentSummaryFeedback(entry.text)
         ? "summary"
         : "comment";
-  const text = options.full ? entry.text : compactSnippet(entry.text, 160);
+  const text = options.full ? entry.text : compactSnippet(preferredFeedbackPreview(entry), 160);
   const imageNote = entry.images?.length
     ? ` (${entry.images.length} image${entry.images.length === 1 ? "" : "s"})`
     : "";
@@ -517,7 +528,7 @@ function formatStatusSummary(quest: QuestmasterTask, sessionMetadata?: Map<strin
   lines.push(`Human Feedback: ${humanEntries.length}`);
   lines.push(`Unaddressed: ${unaddressed.length ? formatFeedbackIndices(unaddressed) : "none"}`);
   lines.push(
-    `Latest Summary: ${latestSummary ? `#${latestSummary.index} ${compactSnippet(latestSummary.text, 120)}` : "none"}`,
+    `Latest Summary: ${latestSummary ? `#${latestSummary.index} ${compactSnippet(preferredFeedbackPreview(latestSummary), 120)}` : "none"}`,
   );
   lines.push(`Next Action:  ${suggestNextQuestAction(quest)}`);
   return lines.join("\n");
@@ -545,7 +556,7 @@ function statusSummaryForJson(quest: QuestmasterTask): Record<string, unknown> {
     humanFeedbackCount: humanEntries.length,
     unaddressedHumanFeedbackIndices: unaddressed.map((entry) => entry.index),
     latestSummary: latestSummary
-      ? { index: latestSummary.index, text: latestSummary.text, ts: latestSummary.ts }
+      ? { index: latestSummary.index, text: latestSummary.text, tldr: latestSummary.tldr, ts: latestSummary.ts }
       : null,
     suggestedNextAction: suggestNextQuestAction(quest),
   };
@@ -748,6 +759,10 @@ async function cmdList(): Promise<void> {
   }
   for (const q of quests) {
     console.log(formatQuestLine(q, sessionMetadata, { currentSessionId, getSessionName: getName }));
+    const tldr = normalizeTldr((q as { tldr?: unknown }).tldr);
+    if (tldr) {
+      console.log(`       TLDR: ${compactSnippet(tldr, 120)}`);
+    }
   }
 }
 
@@ -910,7 +925,7 @@ async function cmdHistory(): Promise<void> {
 }
 
 async function cmdCreate(): Promise<void> {
-  validateFlags(["title", "title-file", "desc", "desc-file", "tags", "image", "images", "json"]);
+  validateFlags(["title", "title-file", "desc", "desc-file", "tldr", "tldr-file", "tags", "image", "images", "json"]);
   const positionalTitle = positional(0);
   const title = await readOptionalRichTextOption({
     inlineFlag: "title",
@@ -924,7 +939,8 @@ async function cmdCreate(): Promise<void> {
   if (!resolvedTitle) {
     die(
       'Usage: quest create [<title> | --title "..." | --title-file <path>|-] ' +
-        '[--desc "..." | --desc-file <path>|-] [--tags "t1,t2"] [--image <path>] [--images "p1,p2"]',
+        '[--desc "..." | --desc-file <path>|-] [--tldr "..." | --tldr-file <path>|-] ' +
+        '[--tags "t1,t2"] [--image <path>] [--images "p1,p2"]',
     );
   }
 
@@ -933,6 +949,12 @@ async function cmdCreate(): Promise<void> {
     fileFlag: "desc-file",
     label: "Quest description",
   });
+  const tldr = await readOptionalRichTextOption({
+    inlineFlag: "tldr",
+    fileFlag: "tldr-file",
+    label: "Quest TLDR",
+  });
+  const normalizedTldr = normalizeTldr(tldr);
   const tagsStr = option("tags");
   const tags = tagsStr
     ? tagsStr
@@ -960,6 +982,7 @@ async function cmdCreate(): Promise<void> {
     const quest = await createQuest({
       title: resolvedTitle,
       description,
+      ...(normalizedTldr ? { tldr: normalizedTldr } : {}),
       tags,
       ...(resolvedImages?.length ? { images: resolvedImages } : {}),
     });
@@ -970,6 +993,7 @@ async function cmdCreate(): Promise<void> {
       const imageNote = resolvedImages?.length ? `, ${resolvedImages.length} image(s)` : "";
       console.log(`Created ${quest.questId}: "${quest.title}" (${quest.status}${imageNote})`);
     }
+    warnAll(tldrWarningsForWrite("description", description, normalizedTldr));
   } catch (e) {
     die((e as Error).message);
   }
@@ -1227,9 +1251,13 @@ async function cmdCancel(): Promise<void> {
 }
 
 async function cmdTransition(): Promise<void> {
-  validateFlags(["status", "desc", "desc-file", "session", "commit", "commits", "json"]);
+  validateFlags(["status", "desc", "desc-file", "tldr", "tldr-file", "session", "commit", "commits", "json"]);
   const id = positional(0);
-  if (!id) die('Usage: quest transition <questId> --status <s> [--desc "..." | --desc-file <path>|-]');
+  if (!id)
+    die(
+      'Usage: quest transition <questId> --status <s> [--desc "..." | --desc-file <path>|-] ' +
+        '[--tldr "..." | --tldr-file <path>|-]',
+    );
 
   const status = option("status");
   if (!status) die("--status is required");
@@ -1244,6 +1272,12 @@ async function cmdTransition(): Promise<void> {
     fileFlag: "desc-file",
     label: "Quest description",
   });
+  const tldr = await readOptionalRichTextOption({
+    inlineFlag: "tldr",
+    fileFlag: "tldr-file",
+    label: "Quest TLDR",
+  });
+  const normalizedTldr = normalizeTldr(tldr);
   const sessionId = option("session") || currentSessionId;
   const commitShas = parseCommitShasFromFlags();
   if (commitShas.length > 0 && status !== "done") {
@@ -1254,6 +1288,7 @@ async function cmdTransition(): Promise<void> {
     const quest = await transitionQuest(id, {
       status: status as import("../server/quest-types.js").QuestStatus,
       ...(description !== undefined ? { description } : {}),
+      ...(tldr !== undefined ? { tldr: normalizedTldr ?? "" } : {}),
       ...(sessionId ? { sessionId } : {}),
       ...(commitShas.length > 0 ? { commitShas } : {}),
     });
@@ -1264,6 +1299,7 @@ async function cmdTransition(): Promise<void> {
     } else {
       console.log(`Transitioned ${quest.questId} to ${quest.status}`);
     }
+    warnAll(tldrWarningsForWrite("description", description, normalizedTldr));
   } catch (e) {
     die((e as Error).message);
   }
@@ -1372,12 +1408,12 @@ async function cmdInbox(): Promise<void> {
 }
 
 async function cmdEdit(): Promise<void> {
-  validateFlags(["title", "title-file", "desc", "desc-file", "tags", "json"]);
+  validateFlags(["title", "title-file", "desc", "desc-file", "tldr", "tldr-file", "tags", "json"]);
   const id = positional(0);
   if (!id) {
     die(
       'Usage: quest edit <questId> [--title "..." | --title-file <path>|-] ' +
-        '[--desc "..." | --desc-file <path>|-] [--tags "t1,t2"]',
+        '[--desc "..." | --desc-file <path>|-] [--tldr "..." | --tldr-file <path>|-] [--tags "t1,t2"]',
     );
   }
 
@@ -1391,6 +1427,12 @@ async function cmdEdit(): Promise<void> {
     fileFlag: "desc-file",
     label: "Quest description",
   });
+  const tldr = await readOptionalRichTextOption({
+    inlineFlag: "tldr",
+    fileFlag: "tldr-file",
+    label: "Quest TLDR",
+  });
+  const normalizedTldr = normalizeTldr(tldr);
   const tagsStr = option("tags");
   const tags = tagsStr
     ? tagsStr
@@ -1399,14 +1441,15 @@ async function cmdEdit(): Promise<void> {
         .filter(Boolean)
     : undefined;
 
-  if (title === undefined && description === undefined && tags === undefined) {
-    die("At least one of --title/--title-file, --desc/--desc-file, or --tags is required");
+  if (title === undefined && description === undefined && tldr === undefined && tags === undefined) {
+    die("At least one of --title/--title-file, --desc/--desc-file, --tldr/--tldr-file, or --tags is required");
   }
 
   try {
     const quest = await patchQuest(id, {
       ...(title !== undefined ? { title } : {}),
       ...(description !== undefined ? { description } : {}),
+      ...(tldr !== undefined ? { tldr: normalizedTldr ?? "" } : {}),
       ...(tags !== undefined ? { tags } : {}),
     });
     if (!quest) die(`Quest ${id} not found`);
@@ -1416,6 +1459,7 @@ async function cmdEdit(): Promise<void> {
     } else {
       console.log(`Updated ${quest.questId} "${quest.title}"`);
     }
+    warnAll(tldrWarningsForWrite("description", description, normalizedTldr));
   } catch (e) {
     die((e as Error).message);
   }
@@ -1533,12 +1577,13 @@ async function cmdFeedbackShow(): Promise<void> {
 }
 
 async function cmdFeedbackAdd(addOptions: { explicitAdd: boolean }): Promise<void> {
-  validateFlags(["text", "text-file", "author", "session", "image", "images", "json"]);
+  validateFlags(["text", "text-file", "tldr", "tldr-file", "author", "session", "image", "images", "json"]);
   const id = positional(addOptions.explicitAdd ? 1 : 0);
   if (!id) {
     die(
       'Usage: quest feedback <questId> (--text "..." | --text-file <path>|-) ' +
-        '[--author agent|human] [--session <sid>] [--image <path>] [--images "p1,p2"]',
+        '[--tldr "..." | --tldr-file <path>|-] [--author agent|human] [--session <sid>] ' +
+        '[--image <path>] [--images "p1,p2"]',
     );
   }
 
@@ -1547,6 +1592,12 @@ async function cmdFeedbackAdd(addOptions: { explicitAdd: boolean }): Promise<voi
     fileFlag: "text-file",
     label: "Feedback text",
   });
+  const tldr = await readOptionalRichTextOption({
+    inlineFlag: "tldr",
+    fileFlag: "tldr-file",
+    label: "Feedback TLDR",
+  });
+  const normalizedTldr = normalizeTldr(tldr);
 
   const authorOpt = option("author");
   const author = authorOpt === "human" ? "human" : "agent";
@@ -1573,6 +1624,7 @@ async function cmdFeedbackAdd(addOptions: { explicitAdd: boolean }): Promise<voi
       headers: companionAuthHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({
         text: text.trim(),
+        ...(normalizedTldr ? { tldr: normalizedTldr } : {}),
         author,
         ...(author === "agent" && sessionId ? { sessionId } : {}),
         ...(uploadedImages?.length ? { images: uploadedImages } : {}),
@@ -1584,15 +1636,21 @@ async function cmdFeedbackAdd(addOptions: { explicitAdd: boolean }): Promise<voi
       die((err as { error: string }).error || res.statusText);
     }
     const quest = (await res.json()) as QuestmasterTask;
+    const tldrHeaderWarning = res.headers.get(QUEST_TLDR_WARNING_HEADER);
     const mutationWarnings = feedbackAddWarnings({ before, after: quest, author, text: text.trim() });
+    const tldrWarnings = tldrHeaderWarning
+      ? [tldrHeaderWarning]
+      : author === "agent"
+        ? tldrWarningsForWrite("feedback", text, normalizedTldr)
+        : [];
     if (jsonOutput) {
       out(quest);
-      warnAll(mutationWarnings);
+      warnAll([...mutationWarnings, ...tldrWarnings]);
     } else {
       const entries = "feedback" in quest ? (quest as { feedback?: { author: string; text: string }[] }).feedback : [];
       const imageNote = uploadedImages?.length ? `, ${uploadedImages.length} image(s)` : "";
       console.log(`Added feedback to ${quest.questId} (${entries?.length ?? 0} entries total${imageNote})`);
-      warnAll(mutationWarnings);
+      warnAll([...mutationWarnings, ...tldrWarnings]);
     }
   } catch (e) {
     die((e as Error).message);
@@ -1780,7 +1838,7 @@ Commands:
   status <id> [--json]                                   Show compact action-oriented quest status
   history <id> [--json]                                  Show quest history
   tags   [--json]                                        List all existing tags with counts
-  create [<title> | --title "..." | --title-file <path>|-] [--desc "..." | --desc-file <path>|-] [--tags "t1,t2"] [--image <path>] [--images "p1,p2"] [--json]
+  create [<title> | --title "..." | --title-file <path>|-] [--desc "..." | --desc-file <path>|-] [--tldr "..." | --tldr-file <path>|-] [--tags "t1,t2"] [--image <path>] [--images "p1,p2"] [--json]
                                                          Create a quest
   claim  <id> [--session <sid>] [--json]                 Claim for session
   complete <id> [--items "c1,c2" | --items-file <path>|-] [--session <sid>] [--commit <sha>] [--commits "s1,s2"] [--json]
@@ -1789,16 +1847,16 @@ Commands:
                                                          Mark as done/cancelled
   cancel <id> [--notes "reason" | --notes-file <path>|-] [--json]
                                                          Cancel from any status
-  transition <id> --status <s> [--desc "..." | --desc-file <path>|-] [--commit <sha>] [--commits "s1,s2"] [--json]
+  transition <id> --status <s> [--desc "..." | --desc-file <path>|-] [--tldr "..." | --tldr-file <path>|-] [--commit <sha>] [--commits "s1,s2"] [--json]
                                                          Change status
   later  <id> [--json]                                   Move review-pending quest out of inbox
   inbox  <id> [--json]                                   Move review-pending quest back to inbox
-  edit   <id> [--title "..." | --title-file <path>|-] [--desc "..." | --desc-file <path>|-] [--tags "t1,t2"] [--json]
+  edit   <id> [--title "..." | --title-file <path>|-] [--desc "..." | --desc-file <path>|-] [--tldr "..." | --tldr-file <path>|-] [--tags "t1,t2"] [--json]
                                                          Edit in place
   check  <id> <index> [--json]                           Toggle verification item
-  feedback <id> [--text "..." | --text-file <path>|-] [--author agent|human] [--session <sid>] [--image <path>] [--images "p1,p2"] [--json]
+  feedback <id> [--text "..." | --text-file <path>|-] [--tldr "..." | --tldr-file <path>|-] [--author agent|human] [--session <sid>] [--image <path>] [--images "p1,p2"] [--json]
                                                          Add feedback entry
-  feedback add <id> [--text "..." | --text-file <path>|-] [--author agent|human] [--session <sid>] [--image <path>] [--images "p1,p2"] [--json]
+  feedback add <id> [--text "..." | --text-file <path>|-] [--tldr "..." | --tldr-file <path>|-] [--author agent|human] [--session <sid>] [--image <path>] [--images "p1,p2"] [--json]
                                                          Add feedback entry explicitly
   feedback list <id> [--last N] [--author human|agent|all] [--unaddressed] [--json]
                                                          List indexed feedback entries
@@ -1828,9 +1886,10 @@ Search tips:
 
 Safer rich-text input:
   quest create --title-file title.txt --desc-file body.md
+  quest create --title-file title.txt --desc-file body.md --tldr-file summary.txt
   printf '%s\\n' 'Copied \`$(snippet)\` stays literal' | quest create "Quest title" --desc-file -
   quest edit q-1 --desc-file body.md
-  quest feedback q-1 --text-file note.md
+  quest feedback q-1 --text-file note.md --tldr "Short human-readable summary"
   quest feedback latest q-1 --author human --unaddressed --full
   quest feedback show q-1 0
   printf '%s\\n' 'Line 1' '\`$(nope)\`' | quest feedback q-1 --text-file -

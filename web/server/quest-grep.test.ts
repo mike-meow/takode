@@ -105,4 +105,33 @@ describe("grepQuests", () => {
     expect(result.totalMatches).toBe(4);
     expect(result.matches).toHaveLength(2);
   });
+
+  it("prefers TLDR snippets when TLDR metadata matches", () => {
+    const quests: QuestmasterTask[] = [
+      {
+        id: "q-1-v1",
+        questId: "q-1",
+        version: 1,
+        title: "Long content",
+        createdAt: 1,
+        status: "refined",
+        description: "The full description also mentions alpha but should not be the preview source.",
+        tldr: "Alpha summary for humans.",
+        feedback: [
+          {
+            author: "agent",
+            text: "The detailed feedback also mentions beta in a much longer agent-dense note.",
+            tldr: "Beta feedback summary.",
+            ts: 1,
+          },
+        ],
+      },
+    ];
+
+    const result = grepQuests(quests, "alpha|beta");
+
+    expect(result.matches.map((match) => match.matchedField)).toEqual(["description.tldr", "feedback[0].tldr"]);
+    expect(result.matches[0].snippet).toBe("Alpha summary for humans.");
+    expect(result.matches[1].snippet).toBe("Beta feedback summary.");
+  });
 });

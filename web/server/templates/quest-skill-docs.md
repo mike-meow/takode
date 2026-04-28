@@ -69,18 +69,18 @@ quest show   <id> [--json]                                    Show quest detail
 quest status <id> [--json]                                    Show compact action-oriented status and next action
 quest history <id> [--json]                                   Show quest history (legacy backup after cutover)
 quest tags   [--json]                                         List all existing tags with counts
-quest create [<title> | --title "..." | --title-file <path>|-] [--desc "..." | --desc-file <path>|-] [--tags "t1,t2"] [--image <path>] [--images "p1,p2"] [--json] Create a quest (auto-assigns ID)
+quest create [<title> | --title "..." | --title-file <path>|-] [--desc "..." | --desc-file <path>|-] [--tldr "..." | --tldr-file <path>|-] [--tags "t1,t2"] [--image <path>] [--images "p1,p2"] [--json] Create a quest (auto-assigns ID)
 quest claim  <id> [--session <sid>] [--json]                  Claim for your session
 quest complete <id> [--items "c1,c2" | --items-file <path>|-] [--no-code] [--session <sid>] [--commit <sha>] [--commits "c1,c2"] [--json]  Mark done and submit for review
 quest done   <id> [--notes "..." | --notes-file <path>|-] [--cancelled] [--json]      Mark as done/cancelled
 quest cancel <id> [--notes "reason" | --notes-file <path>|-] [--json]                Cancel from any status
-quest transition <id> --status <s> [--desc "..." | --desc-file <path>|-] [--json]    Change status
+quest transition <id> --status <s> [--desc "..." | --desc-file <path>|-] [--tldr "..." | --tldr-file <path>|-] [--json]    Change status
 quest later  <id> [--json]                                    Move review-pending quest out of inbox
 quest inbox  <id> [--json]                                    Move review-pending quest back to inbox
-quest edit   <id> [--title "..." | --title-file <path>|-] [--desc "..." | --desc-file <path>|-] [--tags "t1,t2"] [--json]     Edit in place (NEVER use to create)
+quest edit   <id> [--title "..." | --title-file <path>|-] [--desc "..." | --desc-file <path>|-] [--tldr "..." | --tldr-file <path>|-] [--tags "t1,t2"] [--json]     Edit in place (NEVER use to create)
 quest check  <id> <index> [--json]                            Toggle verification item
-quest feedback <id> [--text "..." | --text-file <path>|-] [--author agent|human] [--image <path>] [--images "p1,p2"] [--json]  Add feedback entry
-quest feedback add <id> [--text "..." | --text-file <path>|-] [--author agent|human] [--image <path>] [--images "p1,p2"] [--json]  Add feedback entry explicitly
+quest feedback <id> [--text "..." | --text-file <path>|-] [--tldr "..." | --tldr-file <path>|-] [--author agent|human] [--image <path>] [--images "p1,p2"] [--json]  Add feedback entry
+quest feedback add <id> [--text "..." | --text-file <path>|-] [--tldr "..." | --tldr-file <path>|-] [--author agent|human] [--image <path>] [--images "p1,p2"] [--json]  Add feedback entry explicitly
 quest feedback list <id> [--last N] [--author human|agent|all] [--unaddressed] [--json]  List indexed feedback entries
 quest feedback latest <id> [--author human|agent|all] [--unaddressed] [--full] [--json]  Show latest matching feedback
 quest feedback show <id> <index> [--json]                     Show one indexed feedback entry
@@ -110,6 +110,8 @@ Unknown flags are rejected with a "Did you mean?" suggestion.
 | `--title-file <path>` | Read the title from a file, or use `-` to read from stdin |
 | `--desc "..."` | Quest description (markdown supported) |
 | `--desc-file <path>` | Read the description from a file, or use `-` to read from stdin |
+| `--tldr "..."` | Optional human-readable TLDR metadata for long descriptions |
+| `--tldr-file <path>` | Read TLDR metadata from a file, or use `-` to read from stdin |
 | `--tags "t1,t2"` | Comma-separated tags |
 | `--image <path>` | Attach an image (can repeat: --image a.png --image b.png) |
 | `--images "a.png,b.png"` | Attach multiple images (comma-separated) |
@@ -122,6 +124,8 @@ Unknown flags are rejected with a "Did you mean?" suggestion.
 | `--title-file <path>` | Read the new title from a file, or use `-` to read from stdin |
 | `--desc "..."` | New description |
 | `--desc-file <path>` | Read the new description from a file, or use `-` to read from stdin |
+| `--tldr "..."` | Optional human-readable TLDR metadata for long descriptions |
+| `--tldr-file <path>` | Read TLDR metadata from a file, or use `-` to read from stdin |
 | `--tags "t1,t2"` | New tags (replaces all) |
 | `--json` | Output JSON |
 
@@ -178,6 +182,8 @@ quest transition q-12 --status in_progress --desc-file /tmp/quest-description.md
 |------|-------------|
 | `--text "..."` | Short inline feedback text |
 | `--text-file <path>` | Read feedback text from a file, or use `-` to read from stdin |
+| `--tldr "..."` | Optional human-readable TLDR metadata for long feedback |
+| `--tldr-file <path>` | Read TLDR metadata from a file, or use `-` to read from stdin |
 | `--author agent\|human` | Who wrote this (default: "agent") |
 | `--session <id>` | Session ID |
 | `--image <path>` | Attach an image (can repeat: --image a.png --image b.png) |

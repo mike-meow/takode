@@ -11,6 +11,10 @@ export function getQuestDescription(quest: QuestmasterTask): string | undefined 
   return "description" in quest ? quest.description : undefined;
 }
 
+export function getQuestTldr(quest: QuestmasterTask): string | undefined {
+  return quest.tldr?.trim() || undefined;
+}
+
 export function getQuestNotes(quest: QuestmasterTask): string | undefined {
   return "notes" in quest ? (quest as { notes?: string }).notes : undefined;
 }

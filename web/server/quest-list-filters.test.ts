@@ -80,6 +80,21 @@ describe("applyQuestListFilters", () => {
     expect(result.map((q) => q.questId)).toEqual(["q-2"]);
   });
 
+  it("filters by TLDR and still searches full feedback text when a feedback TLDR exists", () => {
+    // TLDR improves scan previews, but it must not make detailed feedback undiscoverable.
+    const quest = makeQuest({
+      questId: "q-6",
+      title: "Long feedback quest",
+      status: "needs_verification",
+      verificationInboxUnread: false,
+    });
+    quest.tldr = "Short quest scanline";
+    quest.feedback = [{ author: "agent", text: "Full implementation detail", tldr: "Short handoff", ts: 1 }];
+
+    expect(applyQuestListFilters([quest], { text: "scanline" }).map((q) => q.questId)).toEqual(["q-6"]);
+    expect(applyQuestListFilters([quest], { text: "implementation" }).map((q) => q.questId)).toEqual(["q-6"]);
+  });
+
   it("matches quest ids from free-text search", () => {
     // Users often paste quest IDs directly (for example q-3), so text search
     // should match the questId field in addition to title/description.
