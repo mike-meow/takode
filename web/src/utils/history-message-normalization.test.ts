@@ -216,6 +216,39 @@ describe("normalizeHistoryMessageToChatMessages", () => {
     });
   });
 
+  it("repairs persisted assistant thread prefixes in no-space same-line form", () => {
+    const normalized = normalizeHistoryMessageToChatMessages(
+      {
+        type: "assistant",
+        timestamp: 200,
+        parent_tool_use_id: null,
+        message: {
+          id: "a-thread-no-space",
+          type: "message",
+          role: "assistant",
+          model: "claude-test",
+          stop_reason: null,
+          usage: {
+            input_tokens: 1,
+            output_tokens: 2,
+            cache_creation_input_tokens: 0,
+            cache_read_input_tokens: 0,
+          },
+          content: [{ type: "text", text: "[thread:q-941]Implementation update" }],
+        },
+      },
+      14,
+    )[0]!;
+
+    expect(normalized.content).toBe("Implementation update");
+    expect(normalized.contentBlocks).toEqual([{ type: "text", text: "Implementation update" }]);
+    expect(normalized.metadata).toMatchObject({
+      threadKey: "q-941",
+      questId: "q-941",
+      threadRefs: [{ threadKey: "q-941", questId: "q-941", source: "explicit" }],
+    });
+  });
+
   it("hides persisted main thread markers without adding a quest projection", () => {
     const normalized = normalizeHistoryMessageToChatMessages(
       {
@@ -242,6 +275,35 @@ describe("normalizeHistoryMessageToChatMessages", () => {
 
     expect(normalized.content).toBe("General update");
     expect(normalized.contentBlocks).toEqual([{ type: "text", text: "General update" }]);
+    expect(normalized.metadata).toEqual({ threadKey: "main" });
+  });
+
+  it("hides persisted main thread markers in no-space same-line form", () => {
+    const normalized = normalizeHistoryMessageToChatMessages(
+      {
+        type: "assistant",
+        timestamp: 200,
+        parent_tool_use_id: null,
+        message: {
+          id: "a-thread-main-no-space",
+          type: "message",
+          role: "assistant",
+          model: "claude-test",
+          stop_reason: null,
+          usage: {
+            input_tokens: 1,
+            output_tokens: 2,
+            cache_creation_input_tokens: 0,
+            cache_read_input_tokens: 0,
+          },
+          content: [{ type: "text", text: "[thread:main]Using quest workflow" }],
+        },
+      },
+      15,
+    )[0]!;
+
+    expect(normalized.content).toBe("Using quest workflow");
+    expect(normalized.contentBlocks).toEqual([{ type: "text", text: "Using quest workflow" }]);
     expect(normalized.metadata).toEqual({ threadKey: "main" });
   });
 

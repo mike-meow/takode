@@ -7,7 +7,7 @@ export type ThreadRouteParseResult =
   | { ok: true; target: ThreadRouteTarget; body: string }
   | { ok: false; reason: "missing" | "invalid"; marker?: string; body: string };
 
-const TEXT_THREAD_MARKER_RE = /^\[thread:(main|q-\d+)\](?:[ \t]+(.*))?$/;
+const TEXT_THREAD_MARKER_RE = /^\[thread:(main|q-\d+)\](.*)$/;
 const COMMAND_THREAD_COMMENT_RE = /^#\s*thread:(main|q-\d+)\s*$/;
 
 export function isQuestThreadKey(threadKey: string): boolean {
@@ -69,6 +69,6 @@ function removeLineAt(lines: string[], index: number): string {
 function removeThreadMarker(lines: string[], index: number, sameLineBody: string): string {
   if (!sameLineBody.trim()) return removeLineAt(lines, index);
   const next = lines.slice();
-  next[index] = sameLineBody;
+  next[index] = sameLineBody.replace(/^[ \t]+/, "");
   return next.join("\n").replace(/^\n+/, "");
 }
