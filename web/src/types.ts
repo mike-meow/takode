@@ -153,6 +153,7 @@ export interface ChatMessage {
       tags?: string[];
       images?: QuestImage[];
       verificationItems?: QuestVerificationItem[];
+      leaderSessionId?: string;
     };
   };
   /** Present when this user message was injected programmatically (e.g. via takode CLI or cron). */

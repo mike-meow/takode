@@ -3,6 +3,7 @@ import { useStore } from "../store.js";
 import type { QuestFeedbackEntry, QuestmasterTask, QuestVerificationItem } from "../types.js";
 import { getQuestStatusTheme } from "../utils/quest-status-theme.js";
 import { isQuestUnderReview, isVerificationInboxUnread } from "../utils/quest-editor-helpers.js";
+import { getQuestLeaderSessionId } from "../utils/quest-helpers.js";
 import { formatWaitForRefLabel } from "../../shared/quest-journey.js";
 import { orderBoardRows, type BoardRowData } from "./BoardTable.js";
 import { QuestJourneyCompactSummary } from "./QuestJourneyTimeline.js";
@@ -198,6 +199,29 @@ function OwnerChip({ context }: { context: QuestStatusContext }) {
   );
 }
 
+function LeaderChip({ quest }: { quest?: QuestmasterTask }) {
+  const leaderSessionId = quest ? getQuestLeaderSessionId(quest) : null;
+  const leaderSessionNum = useStore((state) =>
+    leaderSessionId
+      ? (state.sdkSessions.find((session) => session.sessionId === leaderSessionId)?.sessionNum ?? null)
+      : null,
+  );
+  if (!leaderSessionId) return null;
+
+  return (
+    <div className="flex min-w-0 items-center gap-1.5 text-[11px] text-cc-muted">
+      <span className="shrink-0">Leader</span>
+      <SessionInlineLink
+        sessionId={leaderSessionId}
+        sessionNum={leaderSessionNum}
+        className="min-w-0 truncate font-mono-code text-blue-400 hover:text-blue-300 hover:underline decoration-dotted underline-offset-2"
+      >
+        {leaderSessionNum != null ? `#${leaderSessionNum}` : leaderSessionId.slice(0, 8)}
+      </SessionInlineLink>
+    </div>
+  );
+}
+
 function MetricPill({ label, value, tone = "muted" }: { label: string; value: string; tone?: "muted" | "attention" }) {
   const toneClass =
     tone === "attention"
@@ -263,6 +287,7 @@ export function QuestStatusPanel({ sessionId }: { sessionId: string }) {
 
         <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
           <OwnerChip context={context} />
+          <LeaderChip quest={context.quest} />
           {context.row?.worker &&
             context.quest &&
             "sessionId" in context.quest &&

@@ -509,6 +509,10 @@ function formatStatusSummary(quest: QuestmasterTask, sessionMetadata?: Map<strin
     "sessionId" in quest
       ? formatSessionLabel(quest.sessionId, sessionMetadata, { currentSessionId, getSessionName: getName })
       : "unclaimed";
+  const leaderSessionId = (quest as { leaderSessionId?: string }).leaderSessionId;
+  const leader = leaderSessionId
+    ? formatSessionLabel(leaderSessionId, sessionMetadata, { currentSessionId, getSessionName: getName })
+    : "none";
   const verification =
     "verificationItems" in quest
       ? `${quest.verificationItems.filter((item) => item.checked).length}/${quest.verificationItems.length}`
@@ -520,6 +524,7 @@ function formatStatusSummary(quest: QuestmasterTask, sessionMetadata?: Map<strin
   lines.push(`Quest ${quest.questId}: ${quest.title}`);
   lines.push(`Status:      ${STATUS_LABELS[quest.status] ?? quest.status}`);
   lines.push(`Owner:       ${owner}`);
+  lines.push(`Leader:      ${leader}`);
   lines.push(`Verification:${verification}`);
   lines.push(`Inbox:       ${inbox}`);
   lines.push(
@@ -543,6 +548,7 @@ function statusSummaryForJson(quest: QuestmasterTask): Record<string, unknown> {
     title: quest.title,
     status: quest.status,
     ownerSessionId: "sessionId" in quest ? quest.sessionId : null,
+    leaderSessionId: (quest as { leaderSessionId?: string }).leaderSessionId ?? null,
     verification:
       "verificationItems" in quest
         ? {

@@ -1109,7 +1109,38 @@ describe("claimQuest", () => {
     expect(claimed?.status).toBe("in_progress");
     if (claimed?.status === "in_progress") {
       expect(claimed.sessionId).toBe("sess-abc");
+      expect(claimed.leaderSessionId).toBeUndefined();
     }
+  });
+
+  it("records and preserves the orchestrating leader session when provided at claim time", async () => {
+    await questStore.createQuest({ title: "Orchestrated claim" });
+    await questStore.transitionQuest("q-1", {
+      status: "refined",
+      description: "Ready",
+    });
+
+    const claimed = await questStore.claimQuest("q-1", "worker-1", { leaderSessionId: " leader-1 " });
+    expect(claimed?.status).toBe("in_progress");
+    expect(claimed?.leaderSessionId).toBe("leader-1");
+
+    const completed = await questStore.completeQuest("q-1", [{ text: "Verify handoff", checked: false }]);
+    expect(completed?.status).toBe("done");
+    expect(completed?.leaderSessionId).toBe("leader-1");
+  });
+
+  it("updates leader attribution when the same worker re-claims under a different leader", async () => {
+    await questStore.createQuest({ title: "Leader changed" });
+    await questStore.transitionQuest("q-1", {
+      status: "refined",
+      description: "Ready",
+    });
+
+    await questStore.claimQuest("q-1", "worker-1", { leaderSessionId: "leader-1" });
+    const reClaimed = await questStore.claimQuest("q-1", "worker-1", { leaderSessionId: "leader-2" });
+
+    expect(reClaimed?.status).toBe("in_progress");
+    expect(reClaimed?.leaderSessionId).toBe("leader-2");
   });
 
   it("fails when already claimed by a different session", async () => {

@@ -248,6 +248,36 @@ describe("QuestmasterPage review inbox", () => {
     expect(screen.getByText("Regular verification quest")).toBeInTheDocument();
   });
 
+  it("renders leader session attribution next to the worker owner", () => {
+    const quest = {
+      ...buildVerificationQuest({
+        id: "q-50-v3",
+        questId: "q-50",
+        title: "Leader-routed quest",
+        verificationInboxUnread: true,
+      }),
+      leaderSessionId: "leader-1",
+    } as QuestmasterTask;
+    resetState({
+      quests: [quest],
+      sdkSessions: [
+        { sessionId: "session-1", state: "idle", cwd: "/repo", createdAt: 1, archived: false, sessionNum: 10 },
+        { sessionId: "leader-1", state: "idle", cwd: "/repo", createdAt: 1, archived: false, sessionNum: 4 },
+      ],
+      sessionNames: new Map([
+        ["session-1", "Worker"],
+        ["leader-1", "Leader"],
+      ]),
+    });
+
+    renderQuestmaster();
+
+    expect(screen.getByText("Leader-routed quest")).toBeInTheDocument();
+    expect(screen.getByText("Leader")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "#10" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "#4" })).toBeInTheDocument();
+  });
+
   it("collapses and expands the review inbox section", () => {
     // Inbox should behave like other grouped sections and support collapse toggling.
     renderQuestmaster();

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Lightbox } from "./Lightbox.js";
 import { MarkdownContent } from "./MarkdownContent.js";
 import { QuestImageThumbnail } from "./QuestImageThumbnail.js";
+import { SessionNumChip } from "./SessionNumChip.js";
 import { getQuestStatusTheme } from "../utils/quest-status-theme.js";
 import type { QuestImage, QuestVerificationItem } from "../types.js";
 
@@ -14,6 +15,7 @@ interface QuestClaimData {
   tags?: string[];
   images?: QuestImage[];
   verificationItems?: QuestVerificationItem[];
+  leaderSessionId?: string;
 }
 
 /**
@@ -63,6 +65,12 @@ export function QuestClaimBlock({
               {tag}
             </span>
           ))}
+        {quest.leaderSessionId && (
+          <span className="inline-flex items-center gap-1 text-[10px] text-cc-muted">
+            <span>Leader</span>
+            <SessionNumChip sessionId={quest.leaderSessionId} />
+          </span>
+        )}
       </div>
 
       {(quest.tldr || quest.description) && <MarkdownContent text={quest.tldr || quest.description || ""} size="sm" />}

@@ -64,6 +64,14 @@ export function getQuestOwnerSessionId(quest: QuestmasterTask): string | null {
   return null;
 }
 
+/** Get the quest's orchestrating leader session ID, when it was recorded. */
+export function getQuestLeaderSessionId(quest: QuestmasterTask): string | null {
+  const raw = (quest as { leaderSessionId?: unknown }).leaderSessionId;
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  return trimmed || null;
+}
+
 /** Click-to-copy quest ID with brief visual confirmation. */
 export function CopyableQuestId({
   questId,

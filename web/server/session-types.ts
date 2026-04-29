@@ -689,7 +689,13 @@ export type BrowserIncomingMessageBase =
   | { type: "quest_list_updated" }
   | {
       type: "session_quest_claimed";
-      quest: { id: string; title: string; status?: string; verificationInboxUnread?: boolean } | null;
+      quest: {
+        id: string;
+        title: string;
+        status?: string;
+        verificationInboxUnread?: boolean;
+        leaderSessionId?: string;
+      } | null;
     }
   | {
       type: "task_notification";

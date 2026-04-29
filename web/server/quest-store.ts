@@ -23,6 +23,7 @@ import { getName } from "./session-names.js";
 import { normalizeTldr } from "./quest-tldr.js";
 import {
   getActiveSessionId,
+  getLeaderSessionId,
   getPreviousOwnerSessionIds,
   normalizeCommitShas,
   normalizeQuestOwnership,
@@ -1302,6 +1303,7 @@ function buildTransitionedQuest(
   const currentFeedback = current.feedback;
   const currentActiveSessionId = getActiveSessionId(current);
   const currentPreviousOwners = getPreviousOwnerSessionIds(current);
+  const leaderSessionId = input.leaderSessionId?.trim() || getLeaderSessionId(current);
   const previousOwners = [...currentPreviousOwners];
   const base = {
     id: liveStore ? current.questId : nextVersionId(current.questId, current.version),
@@ -1314,6 +1316,7 @@ function buildTransitionedQuest(
     ...(current.tags?.length ? { tags: current.tags } : {}),
     ...(current.parentId ? { parentId: current.parentId } : {}),
     ...(current.images?.length ? { images: current.images } : {}),
+    ...(leaderSessionId ? { leaderSessionId } : {}),
     ...(current.commitShas?.length ? { commitShas: current.commitShas } : {}),
     ...(previousOwners.length ? { previousOwnerSessionIds: previousOwners } : {}),
     ...(currentFeedback?.length ? { feedback: currentFeedback } : {}),
@@ -1430,6 +1433,7 @@ function buildCancelledQuest(current: QuestmasterTask, notes: string | undefined
   const tldr = normalizeTldr(current.tldr);
   const currentActiveSessionId = getActiveSessionId(current);
   const previousOwners = getPreviousOwnerSessionIds(current);
+  const leaderSessionId = getLeaderSessionId(current);
   if (currentActiveSessionId && !previousOwners.includes(currentActiveSessionId)) {
     previousOwners.push(currentActiveSessionId);
   }
@@ -1453,6 +1457,7 @@ function buildCancelledQuest(current: QuestmasterTask, notes: string | undefined
     ...(current.tags?.length ? { tags: current.tags } : {}),
     ...(current.parentId ? { parentId: current.parentId } : {}),
     ...(current.images?.length ? { images: current.images } : {}),
+    ...(leaderSessionId ? { leaderSessionId } : {}),
     ...(previousOwners.length ? { previousOwnerSessionIds: previousOwners } : {}),
     ...(current.commitShas?.length ? { commitShas: current.commitShas } : {}),
     status: "done",
@@ -1674,10 +1679,12 @@ export async function claimQuest(
   options?: {
     allowArchivedOwnerTakeover?: boolean;
     isSessionArchived?: (sessionId: string) => boolean;
+    leaderSessionId?: string;
   },
 ): Promise<QuestmasterTask | null> {
   const current = await getQuest(questId);
   if (!current) return null;
+  const leaderSessionId = options?.leaderSessionId?.trim();
 
   // Already claimed by the same session — idempotent, return as-is
   if (
@@ -1685,6 +1692,13 @@ export async function claimQuest(
     "sessionId" in current &&
     (current as QuestInProgress).sessionId === sessionId
   ) {
+    if (leaderSessionId && getLeaderSessionId(current) !== leaderSessionId) {
+      return transitionQuest(questId, {
+        status: "in_progress",
+        sessionId,
+        leaderSessionId,
+      });
+    }
     return current;
   }
 
@@ -1718,6 +1732,7 @@ export async function claimQuest(
   return transitionQuest(questId, {
     status: "in_progress",
     sessionId,
+    ...(leaderSessionId ? { leaderSessionId } : {}),
   });
 }
 

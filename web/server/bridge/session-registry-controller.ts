@@ -1402,7 +1402,13 @@ export function broadcastNameUpdate(
 
 export function setSessionClaimedQuest(
   session: SessionLike,
-  quest: { id: string; title: string; status?: string; verificationInboxUnread?: boolean } | null,
+  quest: {
+    id: string;
+    title: string;
+    status?: string;
+    verificationInboxUnread?: boolean;
+    leaderSessionId?: string;
+  } | null,
   deps: Pick<
     SessionRegistryDeps,
     "broadcastToBrowsers" | "persistSession" | "getLauncherSessionInfo" | "onSessionNamedByQuest"

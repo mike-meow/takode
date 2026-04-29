@@ -1487,6 +1487,7 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
                   tags: quest.tags,
                   images: quest.images,
                   verificationItems: "verificationItems" in quest ? quest.verificationItems : undefined,
+                  leaderSessionId: quest.leaderSessionId,
                 },
               };
               useStore.getState().appendMessage(sessionId, {
@@ -1512,6 +1513,7 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
                     questId: questId,
                     title: data.quest!.title,
                     status: data.quest!.status ?? (isSubmitted ? "done" : "in_progress"),
+                    leaderSessionId: data.quest!.leaderSessionId,
                   },
                 },
               });

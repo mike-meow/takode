@@ -83,6 +83,11 @@ export function formatQuestLine(
     if (!previous?.length) return "";
     return `  [prev:${previous.length}]`;
   })();
+  const leader = (() => {
+    const sid = (q as { leaderSessionId?: string }).leaderSessionId;
+    if (!sid) return "";
+    return `  [leader:${formatSessionLabel(sid, sessionMetadata, options)}]`;
+  })();
   const statusLabel = (() => {
     if (cancelled) return "cancelled";
     if (isVerificationInboxUnreadQuest(q)) return "review_inbox";
@@ -90,7 +95,7 @@ export function formatQuestLine(
     return STATUS_LABELS[q.status] ?? q.status;
   })();
   const pad = (s: string, len: number) => s.padEnd(len);
-  return `${icon} ${pad(q.questId, 6)} ${pad(q.title, 36)}${tags}${ownership}  (${statusLabel}${session})`;
+  return `${icon} ${pad(q.questId, 6)} ${pad(q.title, 36)}${tags}${ownership}${leader}  (${statusLabel}${session})`;
 }
 
 export function formatQuestDetail(
@@ -114,6 +119,12 @@ export function formatQuestDetail(
   if ("sessionId" in q) {
     const sid = (q as { sessionId: string }).sessionId;
     lines.push(`Session:     ${formatSessionLabel(sid, sessionMetadata, { ...options, preferSessionNum: true })}`);
+  }
+  const leaderSessionId = (q as { leaderSessionId?: string }).leaderSessionId;
+  if (leaderSessionId) {
+    lines.push(
+      `Leader:      ${formatSessionLabel(leaderSessionId, sessionMetadata, { ...options, preferSessionNum: true })}`,
+    );
   }
   const previousOwners = (q as { previousOwnerSessionIds?: string[] }).previousOwnerSessionIds;
   if (previousOwners?.length) {

@@ -73,6 +73,13 @@ export function getPreviousOwnerSessionIds(quest: QuestmasterTask): string[] {
   return [...unique];
 }
 
+export function getLeaderSessionId(quest: QuestmasterTask): string | undefined {
+  const raw = (quest as { leaderSessionId?: unknown }).leaderSessionId;
+  if (typeof raw !== "string") return undefined;
+  const sid = raw.trim();
+  return sid.length > 0 ? sid : undefined;
+}
+
 type LegacyQuestRecord = Omit<QuestmasterTask, "status"> & {
   status: LegacyQuestStatus;
   completedAt?: number;
@@ -111,9 +118,11 @@ export function normalizeQuestOwnership(quest: QuestmasterTask): QuestmasterTask
   const normalized = { ...normalizeLegacyNeedsVerificationQuest(quest as LegacyQuestRecord) } as QuestmasterTask & {
     previousOwnerSessionIds?: string[];
     sessionId?: string;
+    leaderSessionId?: string;
   };
   const previous = getPreviousOwnerSessionIds(normalized);
   const active = getActiveSessionId(normalized);
+  const leader = getLeaderSessionId(normalized);
 
   // Legacy normalization: done quests used to carry sessionId. Treat it as past owner.
   if (normalized.status === "done" && active) {
@@ -131,6 +140,11 @@ export function normalizeQuestOwnership(quest: QuestmasterTask): QuestmasterTask
     normalized.previousOwnerSessionIds = previous;
   } else {
     delete normalized.previousOwnerSessionIds;
+  }
+  if (leader) {
+    normalized.leaderSessionId = leader;
+  } else {
+    delete normalized.leaderSessionId;
   }
   return normalized;
 }

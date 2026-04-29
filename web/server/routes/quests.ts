@@ -97,13 +97,29 @@ function questRepoCandidates(quest: QuestmasterTask, launcher: RouteContext["lau
   return paths;
 }
 
+function resolveClaimLeaderSessionId(
+  launcher: RouteContext["launcher"],
+  workerSession: { herdedBy?: string } | null | undefined,
+): string | undefined {
+  const leaderSessionId = typeof workerSession?.herdedBy === "string" ? workerSession.herdedBy.trim() : "";
+  if (!leaderSessionId) return undefined;
+  const leaderSession = launcher.getSession(leaderSessionId);
+  return leaderSession?.isOrchestrator === true ? leaderSessionId : undefined;
+}
+
 export function createQuestRoutes(ctx: RouteContext) {
   const api = new Hono();
   const { launcher, wsBridge, imageStore, authenticateCompanionCallerOptional, execCaptureStdoutAsync } = ctx;
 
   const setClaimedQuest = (
     sessionId: string,
-    quest: { id: string; title: string; status?: string; verificationInboxUnread?: boolean } | null,
+    quest: {
+      id: string;
+      title: string;
+      status?: string;
+      verificationInboxUnread?: boolean;
+      leaderSessionId?: string;
+    } | null,
   ) => {
     const session = wsBridge.getSession(sessionId);
     if (!session) return;
@@ -115,6 +131,13 @@ export function createQuestRoutes(ctx: RouteContext) {
         (wsBridge as any).onSessionNamedByQuest?.(targetSessionId, title),
     });
   };
+  const claimedQuestEvent = (quest: QuestmasterTask) => ({
+    id: quest.questId,
+    title: quest.title,
+    status: quest.status,
+    ...(hasQuestReviewMetadata(quest) ? { verificationInboxUnread: quest.verificationInboxUnread } : {}),
+    ...(quest.leaderSessionId ? { leaderSessionId: quest.leaderSessionId } : {}),
+  });
 
   const persistSessionTaskHistory = (sessionId: string) => {
     const session = wsBridge.getSession(sessionId);
@@ -186,20 +209,11 @@ export function createQuestRoutes(ctx: RouteContext) {
       setClaimedQuest(currentReviewOwnerSessionId, null);
     }
     if (nextSessionId) {
-      setClaimedQuest(nextSessionId, {
-        id: quest.questId,
-        title: quest.title,
-        status: quest.status,
-      });
+      setClaimedQuest(nextSessionId, claimedQuestEvent(quest));
     } else if (hasQuestReviewMetadata(quest)) {
       const reviewOwner = quest.previousOwnerSessionIds?.[quest.previousOwnerSessionIds.length - 1];
       if (reviewOwner) {
-        setClaimedQuest(reviewOwner, {
-          id: quest.questId,
-          title: quest.title,
-          status: quest.status,
-          verificationInboxUnread: quest.verificationInboxUnread,
-        });
+        setClaimedQuest(reviewOwner, claimedQuestEvent(quest));
       }
     }
 
@@ -338,11 +352,7 @@ export function createQuestRoutes(ctx: RouteContext) {
         // Keep quest-owned session names in sync when a claimed quest is retitled.
         // setSessionClaimedQuest broadcasts session_quest_claimed + session_name_update
         // source:quest, and persists the name via callback.
-        setClaimedQuest(quest.sessionId, {
-          id: quest.questId,
-          title: quest.title,
-          status: quest.status,
-        });
+        setClaimedQuest(quest.sessionId, claimedQuestEvent(quest));
         // Update task history entries that reference this quest
         const session = wsBridge.getSession(quest.sessionId);
         if (session) {
@@ -425,16 +435,18 @@ export function createQuestRoutes(ctx: RouteContext) {
     if (knownSession.isOrchestrator) {
       return c.json({ error: "Leader sessions cannot claim quests. Dispatch to a worker instead." }, 403);
     }
+    const leaderSessionId = resolveClaimLeaderSessionId(launcher, knownSession);
     try {
       const quest = await questStore.claimQuest(c.req.param("questId"), sessionId, {
         allowArchivedOwnerTakeover: true,
         isSessionArchived: (sid: string) => !!launcher.getSession(sid)?.archived,
+        ...(leaderSessionId ? { leaderSessionId } : {}),
       });
       if (!quest) return c.json({ error: "Quest not found" }, 404);
       broadcastQuestUpdate(wsBridge);
       // setSessionClaimedQuest broadcasts session_quest_claimed + session_name_update
       // source:quest, cancels in-flight namers, and persists the name via callback.
-      setClaimedQuest(sessionId, { id: quest.questId, title: quest.title, status: quest.status });
+      setClaimedQuest(sessionId, claimedQuestEvent(quest));
       console.log(`[quest-claim] Setting session name for ${sessionId} to "${quest.title}" (quest ${quest.questId})`);
       // Use the last user message as trigger so clicking the quest chip scrolls
       // to the user message that initiated the claim (matches auto-namer behavior).
@@ -519,12 +531,7 @@ export function createQuestRoutes(ctx: RouteContext) {
         quest.previousOwnerSessionIds?.[quest.previousOwnerSessionIds.length - 1] ||
         "";
       if (reviewOwnerSessionId && hasQuestReviewMetadata(quest)) {
-        setClaimedQuest(reviewOwnerSessionId, {
-          id: quest.questId,
-          title: quest.title,
-          status: quest.status,
-          verificationInboxUnread: quest.verificationInboxUnread,
-        });
+        setClaimedQuest(reviewOwnerSessionId, claimedQuestEvent(quest));
       }
       return c.json(quest);
     } catch (e: unknown) {
@@ -592,12 +599,7 @@ export function createQuestRoutes(ctx: RouteContext) {
       if (hasQuestReviewMetadata(quest)) {
         const reviewOwner = quest.previousOwnerSessionIds?.[quest.previousOwnerSessionIds.length - 1];
         if (reviewOwner) {
-          setClaimedQuest(reviewOwner, {
-            id: quest.questId,
-            title: quest.title,
-            status: quest.status,
-            verificationInboxUnread: quest.verificationInboxUnread,
-          });
+          setClaimedQuest(reviewOwner, claimedQuestEvent(quest));
         }
       }
       return c.json(quest);
@@ -614,12 +616,7 @@ export function createQuestRoutes(ctx: RouteContext) {
       if (hasQuestReviewMetadata(quest)) {
         const reviewOwner = quest.previousOwnerSessionIds?.[quest.previousOwnerSessionIds.length - 1];
         if (reviewOwner) {
-          setClaimedQuest(reviewOwner, {
-            id: quest.questId,
-            title: quest.title,
-            status: quest.status,
-            verificationInboxUnread: quest.verificationInboxUnread,
-          });
+          setClaimedQuest(reviewOwner, claimedQuestEvent(quest));
         }
       }
       return c.json(quest);

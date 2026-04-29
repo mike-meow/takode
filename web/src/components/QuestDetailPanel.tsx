@@ -19,7 +19,13 @@ import {
   getQuestFeedback,
   getQuestRecencyTs,
 } from "../utils/quest-editor-helpers.js";
-import { timeAgo, verificationProgress, getQuestOwnerSessionId, CopyableQuestId } from "../utils/quest-helpers.js";
+import {
+  timeAgo,
+  verificationProgress,
+  getQuestOwnerSessionId,
+  getQuestLeaderSessionId,
+  CopyableQuestId,
+} from "../utils/quest-helpers.js";
 import { SessionNumChip } from "./SessionNumChip.js";
 import { SessionStatusDot } from "./SessionStatusDot.js";
 import { Lightbox } from "./Lightbox.js";
@@ -804,6 +810,7 @@ export function QuestDetailPanel() {
   const questTldr = getQuestTldr(quest);
   const questNotes = getQuestNotes(quest);
   const questSessionId = getQuestOwnerSessionId(quest);
+  const leaderSessionId = getQuestLeaderSessionId(quest);
   const isKnownSession = questSessionId ? sdkSessions.some((s) => s.sessionId === questSessionId) : false;
   const feedbackEntries = getQuestFeedback(quest);
   const questCommitShas = quest.commitShas ?? [];
@@ -854,6 +861,12 @@ export function QuestDetailPanel() {
                 </span>
               )}
               {questSessionId && <SessionNumChip sessionId={questSessionId} />}
+              {leaderSessionId && (
+                <span className="inline-flex items-center gap-1 text-[10px] text-cc-muted">
+                  <span>Leader</span>
+                  <SessionNumChip sessionId={leaderSessionId} />
+                </span>
+              )}
               {vProgress && (
                 <span className="text-[10px] text-cc-muted flex items-center gap-1">
                   <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">

@@ -87,6 +87,8 @@ interface QuestBase {
   images?: QuestImage[];
   /** Past owners in chronological order. Excludes the current active owner. */
   previousOwnerSessionIds?: string[];
+  /** Current/relevant orchestrating leader session for feedback routing, when known. */
+  leaderSessionId?: string;
   /** Ordered synced commit SHAs associated with this quest's verification handoff. */
   commitShas?: string[];
   /** Threaded feedback conversation that must survive quest version transitions. */
@@ -214,6 +216,8 @@ export interface QuestTransitionInput {
   tldr?: string;
   /** Required for in_progress+ */
   sessionId?: string;
+  /** Optional orchestrating leader session to preserve for feedback routing. */
+  leaderSessionId?: string;
   /** Human-review checklist. Accepts strings (normalized to {text, checked:false}) or full objects. */
   verificationItems?: (QuestVerificationItem | string)[];
   /** Ordered synced commit SHAs to attach at verification handoff. */

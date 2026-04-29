@@ -664,6 +664,76 @@ describe("POST /api/quests/:questId/claim", () => {
     expect(opts.isSessionArchived("session-2")).toBe(false);
   });
 
+  it("passes the current orchestrating leader when a herded worker claims a quest", async () => {
+    vi.spyOn(questStore, "claimQuest").mockResolvedValueOnce({
+      id: "q-1-v3",
+      questId: "q-1",
+      title: "Quest",
+      status: "in_progress",
+      sessionId: "worker-1",
+      leaderSessionId: "leader-1",
+      createdAt: Date.now(),
+      claimedAt: Date.now(),
+      description: "Ready",
+    } as any);
+
+    launcher.getSession.mockImplementation((sid: string) => {
+      if (sid === "worker-1") {
+        return { sessionId: "worker-1", state: "running", cwd: "/test", archived: false, herdedBy: "leader-1" };
+      }
+      if (sid === "leader-1") {
+        return { sessionId: "leader-1", state: "running", cwd: "/test", archived: false, isOrchestrator: true };
+      }
+      return undefined;
+    });
+
+    const res = await app.request("/api/quests/q-1/claim", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: "worker-1" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(questStore.claimQuest).toHaveBeenCalledWith(
+      "q-1",
+      "worker-1",
+      expect.objectContaining({ leaderSessionId: "leader-1" }),
+    );
+  });
+
+  it("omits leader attribution when the worker is unherded or points at a non-leader", async () => {
+    vi.spyOn(questStore, "claimQuest").mockResolvedValueOnce({
+      id: "q-1-v3",
+      questId: "q-1",
+      title: "Quest",
+      status: "in_progress",
+      sessionId: "worker-1",
+      createdAt: Date.now(),
+      claimedAt: Date.now(),
+      description: "Ready",
+    } as any);
+
+    launcher.getSession.mockImplementation((sid: string) => {
+      if (sid === "worker-1") {
+        return { sessionId: "worker-1", state: "running", cwd: "/test", archived: false, herdedBy: "peer-1" };
+      }
+      if (sid === "peer-1") {
+        return { sessionId: "peer-1", state: "running", cwd: "/test", archived: false, isOrchestrator: false };
+      }
+      return undefined;
+    });
+
+    const res = await app.request("/api/quests/q-1/claim", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: "worker-1" }),
+    });
+
+    expect(res.status).toBe(200);
+    const options = vi.mocked(questStore.claimQuest).mock.calls[0][2] as { leaderSessionId?: string };
+    expect(options.leaderSessionId).toBeUndefined();
+  });
+
   it("adds a quest-sourced task history entry with questId for deep-linking", async () => {
     vi.spyOn(questStore, "claimQuest").mockResolvedValueOnce({
       id: "q-1-v3",

@@ -13,7 +13,13 @@ import type { QuestmasterCollapsedGroup } from "../utils/questmaster-view-state.
 import { getHighlightParts } from "../utils/highlight.js";
 import { multiWordMatch } from "../../shared/search-utils.js";
 import { QUEST_STATUS_THEME } from "../utils/quest-status-theme.js";
-import { timeAgo, verificationProgress, getQuestOwnerSessionId, CopyableQuestId } from "../utils/quest-helpers.js";
+import {
+  timeAgo,
+  verificationProgress,
+  getQuestOwnerSessionId,
+  getQuestLeaderSessionId,
+  CopyableQuestId,
+} from "../utils/quest-helpers.js";
 import {
   extractPastedImages,
   extractHashtags,
@@ -1581,6 +1587,7 @@ const QuestCard = memo(function QuestCard({
   const hasVerification = "verificationItems" in quest && quest.verificationItems?.length > 0;
   const vProgress = hasVerification ? verificationProgress(quest.verificationItems) : null;
   const questSessionId = getQuestOwnerSessionId(quest);
+  const leaderSessionId = getQuestLeaderSessionId(quest);
   const feedbackEntries = "feedback" in quest ? (quest as { feedback?: QuestFeedbackEntry[] }).feedback : undefined;
   const unaddressedFeedbackCount =
     feedbackEntries?.filter((entry) => entry.author === "human" && !entry.addressed).length ?? 0;
@@ -1640,6 +1647,12 @@ const QuestCard = memo(function QuestCard({
                 </span>
               )}
               {questSessionId && <SessionNumChip sessionId={questSessionId} />}
+              {leaderSessionId && (
+                <span className="inline-flex items-center gap-1 text-[10px] text-cc-muted">
+                  <span>Leader</span>
+                  <SessionNumChip sessionId={leaderSessionId} />
+                </span>
+              )}
               {vProgress && (
                 <span className="text-[10px] text-cc-muted flex items-center gap-1">
                   <svg viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
@@ -1831,6 +1844,7 @@ const CompactQuestRow = memo(function CompactQuestRow({
   const isCancelled = "cancelled" in quest && !!(quest as { cancelled?: boolean }).cancelled;
   const cfg = STATUS_CONFIG[quest.status];
   const questSessionId = getQuestOwnerSessionId(quest);
+  const leaderSessionId = getQuestLeaderSessionId(quest);
   const hasVerification = "verificationItems" in quest && quest.verificationItems?.length > 0;
   const vProgress = hasVerification ? verificationProgress(quest.verificationItems) : null;
   const feedbackEntries = "feedback" in quest ? (quest as { feedback?: QuestFeedbackEntry[] }).feedback : undefined;
@@ -1889,9 +1903,25 @@ const CompactQuestRow = memo(function CompactQuestRow({
       </td>
       <td className="px-3 py-1.5 whitespace-nowrap align-middle">
         {questSessionId ? (
-          <SessionNumChip sessionId={questSessionId} />
+          <div className="flex items-center gap-1.5">
+            <SessionNumChip sessionId={questSessionId} />
+            {leaderSessionId && (
+              <span className="inline-flex items-center gap-1 text-[10px] text-cc-muted">
+                <span>Leader</span>
+                <SessionNumChip sessionId={leaderSessionId} />
+              </span>
+            )}
+          </div>
         ) : (
-          <span className="text-cc-muted">{"\u2014"}</span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-cc-muted">{"\u2014"}</span>
+            {leaderSessionId && (
+              <span className="inline-flex items-center gap-1 text-[10px] text-cc-muted">
+                <span>Leader</span>
+                <SessionNumChip sessionId={leaderSessionId} />
+              </span>
+            )}
+          </div>
         )}
       </td>
       <td className="px-3 py-1.5 whitespace-nowrap align-middle">
