@@ -69,6 +69,19 @@ describe("CLI stream log classification", () => {
     expect(classifyCliStreamLogLevel("stderr", chunk)).toBe("warn");
   });
 
+  it("classifies Codex apply_patch verification failures as warn", () => {
+    // apply_patch verification failures are normal tool results already surfaced in chat,
+    // not evidence that the Takode server failed.
+    const chunk = [
+      "\u001b[2m2026-04-29T23:19:35.251581Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_core::tools::router\u001b[0m\u001b[2m:\u001b[0m \u001b[3merror\u001b[0m\u001b[2m=\u001b[0mapply_patch verification failed: Failed to find expected lines in /repo/web/server/session-store.test.ts:",
+      '    expect(log).toContain("[tree_groups_update:1/");',
+      "  });",
+      "});",
+    ].join("\n");
+
+    expect(classifyCliStreamLogLevel("stderr", chunk)).toBe("warn");
+  });
+
   it("keeps auth-degraded feature failures as errors", () => {
     // Feature failures from expired auth remain actionable and should stay ERROR.
     const line =
@@ -86,6 +99,31 @@ describe("CLI stream log classification", () => {
     ].join("\n");
 
     expect(classifyCliStreamLogLevel("stderr", chunk)).toBe("error");
+  });
+
+  it("does not demote mixed Codex tool-router failure chunks", () => {
+    // A distinct tool-router failure in the same chunk should keep the whole chunk actionable.
+    const chunk = [
+      "2026-04-29T23:19:35.251581Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in /repo/file.ts:",
+      "2026-04-29T23:20:00.000000Z ERROR codex_core::tools::router: error=write_stdin failed: Unknown process id 123",
+    ].join("\n");
+
+    expect(classifyCliStreamLogLevel("stderr", chunk)).toBe("error");
+  });
+
+  it("keeps other Codex tool-router failures as errors", () => {
+    // Only the apply_patch verification failure is known-safe to demote.
+    const cases = [
+      "ERROR codex_core::tools::router: error=write_stdin failed: Unknown process id 84807",
+      "ERROR codex_core::tools::router: error=exec_command failed for `/bin/zsh -c pwd`: CreateProcess failed",
+      "ERROR codex_core::tools::router: error=agent ids must be non-empty",
+      "ERROR codex_core::tools::router: error=collab spawn failed: agent thread limit reached (max 6)",
+      "generic stderr failure",
+    ];
+
+    for (const line of cases) {
+      expect(classifyCliStreamLogLevel("stderr", line)).toBe("error");
+    }
   });
 
   it("does not demote multiline refresh-token reuse chunks that include token_expired", () => {

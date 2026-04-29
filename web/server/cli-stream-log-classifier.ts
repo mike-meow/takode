@@ -25,6 +25,7 @@ export function classifyCliStreamLogLevel(label: "stdout" | "stderr", text: stri
   if (label === "stdout") return "info";
   if (isMaiCodexWrapperDiagnostic(text)) return "info";
   if (isCodexRefreshTokenReusedNoise(text)) return "warn";
+  if (isCodexApplyPatchVerificationFailure(text)) return "warn";
   return "error";
 }
 
@@ -68,6 +69,25 @@ function isCodexActionableAuthFailureLine(normalized: string): boolean {
 function isCodexAuthRefreshJsonLine(normalized: string): boolean {
   if (/^[{},]+$/.test(normalized)) return true;
   return /^"(error|message|type|param|code|status)"\s*:/.test(normalized);
+}
+
+function isCodexApplyPatchVerificationFailure(text: string): boolean {
+  const lines = normalizedLines(text);
+  if (lines.length === 0) return false;
+  if (lines.some(isCodexActionableAuthFailureLine)) return false;
+
+  let hasApplyPatchVerificationFailure = false;
+
+  for (const line of lines) {
+    if (!line.includes("codex_core::tools::router")) continue;
+    if (line.includes("error=apply_patch verification failed")) {
+      hasApplyPatchVerificationFailure = true;
+      continue;
+    }
+    return false;
+  }
+
+  return hasApplyPatchVerificationFailure;
 }
 
 export function maybeFormatCodexTokenRefreshLogLine(
