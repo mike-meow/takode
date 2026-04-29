@@ -111,6 +111,18 @@ describe("CLI stream log classification", () => {
     expect(classifyCliStreamLogLevel("stderr", chunk)).toBe("error");
   });
 
+  it("does not demote apply_patch chunks mixed with unrelated stderr records", () => {
+    // pipeStream classifies decoded chunks as a unit, so a generic stderr record
+    // adjacent to an expected apply_patch failure must keep the chunk at ERROR.
+    const chunk = [
+      "2026-04-29T23:19:35.251581Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in /repo/file.ts:",
+      "  expected source context from the patch failure",
+      "ERROR unrelated_component: generic stderr failure",
+    ].join("\n");
+
+    expect(classifyCliStreamLogLevel("stderr", chunk)).toBe("error");
+  });
+
   it("keeps other Codex tool-router failures as errors", () => {
     // Only the apply_patch verification failure is known-safe to demote.
     const cases = [

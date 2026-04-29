@@ -79,7 +79,10 @@ function isCodexApplyPatchVerificationFailure(text: string): boolean {
   let hasApplyPatchVerificationFailure = false;
 
   for (const line of lines) {
-    if (!line.includes("codex_core::tools::router")) continue;
+    if (!line.includes("codex_core::tools::router")) {
+      if (!hasApplyPatchVerificationFailure || isLikelyStandaloneStderrRecord(line)) return false;
+      continue;
+    }
     if (line.includes("error=apply_patch verification failed")) {
       hasApplyPatchVerificationFailure = true;
       continue;
@@ -88,6 +91,10 @@ function isCodexApplyPatchVerificationFailure(text: string): boolean {
   }
 
   return hasApplyPatchVerificationFailure;
+}
+
+function isLikelyStandaloneStderrRecord(normalized: string): boolean {
+  return /^(?:\d{4}-\d{2}-\d{2}t\S+\s+)?(?:error|warn|warning|fatal)\b/.test(normalized);
 }
 
 export function maybeFormatCodexTokenRefreshLogLine(
