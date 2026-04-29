@@ -19,6 +19,10 @@ import { generateReplyPreview } from "../utils/reply-preview.js";
 import { getDisplayReplyContext } from "../utils/reply-context.js";
 import { getSingleAnchoredNotification } from "../utils/anchored-notifications.js";
 import { buildNeedsInputReminderViewModel, type NeedsInputReminderViewModel } from "../utils/needs-input-reminder.js";
+import {
+  buildThreadRoutingReminderViewModel,
+  type ThreadRoutingReminderViewModel,
+} from "../utils/thread-routing-reminder.js";
 import { FILE_TOOL_NAMES, isToolHiddenFromChat } from "../hooks/use-feed-model.js";
 import { SessionHoverCard } from "./SessionHoverCard.js";
 import type { SidebarSessionItem as SessionItemType } from "../utils/sidebar-session-item.js";
@@ -934,6 +938,7 @@ function UserMessage({
     () => buildNeedsInputReminderViewModel(message, sessionNotifications),
     [message, sessionNotifications],
   );
+  const threadRoutingReminder = useMemo(() => buildThreadRoutingReminderViewModel(message), [message]);
   const localImageEntries = message.localImages ?? [];
   const remoteImageEntries = message.images ?? [];
   const threadKey = getMessageThreadKey(message);
@@ -1008,7 +1013,9 @@ function UserMessage({
           </div>
         )}
         {pendingLabel && <div className="mb-2 text-[11px] text-cc-muted/80 font-mono-code">{pendingLabel}</div>}
-        {needsInputReminder ? (
+        {threadRoutingReminder ? (
+          <ThreadRoutingReminderView reminder={threadRoutingReminder} />
+        ) : needsInputReminder ? (
           <NeedsInputReminderView reminder={needsInputReminder} />
         ) : (
           <CollapsibleContent>
@@ -1026,6 +1033,30 @@ function UserMessage({
         <UserMessageMenu message={message} sessionId={sessionId} canRevert={canRevert} isCodex={isCodex} />
       )}
       {lightboxSrc && <Lightbox src={lightboxSrc} alt="attachment" onClose={() => setLightboxSrc(null)} />}
+    </div>
+  );
+}
+
+function ThreadRoutingReminderView({ reminder }: { reminder: ThreadRoutingReminderViewModel }) {
+  return (
+    <div className="space-y-2 rounded-md border border-sky-400/25 bg-sky-400/8 p-2.5 text-left">
+      <div className="flex items-start gap-2">
+        <svg viewBox="0 0 16 16" fill="none" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-sky-300">
+          <path d="M3 4.5h5.5M3 8h10M7.5 11.5H13" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+          <path d="M11 2.5l2 2-2 2M5 9.5l-2 2 2 2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+        </svg>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-medium text-sky-100">{reminder.title}</div>
+          <div className="mt-0.5 text-xs leading-relaxed text-cc-muted">{reminder.description}</div>
+        </div>
+      </div>
+      {reminder.details.length > 0 && (
+        <div className="space-y-1 pl-5 font-mono-code text-[12px] leading-relaxed text-sky-100/90">
+          {reminder.details.map((detail) => (
+            <div key={detail}>{detail}</div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

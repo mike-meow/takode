@@ -115,6 +115,7 @@ function makeSdkSession() {
     queuedTurnReasons: [] as string[],
     queuedTurnUserMessageIds: [] as number[][],
     queuedTurnInterruptSources: [] as Array<"user" | "leader" | "system" | null>,
+    userMessageIdsThisTurn: [] as number[],
     state: makeState(),
   };
 }
@@ -133,6 +134,7 @@ function makeSdkDeps() {
     cancelPermissionNotification: vi.fn(),
     onResultAttentionAndNotifications: vi.fn(),
     onTurnCompleted: vi.fn(),
+    injectUserMessage: vi.fn(),
     hasUserPromptReplay: vi.fn(() => false),
     hasToolResultPreviewReplay: vi.fn(() => false),
     nextUserMessageId: vi.fn(() => "msg-1"),

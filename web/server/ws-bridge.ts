@@ -1479,6 +1479,13 @@ export class WsBridge {
         const concreteSession = targetSession as Session;
         this.onTurnCompleted?.(concreteSession.id, [...concreteSession.messageHistory], concreteSession.state.cwd);
       },
+      injectUserMessage: (
+        sessionId: string,
+        content: string,
+        agentSource: { sessionId: string; sessionLabel?: string },
+        takodeHerdBatch: undefined,
+        threadRoute: { threadKey: string; questId?: string; threadRefs?: ThreadRef[] },
+      ) => this.injectUserMessage(sessionId, content, agentSource, takodeHerdBatch, threadRoute),
       hasUserPromptReplay: (targetSession: unknown, cliUuid: string) =>
         this.hasUserPromptReplay(targetSession as Session, cliUuid),
       hasToolResultPreviewReplay: (targetSession: unknown, toolUseId: string) =>

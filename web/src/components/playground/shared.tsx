@@ -17,6 +17,10 @@ import { TimerModal } from "../TimerWidget.js";
 import { ToolBlock, getToolIcon, getToolLabel, getPreview, ToolIcon, formatDuration } from "../ToolBlock.js";
 import { PLAYGROUND_SESSION_ROWS } from "./fixtures.js";
 import { getPlaygroundSectionId, type PlaygroundSectionGroupId } from "./navigation.js";
+import {
+  THREAD_ROUTING_REMINDER_SOURCE_ID,
+  THREAD_ROUTING_REMINDER_SOURCE_LABEL,
+} from "../../../shared/thread-routing-reminder.js";
 
 const PlaygroundSectionGroupContext = createContext<PlaygroundSectionGroupId | null>(null);
 const NEEDS_INPUT_REMINDER_SOURCE = {
@@ -850,6 +854,27 @@ export function PlaygroundNeedsInputReminderMessage({ variant }: { variant: "res
   }, [isPartial, sessionId, variant]);
 
   return <MessageBubble message={message} sessionId={sessionId} showTimestamp={false} />;
+}
+
+export function PlaygroundThreadRoutingReminderMessage() {
+  const message: ChatMessage = {
+    id: "playground-thread-routing-reminder-msg",
+    role: "user",
+    content: [
+      "[Thread routing reminder]",
+      "Missing thread marker. Your previous leader response was not assigned to a thread.",
+      "Resend user-visible leader text with `[thread:main]` or `[thread:q-N]` as the first line.",
+      "For leader shell commands, put `# thread:main` or `# thread:q-N` as the first non-empty command line.",
+    ].join("\n"),
+    timestamp: Date.now() - 20_000,
+    agentSource: {
+      sessionId: THREAD_ROUTING_REMINDER_SOURCE_ID,
+      sessionLabel: THREAD_ROUTING_REMINDER_SOURCE_LABEL,
+    },
+    metadata: { threadKey: "q-970", questId: "q-970" },
+  };
+
+  return <MessageBubble message={message} sessionId="playground-thread-routing-reminder" showTimestamp={false} />;
 }
 
 // ─── Inline MCP Server Row (static preview, no WebSocket) ──────────────────

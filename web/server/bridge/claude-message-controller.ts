@@ -19,15 +19,8 @@ import type {
   PermissionRequest,
   SessionState,
   ContentBlock,
-  ThreadRef,
-  ThreadRoutingError,
   ToolResultPreview,
 } from "../session-types.js";
-import {
-  parseCommandThreadComment,
-  parseThreadTextPrefix,
-  stripCommandThreadComment,
-} from "../../shared/thread-routing.js";
 import {
   computeContextUsedPercent,
   computeResultContextUsedPercent,
@@ -38,6 +31,10 @@ import {
 } from "./context-usage.js";
 import { sessionTag } from "../session-tag.js";
 import type { ImageRef } from "../image-store.js";
+import {
+  buildThreadRoutingReminderForCompletedTurn,
+  normalizeLeaderAssistantRouting,
+} from "./thread-routing-reminder.js";
 
 type BroadcastOptions = {
   skipBuffer?: boolean;
@@ -143,104 +140,6 @@ interface HandleAssistantRuntimeDeps extends HandleAssistantMessageDeps {
   broadcastStatusRunning: (session: AssistantMessageSessionLike) => void;
 }
 
-const THREAD_ROUTING_EXPECTED =
-  "Start with [thread:main] or [thread:q-N]. Bash commands must start with # thread:main or # thread:q-N.";
-
-function threadRefForTarget(target: { threadKey: string; questId?: string }): ThreadRef | undefined {
-  if (target.threadKey === "main") return undefined;
-  return {
-    threadKey: target.threadKey,
-    ...(target.questId ? { questId: target.questId } : {}),
-    source: "explicit",
-    attachedAt: Date.now(),
-  };
-}
-
-function routingReminderContent(error: ThreadRoutingError): ContentBlock[] {
-  const marker = error.marker ? ` Invalid marker: \`${error.marker}\`.` : "";
-  return [
-    {
-      type: "text",
-      text: `Thread routing reminder: this leader message was not routed to a quest thread because it did not start with a valid routing marker.${marker}\n\nResend the intended text starting with \`[thread:main]\` or \`[thread:q-N]\`.`,
-    },
-  ];
-}
-
-function normalizeLeaderAssistantRouting(
-  isLeaderSession: boolean,
-  content: ContentBlock[],
-  parentToolUseId: string | null,
-): {
-  content: ContentBlock[];
-  threadKey?: string;
-  questId?: string;
-  threadRefs?: ThreadRef[];
-  threadRoutingError?: ThreadRoutingError;
-} {
-  if (!isLeaderSession || parentToolUseId) return { content };
-
-  const nextContent = content.map((block) =>
-    block.type === "tool_use" && block.name === "Bash" && typeof block.input?.command === "string"
-      ? {
-          ...block,
-          input: {
-            ...block.input,
-            command: stripCommandThreadComment(String(block.input.command)),
-          },
-        }
-      : block,
-  );
-
-  const firstTextIndex = nextContent.findIndex((block) => block.type === "text" && block.text.trim());
-  if (firstTextIndex >= 0) {
-    const firstText = nextContent[firstTextIndex] as Extract<ContentBlock, { type: "text" }>;
-    const parsed = parseThreadTextPrefix(firstText.text);
-    if (!parsed.ok) {
-      const error: ThreadRoutingError = {
-        reason: parsed.reason,
-        expected: THREAD_ROUTING_EXPECTED,
-        rawContent: content.map((block) => (block.type === "text" ? block.text : "")).join("\n"),
-        ...(parsed.marker ? { marker: parsed.marker } : {}),
-      };
-      return { content: routingReminderContent(error), threadRoutingError: error };
-    }
-    const routed = nextContent.slice();
-    routed[firstTextIndex] = { ...firstText, text: parsed.body };
-    const ref = threadRefForTarget(parsed.target);
-    return {
-      content: routed,
-      threadKey: parsed.target.threadKey,
-      ...(parsed.target.questId ? { questId: parsed.target.questId } : {}),
-      ...(ref ? { threadRefs: [ref] } : {}),
-    };
-  }
-
-  const bashBlocks = content.filter(
-    (block): block is Extract<ContentBlock, { type: "tool_use" }> =>
-      block.type === "tool_use" && block.name === "Bash" && typeof block.input?.command === "string",
-  );
-  if (bashBlocks.length > 0) {
-    const target = parseCommandThreadComment(String(bashBlocks[0].input.command));
-    if (!target) {
-      const error: ThreadRoutingError = {
-        reason: "missing",
-        expected: THREAD_ROUTING_EXPECTED,
-        rawContent: String(bashBlocks[0].input.command),
-      };
-      return { content: [...routingReminderContent(error), ...nextContent], threadRoutingError: error };
-    }
-    const ref = threadRefForTarget(target);
-    return {
-      content: nextContent,
-      threadKey: target.threadKey,
-      ...(target.questId ? { questId: target.questId } : {}),
-      ...(ref ? { threadRefs: [ref] } : {}),
-    };
-  }
-
-  return { content: nextContent };
-}
-
 function isLeaderSessionForAssistantRouting(
   session: AssistantMessageSessionLike,
   deps: Pick<HandleAssistantMessageDeps, "getLauncherSessionInfo">,
@@ -263,6 +162,7 @@ export interface ResultMessageSessionLike {
   interruptedDuringTurn: boolean;
   queuedTurnStarts: number;
   queuedTurnInterruptSources: Array<"user" | "leader" | "system" | null>;
+  userMessageIdsThisTurn: number[];
   isGenerating: boolean;
   lastOutboundUserNdjson: string | null;
   pendingPermissions: Map<string, PermissionRequest>;
@@ -379,6 +279,13 @@ interface ResultMessageDeps {
     turnTriggerSource: "user" | "leader" | "system" | "unknown",
   ) => void;
   onTurnCompleted: (session: ResultMessageSessionLike) => void;
+  injectUserMessage: (
+    sessionId: string,
+    content: string,
+    agentSource: { sessionId: string; sessionLabel?: string },
+    takodeHerdBatch: undefined,
+    threadRoute: import("../thread-routing-metadata.js").ThreadRouteMetadata,
+  ) => void;
 }
 
 interface ClaudeSdkBrowserMessageSessionLike {
@@ -410,6 +317,7 @@ interface ClaudeSdkBrowserMessageSessionLike {
   queuedTurnReasons: string[];
   queuedTurnUserMessageIds: number[][];
   queuedTurnInterruptSources: Array<"user" | "leader" | "system" | null>;
+  userMessageIdsThisTurn: number[];
   state: SessionState;
 }
 
@@ -677,6 +585,7 @@ export function handleResultMessage(
     deps.markTurnInterrupted(session, session.queuedTurnInterruptSources[0] ?? "user");
   }
   const turnWasInterrupted = session.interruptedDuringTurn || resultInterrupted || resultIsUserControlDiagnostic;
+  const threadRoutingReminder = turnWasInterrupted ? null : buildThreadRoutingReminderForCompletedTurn(session);
   deps.drainInlineQueuedClaudeTurns(session, "result");
 
   const turnTriggerSource = deps.getCurrentTurnTriggerSource(session);
@@ -722,6 +631,15 @@ export function handleResultMessage(
     deps.onResultAttentionAndNotifications(session, msg, turnTriggerSource);
   }
   deps.onTurnCompleted(session);
+  if (threadRoutingReminder) {
+    deps.injectUserMessage(
+      session.id,
+      threadRoutingReminder.content,
+      threadRoutingReminder.agentSource,
+      undefined,
+      threadRoutingReminder.route,
+    );
+  }
 }
 
 export function routeCLIMessage(session: CliMessageRouteSessionLike, msg: CLIMessage, deps: CliMessageRouteDeps): void {
@@ -978,6 +896,7 @@ export function createClaudeMessageHandlers(
     onSessionActivityStateChanged: deps.onSessionActivityStateChanged,
     onResultAttentionAndNotifications: deps.onResultAttentionAndNotifications,
     onTurnCompleted: deps.onTurnCompleted,
+    injectUserMessage: deps.injectUserMessage,
   };
   const cliUserMessageDeps: ClaudeCliUserMessageDeps = {
     hasUserPromptReplay: deps.hasUserPromptReplay,

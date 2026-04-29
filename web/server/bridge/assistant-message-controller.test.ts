@@ -272,7 +272,7 @@ describe("assistant-message-controller", () => {
     ]);
   });
 
-  it("turns missing leader thread prefixes into a routing reminder", () => {
+  it("preserves unrouted leader text and records missing prefix metadata", () => {
     const session = makeSession();
     session.state.isOrchestrator = true;
 
@@ -284,12 +284,10 @@ describe("assistant-message-controller", () => {
     });
     const content = msg.type === "assistant" ? msg.message.content : [];
     expect(content).toHaveLength(1);
-    expect(content[0]).toMatchObject({ type: "text" });
-    expect(content[0].type === "text" ? content[0].text : "").toContain("Thread routing reminder");
-    expect(content[0].type === "text" ? content[0].text : "").not.toContain("Unmarked leader text");
+    expect(content[0]).toMatchObject({ type: "text", text: "Unmarked leader text" });
   });
 
-  it("turns invalid leader thread prefixes into a routing reminder", () => {
+  it("preserves unrouted leader text and records invalid prefix metadata", () => {
     const session = makeSession();
     session.state.isOrchestrator = true;
 
@@ -300,8 +298,7 @@ describe("assistant-message-controller", () => {
       threadRoutingError: { reason: "invalid", marker: "[thread:side]" },
     });
     const content = msg.type === "assistant" ? msg.message.content : [];
-    expect(content[0].type === "text" ? content[0].text : "").toContain("Thread routing reminder");
-    expect(content[0].type === "text" ? content[0].text : "").not.toContain("Wrong marker");
+    expect(content[0].type === "text" ? content[0].text : "").toBe("[thread:side]\nWrong marker");
   });
 
   it("strips Bash command thread comments and persists command thread metadata", () => {

@@ -147,7 +147,7 @@ describe("codex-adapter-browser-message-controller thread routing", () => {
     ]);
   });
 
-  it("turns missing leader thread prefixes into a routing reminder", async () => {
+  it("preserves unrouted leader text and records missing prefix metadata", async () => {
     const session = makeSession();
 
     const msg = await routeAssistantMessage(session, [{ type: "text", text: "Unmarked Codex leader text" }]);
@@ -158,9 +158,7 @@ describe("codex-adapter-browser-message-controller thread routing", () => {
     });
     const content = msg.type === "assistant" ? msg.message.content : [];
     expect(content).toHaveLength(1);
-    expect(content[0]).toMatchObject({ type: "text" });
-    expect(content[0].type === "text" ? content[0].text : "").toContain("Thread routing reminder");
-    expect(content[0].type === "text" ? content[0].text : "").not.toContain("Unmarked Codex leader text");
+    expect(content[0]).toMatchObject({ type: "text", text: "Unmarked Codex leader text" });
   });
 
   it("strips Bash command thread comments and persists command thread metadata", async () => {

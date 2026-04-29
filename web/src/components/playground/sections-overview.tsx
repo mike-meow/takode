@@ -92,6 +92,7 @@ import {
   PlaygroundMcpRow,
   PlaygroundAddressedNotifyToolBlock,
   PlaygroundNeedsInputReminderMessage,
+  PlaygroundThreadRoutingReminderMessage,
   PlaygroundSectionGroup,
   TaskRow,
 } from "./shared.js";
@@ -449,6 +450,9 @@ export function PlaygroundOverviewSections() {
           </Card>
           <Card label="Needs-input reminder (partial, details visible)">
             <PlaygroundNeedsInputReminderMessage variant="partial" />
+          </Card>
+          <Card label="Thread-routing reminder">
+            <PlaygroundThreadRoutingReminderMessage />
           </Card>
           <Card label="Assistant message (markdown)">
             <MessageBubble message={MSG_ASSISTANT} />

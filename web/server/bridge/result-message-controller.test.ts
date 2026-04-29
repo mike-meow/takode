@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { handleResultMessage, type ResultMessageSessionLike } from "./claude-message-controller.js";
 import type { BrowserIncomingMessage, CLIResultMessage, PermissionRequest, SessionState } from "../session-types.js";
+import { THREAD_ROUTING_REMINDER_SOURCE_ID } from "../../shared/thread-routing-reminder.js";
 
 function makeState(): ResultMessageSessionLike["state"] {
   return {
@@ -24,6 +25,7 @@ function makeSession(): ResultMessageSessionLike {
     interruptedDuringTurn: false,
     queuedTurnStarts: 0,
     queuedTurnInterruptSources: [],
+    userMessageIdsThisTurn: [],
     isGenerating: false,
     lastOutboundUserNdjson: null,
     pendingPermissions: new Map<string, PermissionRequest>(),
@@ -66,6 +68,7 @@ function makeDeps() {
     onSessionActivityStateChanged: vi.fn(),
     onResultAttentionAndNotifications: vi.fn(),
     onTurnCompleted: vi.fn(),
+    injectUserMessage: vi.fn(),
   };
 }
 
@@ -155,5 +158,101 @@ describe("result-message-controller", () => {
     );
     expect(deps.onResultAttentionAndNotifications).not.toHaveBeenCalled();
     expect(deps.onTurnCompleted).toHaveBeenCalledWith(session);
+    expect(deps.injectUserMessage).not.toHaveBeenCalled();
+  });
+
+  it("injects a synthetic thread-routing reminder after unrouted leader output", () => {
+    const session = makeSession();
+    session.messageHistory.push(
+      {
+        type: "user_message",
+        id: "u-q970",
+        content: "continue in quest thread",
+        timestamp: 1,
+        threadKey: "q-970",
+        questId: "q-970",
+      } as BrowserIncomingMessage,
+      {
+        type: "assistant",
+        message: {
+          id: "assistant-missing-thread",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5-20250929",
+          content: [{ type: "text", text: "Unrouted leader response" }],
+          stop_reason: "end_turn",
+          usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+        timestamp: 2,
+        threadRoutingError: {
+          reason: "missing",
+          expected: "Start with [thread:main] or [thread:q-N].",
+          rawContent: "Unrouted leader response",
+        },
+      } as BrowserIncomingMessage,
+    );
+    session.userMessageIdsThisTurn = [0];
+    const deps = makeDeps();
+
+    handleResultMessage(session, makeResult(), deps);
+
+    expect(deps.injectUserMessage).toHaveBeenCalledWith(
+      "s1",
+      expect.stringContaining("[Thread routing reminder]"),
+      { sessionId: THREAD_ROUTING_REMINDER_SOURCE_ID, sessionLabel: "Thread Routing Reminder" },
+      undefined,
+      {
+        threadKey: "q-970",
+        questId: "q-970",
+        threadRefs: [{ threadKey: "q-970", questId: "q-970", source: "explicit" }],
+      },
+    );
+    expect(deps.injectUserMessage).toHaveBeenCalledWith(
+      "s1",
+      expect.stringContaining("Missing thread marker"),
+      expect.anything(),
+      undefined,
+      expect.anything(),
+    );
+  });
+
+  it("does not recursively inject thread-routing reminders for reminder-triggered turns", () => {
+    const session = makeSession();
+    session.messageHistory.push(
+      {
+        type: "user_message",
+        id: "thread-routing-reminder-1",
+        content: "[Thread routing reminder]\nMissing thread marker.",
+        timestamp: 1,
+        threadKey: "main",
+        agentSource: { sessionId: THREAD_ROUTING_REMINDER_SOURCE_ID, sessionLabel: "Thread Routing Reminder" },
+      } as BrowserIncomingMessage,
+      {
+        type: "assistant",
+        message: {
+          id: "assistant-missing-thread-after-reminder",
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-5-20250929",
+          content: [{ type: "text", text: "Still unrouted" }],
+          stop_reason: "end_turn",
+          usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+        parent_tool_use_id: null,
+        timestamp: 2,
+        threadRoutingError: {
+          reason: "missing",
+          expected: "Start with [thread:main] or [thread:q-N].",
+          rawContent: "Still unrouted",
+        },
+      } as BrowserIncomingMessage,
+    );
+    session.userMessageIdsThisTurn = [0];
+    const deps = makeDeps();
+
+    handleResultMessage(session, makeResult(), deps);
+
+    expect(deps.injectUserMessage).not.toHaveBeenCalled();
   });
 });
