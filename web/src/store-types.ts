@@ -156,9 +156,11 @@ export interface AppState {
   questmasterSearchQuery: string;
   questmasterSelectedTags: string[];
   questmasterViewMode: import("./api.js").QuestmasterViewMode | null;
+  questmasterCompactSort: import("./api.js").QuestmasterCompactSort | null;
   setQuestmasterSearchQuery: (query: string) => void;
   setQuestmasterSelectedTags: (tags: string[]) => void;
   setQuestmasterViewMode: (mode: import("./api.js").QuestmasterViewMode) => void;
+  setQuestmasterCompactSort: (sort: import("./api.js").QuestmasterCompactSort) => void;
   activeTab: "chat" | "diff";
   diffPanelSelectedFile: Map<string, string>;
   vscodeSelectionContext: VsCodeSelectionState | null;

@@ -409,6 +409,7 @@ export interface AppSettings {
   sleepInhibitorEnabled: boolean;
   sleepInhibitorDurationMinutes: number;
   questmasterViewMode: QuestmasterViewMode;
+  questmasterCompactSort: QuestmasterCompactSort;
   codexLeaderContextWindowOverrideTokens: number;
   codexNonLeaderAutoCompactThresholdPercent?: number;
   codexLeaderRecycleThresholdTokens: number;
@@ -425,6 +426,12 @@ export interface PushoverEventFilters {
 }
 
 export type QuestmasterViewMode = "cards" | "compact";
+export type QuestmasterCompactSortColumn = "quest" | "title" | "owner" | "status" | "verify" | "feedback" | "updated";
+export type QuestmasterCompactSortDirection = "asc" | "desc";
+export interface QuestmasterCompactSort {
+  column: QuestmasterCompactSortColumn;
+  direction: QuestmasterCompactSortDirection;
+}
 
 /** Discriminated union for session auto-namer backend. */
 export type NamerConfig =
@@ -1024,6 +1031,7 @@ export const api = {
     sleepInhibitorEnabled?: boolean;
     sleepInhibitorDurationMinutes?: number;
     questmasterViewMode?: QuestmasterViewMode;
+    questmasterCompactSort?: QuestmasterCompactSort;
     codexLeaderContextWindowOverrideTokens?: number;
     codexNonLeaderAutoCompactThresholdPercent?: number;
     codexLeaderRecycleThresholdTokens?: number;

@@ -24,7 +24,12 @@ import {
 } from "../utils/quest-editor-helpers.js";
 import { Lightbox } from "./Lightbox.js";
 import { QuestImageThumbnail } from "./QuestImageThumbnail.js";
-import type { QuestmasterViewMode } from "../api.js";
+import type {
+  QuestmasterCompactSort,
+  QuestmasterCompactSortColumn,
+  QuestmasterCompactSortDirection,
+  QuestmasterViewMode,
+} from "../api.js";
 import type { QuestmasterTask, QuestStatus, QuestFeedbackEntry, QuestImage } from "../types.js";
 
 // ─── Status config ──────────────────────────────────────────────────────────
@@ -48,6 +53,147 @@ const FILTER_TABS: Array<{ value: QuestStatus | "all"; label: string }> = [
 
 function questRecencyTs(quest: QuestmasterTask): number {
   return Math.max(quest.createdAt, (quest as { updatedAt?: number }).updatedAt ?? 0, quest.statusChangedAt ?? 0);
+}
+
+const COMPACT_SORT_COLUMNS: readonly QuestmasterCompactSortColumn[] = [
+  "quest",
+  "title",
+  "owner",
+  "status",
+  "verify",
+  "feedback",
+  "updated",
+];
+const DEFAULT_COMPACT_SORT: QuestmasterCompactSort = { column: "updated", direction: "desc" };
+const DEFAULT_COMPACT_SORT_DIRECTIONS: Record<QuestmasterCompactSortColumn, QuestmasterCompactSortDirection> = {
+  quest: "asc",
+  title: "asc",
+  owner: "asc",
+  status: "asc",
+  verify: "desc",
+  feedback: "desc",
+  updated: "desc",
+};
+const STATUS_SORT_RANK: Record<QuestStatus, number> = {
+  idea: 0,
+  refined: 1,
+  in_progress: 2,
+  done: 3,
+};
+
+type CompactSortContext = {
+  sessionNumById: Map<string, number>;
+  sessionNameById: Map<string, string>;
+};
+
+function normalizeCompactSort(sort: unknown): QuestmasterCompactSort {
+  if (!sort || typeof sort !== "object" || Array.isArray(sort)) return DEFAULT_COMPACT_SORT;
+  const raw = sort as Record<string, unknown>;
+  if (
+    !COMPACT_SORT_COLUMNS.includes(raw.column as QuestmasterCompactSortColumn) ||
+    (raw.direction !== "asc" && raw.direction !== "desc")
+  ) {
+    return DEFAULT_COMPACT_SORT;
+  }
+  return { column: raw.column as QuestmasterCompactSortColumn, direction: raw.direction };
+}
+
+function nextCompactSort(
+  current: QuestmasterCompactSort,
+  column: QuestmasterCompactSortColumn,
+): QuestmasterCompactSort {
+  if (current.column === column) {
+    return { column, direction: current.direction === "asc" ? "desc" : "asc" };
+  }
+  return { column, direction: DEFAULT_COMPACT_SORT_DIRECTIONS[column] };
+}
+
+function compareText(left: string, right: string): number {
+  return left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" });
+}
+
+function questIdSortNumber(questId: string): number | null {
+  const match = /^q-(\d+)$/i.exec(questId.trim());
+  if (!match) return null;
+  return Number(match[1]);
+}
+
+function compareQuestIds(left: string, right: string): number {
+  const leftNumber = questIdSortNumber(left);
+  const rightNumber = questIdSortNumber(right);
+  if (leftNumber !== null && rightNumber !== null && leftNumber !== rightNumber) return leftNumber - rightNumber;
+  if (leftNumber !== null && rightNumber === null) return -1;
+  if (leftNumber === null && rightNumber !== null) return 1;
+  return compareText(left, right);
+}
+
+function ownerSortLabel(quest: QuestmasterTask, context: CompactSortContext): string {
+  const sessionId = getQuestOwnerSessionId(quest);
+  if (!sessionId) return "";
+  const sessionNum = context.sessionNumById.get(sessionId);
+  if (typeof sessionNum === "number") return `#${String(sessionNum).padStart(8, "0")}`;
+  return (context.sessionNameById.get(sessionId) || sessionId).trim().toLowerCase();
+}
+
+function verificationSortTuple(quest: QuestmasterTask): [number, number, number] {
+  const hasVerification = "verificationItems" in quest && quest.verificationItems?.length > 0;
+  if (!hasVerification) return [0, 0, 0];
+  const progress = verificationProgress(quest.verificationItems);
+  const ratio = progress.total > 0 ? progress.checked / progress.total : 0;
+  return [ratio, progress.checked, progress.total];
+}
+
+function feedbackSortTuple(quest: QuestmasterTask): [number, number] {
+  const entries = "feedback" in quest ? (quest as { feedback?: QuestFeedbackEntry[] }).feedback : undefined;
+  const humanEntries = entries?.filter((entry) => entry.author === "human") ?? [];
+  const openCount = humanEntries.filter((entry) => !entry.addressed).length;
+  return [openCount, humanEntries.length];
+}
+
+function compareNumberTuple(left: readonly number[], right: readonly number[]): number {
+  for (let index = 0; index < Math.max(left.length, right.length); index++) {
+    const diff = (left[index] ?? 0) - (right[index] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+function compareCompactSortColumn(
+  left: QuestmasterTask,
+  right: QuestmasterTask,
+  column: QuestmasterCompactSortColumn,
+  context: CompactSortContext,
+): number {
+  if (column === "quest") return compareQuestIds(left.questId, right.questId);
+  if (column === "title") return compareText(left.title, right.title);
+  if (column === "owner") return compareText(ownerSortLabel(left, context), ownerSortLabel(right, context));
+  if (column === "status") {
+    const leftCancelled = "cancelled" in left && !!(left as { cancelled?: boolean }).cancelled;
+    const rightCancelled = "cancelled" in right && !!(right as { cancelled?: boolean }).cancelled;
+    const leftRank = leftCancelled ? 4 : STATUS_SORT_RANK[left.status] + (isVerificationInboxUnread(left) ? 0.25 : 0);
+    const rightRank = rightCancelled
+      ? 4
+      : STATUS_SORT_RANK[right.status] + (isVerificationInboxUnread(right) ? 0.25 : 0);
+    return leftRank - rightRank;
+  }
+  if (column === "verify") return compareNumberTuple(verificationSortTuple(left), verificationSortTuple(right));
+  if (column === "feedback") return compareNumberTuple(feedbackSortTuple(left), feedbackSortTuple(right));
+  return questRecencyTs(left) - questRecencyTs(right);
+}
+
+function sortCompactQuests(
+  quests: QuestmasterTask[],
+  sort: QuestmasterCompactSort,
+  context: CompactSortContext,
+): QuestmasterTask[] {
+  return [...quests].sort((left, right) => {
+    const columnResult = compareCompactSortColumn(left, right, sort.column, context);
+    const directed = sort.direction === "asc" ? columnResult : -columnResult;
+    if (directed !== 0) return directed;
+    const recencyResult = questRecencyTs(right) - questRecencyTs(left);
+    if (recencyResult !== 0) return recencyResult;
+    return compareQuestIds(left.questId, right.questId);
+  });
 }
 
 function classifyQuestSearchToken(token: string): { kind: "positiveTag" | "negatedTag" | "text"; value: string } {
@@ -148,6 +294,8 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
   const refreshQuests = useStore((s) => s.refreshQuests);
   const setQuests = useStore((s) => s.setQuests);
   const questOverlayId = useStore((s) => s.questOverlayId);
+  const sdkSessions = useStore((s) => s.sdkSessions);
+  const sessionNames = useStore((s) => s.sessionNames);
 
   const [filter, setFilter] = useState<Set<QuestStatus>>(() => {
     const persisted = initialViewState?.statusFilter;
@@ -155,6 +303,7 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
   });
   const allSelected = filter.size === ALL_STATUSES.length;
   const [viewModeSaving, setViewModeSaving] = useState(false);
+  const [compactSortSaving, setCompactSortSaving] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
 
   // Search, tags, and view mode -- local state initialized from store, synced back on every change.
@@ -165,6 +314,9 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
   );
   const [viewMode, setViewModeLocal] = useState<QuestmasterViewMode>(
     () => useStore.getState().questmasterViewMode ?? "cards",
+  );
+  const [compactSort, setCompactSortLocal] = useState<QuestmasterCompactSort>(() =>
+    normalizeCompactSort(useStore.getState().questmasterCompactSort),
   );
   const setSearchQuery = useCallback((val: string) => {
     setSearchQueryLocal(val);
@@ -180,6 +332,11 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
   const setViewMode = useCallback((mode: QuestmasterViewMode) => {
     setViewModeLocal(mode);
     useStore.getState().setQuestmasterViewMode(mode);
+  }, []);
+  const setCompactSort = useCallback((sort: QuestmasterCompactSort) => {
+    const normalized = normalizeCompactSort(sort);
+    setCompactSortLocal(normalized);
+    useStore.getState().setQuestmasterCompactSort(normalized);
   }, []);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -264,26 +421,27 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
     };
   }, [isActive, refreshQuests]);
 
-  const refreshServerViewMode = useCallback(async () => {
+  const refreshServerQuestmasterSettings = useCallback(async () => {
     try {
       const settings = await api.getSettings();
       setViewMode(settings.questmasterViewMode);
+      setCompactSort(normalizeCompactSort(settings.questmasterCompactSort));
     } catch (err) {
-      console.warn("[questmaster] failed to load server view mode", err);
+      console.warn("[questmaster] failed to load server Questmaster settings", err);
     }
-  }, []);
+  }, [setCompactSort]);
 
   // The compact/card preference is server-owned. Refresh it on page activation
   // and on focus so multiple browser tabs converge to the latest saved mode.
   useEffect(() => {
     if (!isActive) return;
-    refreshServerViewMode();
+    refreshServerQuestmasterSettings();
 
     function handleFocus() {
-      refreshServerViewMode();
+      refreshServerQuestmasterSettings();
     }
     function handleVisibility() {
-      if (document.visibilityState === "visible") refreshServerViewMode();
+      if (document.visibilityState === "visible") refreshServerQuestmasterSettings();
     }
 
     window.addEventListener("focus", handleFocus);
@@ -292,7 +450,7 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
       window.removeEventListener("focus", handleFocus);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, [isActive, refreshServerViewMode]);
+  }, [isActive, refreshServerQuestmasterSettings]);
 
   // Hydrate persisted scroll position once enough content has rendered.
   useEffect(() => {
@@ -462,6 +620,23 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
       setError(err instanceof Error ? err.message : "Failed to save Questmaster view mode");
     } finally {
       setViewModeSaving(false);
+    }
+  }
+
+  async function handleCompactSortChange(column: QuestmasterCompactSortColumn) {
+    const previousSort = compactSort;
+    const nextSort = nextCompactSort(compactSort, column);
+    setCompactSort(nextSort);
+    setCompactSortSaving(true);
+    setError("");
+    try {
+      const settings = await api.updateSettings({ questmasterCompactSort: nextSort });
+      setCompactSort(normalizeCompactSort(settings.questmasterCompactSort));
+    } catch (err) {
+      setCompactSort(previousSort);
+      setError(err instanceof Error ? err.message : "Failed to save Questmaster compact sort");
+    } finally {
+      setCompactSortSaving(false);
     }
   }
 
@@ -681,7 +856,21 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
     : [];
   const sortByRecencyDesc = (items: QuestmasterTask[]): QuestmasterTask[] =>
     [...items].sort((a, b) => questRecencyTs(b) - questRecencyTs(a));
-  const compactQuests = sortByRecencyDesc(filtered);
+  const compactSortContext = useMemo<CompactSortContext>(
+    () => ({
+      sessionNumById: new Map(
+        sdkSessions.flatMap((session) =>
+          typeof session.sessionNum === "number" ? [[session.sessionId, session.sessionNum] as const] : [],
+        ),
+      ),
+      sessionNameById: sessionNames,
+    }),
+    [sdkSessions, sessionNames],
+  );
+  const compactQuests = useMemo(
+    () => sortCompactQuests(filtered, compactSort, compactSortContext),
+    [filtered, compactSort, compactSortContext],
+  );
 
   const questSections: QuestSection[] = [];
   if (showReviewSplit && reviewInboxQuests.length > 0) {
@@ -1294,7 +1483,14 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
           ) : (
             <>
               {viewMode === "compact" && (
-                <CompactQuestTable quests={compactQuests} onOpenQuest={handleExpand} searchText={searchText} />
+                <CompactQuestTable
+                  quests={compactQuests}
+                  onOpenQuest={handleExpand}
+                  searchText={searchText}
+                  sort={compactSort}
+                  sortSaving={compactSortSaving}
+                  onSortChange={handleCompactSortChange}
+                />
               )}
               <div
                 className={viewMode === "compact" ? "hidden" : "contents"}
@@ -1510,23 +1706,71 @@ function CompactQuestTable({
   quests,
   onOpenQuest,
   searchText,
+  sort,
+  sortSaving,
+  onSortChange,
 }: {
   quests: QuestmasterTask[];
   onOpenQuest: (quest: QuestmasterTask) => void;
   searchText: string;
+  sort: QuestmasterCompactSort;
+  sortSaving: boolean;
+  onSortChange: (column: QuestmasterCompactSortColumn) => void;
 }) {
   return (
     <div className="overflow-x-auto rounded-xl border border-cc-border bg-cc-card">
       <table className="w-full min-w-[760px] text-xs">
         <thead>
           <tr className="border-b border-cc-border bg-cc-bg/50 text-cc-muted">
-            <th className="px-3 py-1.5 text-left font-medium whitespace-nowrap">Quest</th>
-            <th className="px-3 py-1.5 text-left font-medium whitespace-nowrap">Title</th>
-            <th className="px-3 py-1.5 text-left font-medium whitespace-nowrap">Owner</th>
-            <th className="px-3 py-1.5 text-left font-medium whitespace-nowrap">Status</th>
-            <th className="px-3 py-1.5 text-left font-medium whitespace-nowrap">Verify</th>
-            <th className="px-3 py-1.5 text-left font-medium whitespace-nowrap">Feedback</th>
-            <th className="px-3 py-1.5 text-left font-medium whitespace-nowrap">Updated</th>
+            <CompactSortHeader
+              column="quest"
+              label="Quest"
+              sort={sort}
+              sortSaving={sortSaving}
+              onSortChange={onSortChange}
+            />
+            <CompactSortHeader
+              column="title"
+              label="Title"
+              sort={sort}
+              sortSaving={sortSaving}
+              onSortChange={onSortChange}
+            />
+            <CompactSortHeader
+              column="owner"
+              label="Owner"
+              sort={sort}
+              sortSaving={sortSaving}
+              onSortChange={onSortChange}
+            />
+            <CompactSortHeader
+              column="status"
+              label="Status"
+              sort={sort}
+              sortSaving={sortSaving}
+              onSortChange={onSortChange}
+            />
+            <CompactSortHeader
+              column="verify"
+              label="Verify"
+              sort={sort}
+              sortSaving={sortSaving}
+              onSortChange={onSortChange}
+            />
+            <CompactSortHeader
+              column="feedback"
+              label="Feedback"
+              sort={sort}
+              sortSaving={sortSaving}
+              onSortChange={onSortChange}
+            />
+            <CompactSortHeader
+              column="updated"
+              label="Updated"
+              sort={sort}
+              sortSaving={sortSaving}
+              onSortChange={onSortChange}
+            />
           </tr>
         </thead>
         <tbody>
@@ -1536,6 +1780,42 @@ function CompactQuestTable({
         </tbody>
       </table>
     </div>
+  );
+}
+
+function CompactSortHeader({
+  column,
+  label,
+  sort,
+  sortSaving,
+  onSortChange,
+}: {
+  column: QuestmasterCompactSortColumn;
+  label: string;
+  sort: QuestmasterCompactSort;
+  sortSaving: boolean;
+  onSortChange: (column: QuestmasterCompactSortColumn) => void;
+}) {
+  const isActive = sort.column === column;
+  const nextDirection = nextCompactSort(sort, column).direction;
+  return (
+    <th
+      className="px-3 py-1.5 text-left font-medium whitespace-nowrap"
+      aria-sort={isActive ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}
+    >
+      <button
+        type="button"
+        onClick={() => onSortChange(column)}
+        disabled={sortSaving}
+        aria-label={`Sort by ${label} ${nextDirection === "asc" ? "ascending" : "descending"}`}
+        className="inline-flex items-center gap-1 font-medium text-current transition-colors hover:text-cc-fg disabled:cursor-wait disabled:opacity-60"
+      >
+        <span>{label}</span>
+        <span aria-hidden="true" className={isActive ? "text-cc-fg" : "text-cc-muted/40"}>
+          {isActive ? (sort.direction === "asc" ? "↑" : "↓") : "↕"}
+        </span>
+      </button>
+    </th>
   );
 }
 

@@ -18,12 +18,16 @@ import {
   getClaudeUserDefaultModel,
   getCodexUserDefaultModel,
   STT_MODELS,
+  QUESTMASTER_COMPACT_SORT_COLUMNS,
+  DEFAULT_QUESTMASTER_COMPACT_SORT,
   type NamerConfig,
   type TranscriptionConfig,
   type SttModel,
   type EditorConfig,
   type EnhancementMode,
   type QuestmasterViewMode,
+  type QuestmasterCompactSort,
+  type QuestmasterCompactSortColumn,
 } from "../settings-manager.js";
 import { DEFAULT_PUSHOVER_EVENT_FILTERS, type PushoverEventFilters } from "../pushover.js";
 import { getLogPath } from "../server-logger.js";
@@ -553,6 +557,18 @@ export function createSettingsRoutes(ctx: RouteContext) {
     return mode === "compact" ? "compact" : "cards";
   }
 
+  function normalizeQuestmasterCompactSort(sort: unknown): QuestmasterCompactSort {
+    if (!sort || typeof sort !== "object" || Array.isArray(sort)) return DEFAULT_QUESTMASTER_COMPACT_SORT;
+    const raw = sort as Record<string, unknown>;
+    if (
+      !QUESTMASTER_COMPACT_SORT_COLUMNS.includes(raw.column as QuestmasterCompactSortColumn) ||
+      (raw.direction !== "asc" && raw.direction !== "desc")
+    ) {
+      return DEFAULT_QUESTMASTER_COMPACT_SORT;
+    }
+    return { column: raw.column as QuestmasterCompactSortColumn, direction: raw.direction };
+  }
+
   function normalizePushoverEventFilters(filters: unknown): PushoverEventFilters {
     const raw =
       filters && typeof filters === "object" && !Array.isArray(filters) ? (filters as Record<string, unknown>) : {};
@@ -598,6 +614,7 @@ export function createSettingsRoutes(ctx: RouteContext) {
       sleepInhibitorEnabled: settings.sleepInhibitorEnabled,
       sleepInhibitorDurationMinutes: settings.sleepInhibitorDurationMinutes,
       questmasterViewMode: normalizeQuestmasterViewMode(settings.questmasterViewMode),
+      questmasterCompactSort: normalizeQuestmasterCompactSort(settings.questmasterCompactSort),
       codexLeaderContextWindowOverrideTokens: settings.codexLeaderContextWindowOverrideTokens,
       ...(typeof settings.codexNonLeaderAutoCompactThresholdPercent === "number"
         ? { codexNonLeaderAutoCompactThresholdPercent: settings.codexNonLeaderAutoCompactThresholdPercent }
@@ -764,6 +781,22 @@ export function createSettingsRoutes(ctx: RouteContext) {
     ) {
       return c.json({ error: 'questmasterViewMode must be "cards" or "compact"' }, 400);
     }
+    if (body.questmasterCompactSort !== undefined) {
+      if (
+        typeof body.questmasterCompactSort !== "object" ||
+        body.questmasterCompactSort === null ||
+        Array.isArray(body.questmasterCompactSort)
+      ) {
+        return c.json({ error: "questmasterCompactSort must be an object" }, 400);
+      }
+      const sort = body.questmasterCompactSort as Record<string, unknown>;
+      if (!QUESTMASTER_COMPACT_SORT_COLUMNS.includes(sort.column as QuestmasterCompactSortColumn)) {
+        return c.json({ error: "questmasterCompactSort.column is invalid" }, 400);
+      }
+      if (sort.direction !== "asc" && sort.direction !== "desc") {
+        return c.json({ error: 'questmasterCompactSort.direction must be "asc" or "desc"' }, 400);
+      }
+    }
     if (
       body.codexLeaderContextWindowOverrideTokens !== undefined &&
       (typeof body.codexLeaderContextWindowOverrideTokens !== "number" ||
@@ -820,6 +853,7 @@ export function createSettingsRoutes(ctx: RouteContext) {
       "sleepInhibitorEnabled",
       "sleepInhibitorDurationMinutes",
       "questmasterViewMode",
+      "questmasterCompactSort",
       "codexLeaderContextWindowOverrideTokens",
       "codexNonLeaderAutoCompactThresholdPercent",
       "codexLeaderRecycleThresholdTokens",
@@ -864,6 +898,10 @@ export function createSettingsRoutes(ctx: RouteContext) {
       questmasterViewMode:
         body.questmasterViewMode === "cards" || body.questmasterViewMode === "compact"
           ? body.questmasterViewMode
+          : undefined,
+      questmasterCompactSort:
+        body.questmasterCompactSort && typeof body.questmasterCompactSort === "object"
+          ? normalizeQuestmasterCompactSort(body.questmasterCompactSort)
           : undefined,
       codexLeaderContextWindowOverrideTokens:
         typeof body.codexLeaderContextWindowOverrideTokens === "number"

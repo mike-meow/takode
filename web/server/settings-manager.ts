@@ -54,6 +54,8 @@ export interface CompanionSettings {
   sleepInhibitorDurationMinutes: number;
   /** Preferred Questmaster list layout. Optional for backward-compatible tests/mocks. */
   questmasterViewMode?: QuestmasterViewMode;
+  /** Preferred Questmaster compact-table sort. Optional for backward-compatible tests/mocks. */
+  questmasterCompactSort?: QuestmasterCompactSort;
   /** Codex leader-only effective context window override for Takode-managed sessions. */
   codexLeaderContextWindowOverrideTokens: number;
   /** Percent of each non-leader Codex model's effective window to use before auto-compact. */
@@ -66,6 +68,22 @@ export interface CompanionSettings {
 }
 
 export type QuestmasterViewMode = "cards" | "compact";
+export const QUESTMASTER_COMPACT_SORT_COLUMNS = [
+  "quest",
+  "title",
+  "owner",
+  "status",
+  "verify",
+  "feedback",
+  "updated",
+] as const;
+export type QuestmasterCompactSortColumn = (typeof QUESTMASTER_COMPACT_SORT_COLUMNS)[number];
+export type QuestmasterCompactSortDirection = "asc" | "desc";
+export interface QuestmasterCompactSort {
+  column: QuestmasterCompactSortColumn;
+  direction: QuestmasterCompactSortDirection;
+}
+export const DEFAULT_QUESTMASTER_COMPACT_SORT: QuestmasterCompactSort = { column: "updated", direction: "desc" };
 
 /** Enhancement output style: "default" = clean prose paragraphs, "bullet" = structured bullet points. */
 export type EnhancementMode = "default" | "bullet";
@@ -154,6 +172,7 @@ let settings: CompanionSettings = {
   sleepInhibitorEnabled: false,
   sleepInhibitorDurationMinutes: 5,
   questmasterViewMode: "cards",
+  questmasterCompactSort: DEFAULT_QUESTMASTER_COMPACT_SORT,
   codexLeaderContextWindowOverrideTokens: 1_000_000,
   codexNonLeaderAutoCompactThresholdPercent: 90,
   codexLeaderRecycleThresholdTokens: 260_000,
@@ -192,6 +211,20 @@ function normalizeCodexLeaderRecycleThresholdTokensByModel(raw: unknown): Record
   }
   normalizedEntries.sort(([left], [right]) => left.localeCompare(right));
   return Object.fromEntries(normalizedEntries);
+}
+
+function normalizeQuestmasterCompactSort(raw: unknown): QuestmasterCompactSort {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return DEFAULT_QUESTMASTER_COMPACT_SORT;
+  const candidate = raw as Record<string, unknown>;
+  const column = candidate.column;
+  const direction = candidate.direction;
+  if (
+    !QUESTMASTER_COMPACT_SORT_COLUMNS.includes(column as QuestmasterCompactSortColumn) ||
+    (direction !== "asc" && direction !== "desc")
+  ) {
+    return DEFAULT_QUESTMASTER_COMPACT_SORT;
+  }
+  return { column: column as QuestmasterCompactSortColumn, direction };
 }
 
 /** Parse namerConfig from raw settings, with backward compat for old flat fields. */
@@ -364,6 +397,7 @@ function normalize(raw: Partial<CompanionSettings> | null | undefined): Companio
       raw?.questmasterViewMode === "compact" || raw?.questmasterViewMode === "cards"
         ? raw.questmasterViewMode
         : "cards",
+    questmasterCompactSort: normalizeQuestmasterCompactSort(raw?.questmasterCompactSort),
     codexLeaderContextWindowOverrideTokens:
       typeof raw?.codexLeaderContextWindowOverrideTokens === "number" && raw.codexLeaderContextWindowOverrideTokens >= 1
         ? Math.floor(raw.codexLeaderContextWindowOverrideTokens)
@@ -478,6 +512,7 @@ export function updateSettings(
       | "sleepInhibitorEnabled"
       | "sleepInhibitorDurationMinutes"
       | "questmasterViewMode"
+      | "questmasterCompactSort"
       | "codexLeaderContextWindowOverrideTokens"
       | "codexNonLeaderAutoCompactThresholdPercent"
       | "codexLeaderRecycleThresholdTokens"

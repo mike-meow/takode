@@ -94,6 +94,8 @@ vi.mock("./session-names.js", () => ({
 }));
 
 vi.mock("./settings-manager.js", () => ({
+  QUESTMASTER_COMPACT_SORT_COLUMNS: ["quest", "title", "owner", "status", "verify", "feedback", "updated"],
+  DEFAULT_QUESTMASTER_COMPACT_SORT: { column: "updated", direction: "desc" },
   getSettings: vi.fn(() => ({
     serverName: "",
     serverId: "",
@@ -124,6 +126,7 @@ vi.mock("./settings-manager.js", () => ({
     sleepInhibitorEnabled: false,
     sleepInhibitorDurationMinutes: 5,
     questmasterViewMode: "cards",
+    questmasterCompactSort: { column: "updated", direction: "desc" },
     codexLeaderContextWindowOverrideTokens: 1_000_000,
     codexLeaderRecycleThresholdTokens: 260_000,
     updatedAt: 0,
@@ -158,6 +161,7 @@ vi.mock("./settings-manager.js", () => ({
     sleepInhibitorEnabled: patch.sleepInhibitorEnabled ?? false,
     sleepInhibitorDurationMinutes: patch.sleepInhibitorDurationMinutes ?? 5,
     questmasterViewMode: patch.questmasterViewMode ?? "cards",
+    questmasterCompactSort: patch.questmasterCompactSort ?? { column: "updated", direction: "desc" },
     codexLeaderContextWindowOverrideTokens: patch.codexLeaderContextWindowOverrideTokens ?? 1_000_000,
     codexLeaderRecycleThresholdTokens: patch.codexLeaderRecycleThresholdTokens ?? 260_000,
     updatedAt: Date.now(),
@@ -602,6 +606,7 @@ describe("PUT /api/settings", () => {
       sleepInhibitorEnabled: undefined,
       sleepInhibitorDurationMinutes: undefined,
       questmasterViewMode: undefined,
+      questmasterCompactSort: undefined,
       codexLeaderContextWindowOverrideTokens: undefined,
       codexLeaderRecycleThresholdTokens: undefined,
     });
@@ -633,6 +638,7 @@ describe("PUT /api/settings", () => {
       sleepInhibitorEnabled: false,
       sleepInhibitorDurationMinutes: 5,
       questmasterViewMode: "cards",
+      questmasterCompactSort: { column: "updated", direction: "desc" },
       codexLeaderContextWindowOverrideTokens: 1_000_000,
       codexLeaderRecycleThresholdTokens: 260_000,
       codexLeaderRecycleThresholdTokensByModel: {},
@@ -702,6 +708,7 @@ describe("PUT /api/settings", () => {
       sleepInhibitorEnabled: undefined,
       sleepInhibitorDurationMinutes: undefined,
       questmasterViewMode: undefined,
+      questmasterCompactSort: undefined,
       codexLeaderContextWindowOverrideTokens: undefined,
       codexLeaderRecycleThresholdTokens: undefined,
       herdLeaderFirstEnabled: undefined,
@@ -771,6 +778,7 @@ describe("PUT /api/settings", () => {
       sleepInhibitorEnabled: undefined,
       sleepInhibitorDurationMinutes: undefined,
       questmasterViewMode: undefined,
+      questmasterCompactSort: undefined,
       codexLeaderContextWindowOverrideTokens: undefined,
       codexLeaderRecycleThresholdTokens: undefined,
     });
@@ -915,6 +923,7 @@ describe("PUT /api/settings", () => {
       sleepInhibitorEnabled: undefined,
       sleepInhibitorDurationMinutes: undefined,
       questmasterViewMode: undefined,
+      questmasterCompactSort: undefined,
       codexLeaderContextWindowOverrideTokens: undefined,
       codexLeaderRecycleThresholdTokens: undefined,
     });
@@ -1153,6 +1162,39 @@ describe("PUT /api/settings", () => {
     expect(res.status).toBe(400);
     const json = await res.json();
     expect(json).toEqual({ error: 'questmasterViewMode must be "cards" or "compact"' });
+  });
+
+  it("updates Questmaster compact sort setting", async () => {
+    vi.mocked(settingsManager.updateSettings).mockReturnValue({
+      ...settingsManager.getSettings(),
+      questmasterCompactSort: { column: "feedback", direction: "desc" },
+      updatedAt: Date.now(),
+    });
+
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ questmasterCompactSort: { column: "feedback", direction: "desc" } }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(settingsManager.updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ questmasterCompactSort: { column: "feedback", direction: "desc" } }),
+    );
+    const json = await res.json();
+    expect(json.questmasterCompactSort).toEqual({ column: "feedback", direction: "desc" });
+  });
+
+  it("returns 400 for invalid Questmaster compact sort", async () => {
+    const res = await app.request("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ questmasterCompactSort: { column: "bogus", direction: "desc" } }),
+    });
+
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json).toEqual({ error: "questmasterCompactSort.column is invalid" });
   });
 
   it("preserves custom transcription vocabulary when saving settings", async () => {

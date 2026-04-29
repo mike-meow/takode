@@ -60,9 +60,11 @@ type MockStoreState = {
   questmasterSearchQuery: string;
   questmasterSelectedTags: string[];
   questmasterViewMode: "cards" | "compact" | null;
+  questmasterCompactSort: { column: string; direction: "asc" | "desc" } | null;
   setQuestmasterSearchQuery: ReturnType<typeof vi.fn>;
   setQuestmasterSelectedTags: ReturnType<typeof vi.fn>;
   setQuestmasterViewMode: ReturnType<typeof vi.fn>;
+  setQuestmasterCompactSort: ReturnType<typeof vi.fn>;
   openQuestOverlay: ReturnType<typeof vi.fn>;
   closeQuestOverlay: ReturnType<typeof vi.fn>;
   replaceQuest: ReturnType<typeof vi.fn>;
@@ -126,6 +128,7 @@ function resetState(overrides: Partial<MockStoreState> = {}) {
     questmasterSearchQuery: "",
     questmasterSelectedTags: [] as string[],
     questmasterViewMode: null as "cards" | "compact" | null,
+    questmasterCompactSort: null,
     setQuestmasterSearchQuery: vi.fn((query: string) => {
       mockState.questmasterSearchQuery = query;
     }),
@@ -134,6 +137,9 @@ function resetState(overrides: Partial<MockStoreState> = {}) {
     }),
     setQuestmasterViewMode: vi.fn((mode: "cards" | "compact") => {
       mockState.questmasterViewMode = mode;
+    }),
+    setQuestmasterCompactSort: vi.fn((sort: { column: string; direction: "asc" | "desc" }) => {
+      mockState.questmasterCompactSort = sort;
     }),
     openQuestOverlay: vi.fn((questId: string, searchHighlight?: string) => {
       mockState.questOverlayId = questId;
@@ -162,6 +168,13 @@ import { QuestmasterPage } from "./QuestmasterPage.js";
 
 function renderQuestmaster(props: { isActive?: boolean } = {}) {
   return render(<QuestmasterPage isActive={false} {...props} />);
+}
+
+function compactRowQuestIds(): string[] {
+  return screen
+    .getAllByRole("button")
+    .map((el) => el.getAttribute("data-quest-id"))
+    .filter((questId): questId is string => !!questId);
 }
 
 beforeEach(() => {
@@ -197,10 +210,20 @@ beforeEach(() => {
         tags: input.tags,
       }) as QuestmasterTask,
   );
-  mockGetSettings.mockResolvedValue({ questmasterViewMode: "cards" });
-  mockUpdateSettings.mockImplementation(async (input: { questmasterViewMode?: "cards" | "compact" }) => ({
-    questmasterViewMode: input.questmasterViewMode ?? "cards",
-  }));
+  mockGetSettings.mockResolvedValue({
+    questmasterViewMode: "cards",
+    questmasterCompactSort: { column: "updated", direction: "desc" },
+  });
+  mockUpdateSettings.mockImplementation(
+    async (input: {
+      questmasterViewMode?: "cards" | "compact";
+      questmasterCompactSort?: { column: string; direction: "asc" | "desc" };
+    }) => ({
+      questmasterViewMode: input.questmasterViewMode ?? mockState.questmasterViewMode ?? "cards",
+      questmasterCompactSort: input.questmasterCompactSort ??
+        mockState.questmasterCompactSort ?? { column: "updated", direction: "desc" },
+    }),
+  );
   mockUploadStandaloneQuestImage.mockResolvedValue({
     id: "img-upload",
     filename: "draft.png",
@@ -349,12 +372,131 @@ describe("QuestmasterPage review inbox", () => {
     renderQuestmaster({ isActive: true });
 
     await screen.findByRole("button", { name: /q-21 Newest refined/ });
-    const rows = screen
-      .getAllByRole("button")
-      .map((el) => el.getAttribute("data-quest-id"))
-      .filter(Boolean);
-    expect(rows).toEqual(["q-21", "q-22", "q-20"]);
+    expect(compactRowQuestIds()).toEqual(["q-21", "q-22", "q-20"]);
     expect(screen.getAllByRole("table")).toHaveLength(1);
+  });
+
+  it("loads the server-persisted compact sort and applies it after default filtering", async () => {
+    // The server-owned compact sort should hydrate with view mode and order the flat table.
+    mockGetSettings.mockResolvedValueOnce({
+      questmasterViewMode: "compact",
+      questmasterCompactSort: { column: "title", direction: "asc" },
+    });
+    mockState.quests = [
+      {
+        ...buildVerificationQuest({ id: "q-40-v1", questId: "q-40", title: "Zulu task" }),
+        status: "refined",
+        updatedAt: 9_000,
+      } as QuestmasterTask,
+      {
+        ...buildVerificationQuest({ id: "q-41-v1", questId: "q-41", title: "Alpha task" }),
+        status: "refined",
+        updatedAt: 1_000,
+      } as QuestmasterTask,
+    ];
+
+    renderQuestmaster({ isActive: true });
+
+    await screen.findByRole("button", { name: /q-41 Alpha task/ });
+    expect(compactRowQuestIds()).toEqual(["q-41", "q-40"]);
+  });
+
+  it("toggles compact table headers, persists the choice, and updates row order", async () => {
+    // Header buttons should advertise the next direction and save the selected sort server-side.
+    mockGetSettings.mockResolvedValueOnce({
+      questmasterViewMode: "compact",
+      questmasterCompactSort: { column: "updated", direction: "desc" },
+    });
+    mockState.quests = [
+      {
+        ...buildVerificationQuest({ id: "q-50-v1", questId: "q-50", title: "Zulu task" }),
+        status: "refined",
+        updatedAt: 9_000,
+      } as QuestmasterTask,
+      {
+        ...buildVerificationQuest({ id: "q-51-v1", questId: "q-51", title: "Alpha task" }),
+        status: "refined",
+        updatedAt: 1_000,
+      } as QuestmasterTask,
+    ];
+
+    renderQuestmaster({ isActive: true });
+    await screen.findByRole("button", { name: /q-50 Zulu task/ });
+
+    fireEvent.click(screen.getByRole("button", { name: "Sort by Title ascending" }));
+
+    await waitFor(() => {
+      expect(mockUpdateSettings).toHaveBeenCalledWith({
+        questmasterCompactSort: { column: "title", direction: "asc" },
+      });
+    });
+    expect(compactRowQuestIds()).toEqual(["q-51", "q-50"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Sort by Title descending" }));
+
+    await waitFor(() => {
+      expect(mockUpdateSettings).toHaveBeenLastCalledWith({
+        questmasterCompactSort: { column: "title", direction: "desc" },
+      });
+    });
+    expect(compactRowQuestIds()).toEqual(["q-50", "q-51"]);
+  });
+
+  it("filters first, then sorts compact rows by quest id numeric suffix", async () => {
+    mockGetSettings.mockResolvedValueOnce({
+      questmasterViewMode: "compact",
+      questmasterCompactSort: { column: "quest", direction: "asc" },
+    });
+    mockState.quests = [
+      {
+        ...buildVerificationQuest({ id: "q-10-v1", questId: "q-10", title: "Keep later id" }),
+        status: "refined",
+      } as QuestmasterTask,
+      {
+        ...buildVerificationQuest({ id: "q-2-v1", questId: "q-2", title: "Keep early id" }),
+        status: "refined",
+      } as QuestmasterTask,
+      {
+        ...buildVerificationQuest({ id: "q-1-v1", questId: "q-1", title: "Drop this row" }),
+        status: "refined",
+      } as QuestmasterTask,
+    ];
+
+    renderQuestmaster({ isActive: true });
+    await screen.findByRole("button", { name: /q-2 Keep early id/ });
+
+    fireEvent.change(screen.getByPlaceholderText("Search or #tag..."), { target: { value: "Keep" } });
+
+    expect(compactRowQuestIds()).toEqual(["q-2", "q-10"]);
+    expect(screen.queryByRole("button", { name: /q-1 Drop this row/ })).toBeNull();
+  });
+
+  it("does not apply compact-table sort to Cards view", async () => {
+    // Cards remain grouped and recency-sorted even when a compact sort preference exists.
+    mockGetSettings.mockResolvedValueOnce({
+      questmasterViewMode: "cards",
+      questmasterCompactSort: { column: "title", direction: "asc" },
+    });
+    mockState.quests = [
+      {
+        ...buildVerificationQuest({ id: "q-60-v1", questId: "q-60", title: "Zulu newer card" }),
+        status: "refined",
+        updatedAt: 9_000,
+      } as QuestmasterTask,
+      {
+        ...buildVerificationQuest({ id: "q-61-v1", questId: "q-61", title: "Alpha older card" }),
+        status: "refined",
+        updatedAt: 1_000,
+      } as QuestmasterTask,
+    ];
+
+    renderQuestmaster({ isActive: true });
+
+    await screen.findByText("Zulu newer card");
+    expect(
+      Array.from(document.querySelectorAll<HTMLElement>("[data-quest-id]")).map((el) => el.dataset.questId),
+    ).toEqual(["q-60", "q-61"]);
+    expect(screen.queryAllByRole("columnheader", { name: "Title" })).toHaveLength(0);
   });
 
   it("applies the existing status dropdown filter to the flat compact table", async () => {

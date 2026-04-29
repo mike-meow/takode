@@ -315,6 +315,7 @@ export const useStore = create<AppState>((set, get) => ({
   questmasterSearchQuery: "",
   questmasterSelectedTags: [],
   questmasterViewMode: null,
+  questmasterCompactSort: null,
   activeTab: "chat",
   diffPanelSelectedFile: new Map(),
   vscodeSelectionContext: null,
@@ -474,6 +475,7 @@ export const useStore = create<AppState>((set, get) => ({
   setQuestmasterSearchQuery: (query) => set({ questmasterSearchQuery: query }),
   setQuestmasterSelectedTags: (tags) => set({ questmasterSelectedTags: tags }),
   setQuestmasterViewMode: (mode) => set({ questmasterViewMode: mode }),
+  setQuestmasterCompactSort: (sort) => set({ questmasterCompactSort: sort }),
   setVsCodeSelectionContext: (context) => set({ vscodeSelectionContext: context }),
   dismissVsCodeSelection: (key) => set({ dismissedVsCodeSelectionKey: key }),
   newSession: () => {
@@ -2027,6 +2029,7 @@ export const useStore = create<AppState>((set, get) => ({
       questmasterSearchQuery: "",
       questmasterSelectedTags: [],
       questmasterViewMode: null,
+      questmasterCompactSort: null,
       searchPreviewSessionId: null,
       terminalOpen: false,
       terminalCwd: null,

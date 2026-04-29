@@ -69,6 +69,7 @@ describe("settings-manager", () => {
       sleepInhibitorEnabled: false,
       sleepInhibitorDurationMinutes: 5,
       questmasterViewMode: "cards",
+      questmasterCompactSort: { column: "updated", direction: "desc" },
       updatedAt: 0,
       codexLeaderRecycleThresholdTokensByModel: {},
     });
@@ -214,6 +215,31 @@ describe("settings-manager", () => {
     expect(getSettings().questmasterViewMode).toBe("compact");
   });
 
+  it("persists Questmaster compact sort across reloads", async () => {
+    // Compact-table sort is server-owned so browser reloads and tabs converge.
+    updateSettings({ questmasterCompactSort: { column: "feedback", direction: "desc" } });
+
+    await _flushForTest();
+
+    const savedSettings = JSON.parse(await readFile(settingsPath, "utf-8"));
+    expect(savedSettings.questmasterCompactSort).toEqual({ column: "feedback", direction: "desc" });
+
+    _resetForTest(settingsPath);
+
+    expect(getSettings().questmasterCompactSort).toEqual({ column: "feedback", direction: "desc" });
+  });
+
+  it("normalizes invalid Questmaster compact sort to Updated descending", () => {
+    writeFileSync(
+      settingsPath,
+      JSON.stringify({ questmasterCompactSort: { column: "unknown", direction: "sideways" } }),
+      "utf-8",
+    );
+    _resetForTest(settingsPath);
+
+    expect(getSettings().questmasterCompactSort).toEqual({ column: "updated", direction: "desc" });
+  });
+
   it("loads existing settings from disk", () => {
     writeFileSync(
       settingsPath,
@@ -349,6 +375,7 @@ describe("settings-manager", () => {
       sleepInhibitorEnabled: false,
       sleepInhibitorDurationMinutes: 5,
       questmasterViewMode: "cards",
+      questmasterCompactSort: { column: "updated", direction: "desc" },
       updatedAt: 0,
       codexLeaderRecycleThresholdTokensByModel: {},
     });
