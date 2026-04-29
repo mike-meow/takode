@@ -252,6 +252,12 @@ function isQuestThreadKey(threadKey: string): boolean {
   return /^q-\d+$/i.test(threadKey.trim());
 }
 
+function composeThreadKeyForSelection(threadKey: string): string {
+  const normalized = threadKey.trim().toLowerCase();
+  if (normalized === ALL_THREADS_KEY) return MAIN_THREAD_KEY;
+  return normalized;
+}
+
 function QuestThreadBanner({
   row,
   threadKey,
@@ -352,7 +358,8 @@ export function ChatView({ sessionId, preview = false }: { sessionId: string; pr
     selectedThreadKey.toLowerCase() !== MAIN_THREAD_KEY &&
     selectedThreadKey.toLowerCase() !== ALL_THREADS_KEY &&
     isQuestThreadKey(selectedThreadKey);
-  const selectedThreadCanCompose = !isLeaderSession || selectedThreadKey.toLowerCase() !== ALL_THREADS_KEY;
+  const composerThreadKey = isLeaderSession ? composeThreadKeyForSelection(selectedThreadKey) : MAIN_THREAD_KEY;
+  const composerQuestId = isLeaderSession && isQuestThreadKey(composerThreadKey) ? composerThreadKey : undefined;
 
   useEffect(() => {
     setSelectedThreadKey(MAIN_THREAD_KEY);
@@ -506,6 +513,18 @@ export function ChatView({ sessionId, preview = false }: { sessionId: string; pr
       {/* Session task outline — horizontal milestone chips */}
       {!preview && <TaskOutlineBar sessionId={sessionId} />}
 
+      {/* Persistent work board for orchestrator sessions -- primary thread navigation above the feed */}
+      {!preview && (
+        <WorkBoardBar
+          sessionId={sessionId}
+          currentThreadKey={isLeaderSession ? selectedThreadKey : MAIN_THREAD_KEY}
+          currentThreadLabel={isLeaderSession ? selectedThreadLabel : "Main"}
+          onReturnToMain={isLeaderSession ? () => setSelectedThreadKey(MAIN_THREAD_KEY) : undefined}
+          onSelectThread={isLeaderSession ? setSelectedThreadKey : undefined}
+          threadRows={isLeaderSession ? workBoardThreadRows : undefined}
+        />
+      )}
+
       {/* Plan overlay fills the chat area, OR show the normal message feed */}
       {!preview && showPlanOverlay ? (
         <PlanReviewOverlay permission={planPerm} sessionId={sessionId} onCollapse={() => setPlanCollapsed(true)} />
@@ -583,41 +602,8 @@ export function ChatView({ sessionId, preview = false }: { sessionId: string; pr
       {/* Active todo status — shows current in-progress task */}
       {!preview && <TodoStatusLine sessionId={sessionId} />}
 
-      {/* Persistent work board for orchestrator sessions */}
-      {!preview && (
-        <WorkBoardBar
-          sessionId={sessionId}
-          currentThreadKey={isLeaderSession ? selectedThreadKey : MAIN_THREAD_KEY}
-          currentThreadLabel={isLeaderSession ? selectedThreadLabel : "Main"}
-          onReturnToMain={isLeaderSession ? () => setSelectedThreadKey(MAIN_THREAD_KEY) : undefined}
-          onSelectThread={isLeaderSession ? setSelectedThreadKey : undefined}
-          threadRows={isLeaderSession ? workBoardThreadRows : undefined}
-        />
-      )}
-
       {/* Composer */}
-      {!preview && selectedThreadCanCompose && (
-        <Composer
-          sessionId={sessionId}
-          threadKey={isLeaderSession ? selectedThreadKey : MAIN_THREAD_KEY}
-          questId={isLeaderSession && selectedThreadKey !== MAIN_THREAD_KEY ? selectedThreadKey : undefined}
-        />
-      )}
-      {!preview && !selectedThreadCanCompose && (
-        <div className="shrink-0 border-t border-cc-border bg-cc-card px-3 py-2">
-          <button
-            type="button"
-            onClick={() => setSelectedThreadKey(MAIN_THREAD_KEY)}
-            className="inline-flex max-w-full items-center gap-2 rounded-md border border-cc-border/70 bg-cc-hover/50 px-3 py-1.5 text-xs font-medium text-cc-fg transition-colors hover:bg-cc-hover"
-            data-testid="all-threads-return-main"
-          >
-            <svg className="h-3.5 w-3.5 shrink-0" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-              <path d="M10 4L6 8l4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
-            <span className="truncate">Return to Main</span>
-          </button>
-        </div>
-      )}
+      {!preview && <Composer sessionId={sessionId} threadKey={composerThreadKey} questId={composerQuestId} />}
     </div>
   );
 }

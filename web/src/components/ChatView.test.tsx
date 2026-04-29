@@ -389,6 +389,10 @@ describe("ChatView backend banners", () => {
     expect(scope.queryByTestId("leader-thread-switcher")).not.toBeInTheDocument();
     expect(scope.queryByTestId("mobile-thread-overview")).not.toBeInTheDocument();
     expect(scope.getByTestId("message-feed")).toHaveAttribute("data-thread-key", "main");
+    expect(
+      scope.getByTestId("work-board-bar").compareDocumentPosition(scope.getByTestId("message-feed")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
 
     fireEvent.click(scope.getByRole("button", { name: /q-941 quest thread mvp/i }));
     expect(scope.getByTestId("message-feed")).toHaveAttribute("data-thread-key", "q-941");
@@ -398,7 +402,7 @@ describe("ChatView backend banners", () => {
     expect(scope.getByTestId("quest-thread-banner")).toHaveTextContent("q-941");
   });
 
-  it("offers All Threads as a global read-only projection through the workboard", () => {
+  it("offers All Threads as a global projection while keeping a Main/global composer available", () => {
     resetStore({
       sessions: new Map([["s1", { backend_state: "connected", backend_error: null, isOrchestrator: true }]]),
       sdkSessions: [{ sessionId: "s1", archived: false, isOrchestrator: true }],
@@ -425,11 +429,13 @@ describe("ChatView backend banners", () => {
 
     fireEvent.click(scope.getByTestId("mock-workboard-all"));
     expect(scope.getByTestId("message-feed")).toHaveAttribute("data-thread-key", "all");
-    expect(scope.queryByTestId("composer")).not.toBeInTheDocument();
+    expect(scope.getByTestId("composer")).toHaveAttribute("data-thread-key", "main");
+    expect(scope.getByTestId("composer")).not.toHaveAttribute("data-quest-id");
     expect(scope.getByTestId("work-board-bar")).toHaveAttribute("data-current-thread-key", "all");
     expect(scope.getByTestId("work-board-bar")).toHaveAttribute("data-current-thread-label", "All Threads");
+    expect(scope.queryByTestId("all-threads-return-main")).not.toBeInTheDocument();
 
-    fireEvent.click(scope.getByTestId("all-threads-return-main"));
+    fireEvent.click(scope.getByTestId("mock-workboard-main"));
     expect(scope.getByTestId("message-feed")).toHaveAttribute("data-thread-key", "main");
     expect(scope.getByTestId("composer")).toHaveAttribute("data-thread-key", "main");
   });

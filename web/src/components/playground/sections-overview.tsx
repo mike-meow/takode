@@ -173,7 +173,7 @@ export function PlaygroundOverviewSections() {
 
       <Section
         title="Leader Workboard Thread Navigation"
-        description="Leader ChatView with workboard-owned Main / All Threads / quest navigation and quest-thread banner context."
+        description="Leader ChatView with top workboard-owned Main / All Threads / quest navigation, quest-thread banner context, and composer access below the feed."
       >
         <div className="grid max-w-5xl gap-4 lg:grid-cols-2">
           <div className="overflow-hidden rounded-xl border border-cc-border bg-cc-card h-[460px]">

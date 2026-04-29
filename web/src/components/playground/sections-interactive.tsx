@@ -1150,7 +1150,7 @@ export function PlaygroundInteractiveSections() {
       {/* ─── Work Board Bar (Persistent Widget) ────────────────────── */}
       <Section
         title="Work Board Bar"
-        description="Persistent bottom bar for orchestrator sessions. Shows summary (collapsed) and full board table (expanded). Expanded/collapsed state persists per session in the browser, and composer interaction should not auto-collapse it."
+        description="Persistent top thread navigator for orchestrator sessions. Shows summary (collapsed) and full board table (expanded). Expanded/collapsed state persists per session in the browser, and composer interaction should not auto-collapse it."
       >
         <div className="max-w-3xl space-y-4">
           <Card label="Work Board Bar (click to seed store, then interact)">

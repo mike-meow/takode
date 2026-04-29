@@ -260,6 +260,10 @@ describe("WorkBoardBar", () => {
     const { getByTestId } = render(<WorkBoardBar sessionId="s1" />);
     fireEvent.click(getByTestId("workboard-summary-button"));
     expect(getByTestId("board-table")).toBeInTheDocument();
+    expect(
+      getByTestId("workboard-summary-button").compareDocumentPosition(getByTestId("board-table")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("collapses on second click", () => {
