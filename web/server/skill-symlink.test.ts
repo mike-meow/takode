@@ -8,7 +8,7 @@ const fsMocks = vi.hoisted(() => ({
     throw new Error("ENOENT");
   }),
   readlinkSync: vi.fn(),
-  readdirSync: vi.fn((): any[] => []),
+  readdirSync: vi.fn((_targetDir?: string): any[] => []),
   unlinkSync: vi.fn(),
   rmSync: vi.fn(),
 }));
@@ -114,6 +114,34 @@ describe("ensureSkillSymlinks", () => {
     );
   });
 
+  it("discovers agents-only project skills and installs them only for agents", async () => {
+    // Validates startup discovery for skills like impeccable that intentionally
+    // exist only under the repo's .agents/skills directory.
+    fsMocks.existsSync.mockImplementation((targetDir: string) => {
+      return targetDir === "/repo/.agents/skills" || targetDir === "/repo/.agents/skills/impeccable";
+    });
+    fsMocks.readdirSync.mockImplementation((targetDir?: string) => {
+      if (targetDir === "/repo/.agents/skills") {
+        return [
+          {
+            name: "impeccable",
+            isDirectory: () => true,
+            isSymbolicLink: () => false,
+          },
+        ] as any[];
+      }
+      return [];
+    });
+
+    await ensureSkillSymlinks([]);
+
+    expect(fsMocks.symlinkSync).toHaveBeenCalledWith(
+      "/repo/.agents/skills/impeccable",
+      "/home/tester/.agents/skills/impeccable",
+    );
+    expect(fsMocks.symlinkSync).not.toHaveBeenCalledWith(expect.any(String), "/home/tester/.claude/skills/impeccable");
+  });
+
   it("ignores repo-local legacy Codex skill directories for active installs", async () => {
     // Validates .codex is compatibility-only; project-specific non-Claude
     // variants now come from .agents, then fall back to .claude.
@@ -192,14 +220,14 @@ describe("ensureSkillSymlinks", () => {
     // hardcoded slugs that do not exist in the repo checkout.
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     fsMocks.existsSync.mockImplementation((targetDir: string) => {
-      return targetDir !== "/repo/.claude/skills/cron-scheduling";
+      return targetDir === "/repo/.claude/skills" || targetDir === "/repo/.agents/skills";
     });
 
     await ensureSkillSymlinks(["cron-scheduling"]);
 
     expect(fsMocks.symlinkSync).not.toHaveBeenCalled();
     expect(warnSpy).toHaveBeenCalledWith(
-      "[skill-symlink] Skipping missing repo skill source: /repo/.claude/skills/cron-scheduling",
+      "[skill-symlink] Skipping missing repo skill source: /repo/.claude/skills/cron-scheduling or /repo/.agents/skills/cron-scheduling",
     );
 
     warnSpy.mockRestore();

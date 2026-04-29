@@ -300,10 +300,12 @@ export class ContainerManager {
           "for f in auth.json config.toml models_cache.json version.json; do " +
             "[ -f /companion-host-codex/$f ] && cp /companion-host-codex/$f /root/.codex/$f 2>/dev/null; done",
           "[ -d /companion-host-agents/skills ] && mkdir -p /root/.codex/skills && " +
-            "cp -R /companion-host-agents/skills/. /root/.codex/skills/ 2>/dev/null",
+            "cp -RL /companion-host-agents/skills/. /root/.codex/skills/ 2>/dev/null",
           "if [ -d /companion-host-codex/skills ]; then mkdir -p /root/.codex/skills; " +
             'for s in /companion-host-codex/skills/*; do [ -e "$s" ] || continue; name=$(basename "$s"); ' +
-            '[ -e "/root/.codex/skills/$name" ] || cp -R "$s" "/root/.codex/skills/$name" 2>/dev/null; done; fi',
+            'target="/root/.codex/skills/$name"; ' +
+            '[ -L "$target" ] && [ ! -e "$target" ] && rm -f "$target"; ' +
+            '[ -e "$target" ] || cp -RL "$s" "$target" 2>/dev/null; done; fi',
           "for d in vendor_imports prompts rules; do " +
             "[ -d /companion-host-codex/$d ] && cp -r /companion-host-codex/$d /root/.codex/$d 2>/dev/null; done",
           "true",

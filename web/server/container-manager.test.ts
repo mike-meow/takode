@@ -103,7 +103,9 @@ describe("ContainerManager Codex file seeding", () => {
     expect(seedCmd).toContain("models_cache.json");
     // Verify skills come from .agents first and legacy .codex skills only fill missing slugs.
     expect(seedCmd).toContain("/companion-host-agents/skills");
-    expect(seedCmd).toContain('[ -e "/root/.codex/skills/$name" ] || cp -R "$s"');
+    expect(seedCmd).toContain("cp -RL /companion-host-agents/skills/.");
+    expect(seedCmd).toContain('[ -L "$target" ] && [ ! -e "$target" ] && rm -f "$target"');
+    expect(seedCmd).toContain('[ -e "$target" ] || cp -RL "$s" "$target"');
     // Verify non-skill Codex directories still come from .codex.
     expect(seedCmd).toContain("prompts");
     expect(seedCmd).toContain("rules");
