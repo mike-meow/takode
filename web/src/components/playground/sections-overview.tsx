@@ -8,6 +8,7 @@ import {
 import { MessageBubble } from "../MessageBubble.js";
 import { ChatView } from "../ChatView.js";
 import { MessageFeed } from "../MessageFeed.js";
+import { AttentionLedgerRow } from "../AttentionLedgerRow.js";
 import { MarkdownContent } from "../MarkdownContent.js";
 import { ToolBlock } from "../ToolBlock.js";
 import { GitHubPRDisplay } from "../TaskPanel.js";
@@ -96,6 +97,89 @@ import {
   PlaygroundSectionGroup,
   TaskRow,
 } from "./shared.js";
+import type { SessionAttentionRecord } from "../../types.js";
+
+const ATTENTION_LEDGER_RECORDS: SessionAttentionRecord[] = [
+  {
+    id: "playground-attention-unresolved",
+    leaderSessionId: MOCK_SESSION_ID,
+    type: "needs_input",
+    source: { kind: "notification", id: "playground-attention-unresolved" },
+    questId: "q-961",
+    threadKey: "q-961",
+    title: "Approve the implementation direction",
+    summary: "Worker is waiting for a concrete user decision before continuing.",
+    actionLabel: "Answer",
+    priority: "needs_input",
+    state: "unresolved",
+    createdAt: 100,
+    updatedAt: 100,
+    route: { threadKey: "q-961", questId: "q-961", messageId: "playground-thread-q961-assistant" },
+    chipEligible: true,
+    ledgerEligible: true,
+    dedupeKey: "playground-attention-unresolved",
+  },
+  {
+    id: "playground-attention-resolved",
+    leaderSessionId: MOCK_SESSION_ID,
+    type: "review_ready",
+    source: { kind: "notification", id: "playground-attention-resolved" },
+    questId: "q-962",
+    threadKey: "q-962",
+    title: "Review accepted",
+    summary: "The review item remains visible in the ledger as handled history.",
+    actionLabel: "Review",
+    priority: "review",
+    state: "resolved",
+    createdAt: 200,
+    updatedAt: 220,
+    resolvedAt: 220,
+    route: { threadKey: "q-962", questId: "q-962" },
+    chipEligible: true,
+    ledgerEligible: true,
+    dedupeKey: "playground-attention-resolved",
+  },
+  {
+    id: "playground-attention-dismissed",
+    leaderSessionId: MOCK_SESSION_ID,
+    type: "blocked_user_resolvable",
+    source: { kind: "manual", id: "playground-attention-dismissed" },
+    questId: "q-963",
+    threadKey: "q-963",
+    title: "External unblock dismissed",
+    summary: "Dismissal hides active attention without claiming the blocker is solved.",
+    actionLabel: "Unblock",
+    priority: "blocked",
+    state: "dismissed",
+    createdAt: 300,
+    updatedAt: 330,
+    dismissedAt: 330,
+    route: { threadKey: "q-963", questId: "q-963" },
+    chipEligible: true,
+    ledgerEligible: true,
+    dedupeKey: "playground-attention-dismissed",
+  },
+  {
+    id: "playground-attention-reopened",
+    leaderSessionId: MOCK_SESSION_ID,
+    type: "quest_reopened_or_rework",
+    source: { kind: "quest", id: "q-964", questId: "q-964" },
+    questId: "q-964",
+    threadKey: "q-964",
+    title: "Fresh feedback reopened q-964",
+    summary: "A previously handled thread is attention-worthy again after new feedback.",
+    actionLabel: "Open",
+    priority: "milestone",
+    state: "reopened",
+    createdAt: 400,
+    updatedAt: 430,
+    reopenedAt: 430,
+    route: { threadKey: "q-964", questId: "q-964" },
+    chipEligible: true,
+    ledgerEligible: true,
+    dedupeKey: "playground-attention-reopened",
+  },
+];
 
 export function PlaygroundOverviewSections() {
   return (
@@ -289,6 +373,19 @@ export function PlaygroundOverviewSections() {
             </div>
           </Card>
         </div>
+      </Section>
+
+      <Section
+        title="Attention Ledger Rows"
+        description="Main attention rows keep active, resolved, dismissed, and reopened user-actionable events visible without turning routine hidden activity into a timeline."
+      >
+        <Card label="Main ledger states">
+          <div className="space-y-2">
+            {ATTENTION_LEDGER_RECORDS.map((record) => (
+              <AttentionLedgerRow key={record.id} record={record} sessionId={PLAYGROUND_THREAD_PANEL_SESSION_ID} />
+            ))}
+          </div>
+        </Card>
       </Section>
 
       <Section

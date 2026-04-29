@@ -939,6 +939,64 @@ export interface SessionState {
 
 export type NotificationUrgency = "needs-input" | "review" | null;
 
+export type SessionAttentionRecordType =
+  | "needs_input"
+  | "review_ready"
+  | "blocked_user_resolvable"
+  | "quest_thread_created"
+  | "quest_completed_recent"
+  | "quest_reopened_or_rework"
+  | "attention_summary";
+
+export type SessionAttentionRecordPriority =
+  | "needs_input"
+  | "review"
+  | "blocked"
+  | "created"
+  | "completed"
+  | "milestone";
+
+export type SessionAttentionRecordState = "unresolved" | "seen" | "resolved" | "dismissed" | "reopened" | "superseded";
+
+export interface SessionAttentionRecordRoute {
+  threadKey: string;
+  questId?: string;
+  messageId?: string;
+  messageIndex?: number;
+  bannerId?: string;
+  questOverlay?: string;
+}
+
+export interface SessionAttentionRecord {
+  id: string;
+  leaderSessionId: string;
+  type: SessionAttentionRecordType;
+  source: {
+    kind: "notification" | "board" | "quest" | "herd" | "message" | "manual";
+    id?: string;
+    questId?: string;
+    messageId?: string | null;
+    signature?: string;
+  };
+  questId?: string;
+  threadKey: string;
+  title: string;
+  summary: string;
+  actionLabel: "Answer" | "Review" | "Unblock" | "Open" | "Jump";
+  priority: SessionAttentionRecordPriority;
+  state: SessionAttentionRecordState;
+  createdAt: number;
+  updatedAt: number;
+  resolvedAt?: number;
+  dismissedAt?: number;
+  reopenedAt?: number;
+  route: SessionAttentionRecordRoute;
+  chipEligible: boolean;
+  ledgerEligible: boolean;
+  dedupeKey: string;
+  supersedesDedupeKeys?: string[];
+}
+
 /** A notification collected when `takode notify` fires. Persisted per session. */
 export interface SessionNotification {
   id: string;

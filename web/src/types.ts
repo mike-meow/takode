@@ -20,6 +20,11 @@ import type {
   VsCodeSelectionMetadata,
   VsCodeSelectionState,
   SessionNotification,
+  SessionAttentionRecord,
+  SessionAttentionRecordPriority,
+  SessionAttentionRecordRoute,
+  SessionAttentionRecordState,
+  SessionAttentionRecordType,
   SessionLifecycleEvent,
   ActiveTurnRoute,
   ThreadRef,
@@ -66,6 +71,11 @@ export type {
   VsCodeSelectionState,
   SessionTimer,
   SessionNotification,
+  SessionAttentionRecord,
+  SessionAttentionRecordPriority,
+  SessionAttentionRecordRoute,
+  SessionAttentionRecordState,
+  SessionAttentionRecordType,
   SessionLifecycleEvent,
   ActiveTurnRoute,
   ThreadRef,
@@ -159,6 +169,7 @@ export interface ChatMessage {
       startedAt: number;
       updatedAt: number;
     };
+    attentionRecord?: SessionAttentionRecord;
     threadRoutingError?: ThreadRoutingError;
     replyContext?: ReplyContext;
     vscodeSelection?: VsCodeSelectionMetadata;

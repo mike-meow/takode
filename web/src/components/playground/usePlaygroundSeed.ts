@@ -60,6 +60,7 @@ export function usePlaygroundSeed() {
     const prevSessionCompletedBoards = new Map(
       demoSessionIds.map((id) => [id, snapshot.sessionCompletedBoards.get(id)]),
     );
+    const prevSessionNotifications = new Map(demoSessionIds.map((id) => [id, snapshot.sessionNotifications.get(id)]));
     const prevPendingCodexInputs = new Map(demoSessionIds.map((id) => [id, snapshot.pendingCodexInputs.get(id)]));
     const prevToolProgress = new Map(demoSessionIds.map((id) => [id, snapshot.toolProgress.get(id)]));
     const prevToolResults = new Map(demoSessionIds.map((id) => [id, snapshot.toolResults.get(id)]));
@@ -238,6 +239,28 @@ export function usePlaygroundSeed() {
         metadata: { threadRefs: [{ threadKey: "q-964", questId: "q-964", source: "explicit" }] },
       }),
     ]);
+    store.setSessionNotifications(PLAYGROUND_THREAD_PANEL_SESSION_ID, [
+      {
+        id: "playground-attention-input",
+        category: "needs-input",
+        summary: "Choose whether q-961 should proceed to review",
+        timestamp: Date.now() - 104_000,
+        messageId: "playground-thread-q961-assistant",
+        threadKey: "q-961",
+        questId: "q-961",
+        done: false,
+      },
+      {
+        id: "playground-attention-reviewed",
+        category: "review",
+        summary: "q-962 review already handled",
+        timestamp: Date.now() - 84_000,
+        messageId: null,
+        threadKey: "q-962",
+        questId: "q-962",
+        done: true,
+      },
+    ]);
     store.setSessionBoard(PLAYGROUND_THREAD_PANEL_SESSION_ID, [
       {
         questId: "q-961",
@@ -260,7 +283,7 @@ export function usePlaygroundSeed() {
         questId: "q-963",
         title: "Dispatch follow-up worker",
         status: "QUEUED",
-        waitFor: ["free-worker"],
+        waitForInput: ["playground-missing-user-decision"],
         updatedAt: Date.now() - 60_000,
         createdAt: Date.now() - 180_000,
         journey: { mode: "active", phaseIds: ["alignment", "implement", "code-review"] },
@@ -602,6 +625,7 @@ export function usePlaygroundSeed() {
         const historyLoading = new Map(s.historyLoading);
         const sessionBoards = new Map(s.sessionBoards);
         const sessionCompletedBoards = new Map(s.sessionCompletedBoards);
+        const sessionNotifications = new Map(s.sessionNotifications);
         const pendingCodexInputs = new Map(s.pendingCodexInputs);
         const sessionTimers = new Map(s.sessionTimers);
         const toolProgress = new Map(s.toolProgress);
@@ -659,8 +683,11 @@ export function usePlaygroundSeed() {
           if (prevLoading) historyLoading.set(demoId, true);
           else historyLoading.delete(demoId);
           const prevBoard = prevSessionBoards.get(demoId);
+          const prevNotifications = prevSessionNotifications.get(demoId);
           if (prevBoard) sessionBoards.set(demoId, prevBoard);
           else sessionBoards.delete(demoId);
+          if (prevNotifications) sessionNotifications.set(demoId, prevNotifications);
+          else sessionNotifications.delete(demoId);
           if (prevCompletedBoard) sessionCompletedBoards.set(demoId, prevCompletedBoard);
           else sessionCompletedBoards.delete(demoId);
           if (prevPendingCodex) pendingCodexInputs.set(demoId, prevPendingCodex);
@@ -699,6 +726,7 @@ export function usePlaygroundSeed() {
           historyLoading,
           sessionBoards,
           sessionCompletedBoards,
+          sessionNotifications,
           pendingCodexInputs,
           sessionTimers,
           toolProgress,

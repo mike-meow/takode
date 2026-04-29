@@ -76,6 +76,11 @@ import { SelectionContextMenu } from "./SelectionContextMenu.js";
 import { getHistoryWindowTurnCount } from "../../shared/history-window.js";
 import { collectAnchoredNotificationMessageIds } from "../utils/anchored-notifications.js";
 import {
+  buildAttentionLedgerMessages,
+  buildAttentionRecords,
+  mergeChronologicalMessages,
+} from "../utils/attention-records.js";
+import {
   isUserBoundaryEntry,
   useFeedModel,
   type FeedEntry,
@@ -209,7 +214,29 @@ export function MessageFeed({
   onSelectThread?: (threadKey: string) => void;
 }) {
   const allMessages = useStore((s) => s.messages.get(sessionId) ?? EMPTY_MESSAGES);
-  const messages = useMemo(() => filterMessagesForThread(allMessages, threadKey), [allMessages, threadKey]);
+  const baseMessages = useMemo(() => filterMessagesForThread(allMessages, threadKey), [allMessages, threadKey]);
+  const sessionNotifications = useStore((s) => s.sessionNotifications.get(sessionId));
+  const sessionBoard = useStore((s) => s.sessionBoards.get(sessionId));
+  const sessionCompletedBoard = useStore((s) => s.sessionCompletedBoards.get(sessionId));
+  const attentionRecords = useMemo(
+    () =>
+      buildAttentionRecords({
+        leaderSessionId: sessionId,
+        notifications: sessionNotifications,
+        boardRows: sessionBoard,
+        completedBoardRows: sessionCompletedBoard,
+        messages: allMessages,
+      }),
+    [allMessages, sessionBoard, sessionCompletedBoard, sessionId, sessionNotifications],
+  );
+  const attentionLedgerMessages = useMemo(
+    () => (isMainThreadKey(threadKey) ? buildAttentionLedgerMessages(attentionRecords) : EMPTY_MESSAGES),
+    [attentionRecords, threadKey],
+  );
+  const messages = useMemo(
+    () => mergeChronologicalMessages(baseMessages, attentionLedgerMessages),
+    [attentionLedgerMessages, baseMessages],
+  );
   const visibleToolUseIds = useMemo(
     () => (isMainThreadKey(threadKey) || isAllThreadsKey(threadKey) ? undefined : collectMessageToolUseIds(messages)),
     [messages, threadKey],
@@ -226,7 +253,6 @@ export function MessageFeed({
   const toolResults = useStore((s) => s.toolResults.get(sessionId));
   const toolStartTimestamps = useStore((s) => s.toolStartTimestamps.get(sessionId));
   const backgroundAgentNotifs = useStore((s) => s.backgroundAgentNotifs.get(sessionId));
-  const sessionNotifications = useStore((s) => s.sessionNotifications.get(sessionId));
   const currentSessionStatus = useStore((s) => s.sessionStatus.get(sessionId) ?? null);
   const parentStreamingByToolUseId = useStore((s) => s.streamingByParentToolUseId.get(sessionId));
   const shouldBottomAlignNextUserMessage = useStore((s) => s.bottomAlignNextUserMessage.has(sessionId));

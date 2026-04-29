@@ -39,6 +39,8 @@ import {
   isCrossThreadActivityMarkerMessage,
   isThreadAttachmentMarkerMessage,
 } from "../utils/thread-projection.js";
+import { AttentionLedgerRow } from "./AttentionLedgerRow.js";
+import { isAttentionLedgerMessage } from "../utils/attention-records.js";
 
 function useExpandForScrollTarget(
   sessionId: string,
@@ -614,6 +616,28 @@ export const FeedEntries = memo(function FeedEntries({
         );
         i = j;
         continue;
+      }
+      if (entry.kind === "message" && isAttentionLedgerMessage(entry.msg)) {
+        const record = entry.msg.metadata?.attentionRecord;
+        if (record) {
+          result.push(
+            <div
+              key={entry.msg.id}
+              data-message-id={entry.msg.id}
+              data-message-role={entry.msg.role}
+              data-feed-block-id={getMessageFeedBlockId(entry.msg.id)}
+            >
+              <AttentionLedgerRow
+                record={record}
+                sessionId={sessionId}
+                currentThreadKey={currentThreadKey}
+                onSelectThread={onSelectThread}
+              />
+            </div>,
+          );
+          i++;
+          continue;
+        }
       }
       if (entry.kind === "tool_msg_group") {
         result.push(

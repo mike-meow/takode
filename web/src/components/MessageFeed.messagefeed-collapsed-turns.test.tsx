@@ -54,6 +54,8 @@ const mockSetFeedScrollPosition = vi.fn();
 const mockCollapseAllTurnActivity = vi.fn();
 const mockClearBottomAlignOnNextUserMessage = vi.fn();
 const mockSetComposerDraft = vi.fn();
+const mockRequestScrollToMessage = vi.fn();
+const mockSetExpandAllInTurn = vi.fn();
 const mockSendToSession: any = vi.fn(() => true);
 
 vi.mock("../ws.js", () => ({
@@ -101,6 +103,8 @@ vi.mock("../store.js", () => {
       setActiveTaskTurnId: mockSetActiveTaskTurnId,
       backgroundAgentNotifs: mockStoreValues.backgroundAgentNotifs ?? new Map(),
       sessionNotifications: mockStoreValues.sessionNotifications ?? new Map(),
+      sessionBoards: mockStoreValues.sessionBoards ?? new Map(),
+      sessionCompletedBoards: mockStoreValues.sessionCompletedBoards ?? new Map(),
       sessionSearch: mockStoreValues.sessionSearch ?? new Map(),
     };
     return selector(state);
@@ -117,6 +121,9 @@ vi.mock("../store.js", () => {
     keepTurnExpanded: mockKeepTurnExpanded,
     clearBottomAlignOnNextUserMessage: mockClearBottomAlignOnNextUserMessage,
     setComposerDraft: mockSetComposerDraft,
+    requestScrollToMessage: mockRequestScrollToMessage,
+    setExpandAllInTurn: mockSetExpandAllInTurn,
+    sessionNotifications: mockStoreValues.sessionNotifications ?? new Map(),
     removePendingUserUpload: vi.fn(),
     updatePendingUserUpload: vi.fn(),
     focusComposer: vi.fn(),
@@ -258,6 +265,12 @@ function setStoreNotifications(sessionId: string, notifications: Array<Record<st
   mockStoreValues.sessionNotifications = map;
 }
 
+function setStoreBoard(sessionId: string, board: Array<Record<string, unknown>>) {
+  const map = new Map();
+  map.set(sessionId, board);
+  mockStoreValues.sessionBoards = map;
+}
+
 function setStoreHistoryLoading(sessionId: string, loading: boolean) {
   const map = new Map();
   if (loading) map.set(sessionId, true);
@@ -397,6 +410,8 @@ function resetStore() {
   mockCollapseAllTurnActivity.mockReset();
   mockClearBottomAlignOnNextUserMessage.mockReset();
   mockSetComposerDraft.mockReset();
+  mockRequestScrollToMessage.mockReset();
+  mockSetExpandAllInTurn.mockReset();
   mockSendToSession.mockReset();
   mockSendToSession.mockReturnValue(true);
   mockStoreValues.messages = new Map();
@@ -411,6 +426,9 @@ function resetStore() {
   mockStoreValues.streamingPauseStartedAt = new Map();
   mockStoreValues.sessionStatus = new Map();
   mockStoreValues.sessions = new Map();
+  mockStoreValues.sessionNotifications = new Map();
+  mockStoreValues.sessionBoards = new Map();
+  mockStoreValues.sessionCompletedBoards = new Map();
   mockStoreValues.toolProgress = new Map();
   mockStoreValues.toolResults = new Map();
   mockStoreValues.toolStartTimestamps = new Map();
@@ -654,9 +672,103 @@ describe("MessageFeed - collapsed turns", () => {
     expect(screen.getByRole("button", { name: "thread:q-975" })).toBeTruthy();
     expect(screen.queryByText("Hidden q-975 user trigger")).toBeNull();
     expect(screen.queryByText("Hidden q-975 assistant response")).toBeNull();
+    expect(screen.queryByTestId("attention-ledger-row")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "thread:q-975" }));
     expect(onSelectThread).toHaveBeenCalledWith("q-975");
+  });
+
+  it("renders Main attention ledger rows from routed notifications and jumps to the owner thread", async () => {
+    const sid = "test-main-attention-ledger-notification";
+    const onSelectThread = vi.fn();
+    setStoreMessages(sid, [
+      makeMessage({ id: "u-main", role: "user", content: "Coordinate active quests", timestamp: 100 }),
+      makeMessage({
+        id: "a-q983",
+        role: "assistant",
+        content: "Hidden q-983 implementation note",
+        timestamp: 110,
+        metadata: { threadRefs: [{ threadKey: "q-983", questId: "q-983", source: "explicit" }] },
+      }),
+    ]);
+    setStoreNotifications(sid, [
+      {
+        id: "n-q983",
+        category: "needs-input",
+        summary: "Approve the implementation direction",
+        timestamp: 120,
+        messageId: "a-q983",
+        threadKey: "q-983",
+        questId: "q-983",
+        done: false,
+      },
+    ]);
+
+    render(<MessageFeed sessionId={sid} onSelectThread={onSelectThread} />);
+
+    const row = screen.getByTestId("attention-ledger-row");
+    expect(row.getAttribute("data-attention-state")).toBe("unresolved");
+    expect(screen.getAllByText("Approve the implementation direction")).toHaveLength(2);
+    expect(screen.getByText("Needs attention")).toBeTruthy();
+    expect(screen.queryByText("Hidden q-983 implementation note")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Answer" }));
+    expect(onSelectThread).toHaveBeenCalledWith("q-983");
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(mockRequestScrollToMessage).toHaveBeenCalledWith(sid, "a-q983");
+    expect(mockSetExpandAllInTurn).toHaveBeenCalledWith(sid, "a-q983");
+  });
+
+  it("keeps resolved attention ledger rows visible with resolved state", () => {
+    const sid = "test-main-attention-ledger-resolved";
+    setStoreMessages(sid, [makeMessage({ id: "u-main", role: "user", content: "Coordinate active quests" })]);
+    setStoreNotifications(sid, [
+      {
+        id: "n-review",
+        category: "review",
+        summary: "q-983 ready for review",
+        timestamp: 120,
+        messageId: null,
+        threadKey: "q-983",
+        questId: "q-983",
+        done: true,
+      },
+    ]);
+
+    render(<MessageFeed sessionId={sid} />);
+
+    const row = screen.getByTestId("attention-ledger-row");
+    expect(row.getAttribute("data-attention-state")).toBe("resolved");
+    expect(screen.getByText("Resolved")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Review" })).toBeTruthy();
+  });
+
+  it("renders board wait-for-input as attention without promoting ordinary wait-for dependencies", () => {
+    const sid = "test-main-attention-ledger-board-wait";
+    setStoreMessages(sid, [makeMessage({ id: "u-main", role: "user", content: "Coordinate active quests" })]);
+    setStoreBoard(sid, [
+      {
+        questId: "q-983",
+        title: "Implement Main attention ledger rows",
+        waitForInput: ["n-missing"],
+        updatedAt: 120,
+      },
+      {
+        questId: "q-984",
+        title: "Implement compact chips",
+        waitFor: ["free-worker"],
+        updatedAt: 140,
+      },
+    ]);
+
+    render(<MessageFeed sessionId={sid} />);
+
+    expect(screen.getByTestId("attention-ledger-row").getAttribute("data-attention-type")).toBe("needs_input");
+    expect(screen.getByText("q-983: Implement Main attention ledger rows")).toBeTruthy();
+    expect(screen.getByText("Waiting for input: n-missing")).toBeTruthy();
+    expect(screen.queryByText("q-984: Implement compact chips")).toBeNull();
   });
 
   it("merges consecutive hidden Main activity markers across destination threads", () => {
