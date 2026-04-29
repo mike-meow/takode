@@ -365,10 +365,12 @@ function LeaderThreadRowItem({
   row,
   selected,
   onSelect,
+  layout = "desktop",
 }: {
   row: LeaderThreadRow;
   selected: boolean;
   onSelect: () => void;
+  layout?: "desktop" | "mobileSheet";
 }) {
   const phase = phaseLabelForThread(row);
   const waitForLabel = waitForLabelForThread(row);
@@ -380,15 +382,21 @@ function LeaderThreadRowItem({
     event.preventDefault();
     onSelect();
   };
+  const rowClassName =
+    layout === "mobileSheet"
+      ? `w-full cursor-pointer border-b border-cc-border/60 px-2.5 py-2 text-left outline-none transition-colors last:border-b-0 ${
+          selected ? "bg-cc-hover" : "hover:bg-cc-hover/50 focus:bg-cc-hover/50"
+        }`
+      : `min-w-52 shrink-0 cursor-pointer border-r border-cc-border/60 px-2.5 py-2 outline-none transition-colors sm:min-w-0 sm:w-full sm:border-r-0 sm:border-b ${
+          selected ? "bg-cc-hover" : "hover:bg-cc-hover/50 focus:bg-cc-hover/50"
+        }`;
   return (
     <div
       role="button"
       tabIndex={0}
       onClick={onSelect}
       onKeyDown={handleKeyDown}
-      className={`min-w-52 shrink-0 cursor-pointer border-r border-cc-border/60 px-2.5 py-2 outline-none transition-colors sm:min-w-0 sm:w-full sm:border-r-0 sm:border-b ${
-        selected ? "bg-cc-hover" : "hover:bg-cc-hover/50 focus:bg-cc-hover/50"
-      }`}
+      className={rowClassName}
       data-testid="leader-thread-row"
       data-thread-key={row.threadKey}
       data-thread-section={row.section}
@@ -434,29 +442,22 @@ function LeaderThreadSwitcher({
   sessionId,
   selectedThreadKey,
   onSelectThread,
+  mode = "auto",
 }: {
   sessionId: string;
   selectedThreadKey: string;
   onSelectThread: (threadKey: string) => void;
+  mode?: ThreadSelectorMode;
 }) {
-  const activeBoard = useStore((s) => s.sessionBoards.get(sessionId) ?? EMPTY_BOARD_ROWS);
-  const completedBoard = useStore((s) => s.sessionCompletedBoards.get(sessionId) ?? EMPTY_BOARD_ROWS);
-  const messages = useStore((s) => s.messages.get(sessionId) ?? EMPTY_MESSAGES);
-  const quests = useStore((s) => s.quests);
-  const rowSessionStatuses = useStore((s) => s.sessionBoardRowStatuses.get(sessionId));
-  const rows = useMemo(
-    () => buildLeaderThreadRows({ activeBoard, completedBoard, messages, quests, rowSessionStatuses }),
-    [activeBoard, completedBoard, messages, quests, rowSessionStatuses],
-  );
-  const activeRows = rows.filter((row) => row.section === "active");
-  const doneRows = rows.filter((row) => row.section === "done");
+  const { messages, activeRows, doneRows } = useLeaderThreadModel(sessionId);
   const normalizedSelected = selectedThreadKey.toLowerCase();
+  const desktopClass =
+    mode === "mobile"
+      ? "hidden"
+      : "hidden shrink-0 overflow-x-auto border-b border-cc-border bg-cc-card/70 sm:flex sm:w-64 sm:flex-col sm:overflow-x-hidden sm:overflow-y-auto sm:border-b-0 sm:border-r";
 
   return (
-    <aside
-      className="flex shrink-0 overflow-x-auto border-b border-cc-border bg-cc-card/70 sm:w-64 sm:flex-col sm:overflow-x-hidden sm:overflow-y-auto sm:border-b-0 sm:border-r"
-      data-testid="leader-thread-switcher"
-    >
+    <aside className={desktopClass} data-testid="leader-thread-switcher">
       <button
         type="button"
         onClick={() => onSelectThread("main")}
@@ -512,7 +513,252 @@ function CompactingIndicator({ sessionId }: { sessionId: string }) {
   );
 }
 
-export function ChatView({ sessionId, preview = false }: { sessionId: string; preview?: boolean }) {
+type ThreadSelectorMode = "auto" | "mobile";
+
+function useLeaderThreadModel(sessionId: string) {
+  const activeBoard = useStore((s) => s.sessionBoards.get(sessionId) ?? EMPTY_BOARD_ROWS);
+  const completedBoard = useStore((s) => s.sessionCompletedBoards.get(sessionId) ?? EMPTY_BOARD_ROWS);
+  const messages = useStore((s) => s.messages.get(sessionId) ?? EMPTY_MESSAGES);
+  const quests = useStore((s) => s.quests);
+  const rowSessionStatuses = useStore((s) => s.sessionBoardRowStatuses.get(sessionId));
+  const rows = useMemo(
+    () => buildLeaderThreadRows({ activeBoard, completedBoard, messages, quests, rowSessionStatuses }),
+    [activeBoard, completedBoard, messages, quests, rowSessionStatuses],
+  );
+  const activeRows = useMemo(() => rows.filter((row) => row.section === "active"), [rows]);
+  const doneRows = useMemo(() => rows.filter((row) => row.section === "done"), [rows]);
+  return { messages, rows, activeRows, doneRows };
+}
+
+function isQueuedLeaderThreadRow(row: LeaderThreadRow): boolean {
+  return isQueuedThreadRowStatus(row.boardStatus ?? row.boardRow?.status);
+}
+
+function splitMobileThreadRows(activeRows: LeaderThreadRow[]): {
+  activeRows: LeaderThreadRow[];
+  queuedRows: LeaderThreadRow[];
+} {
+  const queuedRows: LeaderThreadRow[] = [];
+  const nonQueuedActiveRows: LeaderThreadRow[] = [];
+  for (const row of activeRows) {
+    if (isQueuedLeaderThreadRow(row)) queuedRows.push(row);
+    else nonQueuedActiveRows.push(row);
+  }
+  return { activeRows: nonQueuedActiveRows, queuedRows };
+}
+
+function summarizeMobileThreadRows({
+  activeRows,
+  doneRows,
+}: {
+  activeRows: LeaderThreadRow[];
+  doneRows: LeaderThreadRow[];
+}): { primary: string; secondary: string } {
+  const blockedCount = activeRows.filter((row) => waitForLabelForThread(row)).length;
+  const queuedCount = activeRows.filter(isQueuedLeaderThreadRow).length;
+  if (blockedCount > 0) {
+    return { primary: `${blockedCount} blocked`, secondary: `${activeRows.length} active` };
+  }
+  if (queuedCount > 0) {
+    return { primary: `${queuedCount} queued`, secondary: `${activeRows.length} active` };
+  }
+  if (activeRows.length > 0) {
+    return {
+      primary: `${activeRows.length} active`,
+      secondary: doneRows.length > 0 ? `${doneRows.length} done` : "Main ready",
+    };
+  }
+  if (doneRows.length > 0) {
+    return { primary: `${doneRows.length} done`, secondary: "Main ready" };
+  }
+  return { primary: "Main", secondary: "No threads" };
+}
+
+function MobileMainThreadButton({
+  selected,
+  messageCount,
+  onSelect,
+}: {
+  selected: boolean;
+  messageCount: number;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`w-full rounded-md border px-3 py-2 text-left transition-colors ${
+        selected
+          ? "border-cc-primary/40 bg-cc-primary/10 text-cc-fg"
+          : "border-cc-border/70 bg-cc-card/80 text-cc-muted hover:bg-cc-hover/60"
+      }`}
+      data-testid="mobile-thread-main-row"
+    >
+      <div className="text-xs font-semibold">Main</div>
+      <div className="mt-0.5 text-[10px] tabular-nums text-cc-muted/80">
+        {messageCount} message{messageCount !== 1 ? "s" : ""}
+      </div>
+    </button>
+  );
+}
+
+function MobileThreadSection({
+  title,
+  rows,
+  selectedThreadKey,
+  onSelectThread,
+}: {
+  title: string;
+  rows: LeaderThreadRow[];
+  selectedThreadKey: string;
+  onSelectThread: (threadKey: string) => void;
+}) {
+  if (rows.length === 0) return null;
+  return (
+    <section>
+      <div className="px-1 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wide text-cc-muted/70">{title}</div>
+      <div className="overflow-hidden rounded-md border border-cc-border/70 bg-cc-card/60">
+        {rows.map((row) => (
+          <LeaderThreadRowItem
+            key={row.threadKey}
+            row={row}
+            layout="mobileSheet"
+            selected={selectedThreadKey === row.threadKey}
+            onSelect={() => onSelectThread(row.threadKey)}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function MobileLeaderThreadSwitcher({
+  sessionId,
+  selectedThreadKey,
+  onSelectThread,
+  mode = "auto",
+  initialOpen = false,
+}: {
+  sessionId: string;
+  selectedThreadKey: string;
+  onSelectThread: (threadKey: string) => void;
+  mode?: ThreadSelectorMode;
+  initialOpen?: boolean;
+}) {
+  const { messages, activeRows, doneRows } = useLeaderThreadModel(sessionId);
+  const [open, setOpen] = useState(initialOpen);
+  const normalizedSelected = selectedThreadKey.toLowerCase();
+  const summary = summarizeMobileThreadRows({ activeRows, doneRows });
+  const mobileRows = splitMobileThreadRows(activeRows);
+  const mobileOnlyClass = mode === "mobile" ? "" : " sm:hidden";
+
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
+  function handleSelectThread(threadKey: string) {
+    onSelectThread(threadKey);
+    setOpen(false);
+  }
+
+  return (
+    <>
+      <div
+        className={`shrink-0 border-b border-cc-border bg-cc-card/80 px-3 py-2${mobileOnlyClass}`}
+        data-testid="mobile-thread-overview"
+      >
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="ml-auto flex max-w-full items-center gap-2 rounded-md border border-cc-border/70 bg-cc-hover/50 px-2.5 py-1.5 text-left shadow-sm transition-colors hover:bg-cc-hover"
+          aria-expanded={open}
+          data-testid="mobile-thread-overview-button"
+        >
+          <span className="min-w-0 truncate text-xs font-semibold text-cc-fg">Threads</span>
+          <span className="shrink-0 rounded border border-amber-400/30 bg-amber-400/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-amber-200">
+            {summary.primary}
+          </span>
+          <span className="hidden shrink-0 text-[10px] text-cc-muted min-[380px]:inline">{summary.secondary}</span>
+        </button>
+      </div>
+      {open && (
+        <div
+          className={`absolute inset-0 z-40 flex flex-col bg-cc-bg text-cc-fg${mobileOnlyClass}`}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Thread selector"
+          data-testid="mobile-thread-selector-sheet"
+        >
+          <div className="flex shrink-0 items-center gap-3 border-b border-cc-border bg-cc-sidebar px-4 py-3">
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-semibold">Threads</div>
+              <div className="mt-0.5 flex min-w-0 items-center gap-2 text-[11px] text-cc-muted">
+                <span className="shrink-0">{summary.primary}</span>
+                <span className="text-cc-muted/50">/</span>
+                <span className="min-w-0 truncate">{summary.secondary}</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="rounded-md border border-cc-border/70 bg-cc-hover/50 p-2 text-cc-muted transition-colors hover:bg-cc-hover hover:text-cc-fg"
+              aria-label="Close thread selector"
+              data-testid="mobile-thread-selector-close"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                <path d="M4 4L12 12M12 4L4 12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+              </svg>
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+            <MobileMainThreadButton
+              selected={normalizedSelected === "main"}
+              messageCount={messages.length}
+              onSelect={() => handleSelectThread("main")}
+            />
+            <MobileThreadSection
+              title="Active"
+              rows={mobileRows.activeRows}
+              selectedThreadKey={normalizedSelected}
+              onSelectThread={handleSelectThread}
+            />
+            <MobileThreadSection
+              title="Queued"
+              rows={mobileRows.queuedRows}
+              selectedThreadKey={normalizedSelected}
+              onSelectThread={handleSelectThread}
+            />
+            <MobileThreadSection
+              title="Done"
+              rows={doneRows}
+              selectedThreadKey={normalizedSelected}
+              onSelectThread={handleSelectThread}
+            />
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+export function ChatView({
+  sessionId,
+  preview = false,
+  threadSelectorMode = "auto",
+  initialMobileThreadSelectorOpen = false,
+}: {
+  sessionId: string;
+  preview?: boolean;
+  threadSelectorMode?: ThreadSelectorMode;
+  initialMobileThreadSelectorOpen?: boolean;
+}) {
   const {
     sessionPerms,
     connStatus,
@@ -584,7 +830,7 @@ export function ChatView({ sessionId, preview = false }: { sessionId: string; pr
   const isResumeMissingRolloutError =
     backendError?.includes("could not be resumed because its local rollout is missing or unreadable") ?? false;
   return (
-    <div className="flex flex-col h-full min-h-0">
+    <div className="relative flex flex-col h-full min-h-0">
       {preview ? (
         <div className="shrink-0 px-4 py-2 border-b border-cc-border bg-cc-card/80 text-[11px] text-cc-muted font-medium">
           Previewing search result. Press Enter to select this conversation.
@@ -698,11 +944,21 @@ export function ChatView({ sessionId, preview = false }: { sessionId: string; pr
       ) : (
         <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
           {!preview && isLeaderSession && (
-            <LeaderThreadSwitcher
-              sessionId={sessionId}
-              selectedThreadKey={selectedThreadKey}
-              onSelectThread={setSelectedThreadKey}
-            />
+            <>
+              <MobileLeaderThreadSwitcher
+                sessionId={sessionId}
+                selectedThreadKey={selectedThreadKey}
+                onSelectThread={setSelectedThreadKey}
+                mode={threadSelectorMode}
+                initialOpen={initialMobileThreadSelectorOpen}
+              />
+              <LeaderThreadSwitcher
+                sessionId={sessionId}
+                selectedThreadKey={selectedThreadKey}
+                onSelectThread={setSelectedThreadKey}
+                mode={threadSelectorMode}
+              />
+            </>
           )}
           <MessageFeed sessionId={sessionId} threadKey={isLeaderSession ? selectedThreadKey : "main"} />
         </div>

@@ -570,6 +570,114 @@ describe("ChatView backend banners", () => {
     expect(within(view.container).getAllByTestId("leader-thread-wait-for-chip")).toHaveLength(4);
   });
 
+  it("collapses mobile thread navigation into an overview chip and full-space selector", () => {
+    // Mobile uses the same server-backed thread rows as desktop, but keeps the
+    // persistent selector out of the feed until the overview chip is opened.
+    resetStore({
+      sessions: new Map([["s1", { backend_state: "connected", backend_error: null, isOrchestrator: true }]]),
+      sdkSessions: [{ sessionId: "s1", archived: false, isOrchestrator: true }],
+      messages: new Map([
+        [
+          "s1",
+          [
+            {
+              id: "main",
+              role: "user",
+              content: "Coordinate the work board.",
+              timestamp: 1,
+            },
+            {
+              id: "active",
+              role: "assistant",
+              content: "active update",
+              timestamp: 2,
+              metadata: { threadRefs: [{ threadKey: "q-961", questId: "q-961", source: "explicit" }] },
+            },
+            {
+              id: "queued",
+              role: "assistant",
+              content: "queued update",
+              timestamp: 3,
+              metadata: { threadRefs: [{ threadKey: "q-962", questId: "q-962", source: "explicit" }] },
+            },
+            {
+              id: "done",
+              role: "assistant",
+              content: "done update",
+              timestamp: 4,
+              metadata: { threadRefs: [{ threadKey: "q-963", questId: "q-963", source: "explicit" }] },
+            },
+          ],
+        ],
+      ]),
+      sessionBoards: new Map([
+        [
+          "s1",
+          [
+            {
+              questId: "q-961",
+              title: "Active thread",
+              status: "IMPLEMENTING",
+              updatedAt: 4,
+              createdAt: 2,
+            },
+            {
+              questId: "q-962",
+              title: "Queued thread",
+              status: "QUEUED",
+              waitFor: ["q-961"],
+              updatedAt: 3,
+              createdAt: 3,
+            },
+          ],
+        ],
+      ]),
+      sessionCompletedBoards: new Map([
+        [
+          "s1",
+          [
+            {
+              questId: "q-963",
+              title: "Done thread",
+              status: "DONE",
+              updatedAt: 2,
+              completedAt: 2,
+              createdAt: 4,
+            },
+          ],
+        ],
+      ]),
+      quests: [
+        { questId: "q-961", title: "Active thread", status: "in_progress" },
+        { questId: "q-962", title: "Queued thread", status: "in_progress" },
+        { questId: "q-963", title: "Done thread", status: "done" },
+      ],
+    });
+
+    const view = render(<ChatView sessionId="s1" threadSelectorMode="mobile" />);
+    const scope = within(view.container);
+
+    expect(scope.getByTestId("leader-thread-switcher")).toHaveClass("hidden");
+    expect(scope.getByTestId("mobile-thread-overview")).not.toHaveClass("sm:hidden");
+    expect(scope.getByTestId("mobile-thread-overview-button")).toHaveTextContent("1 blocked");
+    expect(scope.getByTestId("mobile-thread-overview-button")).toHaveTextContent("2 active");
+
+    fireEvent.click(scope.getByTestId("mobile-thread-overview-button"));
+    const sheet = scope.getByTestId("mobile-thread-selector-sheet");
+
+    expect(sheet).toHaveClass("absolute");
+    expect(sheet).toHaveTextContent("Main");
+    expect(sheet).toHaveTextContent("Active");
+    expect(sheet).toHaveTextContent("Queued");
+    expect(sheet).toHaveTextContent("Done");
+    expect(within(sheet).getByTestId("leader-thread-wait-for-chip")).toHaveTextContent("wait q-961");
+
+    fireEvent.click(within(sheet).getByText("Queued thread"));
+    expect(scope.queryByTestId("mobile-thread-selector-sheet")).not.toBeInTheDocument();
+    expect(scope.getByTestId("message-feed")).toHaveAttribute("data-thread-key", "q-962");
+    expect(scope.getByTestId("composer")).toHaveAttribute("data-quest-id", "q-962");
+  });
+
   it("renders thread participant chips from live session status before stale board status", () => {
     // Worker/reviewer chips should match the same live session status source as
     // the sidebar, even if the board snapshot has not refreshed yet.
