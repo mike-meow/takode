@@ -140,16 +140,41 @@ vi.mock("./WorkBoardBar.js", () => ({
     currentThreadKey,
     currentThreadLabel,
     onReturnToMain,
+    onSelectThread,
+    threadRows = [],
   }: {
     currentThreadKey?: string;
     currentThreadLabel?: string;
     onReturnToMain?: () => void;
+    onSelectThread?: (threadKey: string) => void;
+    threadRows?: Array<{ threadKey: string; questId?: string; title: string; messageCount?: number }>;
   }) => (
     <div
       data-testid="work-board-bar"
       data-current-thread-key={currentThreadKey}
       data-current-thread-label={currentThreadLabel}
     >
+      {onSelectThread && (
+        <>
+          <button type="button" data-testid="mock-workboard-main" onClick={() => onSelectThread("main")}>
+            Main
+          </button>
+          <button type="button" data-testid="mock-workboard-all" onClick={() => onSelectThread("all")}>
+            All Threads
+          </button>
+          {threadRows.map((row) => (
+            <button
+              type="button"
+              key={row.threadKey}
+              data-testid="mock-workboard-thread"
+              data-thread-key={row.threadKey}
+              onClick={() => onSelectThread(row.threadKey)}
+            >
+              {row.questId ?? row.threadKey} {row.title}
+            </button>
+          ))}
+        </>
+      )}
       {onReturnToMain && (
         <button type="button" onClick={onReturnToMain}>
           Return to Main
@@ -223,8 +248,8 @@ vi.mock("./QuestJourneyTimeline.js", () => ({
     const normalized = (status ?? "").trim().toLowerCase();
     return normalized === "done" || normalized === "completed" || normalized === "needs_verification";
   },
-  QuestJourneyPreviewCard: ({ quest }: { quest?: { questId: string; title?: string } }) => (
-    <div data-testid="quest-journey-preview-card">{quest?.questId}</div>
+  QuestJourneyTimeline: ({ journey }: { journey?: { currentPhaseId?: string } }) => (
+    <div data-testid="quest-journey-timeline">{journey?.currentPhaseId ?? "journey"}</div>
   ),
 }));
 
@@ -337,9 +362,7 @@ describe("ChatView backend banners", () => {
     expect(scope.queryByTestId("todo-status-line")).not.toBeInTheDocument();
   });
 
-  it("renders a leader thread switcher and routes selected quest thread metadata", () => {
-    // q-941: leader sessions keep Main as the complete stream while exposing
-    // quest-backed filtered views via an explicit thread switcher.
+  it("routes quest threads through the workboard without rendering the old left panel", () => {
     resetStore({
       sessions: new Map([["s1", { backend_state: "connected", backend_error: null, isOrchestrator: true }]]),
       sdkSessions: [{ sessionId: "s1", archived: false, isOrchestrator: true }],
@@ -363,15 +386,19 @@ describe("ChatView backend banners", () => {
     const view = render(<ChatView sessionId="s1" />);
     const scope = within(view.container);
 
-    expect(scope.getByTestId("leader-thread-switcher")).toBeInTheDocument();
+    expect(scope.queryByTestId("leader-thread-switcher")).not.toBeInTheDocument();
+    expect(scope.queryByTestId("mobile-thread-overview")).not.toBeInTheDocument();
     expect(scope.getByTestId("message-feed")).toHaveAttribute("data-thread-key", "main");
-    fireEvent.click(scope.getByRole("button", { name: /q-941/i }));
+
+    fireEvent.click(scope.getByRole("button", { name: /q-941 quest thread mvp/i }));
     expect(scope.getByTestId("message-feed")).toHaveAttribute("data-thread-key", "q-941");
     expect(scope.getByTestId("composer")).toHaveAttribute("data-thread-key", "q-941");
     expect(scope.getByTestId("composer")).toHaveAttribute("data-quest-id", "q-941");
+    expect(scope.getByTestId("quest-thread-banner")).toHaveTextContent("Viewing quest thread");
+    expect(scope.getByTestId("quest-thread-banner")).toHaveTextContent("q-941");
   });
 
-  it("offers All Threads as a global read-only projection with a return path to Main", () => {
+  it("offers All Threads as a global read-only projection through the workboard", () => {
     resetStore({
       sessions: new Map([["s1", { backend_state: "connected", backend_error: null, isOrchestrator: true }]]),
       sdkSessions: [{ sessionId: "s1", archived: false, isOrchestrator: true }],
@@ -396,7 +423,7 @@ describe("ChatView backend banners", () => {
     const view = render(<ChatView sessionId="s1" />);
     const scope = within(view.container);
 
-    fireEvent.click(scope.getByTestId("leader-thread-all-row"));
+    fireEvent.click(scope.getByTestId("mock-workboard-all"));
     expect(scope.getByTestId("message-feed")).toHaveAttribute("data-thread-key", "all");
     expect(scope.queryByTestId("composer")).not.toBeInTheDocument();
     expect(scope.getByTestId("work-board-bar")).toHaveAttribute("data-current-thread-key", "all");
@@ -407,9 +434,7 @@ describe("ChatView backend banners", () => {
     expect(scope.getByTestId("composer")).toHaveAttribute("data-thread-key", "main");
   });
 
-  it("materializes off-board quest threads from explicit text thread syntax", () => {
-    // Explicit thread routing should reveal a selectable quest thread even
-    // before the quest is present in the board/quest snapshots.
+  it("passes off-board quest threads from explicit text routing to the workboard", () => {
     resetStore({
       sessions: new Map([["s1", { backend_state: "connected", backend_error: null, isOrchestrator: true }]]),
       sdkSessions: [{ sessionId: "s1", archived: false, isOrchestrator: true }],
@@ -431,17 +456,14 @@ describe("ChatView backend banners", () => {
 
     const view = render(<ChatView sessionId="s1" />);
     const scope = within(view.container);
-    const row = scope.getByTestId("leader-thread-row");
+    const row = scope.getByTestId("mock-workboard-thread");
 
     expect(row).toHaveAttribute("data-thread-key", "q-958");
-    expect(within(row).getByRole("link", { name: "q-958" })).toBeInTheDocument();
     fireEvent.click(row);
     expect(scope.getByTestId("message-feed")).toHaveAttribute("data-thread-key", "q-958");
   });
 
-  it("materializes off-board quest threads from explicit Bash command comments", () => {
-    // Command comments are a separate leader-visible routing path from text
-    // prefixes and should create the same selector row.
+  it("passes off-board quest threads from explicit Bash command comments to the workboard", () => {
     resetStore({
       sessions: new Map([["s1", { backend_state: "connected", backend_error: null, isOrchestrator: true }]]),
       sdkSessions: [{ sessionId: "s1", archived: false, isOrchestrator: true }],
@@ -471,10 +493,7 @@ describe("ChatView backend banners", () => {
 
     const view = render(<ChatView sessionId="s1" />);
     const scope = within(view.container);
-    const row = scope.getByTestId("leader-thread-row");
-
-    expect(row).toHaveAttribute("data-thread-key", "q-959");
-    expect(within(row).getByRole("link", { name: "q-959" })).toBeInTheDocument();
+    expect(scope.getByTestId("mock-workboard-thread")).toHaveAttribute("data-thread-key", "q-959");
   });
 
   it("does not materialize quest threads from plain quest mentions", () => {
@@ -500,376 +519,14 @@ describe("ChatView backend banners", () => {
     const view = render(<ChatView sessionId="s1" />);
     const scope = within(view.container);
 
-    expect(scope.getByTestId("leader-thread-switcher")).toBeInTheDocument();
-    expect(scope.queryByTestId("leader-thread-row")).not.toBeInTheDocument();
+    expect(scope.queryByTestId("mock-workboard-thread")).not.toBeInTheDocument();
     expect(scope.getByTestId("message-feed")).toHaveAttribute("data-thread-key", "main");
   });
 
-  it("makes only the quest token a quest link and keeps title clicks routed to the thread", () => {
+  it("passes active and completed board rows to the workboard even before messages exist", () => {
     resetStore({
       sessions: new Map([["s1", { backend_state: "connected", backend_error: null, isOrchestrator: true }]]),
       sdkSessions: [{ sessionId: "s1", archived: false, isOrchestrator: true }],
-      messages: new Map([
-        [
-          "s1",
-          [
-            {
-              id: "m1",
-              role: "assistant",
-              content: "q-941 update",
-              timestamp: 1,
-              metadata: { threadRefs: [{ threadKey: "q-941", questId: "q-941", source: "explicit" }] },
-            },
-            {
-              id: "m2",
-              role: "assistant",
-              content: "q-941 follow-up",
-              timestamp: 2,
-              metadata: { threadRefs: [{ threadKey: "q-941", questId: "q-941", source: "explicit" }] },
-            },
-          ],
-        ],
-      ]),
-      quests: [{ questId: "q-941", title: "Quest thread MVP with a longer title", status: "in_progress" }],
-    });
-
-    const view = render(<ChatView sessionId="s1" />);
-    const scope = within(view.container);
-    const row = scope.getByTestId("leader-thread-row");
-    const questLink = within(row).getByRole("link", { name: "q-941" });
-
-    expect(questLink).toHaveAttribute("href", "#quest-q-941");
-    expect(questLink).toHaveAttribute("data-stop-propagation", "true");
-    expect(within(row).getByText("Quest thread MVP with a longer title")).toBeInTheDocument();
-    expect(within(row).getByTestId("leader-thread-row-stats")).toHaveTextContent("2 messages");
-    expect(within(row).queryByRole("link", { name: /Quest thread MVP/i })).not.toBeInTheDocument();
-
-    fireEvent.click(within(row).getByText("Quest thread MVP with a longer title"));
-    expect(scope.getByTestId("message-feed")).toHaveAttribute("data-thread-key", "q-941");
-  });
-
-  it("shows compact server-board wait blockers ahead of shortened message counts", () => {
-    // Thread rows should reflect the board's authoritative wait state instead of
-    // inferring blockers from message content, and the blocker should remain the
-    // most compact, most salient footer item.
-    resetStore({
-      sessions: new Map([["s1", { backend_state: "connected", backend_error: null, isOrchestrator: true }]]),
-      sdkSessions: [{ sessionId: "s1", archived: false, isOrchestrator: true }],
-      messages: new Map([
-        [
-          "s1",
-          ["q-960", "q-962", "q-963", "q-964"].map((questId, index) => ({
-            id: `m-${questId}`,
-            role: "assistant",
-            content: `${questId} update`,
-            timestamp: index + 1,
-            metadata: { threadRefs: [{ threadKey: questId, questId, source: "explicit" }] },
-          })),
-        ],
-      ]),
-      sessionBoards: new Map([
-        [
-          "s1",
-          [
-            {
-              questId: "q-960",
-              title: "Queued on quest",
-              status: "QUEUED",
-              waitFor: ["q-961"],
-              updatedAt: 4,
-              createdAt: 1,
-            },
-            {
-              questId: "q-962",
-              title: "Queued on session",
-              status: "QUEUED",
-              waitFor: ["#123"],
-              updatedAt: 3,
-              createdAt: 2,
-            },
-            {
-              questId: "q-963",
-              title: "Queued on worker capacity",
-              status: "QUEUED",
-              waitFor: ["free-worker"],
-              updatedAt: 2,
-              createdAt: 3,
-            },
-            {
-              questId: "q-964",
-              title: "Waiting on input",
-              status: "IMPLEMENTING",
-              waitForInput: ["n-7"],
-              updatedAt: 1,
-              createdAt: 4,
-            },
-          ],
-        ],
-      ]),
-      quests: [
-        { questId: "q-960", title: "Queued on quest", status: "in_progress" },
-        { questId: "q-962", title: "Queued on session", status: "in_progress" },
-        { questId: "q-963", title: "Queued on worker capacity", status: "in_progress" },
-        { questId: "q-964", title: "Waiting on input", status: "in_progress" },
-      ],
-    });
-
-    const view = render(<ChatView sessionId="s1" />);
-    const rows = within(view.container).getAllByTestId("leader-thread-row");
-    const rowByQuest = new Map(rows.map((row) => [row.getAttribute("data-thread-key"), row]));
-
-    expect(within(rowByQuest.get("q-960")!).getByTestId("leader-thread-wait-for-chip")).toHaveTextContent("wait q-961");
-    expect(within(rowByQuest.get("q-962")!).getByTestId("leader-thread-wait-for-chip")).toHaveTextContent("wait #123");
-    expect(within(rowByQuest.get("q-963")!).getByTestId("leader-thread-wait-for-chip")).toHaveTextContent(
-      "wait worker",
-    );
-    expect(within(rowByQuest.get("q-964")!).getByTestId("leader-thread-wait-for-chip")).toHaveTextContent(
-      "wait input 7",
-    );
-    expect(within(rowByQuest.get("q-960")!).getByTestId("leader-thread-row-stats")).toHaveTextContent("1 msg");
-    expect(within(view.container).getAllByTestId("leader-thread-wait-for-chip")).toHaveLength(4);
-  });
-
-  it("collapses mobile thread navigation into an overview chip and full-space selector", () => {
-    // Mobile uses the same server-backed thread rows as desktop, but keeps the
-    // persistent selector out of the feed until the overview chip is opened.
-    resetStore({
-      sessions: new Map([["s1", { backend_state: "connected", backend_error: null, isOrchestrator: true }]]),
-      sdkSessions: [{ sessionId: "s1", archived: false, isOrchestrator: true }],
-      messages: new Map([
-        [
-          "s1",
-          [
-            {
-              id: "main",
-              role: "user",
-              content: "Coordinate the work board.",
-              timestamp: 1,
-            },
-            {
-              id: "active",
-              role: "assistant",
-              content: "active update",
-              timestamp: 2,
-              metadata: { threadRefs: [{ threadKey: "q-961", questId: "q-961", source: "explicit" }] },
-            },
-            {
-              id: "queued",
-              role: "assistant",
-              content: "queued update",
-              timestamp: 3,
-              metadata: { threadRefs: [{ threadKey: "q-962", questId: "q-962", source: "explicit" }] },
-            },
-            {
-              id: "done",
-              role: "assistant",
-              content: "done update",
-              timestamp: 4,
-              metadata: { threadRefs: [{ threadKey: "q-963", questId: "q-963", source: "explicit" }] },
-            },
-          ],
-        ],
-      ]),
-      sessionBoards: new Map([
-        [
-          "s1",
-          [
-            {
-              questId: "q-961",
-              title: "Active thread",
-              status: "IMPLEMENTING",
-              updatedAt: 4,
-              createdAt: 2,
-            },
-            {
-              questId: "q-962",
-              title: "Queued thread",
-              status: "QUEUED",
-              waitFor: ["q-961"],
-              updatedAt: 3,
-              createdAt: 3,
-            },
-          ],
-        ],
-      ]),
-      sessionCompletedBoards: new Map([
-        [
-          "s1",
-          [
-            {
-              questId: "q-963",
-              title: "Done thread",
-              status: "DONE",
-              updatedAt: 2,
-              completedAt: 2,
-              createdAt: 4,
-            },
-          ],
-        ],
-      ]),
-      quests: [
-        { questId: "q-961", title: "Active thread", status: "in_progress" },
-        { questId: "q-962", title: "Queued thread", status: "in_progress" },
-        { questId: "q-963", title: "Done thread", status: "done" },
-      ],
-    });
-
-    const view = render(<ChatView sessionId="s1" threadSelectorMode="mobile" />);
-    const scope = within(view.container);
-
-    expect(scope.getByTestId("leader-thread-switcher")).toHaveClass("hidden");
-    expect(scope.getByTestId("mobile-thread-overview")).not.toHaveClass("sm:hidden");
-    expect(scope.getByTestId("mobile-thread-overview-button")).toHaveTextContent("1 blocked");
-    expect(scope.getByTestId("mobile-thread-overview-button")).toHaveTextContent("2 active");
-
-    fireEvent.click(scope.getByTestId("mobile-thread-overview-button"));
-    const sheet = scope.getByTestId("mobile-thread-selector-sheet");
-
-    expect(sheet).toHaveClass("absolute");
-    expect(sheet).toHaveTextContent("Main");
-    expect(sheet).toHaveTextContent("Active");
-    expect(sheet).toHaveTextContent("Queued");
-    expect(sheet).toHaveTextContent("Done");
-    expect(within(sheet).getByTestId("leader-thread-wait-for-chip")).toHaveTextContent("wait q-961");
-
-    fireEvent.click(within(sheet).getByText("Queued thread"));
-    expect(scope.queryByTestId("mobile-thread-selector-sheet")).not.toBeInTheDocument();
-    expect(scope.getByTestId("message-feed")).toHaveAttribute("data-thread-key", "q-962");
-    expect(scope.getByTestId("composer")).toHaveAttribute("data-quest-id", "q-962");
-  });
-
-  it("renders thread participant chips from live session status before stale board status", () => {
-    // Worker/reviewer chips should match the same live session status source as
-    // the sidebar, even if the board snapshot has not refreshed yet.
-    resetStore({
-      sessions: new Map([["s1", { backend_state: "connected", backend_error: null, isOrchestrator: true }]]),
-      sdkSessions: [
-        { sessionId: "s1", archived: false, isOrchestrator: true, state: "connected", cliConnected: true },
-        { sessionId: "worker-running", archived: false, sessionNum: 1153, state: "connected", cliConnected: true },
-        { sessionId: "reviewer-disconnected", archived: false, sessionNum: 1155, state: "exited", cliConnected: false },
-        { sessionId: "worker-idle", archived: false, sessionNum: 1154, state: "connected", cliConnected: true },
-      ],
-      cliConnected: new Map([
-        ["s1", true],
-        ["worker-running", true],
-        ["reviewer-disconnected", false],
-        ["worker-idle", true],
-      ]),
-      cliDisconnectReason: new Map([
-        ["s1", null],
-        ["worker-running", null],
-        ["reviewer-disconnected", "broken"],
-        ["worker-idle", null],
-      ]),
-      sessionStatus: new Map([
-        ["s1", "idle"],
-        ["worker-running", "running"],
-        ["reviewer-disconnected", null],
-        ["worker-idle", "idle"],
-      ]),
-      messages: new Map([
-        [
-          "s1",
-          [
-            {
-              id: "m-running",
-              role: "assistant",
-              content: "q-941 update",
-              timestamp: 1,
-              metadata: { threadRefs: [{ threadKey: "q-941", questId: "q-941", source: "explicit" }] },
-            },
-            {
-              id: "m-idle",
-              role: "assistant",
-              content: "q-942 update",
-              timestamp: 2,
-              metadata: { threadRefs: [{ threadKey: "q-942", questId: "q-942", source: "explicit" }] },
-            },
-          ],
-        ],
-      ]),
-      sessionBoards: new Map([
-        [
-          "s1",
-          [
-            {
-              questId: "q-941",
-              title: "Running thread",
-              worker: "worker-running",
-              workerNum: 1153,
-              updatedAt: 3,
-              createdAt: 1,
-            },
-            {
-              questId: "q-942",
-              title: "Idle thread",
-              worker: "worker-idle",
-              workerNum: 1154,
-              updatedAt: 2,
-              createdAt: 2,
-            },
-          ],
-        ],
-      ]),
-      sessionBoardRowStatuses: new Map([
-        [
-          "s1",
-          {
-            "q-941": {
-              worker: { sessionId: "worker-running", sessionNum: 1153, status: "idle" },
-              reviewer: { sessionId: "reviewer-disconnected", sessionNum: 1155, status: "idle" },
-            },
-            "q-942": {
-              worker: { sessionId: "worker-idle", sessionNum: 1154, status: "running" },
-              reviewer: null,
-            },
-          },
-        ],
-      ]),
-      quests: [
-        { questId: "q-941", title: "Running thread", status: "in_progress" },
-        { questId: "q-942", title: "Idle thread", status: "in_progress" },
-      ],
-    });
-
-    const view = render(<ChatView sessionId="s1" />);
-    const rows = within(view.container).getAllByTestId("leader-thread-row");
-    const runningRow = rows.find((row) => row.getAttribute("data-thread-key") === "q-941")!;
-    const idleRow = rows.find((row) => row.getAttribute("data-thread-key") === "q-942")!;
-
-    expect(
-      within(runningRow)
-        .getAllByTestId("session-status-dot")
-        .map((dot) => dot.getAttribute("data-status")),
-    ).toEqual(["running", "disconnected"]);
-    expect(within(idleRow).getByTestId("session-status-dot")).toHaveAttribute("data-status", "idle");
-  });
-
-  it("hides empty quest threads and separates nonempty off-board threads into Done", () => {
-    resetStore({
-      sessions: new Map([["s1", { backend_state: "connected", backend_error: null, isOrchestrator: true }]]),
-      sdkSessions: [{ sessionId: "s1", archived: false, isOrchestrator: true }],
-      messages: new Map([
-        [
-          "s1",
-          [
-            {
-              id: "m-active",
-              role: "assistant",
-              content: "active update",
-              timestamp: 200,
-              metadata: { threadRefs: [{ threadKey: "q-200", questId: "q-200", source: "explicit" }] },
-            },
-            {
-              id: "m-done",
-              role: "assistant",
-              content: "verification update",
-              timestamp: 300,
-              metadata: { threadRefs: [{ threadKey: "q-300", questId: "q-300", source: "explicit" }] },
-            },
-          ],
-        ],
-      ]),
       sessionBoards: new Map([
         [
           "s1",
@@ -880,35 +537,73 @@ describe("ChatView backend banners", () => {
               status: "IMPLEMENT",
               updatedAt: 500,
               createdAt: 100,
-              journey: { mode: "active", phaseIds: ["implement"], currentPhaseIndex: 0 },
+              journey: { mode: "active", phaseIds: ["implement"], currentPhaseId: "implement" },
             },
+          ],
+        ],
+      ]),
+      sessionCompletedBoards: new Map([
+        [
+          "s1",
+          [
             {
               questId: "q-200",
-              title: "Active thread",
-              status: "IMPLEMENT",
+              title: "Completed thread",
+              status: "DONE",
               updatedAt: 400,
+              completedAt: 400,
               createdAt: 200,
-              journey: { mode: "active", phaseIds: ["implement"], currentPhaseIndex: 0 },
             },
           ],
         ],
       ]),
       quests: [
         { questId: "q-100", title: "Empty active thread", status: "in_progress" },
-        { questId: "q-200", title: "Active thread", status: "in_progress" },
-        { questId: "q-300", title: "Needs verification thread", status: "needs_verification" },
+        { questId: "q-200", title: "Completed thread", status: "done" },
       ],
     });
 
     const view = render(<ChatView sessionId="s1" />);
-    const scope = within(view.container);
-    const rows = scope.getAllByTestId("leader-thread-row");
+    const rows = within(view.container).getAllByTestId("mock-workboard-thread");
+    expect(rows.map((row) => row.getAttribute("data-thread-key"))).toEqual(["q-100", "q-200"]);
+  });
 
-    expect(scope.queryByText(/q-100/i)).not.toBeInTheDocument();
-    expect(rows.map((row) => row.getAttribute("data-thread-key"))).toEqual(["q-200", "q-300"]);
-    expect(rows.map((row) => row.getAttribute("data-thread-section"))).toEqual(["active", "done"]);
-    expect(scope.getAllByText("Done").length).toBeGreaterThanOrEqual(1);
-    expect(scope.queryByText("needs_verification")).not.toBeInTheDocument();
-    expect(scope.queryByText("Open quest")).not.toBeInTheDocument();
+  it("shows quest Journey context in the quest-thread banner and can return to Main", () => {
+    resetStore({
+      sessions: new Map([["s1", { backend_state: "connected", backend_error: null, isOrchestrator: true }]]),
+      sdkSessions: [{ sessionId: "s1", archived: false, isOrchestrator: true }],
+      sessionBoards: new Map([
+        [
+          "s1",
+          [
+            {
+              questId: "q-968",
+              title: "Thread navigation rework",
+              status: "IMPLEMENTING",
+              updatedAt: 4,
+              createdAt: 2,
+              journey: {
+                mode: "active",
+                phaseIds: ["alignment", "implement", "code-review"],
+                currentPhaseId: "implement",
+              },
+            },
+          ],
+        ],
+      ]),
+      quests: [{ questId: "q-968", title: "Thread navigation rework", status: "in_progress" }],
+    });
+
+    const view = render(<ChatView sessionId="s1" />);
+    const scope = within(view.container);
+
+    fireEvent.click(scope.getByRole("button", { name: /q-968 thread navigation rework/i }));
+    expect(scope.getByTestId("quest-thread-banner")).toHaveTextContent("Viewing quest thread");
+    expect(scope.getByTestId("quest-thread-banner")).toHaveTextContent("q-968");
+    expect(scope.getByTestId("quest-thread-banner")).toHaveTextContent("Thread navigation rework");
+    expect(scope.getByTestId("quest-journey-timeline")).toHaveTextContent("implement");
+
+    fireEvent.click(scope.getByTestId("quest-thread-banner-return-main"));
+    expect(scope.getByTestId("message-feed")).toHaveAttribute("data-thread-key", "main");
   });
 });

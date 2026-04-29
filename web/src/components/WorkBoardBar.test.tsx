@@ -139,8 +139,30 @@ vi.mock("./BoardTable.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./BoardTable.js")>();
   return {
     ...actual,
-    BoardTable: ({ board }: { board: BoardRowData[]; rowSessionStatuses?: unknown }) => (
-      <div data-testid="board-table">{board.length} rows</div>
+    BoardTable: ({
+      board,
+      mode = "active",
+      onSelectQuestThread,
+    }: {
+      board: BoardRowData[];
+      mode?: string;
+      rowSessionStatuses?: unknown;
+      onSelectQuestThread?: (questId: string) => void;
+    }) => (
+      <div data-testid="board-table" data-mode={mode}>
+        {board.length} rows
+        {board.map((row) => (
+          <button
+            key={row.questId}
+            type="button"
+            data-testid="board-thread-action"
+            data-thread-key={row.questId.toLowerCase()}
+            onClick={() => onSelectQuestThread?.(row.questId.toLowerCase())}
+          >
+            Jump {row.questId}
+          </button>
+        ))}
+      </div>
     ),
   };
 });
@@ -169,22 +191,23 @@ describe("WorkBoardBar", () => {
     expect(container.innerHTML).toBe("");
   });
 
-  it("returns null when board is empty", () => {
+  it("keeps the primary workboard navigator visible when board is empty", () => {
     resetStore({
       sdkSessions: [{ sessionId: "s1", isOrchestrator: true }],
       sessionBoards: new Map([["s1", []]]),
     });
-    const { container } = render(<WorkBoardBar sessionId="s1" />);
-    expect(container.innerHTML).toBe("");
+    const { getByText, getByTestId } = render(<WorkBoardBar sessionId="s1" />);
+    expect(getByText("Empty")).toBeInTheDocument();
+    expect(getByTestId("workboard-current-thread")).toHaveTextContent("Main");
   });
 
-  it("returns null when no board data exists for session", () => {
+  it("keeps the primary workboard navigator visible when no board data exists for session", () => {
     resetStore({
       sdkSessions: [{ sessionId: "s1", isOrchestrator: true }],
       sessionBoards: new Map(),
     });
-    const { container } = render(<WorkBoardBar sessionId="s1" />);
-    expect(container.innerHTML).toBe("");
+    const { getByText } = render(<WorkBoardBar sessionId="s1" />);
+    expect(getByText("Empty")).toBeInTheDocument();
   });
 
   it("renders summary bar for orchestrator with board data", () => {
@@ -234,8 +257,8 @@ describe("WorkBoardBar", () => {
       sdkSessions: [{ sessionId: "s1", isOrchestrator: true }],
       sessionBoards: new Map([["s1", BOARD_DATA]]),
     });
-    const { getByRole, getByTestId } = render(<WorkBoardBar sessionId="s1" />);
-    fireEvent.click(getByRole("button"));
+    const { getByTestId } = render(<WorkBoardBar sessionId="s1" />);
+    fireEvent.click(getByTestId("workboard-summary-button"));
     expect(getByTestId("board-table")).toBeInTheDocument();
   });
 
@@ -244,8 +267,8 @@ describe("WorkBoardBar", () => {
       sdkSessions: [{ sessionId: "s1", isOrchestrator: true }],
       sessionBoards: new Map([["s1", BOARD_DATA]]),
     });
-    const { getByRole, queryByTestId } = render(<WorkBoardBar sessionId="s1" />);
-    const button = getByRole("button");
+    const { getByTestId, queryByTestId } = render(<WorkBoardBar sessionId="s1" />);
+    const button = getByTestId("workboard-summary-button");
     fireEvent.click(button); // expand
     fireEvent.click(button); // collapse
     expect(queryByTestId("board-table")).not.toBeInTheDocument();
@@ -256,8 +279,8 @@ describe("WorkBoardBar", () => {
       sdkSessions: [{ sessionId: "s1", isOrchestrator: true }],
       sessionBoards: new Map([["s1", BOARD_DATA]]),
     });
-    const { getByRole, queryByTestId } = render(<WorkBoardBar sessionId="s1" />);
-    fireEvent.click(getByRole("button")); // expand
+    const { getByTestId, queryByTestId } = render(<WorkBoardBar sessionId="s1" />);
+    fireEvent.click(getByTestId("workboard-summary-button")); // expand
     fireEvent.keyDown(document, { key: "Escape" });
     expect(queryByTestId("board-table")).not.toBeInTheDocument();
   });
@@ -283,9 +306,9 @@ describe("WorkBoardBar", () => {
         ["s2", BOARD_DATA],
       ]),
     });
-    const { getByRole, getByTestId, queryByTestId, rerender, unmount } = render(<WorkBoardBar sessionId="s1" />);
+    const { getByTestId, queryByTestId, rerender, unmount } = render(<WorkBoardBar sessionId="s1" />);
 
-    fireEvent.click(getByRole("button"));
+    fireEvent.click(getByTestId("workboard-summary-button"));
     expect(getByTestId("board-table")).toBeInTheDocument();
     expect(localStorage.getItem(scopedKey("cc-work-board-expanded:s1"))).toBe("1");
 
@@ -305,11 +328,70 @@ describe("WorkBoardBar", () => {
       sdkSessions: [{ sessionId: "s1", isOrchestrator: true }],
       sessionBoards: new Map([["s1", BOARD_DATA]]),
     });
-    const { getByRole, getByTestId } = render(<WorkBoardBar sessionId="s1" />);
-    fireEvent.click(getByRole("button"));
+    const { getByTestId } = render(<WorkBoardBar sessionId="s1" />);
+    fireEvent.click(getByTestId("workboard-summary-button"));
     expect(getByTestId("board-table")).toBeInTheDocument();
 
     fireEvent.mouseDown(document.body);
     expect(getByTestId("board-table")).toBeInTheDocument();
+  });
+
+  it("offers Main and All Threads navigation when expanded", () => {
+    const onSelectThread = vi.fn();
+    resetStore({
+      sdkSessions: [{ sessionId: "s1", isOrchestrator: true }],
+      sessionBoards: new Map([["s1", BOARD_DATA]]),
+    });
+
+    const { getByTestId } = render(<WorkBoardBar sessionId="s1" onSelectThread={onSelectThread} />);
+    fireEvent.click(getByTestId("workboard-summary-button"));
+    fireEvent.click(getByTestId("workboard-thread-main"));
+    fireEvent.click(getByTestId("workboard-thread-all"));
+
+    expect(onSelectThread).toHaveBeenNthCalledWith(1, "main");
+    expect(onSelectThread).toHaveBeenNthCalledWith(2, "all");
+  });
+
+  it("navigates active and completed quest threads without changing QuestLink semantics", () => {
+    const onSelectThread = vi.fn();
+    resetStore({
+      sdkSessions: [{ sessionId: "s1", isOrchestrator: true }],
+      sessionBoards: new Map([["s1", BOARD_DATA]]),
+      sessionCompletedBoards: new Map([
+        ["s1", [{ questId: "q-3", status: "DONE", title: "Finished", updatedAt: 3, completedAt: 3 }]],
+      ]),
+    });
+
+    const { getByTestId, getAllByTestId, getByText } = render(
+      <WorkBoardBar sessionId="s1" onSelectThread={onSelectThread} />,
+    );
+    fireEvent.click(getByTestId("workboard-summary-button"));
+    fireEvent.click(getAllByTestId("board-thread-action")[0]);
+    fireEvent.click(getByText("1 completed"));
+    fireEvent.click(getAllByTestId("board-thread-action").find((button) => button.textContent?.includes("q-3"))!);
+
+    expect(onSelectThread).toHaveBeenNthCalledWith(1, "q-1");
+    expect(onSelectThread).toHaveBeenNthCalledWith(2, "q-3");
+  });
+
+  it("navigates off-board quest threads from thread metadata", () => {
+    const onSelectThread = vi.fn();
+    resetStore({
+      sdkSessions: [{ sessionId: "s1", isOrchestrator: true }],
+      sessionBoards: new Map([["s1", BOARD_DATA]]),
+    });
+
+    const { getByTestId } = render(
+      <WorkBoardBar
+        sessionId="s1"
+        onSelectThread={onSelectThread}
+        threadRows={[{ threadKey: "q-99", questId: "q-99", title: "Off-board thread", messageCount: 2 }]}
+      />,
+    );
+
+    fireEvent.click(getByTestId("workboard-summary-button"));
+    expect(getByTestId("workboard-off-board-threads")).toHaveTextContent("Off-board thread");
+    fireEvent.click(getByTestId("workboard-off-board-thread"));
+    expect(onSelectThread).toHaveBeenCalledWith("q-99");
   });
 });

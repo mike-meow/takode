@@ -172,24 +172,15 @@ export function PlaygroundOverviewSections() {
       </Section>
 
       <Section
-        title="Leader Thread Panel"
-        description="Leader ChatView with desktop thread rows, mobile overview chip, expanded selector, board-derived wait blockers, and compact row stats"
+        title="Leader Workboard Thread Navigation"
+        description="Leader ChatView with workboard-owned Main / All Threads / quest navigation and quest-thread banner context."
       >
-        <div className="grid max-w-5xl gap-4 lg:grid-cols-[minmax(0,1fr)_390px]">
+        <div className="grid max-w-5xl gap-4 lg:grid-cols-2">
           <div className="overflow-hidden rounded-xl border border-cc-border bg-cc-card h-[460px]">
             <ChatView sessionId={PLAYGROUND_THREAD_PANEL_SESSION_ID} />
           </div>
-          <div className="grid gap-4">
-            <div className="overflow-hidden rounded-xl border border-cc-border bg-cc-card h-[360px]">
-              <ChatView sessionId={PLAYGROUND_THREAD_PANEL_SESSION_ID} threadSelectorMode="mobile" />
-            </div>
-            <div className="overflow-hidden rounded-xl border border-cc-border bg-cc-card h-[360px]">
-              <ChatView
-                sessionId={PLAYGROUND_THREAD_PANEL_SESSION_ID}
-                threadSelectorMode="mobile"
-                initialMobileThreadSelectorOpen
-              />
-            </div>
+          <div className="overflow-hidden rounded-xl border border-cc-border bg-cc-card h-[460px]">
+            <ChatView sessionId={PLAYGROUND_THREAD_PANEL_SESSION_ID} />
           </div>
         </div>
       </Section>

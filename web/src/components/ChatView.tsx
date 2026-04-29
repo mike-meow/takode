@@ -1,5 +1,4 @@
-import { useMemo, useState, useEffect, useRef, useLayoutEffect, type KeyboardEvent, type MouseEvent } from "react";
-import { createPortal } from "react-dom";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useStore } from "../store.js";
 import { api } from "../api.js";
@@ -13,27 +12,22 @@ import {
 } from "./PermissionBanner.js";
 import { TaskOutlineBar } from "./TaskOutlineBar.js";
 import { TodoStatusLine } from "./TodoStatusLine.js";
-import { WorkBoardBar } from "./WorkBoardBar.js";
+import { WorkBoardBar, type WorkBoardThreadNavigationRow } from "./WorkBoardBar.js";
 import { YarnBallDot } from "./CatIcons.js";
 import { SearchBar } from "./SearchBar.js";
 import { useSessionSearch } from "../hooks/useSessionSearch.js";
 import type { BoardRowData } from "./BoardTable.js";
-import { isCompletedJourneyPresentationStatus, QuestJourneyPreviewCard } from "./QuestJourneyTimeline.js";
+import { isCompletedJourneyPresentationStatus, QuestJourneyTimeline } from "./QuestJourneyTimeline.js";
 import { QuestInlineLink } from "./QuestInlineLink.js";
-import { SessionInlineLink } from "./SessionInlineLink.js";
-import { SessionStatusDot } from "./SessionStatusDot.js";
-import { useParticipantSessionStatusDotProps } from "./session-participant-status.js";
 import {
-  formatWaitForRefLabel,
   getQuestJourneyCurrentPhaseId,
   getQuestJourneyPhase,
   getQuestJourneyPhaseForState,
   getQuestJourneyPresentation,
-  getWaitForRefKind,
 } from "../../shared/quest-journey.js";
 import { parseCommandThreadComment, parseThreadTextPrefix } from "../../shared/thread-routing.js";
-import { ALL_THREADS_KEY, MAIN_THREAD_KEY, filterMessagesForThread } from "../utils/thread-projection.js";
-import type { BoardParticipantStatus, BoardRowSessionStatus, ChatMessage, QuestmasterTask } from "../types.js";
+import { ALL_THREADS_KEY, MAIN_THREAD_KEY } from "../utils/thread-projection.js";
+import type { BoardRowSessionStatus, ChatMessage, QuestmasterTask } from "../types.js";
 
 type LeaderThreadRow = {
   threadKey: string;
@@ -132,7 +126,7 @@ function buildLeaderThreadRows({
     const existing = rows.get(key);
     const boardRow = partial.boardRow ?? existing?.boardRow ?? boardRowById.get(key);
     const messageCount = counts.get(key) ?? existing?.messageCount ?? 0;
-    if (messageCount <= 0) return;
+    if (messageCount <= 0 && !boardRow) return;
     const section = activeKeys.has(key) ? "active" : "done";
     rows.set(key, {
       threadKey: key,
@@ -210,325 +204,6 @@ function journeyStatusForThread(row: LeaderThreadRow): string | undefined {
   return isDoneThreadRow(row) ? "done" : row.boardStatus;
 }
 
-function isQueuedThreadRowStatus(status?: string): boolean {
-  return (status || "").trim().toUpperCase() === "QUEUED";
-}
-
-function formatThreadWaitForRefLabel(depRef: string): string {
-  switch (getWaitForRefKind(depRef)) {
-    case "quest":
-      return `wait ${depRef.toLowerCase()}`;
-    case "session":
-      return `wait ${depRef}`;
-    case "free-worker":
-      return "wait worker";
-    case "invalid":
-      return `wait ${formatWaitForRefLabel(depRef)}`;
-  }
-}
-
-function formatThreadWaitForInputLabel(notificationId: string): string {
-  const match = /^n-(\d+)$/i.exec(notificationId.trim());
-  return match ? `wait input ${match[1]}` : "wait input";
-}
-
-function waitForLabelForThread(row: LeaderThreadRow): string | null {
-  const boardRow = row.boardRow;
-  if (!boardRow) return null;
-
-  if (isQueuedThreadRowStatus(boardRow.status)) {
-    const depRef = boardRow.waitFor?.[0];
-    return depRef ? formatThreadWaitForRefLabel(depRef) : null;
-  }
-
-  const notificationId = boardRow.waitForInput?.[0];
-  return notificationId ? formatThreadWaitForInputLabel(notificationId) : null;
-}
-
-function ThreadWaitForChip({ label }: { label: string }) {
-  return (
-    <span
-      className="inline-flex max-w-full shrink-0 items-center rounded border border-amber-400/30 bg-amber-400/10 px-1.5 py-0.5 font-mono-code text-[10px] leading-none text-amber-200"
-      data-testid="leader-thread-wait-for-chip"
-      title={label}
-    >
-      <span className="truncate">{label}</span>
-    </span>
-  );
-}
-
-function ThreadParticipantChip({
-  label,
-  participant,
-  fallbackSessionId,
-  fallbackSessionNum,
-}: {
-  label: string;
-  participant?: BoardParticipantStatus | null;
-  fallbackSessionId?: string;
-  fallbackSessionNum?: number;
-}) {
-  const sessionId = participant?.sessionId ?? fallbackSessionId ?? null;
-  const sessionNum = participant?.sessionNum ?? fallbackSessionNum ?? null;
-  const dotProps = useParticipantSessionStatusDotProps(sessionId, participant?.status);
-  if (!sessionId) return null;
-  return (
-    <span className="inline-flex items-center gap-1 rounded border border-cc-border/60 bg-cc-hover/40 px-1.5 py-0.5 text-[10px] leading-none">
-      {dotProps && <SessionStatusDot className="mt-0" {...dotProps} />}
-      <span className="text-cc-muted">{label}</span>
-      <SessionInlineLink
-        sessionId={sessionId}
-        sessionNum={sessionNum}
-        className="font-mono-code text-amber-400 hover:text-amber-300 hover:underline decoration-dotted underline-offset-2"
-      >
-        {`#${sessionNum ?? "?"}`}
-      </SessionInlineLink>
-    </span>
-  );
-}
-
-function ThreadJourneyHover({ row, label }: { row: LeaderThreadRow; label: { label: string; color?: string } }) {
-  const [hoverRect, setHoverRect] = useState<DOMRect | null>(null);
-  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const cardRef = useRef<HTMLDivElement>(null);
-  const zoomLevel = useStore((s) => s.zoomLevel ?? 1);
-  const cardWidth = 360;
-  const gap = 6;
-
-  useEffect(
-    () => () => {
-      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-    },
-    [],
-  );
-
-  useLayoutEffect(() => {
-    if (!cardRef.current || !hoverRect) return;
-    const rect = cardRef.current.getBoundingClientRect();
-    const el = cardRef.current;
-    if (rect.right > window.innerWidth - 8) {
-      el.style.left = `${Math.max(8, window.innerWidth - cardWidth - 8)}px`;
-    }
-    if (rect.bottom > window.innerHeight - 8) {
-      el.style.top = `${Math.max(8, hoverRect.top - rect.height - gap)}px`;
-    }
-  }, [hoverRect]);
-
-  function handleMouseEnter(e: MouseEvent<HTMLDivElement>) {
-    if (!row.journey?.phaseIds?.length) return;
-    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-    setHoverRect(e.currentTarget.getBoundingClientRect());
-  }
-
-  function handleMouseLeave() {
-    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-    hideTimerRef.current = setTimeout(() => setHoverRect(null), 100);
-  }
-
-  return (
-    <>
-      <div
-        className="inline-flex max-w-full items-center gap-1 rounded-full border border-cc-border/60 bg-cc-card/70 px-1.5 py-0.5 text-[10px] leading-none text-cc-muted"
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-        data-testid="leader-thread-journey-hover-target"
-      >
-        <span
-          className="h-1.5 w-1.5 shrink-0 rounded-full bg-current"
-          style={label.color ? { color: label.color } : undefined}
-        />
-        <span className="truncate" style={label.color ? { color: label.color } : undefined}>
-          {label.label}
-        </span>
-      </div>
-      {hoverRect &&
-        row.journey &&
-        createPortal(
-          <div
-            ref={cardRef}
-            className="fixed z-50 pointer-events-auto hidden-on-touch"
-            style={{
-              left: hoverRect.left,
-              top: hoverRect.bottom + gap,
-              width: cardWidth,
-              transform: `scale(${zoomLevel})`,
-              transformOrigin: "top left",
-            }}
-            onMouseEnter={() => {
-              if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-            }}
-            onMouseLeave={() => setHoverRect(null)}
-            data-testid="leader-thread-journey-hover-card"
-          >
-            <div className="rounded-lg border border-cc-border bg-cc-card p-2.5 shadow-xl">
-              <QuestJourneyPreviewCard
-                journey={row.journey}
-                status={journeyStatusForThread(row)}
-                quest={{ questId: row.questId ?? row.threadKey, title: row.title }}
-                onQuestClick={() => row.questId && useStore.getState().openQuestOverlay(row.questId)}
-              />
-            </div>
-          </div>,
-          document.body,
-        )}
-    </>
-  );
-}
-
-function LeaderThreadRowItem({
-  row,
-  selected,
-  onSelect,
-  layout = "desktop",
-}: {
-  row: LeaderThreadRow;
-  selected: boolean;
-  onSelect: () => void;
-  layout?: "desktop" | "mobileSheet";
-}) {
-  const phase = phaseLabelForThread(row);
-  const waitForLabel = waitForLabelForThread(row);
-  const messageCountLabel = waitForLabel
-    ? `${row.messageCount} msg${row.messageCount !== 1 ? "s" : ""}`
-    : `${row.messageCount} message${row.messageCount !== 1 ? "s" : ""}`;
-  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== "Enter" && event.key !== " ") return;
-    event.preventDefault();
-    onSelect();
-  };
-  const rowClassName =
-    layout === "mobileSheet"
-      ? `w-full cursor-pointer border-b border-cc-border/60 px-2.5 py-2 text-left outline-none transition-colors last:border-b-0 ${
-          selected ? "bg-cc-hover" : "hover:bg-cc-hover/50 focus:bg-cc-hover/50"
-        }`
-      : `min-w-52 shrink-0 cursor-pointer border-r border-cc-border/60 px-2.5 py-2 outline-none transition-colors sm:min-w-0 sm:w-full sm:border-r-0 sm:border-b ${
-          selected ? "bg-cc-hover" : "hover:bg-cc-hover/50 focus:bg-cc-hover/50"
-        }`;
-  return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={onSelect}
-      onKeyDown={handleKeyDown}
-      className={rowClassName}
-      data-testid="leader-thread-row"
-      data-thread-key={row.threadKey}
-      data-thread-section={row.section}
-    >
-      <div className="flex min-w-0 items-start gap-1.5">
-        {row.questId ? (
-          <>
-            <QuestInlineLink
-              questId={row.questId}
-              stopPropagation
-              className="shrink-0 text-left text-xs font-medium font-mono-code text-blue-300 hover:text-blue-200 hover:underline"
-            >
-              {row.questId}
-            </QuestInlineLink>
-            <span className="min-w-0 truncate text-xs font-medium text-cc-fg">{row.title}</span>
-          </>
-        ) : (
-          <span className="min-w-0 truncate text-xs font-medium text-cc-fg">{row.title}</span>
-        )}
-      </div>
-      <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
-        {phase && <ThreadJourneyHover row={row} label={phase} />}
-        <ThreadParticipantChip
-          label="W"
-          participant={row.rowStatus?.worker}
-          fallbackSessionId={row.boardRow?.worker}
-          fallbackSessionNum={row.boardRow?.workerNum}
-        />
-        <ThreadParticipantChip label="R" participant={row.rowStatus?.reviewer} />
-      </div>
-      <div
-        className="mt-1 flex min-w-0 items-center gap-1.5 text-[10px] tabular-nums text-cc-muted/85"
-        data-testid="leader-thread-row-stats"
-      >
-        {waitForLabel && <ThreadWaitForChip label={waitForLabel} />}
-        <span className="min-w-0 truncate">{messageCountLabel}</span>
-      </div>
-    </div>
-  );
-}
-
-function LeaderThreadSwitcher({
-  sessionId,
-  selectedThreadKey,
-  onSelectThread,
-  mode = "auto",
-}: {
-  sessionId: string;
-  selectedThreadKey: string;
-  onSelectThread: (threadKey: string) => void;
-  mode?: ThreadSelectorMode;
-}) {
-  const { messages, activeRows, doneRows } = useLeaderThreadModel(sessionId);
-  const normalizedSelected = selectedThreadKey.toLowerCase();
-  const mainMessageCount = useMemo(() => filterMessagesForThread(messages, MAIN_THREAD_KEY).length, [messages]);
-  const desktopClass =
-    mode === "mobile"
-      ? "hidden"
-      : "hidden shrink-0 overflow-x-auto border-b border-cc-border bg-cc-card/70 sm:flex sm:w-64 sm:flex-col sm:overflow-x-hidden sm:overflow-y-auto sm:border-b-0 sm:border-r";
-
-  return (
-    <aside className={desktopClass} data-testid="leader-thread-switcher">
-      <button
-        type="button"
-        onClick={() => onSelectThread(MAIN_THREAD_KEY)}
-        className={`shrink-0 border-r border-cc-border/60 px-3 py-2 text-left transition-colors sm:w-full sm:border-r-0 sm:border-b ${
-          normalizedSelected === MAIN_THREAD_KEY ? "bg-cc-hover text-cc-fg" : "text-cc-muted hover:bg-cc-hover/60"
-        }`}
-        data-testid="leader-thread-main-row"
-      >
-        <div className="text-xs font-semibold">Main</div>
-        <div className="text-[10px] text-cc-muted/80 tabular-nums">{mainMessageCount} messages</div>
-      </button>
-      <button
-        type="button"
-        onClick={() => onSelectThread(ALL_THREADS_KEY)}
-        className={`shrink-0 border-r border-cc-border/60 px-3 py-2 text-left transition-colors sm:w-full sm:border-r-0 sm:border-b ${
-          normalizedSelected === ALL_THREADS_KEY ? "bg-cc-hover text-cc-fg" : "text-cc-muted hover:bg-cc-hover/60"
-        }`}
-        data-testid="leader-thread-all-row"
-      >
-        <div className="text-xs font-semibold">All Threads</div>
-        <div className="text-[10px] text-cc-muted/80 tabular-nums">{messages.length} messages</div>
-      </button>
-      {activeRows.length > 0 && (
-        <div className="flex shrink-0 sm:block">
-          <div className="hidden px-2.5 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-cc-muted/70 sm:block">
-            Active
-          </div>
-          {activeRows.map((row) => (
-            <LeaderThreadRowItem
-              key={row.threadKey}
-              row={row}
-              selected={normalizedSelected === row.threadKey}
-              onSelect={() => onSelectThread(row.threadKey)}
-            />
-          ))}
-        </div>
-      )}
-      {doneRows.length > 0 && (
-        <div className="flex shrink-0 sm:block">
-          <div className="hidden px-2.5 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-cc-muted/70 sm:block">
-            Done
-          </div>
-          {doneRows.map((row) => (
-            <LeaderThreadRowItem
-              key={row.threadKey}
-              row={row}
-              selected={normalizedSelected === row.threadKey}
-              onSelect={() => onSelectThread(row.threadKey)}
-            />
-          ))}
-        </div>
-      )}
-    </aside>
-  );
-}
-
 function CompactingIndicator({ sessionId }: { sessionId: string }) {
   const sessionStatus = useStore((s) => s.sessionStatus.get(sessionId));
   if (sessionStatus !== "compacting") return null;
@@ -539,8 +214,6 @@ function CompactingIndicator({ sessionId }: { sessionId: string }) {
     </div>
   );
 }
-
-type ThreadSelectorMode = "auto" | "mobile";
 
 function useLeaderThreadModel(sessionId: string) {
   const activeBoard = useStore((s) => s.sessionBoards.get(sessionId) ?? EMPTY_BOARD_ROWS);
@@ -557,50 +230,6 @@ function useLeaderThreadModel(sessionId: string) {
   return { messages, rows, activeRows, doneRows };
 }
 
-function isQueuedLeaderThreadRow(row: LeaderThreadRow): boolean {
-  return isQueuedThreadRowStatus(row.boardStatus ?? row.boardRow?.status);
-}
-
-function splitMobileThreadRows(activeRows: LeaderThreadRow[]): {
-  activeRows: LeaderThreadRow[];
-  queuedRows: LeaderThreadRow[];
-} {
-  const queuedRows: LeaderThreadRow[] = [];
-  const nonQueuedActiveRows: LeaderThreadRow[] = [];
-  for (const row of activeRows) {
-    if (isQueuedLeaderThreadRow(row)) queuedRows.push(row);
-    else nonQueuedActiveRows.push(row);
-  }
-  return { activeRows: nonQueuedActiveRows, queuedRows };
-}
-
-function summarizeMobileThreadRows({
-  activeRows,
-  doneRows,
-}: {
-  activeRows: LeaderThreadRow[];
-  doneRows: LeaderThreadRow[];
-}): { primary: string; secondary: string } {
-  const blockedCount = activeRows.filter((row) => waitForLabelForThread(row)).length;
-  const queuedCount = activeRows.filter(isQueuedLeaderThreadRow).length;
-  if (blockedCount > 0) {
-    return { primary: `${blockedCount} blocked`, secondary: `${activeRows.length} active` };
-  }
-  if (queuedCount > 0) {
-    return { primary: `${queuedCount} queued`, secondary: `${activeRows.length} active` };
-  }
-  if (activeRows.length > 0) {
-    return {
-      primary: `${activeRows.length} active`,
-      secondary: doneRows.length > 0 ? `${doneRows.length} done` : "Main ready",
-    };
-  }
-  if (doneRows.length > 0) {
-    return { primary: `${doneRows.length} done`, secondary: "Main ready" };
-  }
-  return { primary: "Main", secondary: "No threads" };
-}
-
 function threadLabelForKey(threadKey: string, rows: LeaderThreadRow[]): string {
   const normalized = threadKey.toLowerCase();
   if (normalized === MAIN_THREAD_KEY) return "Main";
@@ -609,203 +238,79 @@ function threadLabelForKey(threadKey: string, rows: LeaderThreadRow[]): string {
   return row?.questId ?? row?.title ?? threadKey;
 }
 
-function MobileMainThreadButton({
-  selected,
-  messageCount,
-  onSelect,
-  label = "Main",
-  testId = "mobile-thread-main-row",
-}: {
-  selected: boolean;
-  messageCount: number;
-  onSelect: () => void;
-  label?: string;
-  testId?: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className={`w-full rounded-md border px-3 py-2 text-left transition-colors ${
-        selected
-          ? "border-cc-primary/40 bg-cc-primary/10 text-cc-fg"
-          : "border-cc-border/70 bg-cc-card/80 text-cc-muted hover:bg-cc-hover/60"
-      }`}
-      data-testid={testId}
-    >
-      <div className="text-xs font-semibold">{label}</div>
-      <div className="mt-0.5 text-[10px] tabular-nums text-cc-muted/80">
-        {messageCount} message{messageCount !== 1 ? "s" : ""}
-      </div>
-    </button>
-  );
+function toWorkBoardThreadRows(rows: LeaderThreadRow[]): WorkBoardThreadNavigationRow[] {
+  return rows.map((row) => ({
+    threadKey: row.threadKey,
+    questId: row.questId,
+    title: row.title,
+    messageCount: row.messageCount,
+    section: row.section,
+  }));
 }
 
-function MobileThreadSection({
-  title,
-  rows,
-  selectedThreadKey,
-  onSelectThread,
-}: {
-  title: string;
-  rows: LeaderThreadRow[];
-  selectedThreadKey: string;
-  onSelectThread: (threadKey: string) => void;
-}) {
-  if (rows.length === 0) return null;
-  return (
-    <section>
-      <div className="px-1 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-wide text-cc-muted/70">{title}</div>
-      <div className="overflow-hidden rounded-md border border-cc-border/70 bg-cc-card/60">
-        {rows.map((row) => (
-          <LeaderThreadRowItem
-            key={row.threadKey}
-            row={row}
-            layout="mobileSheet"
-            selected={selectedThreadKey === row.threadKey}
-            onSelect={() => onSelectThread(row.threadKey)}
-          />
-        ))}
-      </div>
-    </section>
-  );
+function isQuestThreadKey(threadKey: string): boolean {
+  return /^q-\d+$/i.test(threadKey.trim());
 }
 
-function MobileLeaderThreadSwitcher({
-  sessionId,
-  selectedThreadKey,
-  onSelectThread,
-  mode = "auto",
-  initialOpen = false,
+function QuestThreadBanner({
+  row,
+  threadKey,
+  onReturnToMain,
 }: {
-  sessionId: string;
-  selectedThreadKey: string;
-  onSelectThread: (threadKey: string) => void;
-  mode?: ThreadSelectorMode;
-  initialOpen?: boolean;
+  row?: LeaderThreadRow;
+  threadKey: string;
+  onReturnToMain: () => void;
 }) {
-  const { messages, activeRows, doneRows } = useLeaderThreadModel(sessionId);
-  const [open, setOpen] = useState(initialOpen);
-  const normalizedSelected = selectedThreadKey.toLowerCase();
-  const summary = summarizeMobileThreadRows({ activeRows, doneRows });
-  const mobileRows = splitMobileThreadRows(activeRows);
-  const mobileOnlyClass = mode === "mobile" ? "" : " sm:hidden";
-  const mainMessageCount = useMemo(() => filterMessagesForThread(messages, MAIN_THREAD_KEY).length, [messages]);
-
-  useEffect(() => {
-    if (!open) return;
-    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [open]);
-
-  function handleSelectThread(threadKey: string) {
-    onSelectThread(threadKey);
-    setOpen(false);
-  }
-
+  const questId = row?.questId ?? threadKey.toLowerCase();
+  const title = row?.title;
+  const phase = row ? phaseLabelForThread(row) : null;
   return (
-    <>
-      <div
-        className={`shrink-0 border-b border-cc-border bg-cc-card/80 px-3 py-2${mobileOnlyClass}`}
-        data-testid="mobile-thread-overview"
-      >
+    <div className="shrink-0 border-b border-cc-border bg-cc-card/85 px-3 py-2" data-testid="quest-thread-banner">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+            <span className="shrink-0 font-medium text-cc-muted">Viewing quest thread</span>
+            <QuestInlineLink
+              questId={questId}
+              className="shrink-0 font-mono-code font-medium text-blue-300 hover:text-blue-200 hover:underline"
+            >
+              {questId}
+            </QuestInlineLink>
+            {title && <span className="min-w-0 truncate font-medium text-cc-fg">{title}</span>}
+            {phase && (
+              <span className="inline-flex shrink-0 items-center gap-1 text-[11px] text-cc-muted">
+                <span
+                  className="h-1.5 w-1.5 rounded-full bg-current"
+                  style={phase.color ? { color: phase.color } : undefined}
+                  aria-hidden="true"
+                />
+                <span style={phase.color ? { color: phase.color } : undefined}>{phase.label}</span>
+              </span>
+            )}
+          </div>
+          {row?.journey && (
+            <QuestJourneyTimeline
+              journey={row.journey}
+              status={journeyStatusForThread(row)}
+              compact
+              className="mt-1 text-[10px]"
+            />
+          )}
+        </div>
         <button
           type="button"
-          onClick={() => setOpen(true)}
-          className="ml-auto flex max-w-full items-center gap-2 rounded-md border border-cc-border/70 bg-cc-hover/50 px-2.5 py-1.5 text-left shadow-sm transition-colors hover:bg-cc-hover"
-          aria-expanded={open}
-          data-testid="mobile-thread-overview-button"
+          onClick={onReturnToMain}
+          className="shrink-0 text-xs font-medium text-blue-300 hover:text-blue-200 hover:underline"
+          data-testid="quest-thread-banner-return-main"
         >
-          <span className="min-w-0 truncate text-xs font-semibold text-cc-fg">Threads</span>
-          <span className="shrink-0 rounded border border-amber-400/30 bg-amber-400/10 px-1.5 py-0.5 text-[10px] font-medium leading-none text-amber-200">
-            {summary.primary}
-          </span>
-          <span className="hidden shrink-0 text-[10px] text-cc-muted min-[380px]:inline">{summary.secondary}</span>
+          Return to Main
         </button>
       </div>
-      {open && (
-        <div
-          className={`absolute inset-0 z-40 flex flex-col bg-cc-bg text-cc-fg${mobileOnlyClass}`}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Thread selector"
-          data-testid="mobile-thread-selector-sheet"
-        >
-          <div className="flex shrink-0 items-center gap-3 border-b border-cc-border bg-cc-sidebar px-4 py-3">
-            <div className="min-w-0 flex-1">
-              <div className="text-sm font-semibold">Threads</div>
-              <div className="mt-0.5 flex min-w-0 items-center gap-2 text-[11px] text-cc-muted">
-                <span className="shrink-0">{summary.primary}</span>
-                <span className="text-cc-muted/50">/</span>
-                <span className="min-w-0 truncate">{summary.secondary}</span>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              className="rounded-md border border-cc-border/70 bg-cc-hover/50 p-2 text-cc-muted transition-colors hover:bg-cc-hover hover:text-cc-fg"
-              aria-label="Close thread selector"
-              data-testid="mobile-thread-selector-close"
-            >
-              <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                <path d="M4 4L12 12M12 4L4 12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-              </svg>
-            </button>
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-            <MobileMainThreadButton
-              selected={normalizedSelected === MAIN_THREAD_KEY}
-              messageCount={mainMessageCount}
-              onSelect={() => handleSelectThread(MAIN_THREAD_KEY)}
-            />
-            <MobileMainThreadButton
-              selected={normalizedSelected === ALL_THREADS_KEY}
-              messageCount={messages.length}
-              onSelect={() => handleSelectThread(ALL_THREADS_KEY)}
-              label="All Threads"
-              testId="mobile-thread-all-row"
-            />
-            <MobileThreadSection
-              title="Active"
-              rows={mobileRows.activeRows}
-              selectedThreadKey={normalizedSelected}
-              onSelectThread={handleSelectThread}
-            />
-            <MobileThreadSection
-              title="Queued"
-              rows={mobileRows.queuedRows}
-              selectedThreadKey={normalizedSelected}
-              onSelectThread={handleSelectThread}
-            />
-            <MobileThreadSection
-              title="Done"
-              rows={doneRows}
-              selectedThreadKey={normalizedSelected}
-              onSelectThread={handleSelectThread}
-            />
-          </div>
-        </div>
-      )}
-    </>
+    </div>
   );
 }
 
-export function ChatView({
-  sessionId,
-  preview = false,
-  threadSelectorMode = "auto",
-  initialMobileThreadSelectorOpen = false,
-}: {
-  sessionId: string;
-  preview?: boolean;
-  threadSelectorMode?: ThreadSelectorMode;
-  initialMobileThreadSelectorOpen?: boolean;
-}) {
+export function ChatView({ sessionId, preview = false }: { sessionId: string; preview?: boolean }) {
   const {
     sessionPerms,
     connStatus,
@@ -837,6 +342,16 @@ export function ChatView({
     () => threadLabelForKey(selectedThreadKey, threadRows),
     [selectedThreadKey, threadRows],
   );
+  const selectedThreadRow = useMemo(
+    () => threadRows.find((row) => row.threadKey === selectedThreadKey.toLowerCase()),
+    [selectedThreadKey, threadRows],
+  );
+  const workBoardThreadRows = useMemo(() => toWorkBoardThreadRows(threadRows), [threadRows]);
+  const showQuestThreadBanner =
+    isLeaderSession &&
+    selectedThreadKey.toLowerCase() !== MAIN_THREAD_KEY &&
+    selectedThreadKey.toLowerCase() !== ALL_THREADS_KEY &&
+    isQuestThreadKey(selectedThreadKey);
   const selectedThreadCanCompose = !isLeaderSession || selectedThreadKey.toLowerCase() !== ALL_THREADS_KEY;
 
   useEffect(() => {
@@ -995,23 +510,13 @@ export function ChatView({
       {!preview && showPlanOverlay ? (
         <PlanReviewOverlay permission={planPerm} sessionId={sessionId} onCollapse={() => setPlanCollapsed(true)} />
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col sm:flex-row">
-          {!preview && isLeaderSession && (
-            <>
-              <MobileLeaderThreadSwitcher
-                sessionId={sessionId}
-                selectedThreadKey={selectedThreadKey}
-                onSelectThread={setSelectedThreadKey}
-                mode={threadSelectorMode}
-                initialOpen={initialMobileThreadSelectorOpen}
-              />
-              <LeaderThreadSwitcher
-                sessionId={sessionId}
-                selectedThreadKey={selectedThreadKey}
-                onSelectThread={setSelectedThreadKey}
-                mode={threadSelectorMode}
-              />
-            </>
+        <div className="flex min-h-0 flex-1 flex-col">
+          {!preview && showQuestThreadBanner && (
+            <QuestThreadBanner
+              row={selectedThreadRow}
+              threadKey={selectedThreadKey}
+              onReturnToMain={() => setSelectedThreadKey(MAIN_THREAD_KEY)}
+            />
           )}
           <MessageFeed
             sessionId={sessionId}
@@ -1085,6 +590,8 @@ export function ChatView({
           currentThreadKey={isLeaderSession ? selectedThreadKey : MAIN_THREAD_KEY}
           currentThreadLabel={isLeaderSession ? selectedThreadLabel : "Main"}
           onReturnToMain={isLeaderSession ? () => setSelectedThreadKey(MAIN_THREAD_KEY) : undefined}
+          onSelectThread={isLeaderSession ? setSelectedThreadKey : undefined}
+          threadRows={isLeaderSession ? workBoardThreadRows : undefined}
         />
       )}
 

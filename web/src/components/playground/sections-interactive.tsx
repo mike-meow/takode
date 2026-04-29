@@ -1214,6 +1214,13 @@ export function PlaygroundInteractiveSections() {
                   currentThreadKey="q-61"
                   currentThreadLabel="q-61"
                   onReturnToMain={() => {}}
+                  onSelectThread={() => {}}
+                  threadRows={[
+                    { threadKey: "q-42", questId: "q-42", title: "Fix mobile sidebar overflow", messageCount: 5 },
+                    { threadKey: "q-55", questId: "q-55", title: "Add dark mode toggle", messageCount: 3 },
+                    { threadKey: "q-61", questId: "q-61", title: "Optimize DB queries", messageCount: 2 },
+                    { threadKey: "q-77", questId: "q-77", title: "Off-board routed discussion", messageCount: 1 },
+                  ]}
                 />
               </div>
               <p className="text-[10px] text-cc-muted">

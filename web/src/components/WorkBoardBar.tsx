@@ -11,7 +11,7 @@
  * column, outside the scrollable message feed.
  */
 import type { CSSProperties } from "react";
-import { useState, useEffect } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useStore } from "../store.js";
 import {
   getQuestJourneyCurrentPhaseId,
@@ -22,6 +22,14 @@ import { BoardTable, orderBoardRows } from "./BoardTable.js";
 import type { BoardRowData } from "./BoardTable.js";
 import { scopedGetItem, scopedSetItem } from "../utils/scoped-storage.js";
 import { isMainThreadKey } from "../utils/thread-projection.js";
+
+export interface WorkBoardThreadNavigationRow {
+  threadKey: string;
+  questId?: string;
+  title: string;
+  messageCount?: number;
+  section?: "active" | "done";
+}
 
 export interface BoardSummarySegment {
   text: string;
@@ -64,16 +72,99 @@ function readExpandedState(sessionId: string): boolean {
   return scopedGetItem(workBoardExpandedKey(sessionId)) === "1";
 }
 
+function normalizeThreadKey(threadKey: string): string {
+  return threadKey.trim().toLowerCase();
+}
+
+function isSelectedThread(currentThreadKey: string, targetThreadKey: string): boolean {
+  return normalizeThreadKey(currentThreadKey) === normalizeThreadKey(targetThreadKey);
+}
+
+function ThreadNavButton({
+  label,
+  detail,
+  selected,
+  onClick,
+  testId,
+}: {
+  label: string;
+  detail?: string;
+  selected: boolean;
+  onClick: () => void;
+  testId: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex min-w-0 items-center gap-2 rounded-md border px-2.5 py-1.5 text-left transition-colors ${
+        selected
+          ? "border-cc-primary/45 bg-cc-primary/12 text-cc-fg"
+          : "border-cc-border/70 bg-cc-hover/35 text-cc-muted hover:bg-cc-hover/65 hover:text-cc-fg"
+      }`}
+      data-testid={testId}
+      aria-pressed={selected}
+    >
+      <span
+        className={`h-2 w-2 shrink-0 rounded-full ${selected ? "bg-cc-primary" : "bg-cc-muted/50"}`}
+        aria-hidden="true"
+      />
+      <span className="min-w-0">
+        <span className="block truncate text-[11px] font-medium">{label}</span>
+        {detail && <span className="block truncate text-[10px] text-cc-muted/80">{detail}</span>}
+      </span>
+    </button>
+  );
+}
+
+function OtherThreadList({
+  rows,
+  currentThreadKey,
+  onSelectThread,
+}: {
+  rows: WorkBoardThreadNavigationRow[];
+  currentThreadKey: string;
+  onSelectThread: (threadKey: string) => void;
+}) {
+  if (rows.length === 0) return null;
+  return (
+    <div className="border-t border-cc-border px-3 py-2" data-testid="workboard-off-board-threads">
+      <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-cc-muted/70">Other Threads</div>
+      <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
+        {rows.map((row) => {
+          const selected = isSelectedThread(currentThreadKey, row.threadKey);
+          const count = row.messageCount ?? 0;
+          const detail = `${count} message${count === 1 ? "" : "s"}`;
+          return (
+            <ThreadNavButton
+              key={row.threadKey}
+              label={row.questId ? `${row.questId} ${row.title}` : row.title}
+              detail={detail}
+              selected={selected}
+              onClick={() => onSelectThread(row.threadKey)}
+              testId="workboard-off-board-thread"
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export function WorkBoardBar({
   sessionId,
   currentThreadKey = "main",
   currentThreadLabel = "Main",
   onReturnToMain,
+  onSelectThread,
+  threadRows = [],
 }: {
   sessionId: string;
   currentThreadKey?: string;
   currentThreadLabel?: string;
   onReturnToMain?: () => void;
+  onSelectThread?: (threadKey: string) => void;
+  threadRows?: WorkBoardThreadNavigationRow[];
 }) {
   const board = useStore((s) => s.sessionBoards.get(sessionId));
   const rowSessionStatuses = useStore((s) => s.sessionBoardRowStatuses.get(sessionId));
@@ -107,16 +198,65 @@ export function WorkBoardBar({
   const activeCount = board?.length ?? 0;
   const completedCount = completedBoard?.length ?? 0;
   const showReturnToMain = !isMainThreadKey(currentThreadKey) && !!onReturnToMain;
+  const boardThreadKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const row of board ?? []) keys.add(normalizeThreadKey(row.questId));
+    for (const row of completedBoard ?? []) keys.add(normalizeThreadKey(row.questId));
+    return keys;
+  }, [board, completedBoard]);
+  const offBoardThreads = useMemo(
+    () =>
+      threadRows
+        .filter((row) => !boardThreadKeys.has(normalizeThreadKey(row.threadKey)))
+        .sort((a, b) => a.threadKey.localeCompare(b.threadKey)),
+    [boardThreadKeys, threadRows],
+  );
+  const summarySegments = useMemo(() => {
+    const segments =
+      activeCount === 0 && completedCount === 0 && offBoardThreads.length > 0
+        ? []
+        : boardSummary(board ?? [], completedCount);
+    if (offBoardThreads.length === 0) return segments;
+    return [...segments, { text: `${offBoardThreads.length} other`, className: "text-cc-muted" }];
+  }, [activeCount, board, completedCount, offBoardThreads.length]);
 
-  // Only show for orchestrator sessions with a non-empty board (active or completed)
-  if (!isOrchestrator || (activeCount === 0 && completedCount === 0)) return null;
+  // This is the primary thread navigator for leader sessions, so keep it visible
+  // even before the first quest row exists.
+  if (!isOrchestrator) return null;
 
   return (
     <div className="shrink-0 flex flex-col min-h-0">
       {/* Expanded board table -- inline, pushes chat content up */}
       {expanded && (
-        <div className="border-t border-cc-border bg-cc-card max-h-[40dvh] overflow-y-auto">
-          {activeCount > 0 && <BoardTable board={board!} rowSessionStatuses={rowSessionStatuses} />}
+        <div className="border-t border-cc-border bg-cc-card max-h-[55dvh] overflow-y-auto">
+          {onSelectThread && (
+            <div className="border-b border-cc-border px-3 py-2" data-testid="workboard-thread-nav">
+              <div className="grid gap-1.5 sm:grid-cols-2">
+                <ThreadNavButton
+                  label="Main"
+                  detail="Clean staging thread"
+                  selected={isSelectedThread(currentThreadKey, "main")}
+                  onClick={() => onSelectThread("main")}
+                  testId="workboard-thread-main"
+                />
+                <ThreadNavButton
+                  label="All Threads"
+                  detail="Global debug feed"
+                  selected={isSelectedThread(currentThreadKey, "all")}
+                  onClick={() => onSelectThread("all")}
+                  testId="workboard-thread-all"
+                />
+              </div>
+            </div>
+          )}
+          {activeCount > 0 && (
+            <BoardTable
+              board={board!}
+              rowSessionStatuses={rowSessionStatuses}
+              selectedThreadKey={currentThreadKey}
+              onSelectQuestThread={onSelectThread}
+            />
+          )}
           {activeCount === 0 && <div className="px-3 py-3 text-xs text-cc-muted italic">No active items</div>}
 
           {/* Collapsible completed section */}
@@ -142,10 +282,23 @@ export function WorkBoardBar({
               </button>
               {completedExpanded && (
                 <div className="opacity-60">
-                  <BoardTable board={completedBoard!} mode="completed" rowSessionStatuses={rowSessionStatuses} />
+                  <BoardTable
+                    board={completedBoard!}
+                    mode="completed"
+                    rowSessionStatuses={rowSessionStatuses}
+                    selectedThreadKey={currentThreadKey}
+                    onSelectQuestThread={onSelectThread}
+                  />
                 </div>
               )}
             </div>
+          )}
+          {onSelectThread && (
+            <OtherThreadList
+              rows={offBoardThreads}
+              currentThreadKey={currentThreadKey}
+              onSelectThread={onSelectThread}
+            />
           )}
         </div>
       )}
@@ -164,9 +317,18 @@ export function WorkBoardBar({
             <path d="M4 4h2v5H4zM7 4h2v7H7zM10 4h2v3h-2z" />
           </svg>
 
-          {/* Summary text — each status segment gets its own color */}
-          <span className="min-w-0 flex-1 truncate text-[11px]">
-            {boardSummary(board ?? [], completedCount).map((seg, i, arr) => (
+          <span
+            className="flex min-w-0 max-w-[45%] shrink-0 items-center gap-1 rounded border border-cc-border/70 bg-cc-hover/45 px-2 py-0.5 text-[11px] font-medium text-cc-fg sm:max-w-[16rem]"
+            title={currentThreadLabel}
+            data-testid="workboard-current-thread"
+          >
+            <span className="hidden shrink-0 text-cc-muted sm:inline">Thread</span>
+            <span className="min-w-0 truncate">{currentThreadLabel}</span>
+          </span>
+
+          {/* Summary text -- each status segment gets its own color */}
+          <span className="min-w-0 flex-1 truncate text-[11px]" data-testid="workboard-phase-summary">
+            {summarySegments.map((seg, i, arr) => (
               <span key={i}>
                 <span className={seg.className} style={seg.style}>
                   {seg.text}
@@ -174,14 +336,6 @@ export function WorkBoardBar({
                 {i < arr.length - 1 && <span className="text-cc-fg/40">, </span>}
               </span>
             ))}
-          </span>
-
-          <span
-            className="hidden max-w-[9rem] shrink-0 truncate rounded border border-cc-border/70 bg-cc-hover/45 px-1.5 py-0.5 text-[10px] font-medium text-cc-muted sm:inline"
-            title={currentThreadLabel}
-            data-testid="workboard-current-thread"
-          >
-            {currentThreadLabel}
           </span>
 
           {/* Item count */}

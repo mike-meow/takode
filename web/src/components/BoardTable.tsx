@@ -424,21 +424,27 @@ export const BoardTable = memo(function BoardTable({
   board,
   mode = "active",
   rowSessionStatuses,
+  selectedThreadKey,
+  onSelectQuestThread,
 }: {
   board: BoardRowData[];
   mode?: BoardTableMode;
   rowSessionStatuses?: Record<string, BoardRowSessionStatus>;
+  selectedThreadKey?: string;
+  onSelectQuestThread?: (questId: string) => void;
 }) {
   if (board.length === 0) {
     return <div className="px-3 py-3 text-xs text-cc-muted italic">Board is empty</div>;
   }
 
   const isCompleted = mode === "completed";
+  const showThreadAction = !!onSelectQuestThread;
+  const normalizedSelectedThread = selectedThreadKey?.toLowerCase();
   const orderedBoard = useMemo(() => orderBoardRows(board, mode), [board, mode]);
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-xs">
+      <table className="w-full text-xs" data-testid="board-table">
         <thead>
           <tr className="text-cc-muted border-b border-cc-border">
             <th className="text-left font-medium px-3 py-1.5 whitespace-nowrap">Quest</th>
@@ -448,48 +454,85 @@ export const BoardTable = memo(function BoardTable({
             <th className="text-left font-medium px-3 py-1.5 whitespace-nowrap">
               {isCompleted ? "Completed Time" : "Wait For"}
             </th>
+            {showThreadAction && <th className="text-right font-medium px-3 py-1.5 whitespace-nowrap">Thread</th>}
           </tr>
         </thead>
         <tbody>
-          {orderedBoard.map((row) => (
-            <tr key={row.questId} className="border-b border-cc-border last:border-0 hover:bg-cc-hover/30">
-              <td className="px-3 py-1.5 whitespace-nowrap">
-                <QuestLink questId={row.questId} />
-              </td>
-              <td className="px-3 py-1.5 min-w-[8rem] whitespace-normal">
-                <SessionCell row={row} rowStatus={rowSessionStatuses?.[row.questId]} />
-              </td>
-              <td className="px-3 py-1.5 max-w-[360px]">
-                <StatusCell row={row} mode={mode} />
-              </td>
-              <td className="px-3 py-1.5 text-cc-fg max-w-[200px] truncate">{row.title || "\u2014"}</td>
-              <td className="px-3 py-1.5 whitespace-nowrap">
-                {isCompleted ? (
-                  <span
-                    className="text-cc-muted"
-                    title={row.completedAt ? new Date(row.completedAt).toLocaleString() : ""}
-                  >
-                    {formatCompletedTime(row.completedAt)}
-                  </span>
-                ) : (
-                  <>
-                    {(isQueuedRowStatus(row.status) && row.waitFor && row.waitFor.length > 0) ||
-                    (!isQueuedRowStatus(row.status) && row.waitForInput && row.waitForInput.length > 0) ? (
-                      <span className="flex gap-1.5 flex-wrap">
-                        {isQueuedRowStatus(row.status)
-                          ? row.waitFor?.map((dep) => <WaitForRef key={dep} depRef={dep} />)
-                          : row.waitForInput?.map((notificationId) => (
-                              <WaitForInputRef key={notificationId} notificationId={notificationId} />
-                            ))}
-                      </span>
-                    ) : (
-                      <span className="text-cc-muted">{"\u2014"}</span>
-                    )}
-                  </>
+          {orderedBoard.map((row) => {
+            const threadKey = row.questId.toLowerCase();
+            const selected = normalizedSelectedThread === threadKey;
+            return (
+              <tr
+                key={row.questId}
+                className={`border-b border-cc-border last:border-0 hover:bg-cc-hover/30 ${
+                  selected ? "bg-cc-hover/45" : ""
+                }`}
+                data-testid={showThreadAction ? "board-thread-row" : undefined}
+                data-thread-key={showThreadAction ? threadKey : undefined}
+              >
+                <td className="px-3 py-1.5 whitespace-nowrap">
+                  <QuestLink questId={row.questId} />
+                </td>
+                <td className="px-3 py-1.5 min-w-[8rem] whitespace-normal">
+                  <SessionCell row={row} rowStatus={rowSessionStatuses?.[row.questId]} />
+                </td>
+                <td className="px-3 py-1.5 max-w-[360px]">
+                  <StatusCell row={row} mode={mode} />
+                </td>
+                <td className="px-3 py-1.5 text-cc-fg max-w-[200px] truncate">{row.title || "\u2014"}</td>
+                <td className="px-3 py-1.5 whitespace-nowrap">
+                  {isCompleted ? (
+                    <span
+                      className="text-cc-muted"
+                      title={row.completedAt ? new Date(row.completedAt).toLocaleString() : ""}
+                    >
+                      {formatCompletedTime(row.completedAt)}
+                    </span>
+                  ) : (
+                    <>
+                      {(isQueuedRowStatus(row.status) && row.waitFor && row.waitFor.length > 0) ||
+                      (!isQueuedRowStatus(row.status) && row.waitForInput && row.waitForInput.length > 0) ? (
+                        <span className="flex gap-1.5 flex-wrap">
+                          {isQueuedRowStatus(row.status)
+                            ? row.waitFor?.map((dep) => <WaitForRef key={dep} depRef={dep} />)
+                            : row.waitForInput?.map((notificationId) => (
+                                <WaitForInputRef key={notificationId} notificationId={notificationId} />
+                              ))}
+                        </span>
+                      ) : (
+                        <span className="text-cc-muted">{"\u2014"}</span>
+                      )}
+                    </>
+                  )}
+                </td>
+                {showThreadAction && (
+                  <td className="px-3 py-1.5 text-right whitespace-nowrap">
+                    <button
+                      type="button"
+                      onClick={() => onSelectQuestThread?.(threadKey)}
+                      className={`inline-flex items-center gap-1 rounded border px-2 py-1 text-[11px] font-medium transition-colors ${
+                        selected
+                          ? "border-cc-primary/45 bg-cc-primary/15 text-cc-primary"
+                          : "border-cc-border/70 bg-cc-hover/40 text-cc-muted hover:bg-cc-hover hover:text-cc-fg"
+                      }`}
+                      data-testid="board-thread-action"
+                      aria-pressed={selected}
+                    >
+                      <svg className="h-3 w-3 shrink-0" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                        <path
+                          d="M3 4.5h10M3 8h7M3 11.5h5"
+                          stroke="currentColor"
+                          strokeWidth="1.4"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                      <span>{selected ? "Current" : "Jump"}</span>
+                    </button>
+                  </td>
                 )}
-              </td>
-            </tr>
-          ))}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

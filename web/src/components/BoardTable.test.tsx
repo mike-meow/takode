@@ -83,6 +83,20 @@ describe("BoardTable", () => {
     expect(screen.queryByRole("columnheader", { name: "Completed Time" })).not.toBeInTheDocument();
   });
 
+  it("adds a separate thread action only when thread navigation is enabled", () => {
+    const onSelectQuestThread = vi.fn();
+    const board: BoardRowData[] = [{ questId: "q-335", title: "Show completed time", updatedAt: 1 }];
+
+    render(<BoardTable board={board} selectedThreadKey="q-335" onSelectQuestThread={onSelectQuestThread} />);
+
+    expect(screen.getByRole("columnheader", { name: "Thread" })).toBeInTheDocument();
+    const action = screen.getByTestId("board-thread-action");
+    expect(action).toHaveTextContent("Current");
+    fireEvent.click(action);
+    expect(onSelectQuestThread).toHaveBeenCalledWith("q-335");
+    expect(screen.getByRole("button", { name: "q-335" })).toBeInTheDocument();
+  });
+
   it("shows Completed Time instead of Wait For for completed rows", () => {
     const completedAt = Date.UTC(2026, 3, 16, 18, 45, 0);
     const board: BoardRowData[] = [
