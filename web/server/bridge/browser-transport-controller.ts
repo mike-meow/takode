@@ -149,6 +149,8 @@ const BROWSER_ACTIVITY_TYPES: ReadonlySet<string> = new Set([
   "set_codex_reasoning_effort",
 ]);
 
+const queuedCodexHerdRouteKeys = new WeakMap<BrowserTransportSessionLike, Set<string>>();
+
 export function handleBrowserOpen(
   session: BrowserTransportSessionLike,
   ws: BrowserTransportSocketLike,
@@ -446,10 +448,24 @@ export function injectUserMessage(
   };
 
   if (hadRouteInFlight) {
-    void enqueueSessionRoute(session.id, () => deps.routeBrowserMessage(session, browserMessage), deps);
     if (isHerdEventSource(agentSource) && session.backendType === "codex") {
+      const queuedKey = getCodexHerdRouteQueueKey(content, agentSource, threadRoute);
+      const queuedKeys = getQueuedCodexHerdRouteKeys(session);
+      if (queuedKeys.has(queuedKey)) {
+        return "queued";
+      }
+      queuedKeys.add(queuedKey);
+      void enqueueSessionRoute(session.id, () => deps.routeBrowserMessage(session, browserMessage), deps)
+        .finally(() => {
+          queuedKeys.delete(queuedKey);
+          if (queuedKeys.size === 0) {
+            queuedCodexHerdRouteKeys.delete(session);
+          }
+        })
+        .catch(() => {});
       return "queued";
     }
+    void enqueueSessionRoute(session.id, () => deps.routeBrowserMessage(session, browserMessage), deps);
   } else {
     void deps.routeBrowserMessage(session, browserMessage);
     if (isHerdEventSource(agentSource) && session.backendType === "codex") {
@@ -543,6 +559,28 @@ export function getPendingCodexInputDeliveryState(
   if (!turn) return pending.cancelable ? "queued" : "sent";
   if (turn.status === "dispatched" || turn.status === "backend_acknowledged") return "sent";
   return "queued";
+}
+
+function getQueuedCodexHerdRouteKeys(session: BrowserTransportSessionLike): Set<string> {
+  let keys = queuedCodexHerdRouteKeys.get(session);
+  if (!keys) {
+    keys = new Set<string>();
+    queuedCodexHerdRouteKeys.set(session, keys);
+  }
+  return keys;
+}
+
+function getCodexHerdRouteQueueKey(
+  content: string,
+  agentSource: AgentSource | undefined,
+  threadRoute?: ThreadRouteMetadata,
+): string {
+  return JSON.stringify({
+    content: normalizePendingCodexDedupContent(content, agentSource),
+    sessionId: agentSource?.sessionId ?? "",
+    sessionLabel: agentSource?.sessionLabel ?? "",
+    threadKey: (threadRoute?.threadKey ?? "main").toLowerCase(),
+  });
 }
 
 export function deriveSessionStatus(

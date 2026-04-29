@@ -257,12 +257,15 @@ describe("Codex herd event injection", () => {
     const inFlightRoute = new Promise<void>((resolve) => {
       releaseInFlight = resolve;
     });
-    let queuedRoute: Promise<void> | undefined;
+    let currentRoute: Promise<void> | undefined = inFlightRoute;
     const deps = makeInjectDeps({
       routeBrowserMessage,
-      getRouteChain: vi.fn(() => inFlightRoute),
+      getRouteChain: vi.fn(() => currentRoute),
       setRouteChain: vi.fn((_sessionId: string, route: Promise<void>) => {
-        queuedRoute = route;
+        currentRoute = route;
+      }),
+      clearRouteChain: vi.fn((_sessionId: string, route: Promise<void>) => {
+        if (currentRoute === route) currentRoute = undefined;
       }),
     });
 
@@ -279,7 +282,58 @@ describe("Codex herd event injection", () => {
     expect(routeBrowserMessage).not.toHaveBeenCalled();
 
     releaseInFlight();
-    await queuedRoute;
+    await currentRoute;
+
+    expect(routeBrowserMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it("dedupes Codex herd retries while a browser route is still in flight", async () => {
+    const agentSource = { sessionId: "herd-events", sessionLabel: "Herd Events" };
+    const session = makeSession({
+      backendType: "codex",
+      state: { permissionMode: "default", backend_state: "connected", cwd: "/repo" } as any,
+    });
+    const routeBrowserMessage = vi.fn();
+    let releaseInFlight!: () => void;
+    const inFlightRoute = new Promise<void>((resolve) => {
+      releaseInFlight = resolve;
+    });
+    let currentRoute: Promise<void> | undefined = inFlightRoute;
+    const deps = makeInjectDeps({
+      routeBrowserMessage,
+      getRouteChain: vi.fn(() => currentRoute),
+      setRouteChain: vi.fn((_sessionId: string, route: Promise<void>) => {
+        currentRoute = route;
+      }),
+      clearRouteChain: vi.fn((_sessionId: string, route: Promise<void>) => {
+        if (currentRoute === route) currentRoute = undefined;
+      }),
+    });
+
+    const first = injectUserMessage(
+      session,
+      "1 event from 1 session\n\n#1270 | turn_end | worker finished | 1m ago",
+      agentSource,
+      undefined,
+      deps,
+      { threadKey: "main" } as any,
+    );
+    const retry = injectUserMessage(
+      session,
+      "1 event from 1 session\n\n#1270 | turn_end | worker finished | 2m ago",
+      agentSource,
+      undefined,
+      deps,
+      { threadKey: "main" } as any,
+    );
+
+    expect(first).toBe("queued");
+    expect(retry).toBe("queued");
+    expect(deps.setRouteChain).toHaveBeenCalledTimes(1);
+    expect(routeBrowserMessage).not.toHaveBeenCalled();
+
+    releaseInFlight();
+    await currentRoute;
 
     expect(routeBrowserMessage).toHaveBeenCalledTimes(1);
   });
