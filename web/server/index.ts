@@ -39,6 +39,8 @@ import { PRPoller } from "./pr-poller.js";
 import { RecorderManager } from "./recorder.js";
 import { CronScheduler } from "./cron-scheduler.js";
 import { TimerManager } from "./timer-manager.js";
+import { ResourceLeaseManager } from "./resource-lease-manager.js";
+import { ResourceLeaseStore } from "./resource-lease-store.js";
 import { ImageStore } from "./image-store.js";
 import { IdleManager } from "./idle-manager.js";
 import { SleepInhibitor } from "./sleep-inhibitor.js";
@@ -99,6 +101,7 @@ const recorder = new RecorderManager();
 const imageStore = new ImageStore();
 const cronScheduler = new CronScheduler(launcher, wsBridge);
 const timerManager = new TimerManager(wsBridge);
+const resourceLeaseManager = new ResourceLeaseManager(wsBridge, new ResourceLeaseStore(serverId));
 
 // ── Performance tracer — event loop lag + slow request/message tracking ──
 import { PerfTracer } from "./perf-tracer.js";
@@ -728,6 +731,7 @@ app.route(
     { requestRestart },
     perfTracer,
     sleepInhibitor,
+    resourceLeaseManager,
   ),
 );
 
@@ -876,6 +880,9 @@ await cronScheduler.startAll();
 // ── Session timers ─────────────────────────────────────────────────────────
 await timerManager.startAll();
 
+// ── Global resource leases ─────────────────────────────────────────────────
+await resourceLeaseManager.startAll();
+
 // ── Questmaster CLI integration ─────────────────────────────────────────────
 await ensureQuestmasterIntegration(port, packageRoot);
 await ensureTakodeIntegration(packageRoot);
@@ -962,6 +969,7 @@ async function performShutdown() {
   containerManager.persistState(CONTAINER_STATE_PATH);
   pushoverNotifier.destroy();
   timerManager.destroy();
+  resourceLeaseManager.destroy();
   cronScheduler.destroy();
   await flushServerLogger();
 }

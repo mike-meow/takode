@@ -53,6 +53,17 @@ describe("buildCompanionInstructions", () => {
     expect(result).toContain("never use suggestions instead of writing the full context in chat");
   });
 
+  it("includes global resource lease guidance for shared dev-server and browser work", () => {
+    const result = buildCompanionInstructions({ sessionNum: 1, backend: "codex" });
+    // Shared browser and dev-server workflows can conflict across active agents,
+    // so every backend gets the same CLI-first coordination instructions.
+    expect(result).toContain("## Global Resource Leases");
+    expect(result).toContain("takode lease status dev-server:companion");
+    expect(result).toContain("takode lease acquire agent-browser");
+    expect(result).toContain("Heartbeat while actively using the resource");
+    expect(result).toContain("they do not enforce process startup ownership");
+  });
+
   it("appends extraInstructions at the end", () => {
     const result = buildCompanionInstructions({
       backend: "claude",

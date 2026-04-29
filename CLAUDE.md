@@ -49,6 +49,14 @@ bun install --cwd web
 # Dev server (Hono backend on :3456 + Vite HMR on :5174)
 make dev
 
+# Shared resource coordination
+# Before starting or using shared dev servers, Agent Browser, or E2E/browser workflows,
+# inspect/acquire a Takode lease and release it when done:
+takode lease status dev-server:companion
+takode lease acquire dev-server:companion --purpose "Run local UI verification" --ttl 30m
+takode lease renew dev-server:companion
+takode lease release dev-server:companion
+
 # Direct web runner
 cd web && bun run dev
 
@@ -324,6 +332,8 @@ Git worktrees are the preferred isolation model for this project. Container supp
   - **Worktree setup must be fully async.** Creating a new worktree session involves file I/O (guardrails injection, git exclude, settings symlinks) and git commands (`update-index --skip-worktree`). On NFS, synchronous versions of these operations can block the event loop for 10+ seconds, killing all CLI WebSocket connections. All worktree setup methods in `cli-launcher.ts` (`injectWorktreeGuardrails`, `addWorktreeGitExclude`, `symlinkProjectSettings`) must use async I/O.
 
 ## Browser Exploration
+
+Before browser/E2E work, inspect or acquire an appropriate resource lease, for example `takode lease acquire agent-browser --purpose "Inspect q-N UI" --ttl 20m --wait`. Prefer scoped keys like `dev-server:companion` for repo-local dev servers. Heartbeat while using the resource and release it promptly when done.
 
 Always use `agent-browser` CLI command to explore the browser. Never use playwright or other browser automation libraries.
 When running E2E tests, use the dark theme, as it is the primary theme of this app.

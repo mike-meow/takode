@@ -32,6 +32,7 @@ export interface RouteContext {
   pushoverNotifier?: import("../pushover.js").PushoverNotifier;
   sleepInhibitor?: import("../sleep-inhibitor.js").SleepInhibitor;
   timerManager?: import("../timer-manager.js").TimerManager;
+  resourceLeaseManager?: import("../resource-lease-manager.js").ResourceLeaseManager;
   options?: { requestRestart?: () => void };
   perfTracer?: PerfTracer;
 

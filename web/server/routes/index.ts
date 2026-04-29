@@ -22,6 +22,7 @@ import { createQuestRoutes } from "./quests.js";
 import { createRecordingsRoutes } from "./recordings.js";
 import { createSystemRoutes } from "./system.js";
 import { createTimerRoutes } from "./timers.js";
+import { createResourceLeaseRoutes } from "./resource-leases.js";
 import { createStreamRoutes } from "./streams.js";
 import { createLogsRoutes } from "./logs.js";
 import type { InitialModeState, RouteContext } from "./context.js";
@@ -175,6 +176,7 @@ export function createRoutes(
   options?: { requestRestart?: () => void },
   perfTracer?: PerfTracer,
   sleepInhibitor?: import("../sleep-inhibitor.js").SleepInhibitor,
+  resourceLeaseManager?: import("../resource-lease-manager.js").ResourceLeaseManager,
 ) {
   const api = new Hono();
 
@@ -219,6 +221,7 @@ export function createRoutes(
     recorder,
     cronScheduler,
     timerManager,
+    resourceLeaseManager,
     imageStore,
     pushoverNotifier,
     sleepInhibitor,
@@ -247,6 +250,7 @@ export function createRoutes(
   api.route("/", createGitRoutes(ctx));
   api.route("/", createQuestRoutes(ctx));
   api.route("/", createTimerRoutes(ctx));
+  api.route("/", createResourceLeaseRoutes(ctx));
   api.route("/", createStreamRoutes(ctx));
 
   return api;

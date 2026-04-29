@@ -26,6 +26,15 @@ import {
   renderLeaderContextResumeText,
   type LeaderContextResumeModel,
 } from "../server/takode-leader-context-resume.js";
+import {
+  handleLease,
+  LEASE_ACQUIRE_HELP,
+  LEASE_HELP,
+  LEASE_RELEASE_HELP,
+  LEASE_RENEW_HELP,
+  LEASE_STATUS_HELP,
+  LEASE_WAIT_HELP,
+} from "./takode-lease.js";
 
 const DEFAULT_PORT = 3456;
 const DEFAULT_CODEX_MODEL = "gpt-5.4";
@@ -1036,6 +1045,25 @@ function printCommandHelp(command: string, argv: string[]): boolean {
         console.log(TIMER_CANCEL_HELP);
       } else {
         console.log(TIMER_HELP);
+      }
+      return true;
+    }
+    case "lease": {
+      const sub = args[0];
+      if (!sub) {
+        console.log(LEASE_HELP);
+      } else if (sub === "acquire") {
+        console.log(LEASE_ACQUIRE_HELP);
+      } else if (sub === "wait") {
+        console.log(LEASE_WAIT_HELP);
+      } else if (sub === "status" || sub === "list") {
+        console.log(LEASE_STATUS_HELP);
+      } else if (sub === "renew" || sub === "heartbeat") {
+        console.log(LEASE_RENEW_HELP);
+      } else if (sub === "release") {
+        console.log(LEASE_RELEASE_HELP);
+      } else {
+        console.log(LEASE_HELP);
       }
       return true;
     }
@@ -5024,6 +5052,7 @@ Commands:
   phases        List Quest Journey phases and exact phase brief paths
   board          Quest Journey work board (e.g. takode board show, takode board advance q-12)
   timer          Session-scoped timers (create, list, cancel)
+  lease          Global resource leases (acquire, status, renew, release, wait)
   help           Show detailed help for a command or nested subcommand
 
 Peek modes:
@@ -5072,6 +5101,7 @@ Examples:
   takode board advance q-12
   takode thread attach q-12 --message 42
   takode help timer create
+  takode lease acquire dev-server:companion --purpose "Run E2E checks" --ttl 30m
 `);
 }
 
@@ -5118,6 +5148,7 @@ try {
     ["phases", {}],
     ["board", {}],
     ["timer", {}],
+    ["lease", {}],
   ]);
   if (!command || command === "-h" || command === "--help") {
     printUsage();
@@ -5244,6 +5275,15 @@ try {
       break;
     case "timer":
       await handleTimer(base, args);
+      break;
+    case "lease":
+      await handleLease(args, {
+        apiGet: (path) => apiGet(base, path),
+        apiPost: (path, body) => apiPost(base, path, body),
+        err,
+        formatInlineText,
+        formatTimestampCompact,
+      });
       break;
     default:
       console.error(`Unknown command: ${command}`);

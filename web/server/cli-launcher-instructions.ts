@@ -117,6 +117,17 @@ Use \`/port-changes\` when asked to port, sync, or push commits to the main repo
   );
 
   parts.push(
+    "## Global Resource Leases\n\n" +
+      "Use `takode lease` before using shared global resources that can conflict across sessions, especially dev servers, Agent Browser, and E2E/browser work.\n\n" +
+      "    takode lease status dev-server:companion\n" +
+      '    takode lease acquire dev-server:companion --purpose "Run E2E verification for q-42" --ttl 30m\n' +
+      '    takode lease acquire agent-browser --purpose "Inspect q-42 UI" --ttl 20m --wait\n' +
+      "    takode lease renew dev-server:companion\n" +
+      "    takode lease release dev-server:companion\n\n" +
+      "Prefer conventionally scoped keys such as `dev-server:companion` when a resource belongs to one repo or app; simple keys such as `agent-browser` are fine for truly global resources. If a lease is held by another session, wait or queue instead of starting a competing server or browser. Heartbeat while actively using the resource and release promptly when done. Leases coordinate access only; they do not enforce process startup ownership.",
+  );
+
+  parts.push(
     "## Image Reading\n\n" +
       "If a user message includes image attachments, read every attached image before you respond. Make that your first step for that turn.\n\n" +
       "Always try reading images directly first. Only resize when the Read tool fails due to oversized dimensions.",
