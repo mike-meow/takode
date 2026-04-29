@@ -79,7 +79,9 @@ export interface StuckWatchdogDeps<S extends StuckWatchdogSession> {
   requestCodexAutoRecovery: (session: S, reason: string) => void;
   broadcastMessage: (session: S, msg: Record<string, unknown>) => void;
   recordServerEvent?: (session: S, reason: string, payload: Record<string, unknown>) => void;
-  getLauncherSessionInfo?: (sessionId: string) => { isOrchestrator?: boolean } | null | undefined;
+  getLauncherSessionInfo?: (
+    sessionId: string,
+  ) => { isOrchestrator?: boolean; archived?: boolean; killedByIdleManager?: boolean } | null | undefined;
   forceFlushPendingEvents?: (sessionId: string) => number;
   backendConnected: (session: S) => boolean;
   markTurnInterrupted: (session: S, source: InterruptSource) => void;
@@ -409,12 +411,15 @@ export function runStuckSessionWatchdogSweep<S extends StuckWatchdogSession>(
   deps: StuckWatchdogDeps<S>,
 ): void {
   for (const session of sessions) {
+    const launcherInfo = deps.getLauncherSessionInfo?.(session.id);
     if (
       session.backendType === "codex" &&
       session.pendingCodexInputs.length > 0 &&
       !session.codexAdapter &&
       session.state.backend_state !== "broken" &&
-      session.state.backend_state !== "recovering"
+      session.state.backend_state !== "recovering" &&
+      launcherInfo?.archived !== true &&
+      launcherInfo?.killedByIdleManager !== true
     ) {
       const oldestPending = session.pendingCodexInputs[0];
       const pendingAge = now - oldestPending.timestamp;
@@ -467,7 +472,6 @@ export function runStuckSessionWatchdogSweep<S extends StuckWatchdogSession>(
       deps.recordServerEvent?.(session, "stuck_detected", { elapsed, sinceLastActivity });
       deps.broadcastMessage(session, { type: "session_stuck" });
 
-      const launcherInfo = deps.getLauncherSessionInfo?.(session.id);
       if (launcherInfo?.isOrchestrator && deps.forceFlushPendingEvents) {
         const flushed = deps.forceFlushPendingEvents(session.id);
         if (flushed > 0) {
@@ -478,7 +482,6 @@ export function runStuckSessionWatchdogSweep<S extends StuckWatchdogSession>(
       }
     }
 
-    const launcherInfo = deps.getLauncherSessionInfo?.(session.id);
     const isOrchestrator = !!launcherInfo?.isOrchestrator;
     const cliConnected = deps.backendConnected(session);
     const recoverThreshold = isOrchestrator ? deps.autoRecoverOrchestratorMs : deps.autoRecoverMs;

@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SessionStore, type PersistedSession } from "./session-store.js";
 
 let tempDir: string;
@@ -421,6 +421,72 @@ describe("loadAll", () => {
 
     const repairedHot = JSON.parse(readFileSync(join(tempDir, "active-metrics.json"), "utf-8"));
     expect(repairedHot.eventBuffer).toEqual([{ seq: 1, message: { type: "backend_connected" } }]);
+  });
+
+  it("treats launcher-archived Codex sessions as search-only even when hot JSON lacks archived flag", async () => {
+    // Regression coverage for stale Codex pending delivery warnings: launcher
+    // archive state is authoritative when older hot session JSON missed the
+    // archived flag, so stale pending inputs do not restore as active sessions.
+    const launcherArchived = makeSession("launcher-archived-codex", {
+      state: {
+        ...makeSession("launcher-archived-codex").state,
+        backend_type: "codex",
+      },
+      messageHistory: [{ type: "user_message", content: "old archived turn", timestamp: 1 }],
+      pendingCodexInputs: [
+        {
+          id: "pending-archived",
+          content: "stale archived input",
+          timestamp: 1,
+          cancelable: true,
+        },
+      ],
+    });
+    const exitedButActive = makeSession("exited-but-active-codex", {
+      state: {
+        ...makeSession("exited-but-active-codex").state,
+        backend_type: "codex",
+      },
+      messageHistory: [{ type: "user_message", content: "active tail", timestamp: 2 }],
+      pendingCodexInputs: [
+        {
+          id: "pending-active",
+          content: "still active input",
+          timestamp: 2,
+          cancelable: true,
+        },
+      ],
+    });
+
+    store.saveSync(launcherArchived);
+    store.saveSync(exitedButActive);
+    store.saveLauncher([
+      {
+        sessionId: "launcher-archived-codex",
+        state: "exited",
+        archived: true,
+        archivedAt: 1700000000000,
+      },
+      {
+        sessionId: "exited-but-active-codex",
+        state: "exited",
+        archived: false,
+      },
+    ]);
+    await store.flushAll();
+
+    const all = await store.loadAll();
+
+    const archived = all.find((session) => session.id === "launcher-archived-codex")!;
+    expect(archived.archived).toBe(true);
+    expect(archived.archivedAt).toBe(1700000000000);
+    expect(archived._searchDataOnly).toBe(true);
+    expect(archived.messageHistory).toEqual([]);
+    expect(archived.pendingCodexInputs).toBeUndefined();
+
+    const active = all.find((session) => session.id === "exited-but-active-codex")!;
+    expect(active._searchDataOnly).toBeUndefined();
+    expect(active.pendingCodexInputs).toHaveLength(1);
   });
 });
 

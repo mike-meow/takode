@@ -12,9 +12,12 @@ import {
   setGenerating,
   markRunningFromUserDispatch,
   markTurnInterrupted,
+  runStuckSessionWatchdogSweep,
   RECOVERY_REASONS,
   type GenerationLifecycleSession,
   type GenerationLifecycleDeps,
+  type StuckWatchdogSession,
+  type StuckWatchdogDeps,
 } from "./generation-lifecycle.js";
 import { deriveActiveTurnRoute } from "./browser-transport-controller.js";
 
@@ -57,6 +60,41 @@ function makeDeps(
     onSessionActivityStateChanged: vi.fn(),
     emitTakodeEvent: vi.fn(),
     buildTurnToolSummary: vi.fn().mockReturnValue({}),
+    ...overrides,
+  };
+}
+
+function makeStuckWatchdogSession(overrides: Partial<StuckWatchdogSession> = {}): StuckWatchdogSession {
+  const base = makeSession();
+  return {
+    ...base,
+    backendType: "codex",
+    pendingCodexInputs: [],
+    codexAdapter: null,
+    toolStartTimes: new Map(),
+    lastCliMessageAt: 0,
+    lastToolProgressAt: 0,
+    state: {
+      cwd: "/repo",
+      backend_state: "connected",
+    },
+    ...overrides,
+  };
+}
+
+function makeStuckWatchdogDeps(
+  overrides: Partial<StuckWatchdogDeps<StuckWatchdogSession>> = {},
+): StuckWatchdogDeps<StuckWatchdogSession> {
+  return {
+    stuckPendingDeliveryMs: 60_000,
+    stuckThresholdMs: 120_000,
+    autoRecoverMs: 300_000,
+    autoRecoverOrchestratorMs: 120_000,
+    requestCodexAutoRecovery: vi.fn(),
+    broadcastMessage: vi.fn(),
+    backendConnected: vi.fn(() => false),
+    markTurnInterrupted: vi.fn(),
+    setGenerating: vi.fn(),
     ...overrides,
   };
 }
@@ -260,6 +298,30 @@ describe("setGenerating(false) — queued turn handling", () => {
     );
     expect(session.restartPrepInterruptOrigin).toBeNull();
     expect(session.restartPrepInterruptOperationId).toBeNull();
+  });
+});
+
+describe("runStuckSessionWatchdogSweep", () => {
+  it("does not warn or recover stale pending Codex inputs for launcher-archived sessions", () => {
+    // Archived sessions can keep old pendingCodexInputs for history/debugging,
+    // but they are not recoverable live delivery work and should not log every sweep.
+    const session = makeStuckWatchdogSession({
+      pendingCodexInputs: [{ timestamp: 1 }],
+    });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const requestCodexAutoRecovery = vi.fn();
+
+    runStuckSessionWatchdogSweep(
+      [session],
+      120_000,
+      makeStuckWatchdogDeps({
+        requestCodexAutoRecovery,
+        getLauncherSessionInfo: vi.fn(() => ({ archived: true })),
+      }),
+    );
+
+    expect(warnSpy).not.toHaveBeenCalled();
+    expect(requestCodexAutoRecovery).not.toHaveBeenCalled();
   });
 });
 
