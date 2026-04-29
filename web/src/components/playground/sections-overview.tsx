@@ -79,6 +79,7 @@ import {
   PLAYGROUND_SECTIONED_SESSION_ID,
   PLAYGROUND_SESSION_ROWS,
   PLAYGROUND_STARTING_SESSION_ID,
+  PLAYGROUND_THREAD_PANEL_SESSION_ID,
 } from "./fixtures.js";
 import {
   Card,
@@ -166,6 +167,15 @@ export function PlaygroundOverviewSections() {
           className="max-w-3xl border border-cc-border rounded-xl overflow-hidden bg-cc-card h-[620px]"
         >
           <ChatView sessionId={MOCK_SESSION_ID} />
+        </div>
+      </Section>
+
+      <Section
+        title="Leader Thread Panel"
+        description="Leader ChatView with quest thread rows, board-derived wait blockers, and compact row stats"
+      >
+        <div className="max-w-3xl border border-cc-border rounded-xl overflow-hidden bg-cc-card h-[460px]">
+          <ChatView sessionId={PLAYGROUND_THREAD_PANEL_SESSION_ID} />
         </div>
       </Section>
 

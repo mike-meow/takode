@@ -12,6 +12,7 @@ export const PLAYGROUND_STARTING_SESSION_ID = "playground-chat-starting";
 export const PLAYGROUND_RESUMING_SESSION_ID = "playground-chat-resuming";
 export const PLAYGROUND_RECOVERING_SESSION_ID = "playground-chat-recovering";
 export const PLAYGROUND_BROKEN_SESSION_ID = "playground-chat-broken";
+export const PLAYGROUND_THREAD_PANEL_SESSION_ID = "playground-thread-panel-wait-for";
 export const PLAYGROUND_SESSION_ROWS: Array<{ session: SidebarSessionItem; sessionName: string; preview: string }> = [
   {
     session: {

@@ -24,10 +24,12 @@ import { SessionInlineLink } from "./SessionInlineLink.js";
 import { SessionStatusDot } from "./SessionStatusDot.js";
 import { useParticipantSessionStatusDotProps } from "./session-participant-status.js";
 import {
+  formatWaitForRefLabel,
   getQuestJourneyCurrentPhaseId,
   getQuestJourneyPhase,
   getQuestJourneyPhaseForState,
   getQuestJourneyPresentation,
+  getWaitForRefKind,
 } from "../../shared/quest-journey.js";
 import { parseCommandThreadComment, parseThreadTextPrefix } from "../../shared/thread-routing.js";
 import type { BoardParticipantStatus, BoardRowSessionStatus, ChatMessage, QuestmasterTask } from "../types.js";
@@ -194,6 +196,53 @@ function phaseLabelForThread(row: LeaderThreadRow): { label: string; color?: str
   return null;
 }
 
+function isQueuedThreadRowStatus(status?: string): boolean {
+  return (status || "").trim().toUpperCase() === "QUEUED";
+}
+
+function formatThreadWaitForRefLabel(depRef: string): string {
+  switch (getWaitForRefKind(depRef)) {
+    case "quest":
+      return `wait ${depRef.toLowerCase()}`;
+    case "session":
+      return `wait ${depRef}`;
+    case "free-worker":
+      return "wait worker";
+    case "invalid":
+      return `wait ${formatWaitForRefLabel(depRef)}`;
+  }
+}
+
+function formatThreadWaitForInputLabel(notificationId: string): string {
+  const match = /^n-(\d+)$/i.exec(notificationId.trim());
+  return match ? `wait input ${match[1]}` : "wait input";
+}
+
+function waitForLabelForThread(row: LeaderThreadRow): string | null {
+  const boardRow = row.boardRow;
+  if (!boardRow) return null;
+
+  if (isQueuedThreadRowStatus(boardRow.status)) {
+    const depRef = boardRow.waitFor?.[0];
+    return depRef ? formatThreadWaitForRefLabel(depRef) : null;
+  }
+
+  const notificationId = boardRow.waitForInput?.[0];
+  return notificationId ? formatThreadWaitForInputLabel(notificationId) : null;
+}
+
+function ThreadWaitForChip({ label }: { label: string }) {
+  return (
+    <span
+      className="inline-flex max-w-full shrink-0 items-center rounded border border-amber-400/30 bg-amber-400/10 px-1.5 py-0.5 font-mono-code text-[10px] leading-none text-amber-200"
+      data-testid="leader-thread-wait-for-chip"
+      title={label}
+    >
+      <span className="truncate">{label}</span>
+    </span>
+  );
+}
+
 function ThreadParticipantChip({
   label,
   participant,
@@ -322,6 +371,10 @@ function LeaderThreadRowItem({
   onSelect: () => void;
 }) {
   const phase = phaseLabelForThread(row);
+  const waitForLabel = waitForLabelForThread(row);
+  const messageCountLabel = waitForLabel
+    ? `${row.messageCount} msg${row.messageCount !== 1 ? "s" : ""}`
+    : `${row.messageCount} message${row.messageCount !== 1 ? "s" : ""}`;
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
@@ -366,8 +419,12 @@ function LeaderThreadRowItem({
         />
         <ThreadParticipantChip label="R" participant={row.rowStatus?.reviewer} />
       </div>
-      <div className="mt-1 text-[10px] tabular-nums text-cc-muted/85" data-testid="leader-thread-row-stats">
-        {row.messageCount} message{row.messageCount !== 1 ? "s" : ""}
+      <div
+        className="mt-1 flex min-w-0 items-center gap-1.5 text-[10px] tabular-nums text-cc-muted/85"
+        data-testid="leader-thread-row-stats"
+      >
+        {waitForLabel && <ThreadWaitForChip label={waitForLabel} />}
+        <span className="min-w-0 truncate">{messageCountLabel}</span>
       </div>
     </div>
   );

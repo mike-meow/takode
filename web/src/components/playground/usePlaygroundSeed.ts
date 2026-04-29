@@ -11,6 +11,7 @@ import {
   PLAYGROUND_RESUMING_SESSION_ID,
   PLAYGROUND_SECTIONED_SESSION_ID,
   PLAYGROUND_STARTING_SESSION_ID,
+  PLAYGROUND_THREAD_PANEL_SESSION_ID,
   MSG_ASSISTANT,
   MSG_ASSISTANT_TOOLS,
   MSG_TOOL_ERROR,
@@ -37,6 +38,7 @@ export function usePlaygroundSeed() {
       PLAYGROUND_STARTING_SESSION_ID,
       PLAYGROUND_RESUMING_SESSION_ID,
       PLAYGROUND_BROKEN_SESSION_ID,
+      PLAYGROUND_THREAD_PANEL_SESSION_ID,
       questInProgressId,
       questVerificationId,
     ];
@@ -53,6 +55,7 @@ export function usePlaygroundSeed() {
     const prevStreamingOutputTokens = new Map(demoSessionIds.map((id) => [id, snapshot.streamingOutputTokens.get(id)]));
     const prevFeedScrollPositions = new Map(demoSessionIds.map((id) => [id, snapshot.feedScrollPosition.get(id)]));
     const prevHistoryLoading = new Map(demoSessionIds.map((id) => [id, snapshot.historyLoading.get(id)]));
+    const prevSessionBoards = new Map(demoSessionIds.map((id) => [id, snapshot.sessionBoards.get(id)]));
     const prevPendingCodexInputs = new Map(demoSessionIds.map((id) => [id, snapshot.pendingCodexInputs.get(id)]));
     const prevToolProgress = new Map(demoSessionIds.map((id) => [id, snapshot.toolProgress.get(id)]));
     const prevToolResults = new Map(demoSessionIds.map((id) => [id, snapshot.toolResults.get(id)]));
@@ -132,6 +135,77 @@ export function usePlaygroundSeed() {
     store.setCliConnected(PLAYGROUND_LOADING_SESSION_ID, true);
     store.setSessionStatus(PLAYGROUND_LOADING_SESSION_ID, "idle");
     store.setHistoryLoading(PLAYGROUND_LOADING_SESSION_ID, true);
+
+    const threadPanelSession: SessionState = {
+      ...session,
+      session_id: PLAYGROUND_THREAD_PANEL_SESSION_ID,
+      backend_type: "codex",
+      model: "gpt-5.5",
+      cwd: "/Users/stan/Dev/takode/thread-panel",
+      is_containerized: false,
+      isOrchestrator: true,
+    };
+    store.addSession(threadPanelSession);
+    store.setConnectionStatus(PLAYGROUND_THREAD_PANEL_SESSION_ID, "connected");
+    store.setCliConnected(PLAYGROUND_THREAD_PANEL_SESSION_ID, true);
+    store.setSessionStatus(PLAYGROUND_THREAD_PANEL_SESSION_ID, "idle");
+    store.setMessages(PLAYGROUND_THREAD_PANEL_SESSION_ID, [
+      makePlaygroundMessage({
+        id: "playground-thread-main",
+        role: "user",
+        content: "Coordinate the active Journey board.",
+        timestamp: Date.now() - 180_000,
+      }),
+      makePlaygroundMessage({
+        id: "playground-thread-q961",
+        role: "assistant",
+        content: "Implementation is underway.",
+        timestamp: Date.now() - 120_000,
+        metadata: { threadRefs: [{ threadKey: "q-961", questId: "q-961", source: "explicit" }] },
+      }),
+      makePlaygroundMessage({
+        id: "playground-thread-q962",
+        role: "assistant",
+        content: "Queued until the dependency finishes.",
+        timestamp: Date.now() - 90_000,
+        metadata: { threadRefs: [{ threadKey: "q-962", questId: "q-962", source: "explicit" }] },
+      }),
+      makePlaygroundMessage({
+        id: "playground-thread-q963",
+        role: "assistant",
+        content: "Waiting for a free worker before dispatch.",
+        timestamp: Date.now() - 60_000,
+        metadata: { threadRefs: [{ threadKey: "q-963", questId: "q-963", source: "explicit" }] },
+      }),
+    ]);
+    store.setSessionBoard(PLAYGROUND_THREAD_PANEL_SESSION_ID, [
+      {
+        questId: "q-961",
+        title: "Finish data-flow cleanup",
+        status: "IMPLEMENTING",
+        updatedAt: Date.now() - 120_000,
+        createdAt: Date.now() - 240_000,
+        journey: { mode: "active", phaseIds: ["alignment", "implement", "code-review"], currentPhaseId: "implement" },
+      },
+      {
+        questId: "q-962",
+        title: "Add queued thread wait chip",
+        status: "QUEUED",
+        waitFor: ["q-961"],
+        updatedAt: Date.now() - 90_000,
+        createdAt: Date.now() - 210_000,
+        journey: { mode: "active", phaseIds: ["alignment", "implement", "code-review"] },
+      },
+      {
+        questId: "q-963",
+        title: "Dispatch follow-up worker",
+        status: "QUEUED",
+        waitFor: ["free-worker"],
+        updatedAt: Date.now() - 60_000,
+        createdAt: Date.now() - 180_000,
+        journey: { mode: "active", phaseIds: ["alignment", "implement", "code-review"] },
+      },
+    ]);
 
     const codexTerminalSession: SessionState = {
       ...session,
@@ -450,6 +524,7 @@ export function usePlaygroundSeed() {
         const cliDisconnectReason = new Map(s.cliDisconnectReason);
         const feedScrollPosition = new Map(s.feedScrollPosition);
         const historyLoading = new Map(s.historyLoading);
+        const sessionBoards = new Map(s.sessionBoards);
         const pendingCodexInputs = new Map(s.pendingCodexInputs);
         const sessionTimers = new Map(s.sessionTimers);
         const toolProgress = new Map(s.toolProgress);
@@ -502,6 +577,9 @@ export function usePlaygroundSeed() {
           else feedScrollPosition.delete(demoId);
           if (prevLoading) historyLoading.set(demoId, true);
           else historyLoading.delete(demoId);
+          const prevBoard = prevSessionBoards.get(demoId);
+          if (prevBoard) sessionBoards.set(demoId, prevBoard);
+          else sessionBoards.delete(demoId);
           if (prevPendingCodex) pendingCodexInputs.set(demoId, prevPendingCodex);
           else pendingCodexInputs.delete(demoId);
           if (prevSessionToolProgress) toolProgress.set(demoId, prevSessionToolProgress);
@@ -535,6 +613,7 @@ export function usePlaygroundSeed() {
           streamingOutputTokens,
           feedScrollPosition,
           historyLoading,
+          sessionBoards,
           pendingCodexInputs,
           sessionTimers,
           toolProgress,

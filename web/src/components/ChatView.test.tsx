@@ -488,6 +488,88 @@ describe("ChatView backend banners", () => {
     expect(scope.getByTestId("message-feed")).toHaveAttribute("data-thread-key", "q-941");
   });
 
+  it("shows compact server-board wait blockers ahead of shortened message counts", () => {
+    // Thread rows should reflect the board's authoritative wait state instead of
+    // inferring blockers from message content, and the blocker should remain the
+    // most compact, most salient footer item.
+    resetStore({
+      sessions: new Map([["s1", { backend_state: "connected", backend_error: null, isOrchestrator: true }]]),
+      sdkSessions: [{ sessionId: "s1", archived: false, isOrchestrator: true }],
+      messages: new Map([
+        [
+          "s1",
+          ["q-960", "q-962", "q-963", "q-964"].map((questId, index) => ({
+            id: `m-${questId}`,
+            role: "assistant",
+            content: `${questId} update`,
+            timestamp: index + 1,
+            metadata: { threadRefs: [{ threadKey: questId, questId, source: "explicit" }] },
+          })),
+        ],
+      ]),
+      sessionBoards: new Map([
+        [
+          "s1",
+          [
+            {
+              questId: "q-960",
+              title: "Queued on quest",
+              status: "QUEUED",
+              waitFor: ["q-961"],
+              updatedAt: 4,
+              createdAt: 1,
+            },
+            {
+              questId: "q-962",
+              title: "Queued on session",
+              status: "QUEUED",
+              waitFor: ["#123"],
+              updatedAt: 3,
+              createdAt: 2,
+            },
+            {
+              questId: "q-963",
+              title: "Queued on worker capacity",
+              status: "QUEUED",
+              waitFor: ["free-worker"],
+              updatedAt: 2,
+              createdAt: 3,
+            },
+            {
+              questId: "q-964",
+              title: "Waiting on input",
+              status: "IMPLEMENTING",
+              waitForInput: ["n-7"],
+              updatedAt: 1,
+              createdAt: 4,
+            },
+          ],
+        ],
+      ]),
+      quests: [
+        { questId: "q-960", title: "Queued on quest", status: "in_progress" },
+        { questId: "q-962", title: "Queued on session", status: "in_progress" },
+        { questId: "q-963", title: "Queued on worker capacity", status: "in_progress" },
+        { questId: "q-964", title: "Waiting on input", status: "in_progress" },
+      ],
+    });
+
+    const view = render(<ChatView sessionId="s1" />);
+    const rows = within(view.container).getAllByTestId("leader-thread-row");
+    const rowByQuest = new Map(rows.map((row) => [row.getAttribute("data-thread-key"), row]));
+
+    expect(within(rowByQuest.get("q-960")!).getByTestId("leader-thread-wait-for-chip")).toHaveTextContent("wait q-961");
+    expect(within(rowByQuest.get("q-962")!).getByTestId("leader-thread-wait-for-chip")).toHaveTextContent("wait #123");
+    expect(within(rowByQuest.get("q-963")!).getByTestId("leader-thread-wait-for-chip")).toHaveTextContent(
+      "wait worker",
+    );
+    expect(within(rowByQuest.get("q-964")!).getByTestId("leader-thread-wait-for-chip")).toHaveTextContent(
+      "wait input 7",
+    );
+    expect(within(rowByQuest.get("q-960")!).getByTestId("leader-thread-row-stats")).toHaveTextContent("1 msg");
+    expect(within(view.container).getAllByTestId("leader-thread-wait-for-chip")).toHaveLength(4);
+  });
+
   it("renders thread participant chips from live session status before stale board status", () => {
     // Worker/reviewer chips should match the same live session status source as
     // the sidebar, even if the board snapshot has not refreshed yet.

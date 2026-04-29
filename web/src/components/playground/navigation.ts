@@ -48,6 +48,7 @@ export const PLAYGROUND_NAV_GROUPS: PlaygroundNavGroup[] = [
     "Collapsed Permissions Chip",
     "Auto-Approval Evaluating",
     "Real Chat Stack",
+    "Leader Thread Panel",
     "Search Preview Chat",
     "Shortcut Hints",
     "Floating Feed Status",
