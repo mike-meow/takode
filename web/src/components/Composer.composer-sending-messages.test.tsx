@@ -545,9 +545,28 @@ describe("Composer sending messages", () => {
         type: "user_message",
         content: "test message",
         session_id: "s1",
+        threadKey: "main",
       }),
     );
     expect(mockRequestBottomAlignOnNextUserMessage).toHaveBeenCalledWith("s1");
+  });
+
+  it("sends the selected quest thread key with user messages", () => {
+    const { container } = render(<Composer sessionId="s1" threadKey="q-941" questId="q-941" />);
+    const textarea = container.querySelector("textarea")!;
+
+    fireEvent.change(textarea, { target: { value: "thread reply" } });
+    fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
+
+    expect(mockSendToSession).toHaveBeenCalledWith(
+      "s1",
+      expect.objectContaining({
+        type: "user_message",
+        content: "thread reply",
+        threadKey: "q-941",
+        questId: "q-941",
+      }),
+    );
   });
 
   it("pressing Shift+Enter does NOT send the message", () => {

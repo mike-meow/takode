@@ -178,7 +178,7 @@ describe("direct user needs-input reminders", () => {
     session.backendType = "claude-sdk";
     const sdkAdapter = { sendBrowserMessage: vi.fn(() => true), isConnected: vi.fn(() => true) };
     session.claudeSdkAdapter = sdkAdapter as any;
-    const deps = makeDeps();
+    const deps = makeDeps({ isOrchestrator: true });
 
     const routed = routeAdapterBrowserMessage(
       session,
@@ -186,6 +186,8 @@ describe("direct user needs-input reminders", () => {
         content: "Continue the work",
         deliveryContent: "[reply] Original answer\n\nContinue the work",
         replyContext: { previewText: "Original answer", messageId: "codex-agent-random-id" },
+        threadKey: "q-941",
+        questId: "q-941",
       }),
       null,
       deps,
@@ -200,6 +202,11 @@ describe("direct user needs-input reminders", () => {
       expect.objectContaining({
         type: "user_message",
         content: expect.stringContaining("[reply] Original answer\n\nContinue the work"),
+      }),
+    );
+    expect(sdkAdapter.sendBrowserMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.stringContaining("[thread:q-941]"),
       }),
     );
     expect(sdkAdapter.sendBrowserMessage).not.toHaveBeenCalledWith(
@@ -265,6 +272,48 @@ describe("direct user needs-input reminders", () => {
     expect(session.messageHistory).toHaveLength(1);
     expect(session.messageHistory[0]).toMatchObject({ type: "user_message", content: "Fresh user message" });
     expect(sentCliContent(deps)).not.toContain("[Needs-input reminder]");
+  });
+
+  it("annotates Main-origin leader user messages in metadata and Claude CLI delivery", async () => {
+    // Main is an explicit thread source for leaders even though it is not a
+    // quest projection, so the model does not infer where the user typed.
+    const session = makeSession();
+    const deps = makeDeps({ isOrchestrator: true });
+
+    await handleUserMessage(session, userMessage({ content: "Main reply" }), deps);
+
+    expect(session.messageHistory[0]).toMatchObject({
+      type: "user_message",
+      content: "Main reply",
+      threadKey: "main",
+    });
+    expect(sentCliContent(deps)).toMatch(/^\[User .*?\] \[thread:main\] Main reply$/);
+  });
+
+  it("annotates quest-thread-origin leader user messages in metadata and Claude CLI delivery", async () => {
+    // Quest-thread messages must remain clean in durable history while the
+    // delivered prompt carries the stable source key for leader/model routing.
+    const session = makeSession();
+    const deps = makeDeps({ isOrchestrator: true });
+
+    await handleUserMessage(
+      session,
+      userMessage({
+        content: "Quest-thread reply",
+        threadKey: "q-941",
+        questId: "q-941",
+      }),
+      deps,
+    );
+
+    expect(session.messageHistory[0]).toMatchObject({
+      type: "user_message",
+      content: "Quest-thread reply",
+      threadKey: "q-941",
+      questId: "q-941",
+      threadRefs: [{ threadKey: "q-941", questId: "q-941", source: "explicit" }],
+    });
+    expect(sentCliContent(deps)).toMatch(/^\[User .*?\] \[thread:q-941\] Quest-thread reply$/);
   });
 
   it("stops listing notifications after they are resolved", async () => {
@@ -402,7 +451,7 @@ describe("direct user needs-input reminders", () => {
     // becoming durable history, so the pending input must carry projection metadata.
     const session = makeSession();
     session.backendType = "codex";
-    const deps = makeDeps();
+    const deps = makeDeps({ isOrchestrator: true });
     deps.addPendingCodexInput = vi.fn((targetSession, input) => {
       targetSession.pendingCodexInputs.push(input);
     });
@@ -421,6 +470,7 @@ describe("direct user needs-input reminders", () => {
     expect(routed).toBe(true);
     expect(session.pendingCodexInputs[0]).toMatchObject({
       content: "Follow up from the q-941 thread",
+      deliveryContent: expect.stringMatching(/^\[User .*?\] \[thread:q-941\] Follow up from the q-941 thread$/),
       threadKey: "q-941",
       questId: "q-941",
       threadRefs: [{ threadKey: "q-941", questId: "q-941", source: "explicit" }],

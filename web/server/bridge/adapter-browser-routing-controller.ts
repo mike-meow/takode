@@ -35,7 +35,7 @@ import type { UserDispatchTurnTarget } from "./generation-lifecycle.js";
 import { extractAskUserAnswers } from "./compaction-recovery.js";
 import { LONG_SLEEP_REMINDER_TEXT } from "./bash-sleep-policy.js";
 import { formatReplyContentForPreview } from "../../shared/reply-context.js";
-import { normalizeThreadTarget } from "../../shared/thread-routing.js";
+import { formatThreadMarker, normalizeThreadTarget } from "../../shared/thread-routing.js";
 import { emitStoredUserMessageTakodeEvent, type UserMessageTakodeTurnTarget } from "./user-message-takode-event.js";
 export {
   hasPendingForceCompact,
@@ -399,6 +399,7 @@ function buildTimestampTag(
   getLauncherSessionInfo: AdapterBrowserRoutingDeps["getLauncherSessionInfo"],
   agentSource?: BrowserUserMessage["agentSource"],
   content?: string,
+  sourceThreadKey?: string,
 ): string {
   const d = new Date(ts);
   const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -410,17 +411,20 @@ function buildTimestampTag(
     : "";
   const timeWithDate = dateStr + time;
   const sessionInfo = getLauncherSessionInfo(session.id);
+  const threadTag = sessionInfo?.isOrchestrator && sourceThreadKey ? `${formatThreadMarker(sourceThreadKey)} ` : "";
   if (isTimerSourceTag(agentSource)) {
-    return isTimerReminderContent(content) ? `[Timer reminder ${timeWithDate}] ` : `[Timer event ${timeWithDate}] `;
+    return isTimerReminderContent(content)
+      ? `[Timer reminder ${timeWithDate}] ${threadTag}`
+      : `[Timer event ${timeWithDate}] ${threadTag}`;
   }
   if (sessionInfo?.isOrchestrator) {
-    if (isSystemSourceTag(agentSource)) return `[System ${timeWithDate}] `;
-    if (agentSource?.sessionId === "herd-events") return `[Herd ${timeWithDate}] `;
+    if (isSystemSourceTag(agentSource)) return `[System ${timeWithDate}] ${threadTag}`;
+    if (agentSource?.sessionId === "herd-events") return `[Herd ${timeWithDate}] ${threadTag}`;
     if (agentSource) {
       const label = agentSource.sessionLabel || agentSource.sessionId.slice(0, 8);
-      return `[Agent ${label} ${timeWithDate}] `;
+      return `[Agent ${label} ${timeWithDate}] ${threadTag}`;
     }
-    return `[User ${timeWithDate}] `;
+    return `[User ${timeWithDate}] ${threadTag}`;
   }
   if (sessionInfo?.herdedBy && agentSource) {
     const label = agentSource.sessionLabel || agentSource.sessionId.slice(0, 8);
@@ -1467,12 +1471,14 @@ export function ingestUserMessage(
   const ts = Date.now();
   const commit = options?.commit !== false;
   const needsInputReminderText = buildNeedsInputReminderTextForDirectUserMessage(session, msg, deps);
-  const explicitTarget =
+  const parsedTarget =
     typeof msg.threadKey === "string"
       ? normalizeThreadTarget(msg.threadKey)
       : typeof msg.questId === "string"
         ? normalizeThreadTarget(msg.questId)
         : null;
+  const isLeaderSession = deps.getLauncherSessionInfo(session.id)?.isOrchestrator === true;
+  const explicitTarget = parsedTarget ?? (isLeaderSession ? { threadKey: "main" } : null);
   const explicitThreadRef: ThreadRef | undefined =
     explicitTarget && explicitTarget.threadKey !== "main"
       ? {
@@ -1530,6 +1536,40 @@ export function ingestUserMessage(
   return finalize();
 }
 
+function applyUserMessageDeliveryPrefix(content: string | unknown[], prefix: string): string | unknown[] {
+  if (!prefix) return content;
+  if (typeof content === "string") return prefix + content;
+  const firstTextIndex = content.findIndex(
+    (block): block is { type: "text"; text: string } =>
+      !!block &&
+      typeof block === "object" &&
+      (block as { type?: unknown }).type === "text" &&
+      typeof (block as { text?: unknown }).text === "string",
+  );
+  if (firstTextIndex < 0) return [{ type: "text", text: prefix.trimEnd() }, ...content];
+  const next = content.slice();
+  const firstText = next[firstTextIndex] as { type: "text"; text: string };
+  next[firstTextIndex] = { ...firstText, text: prefix + firstText.text };
+  return next;
+}
+
+function buildUserMessageDeliveryPrefix(
+  session: AdapterBrowserRoutingSessionLike,
+  ingested: IngestedUserMessage,
+  msg: BrowserUserMessage,
+  contentPreview: string | undefined,
+  deps: Pick<AdapterBrowserRoutingDeps, "getLauncherSessionInfo">,
+): string {
+  return buildTimestampTag(
+    session,
+    ingested.timestamp,
+    deps.getLauncherSessionInfo,
+    msg.agentSource,
+    contentPreview,
+    ingested.historyEntry.threadKey,
+  );
+}
+
 function emitUserMessageTakodeEvent(
   session: AdapterBrowserRoutingSessionLike,
   ingested: IngestedUserMessage,
@@ -1578,16 +1618,13 @@ export async function handleUserMessage(
   }
   if (typeof content === "string") {
     const contentWithReminder = prependNeedsInputReminderToContent(content, ingested.needsInputReminderText) as string;
-    content =
-      buildTimestampTag(
-        session,
-        ingested.timestamp,
-        deps.getLauncherSessionInfo,
-        msg.agentSource,
-        contentWithReminder,
-      ) + contentWithReminder;
+    content = buildUserMessageDeliveryPrefix(session, ingested, msg, contentWithReminder, deps) + contentWithReminder;
   } else {
     content = prependNeedsInputReminderToContent(content, ingested.needsInputReminderText);
+    content = applyUserMessageDeliveryPrefix(
+      content,
+      buildUserMessageDeliveryPrefix(session, ingested, msg, undefined, deps),
+    );
   }
   const ndjson = JSON.stringify({
     type: "user",
@@ -1909,10 +1946,18 @@ export function routeAdapterBrowserMessage(
     }
     if (session.backendType === "codex" && msg.type === "user_message" && ingested) {
       if (ingested.historyEntry.id) {
-        const deliveryContent =
-          adapterMsg.type === "user_message" && typeof adapterMsg.content === "string"
-            ? (prependNeedsInputReminderToContent(adapterMsg.content, ingested.needsInputReminderText) as string)
-            : undefined;
+        let deliveryContent: string | undefined;
+        if (adapterMsg.type === "user_message" && typeof adapterMsg.content === "string") {
+          const contentWithReminder = prependNeedsInputReminderToContent(
+            adapterMsg.content,
+            ingested.needsInputReminderText,
+          ) as string;
+          const sourcePrefix =
+            deps.getLauncherSessionInfo(session.id)?.isOrchestrator === true
+              ? buildUserMessageDeliveryPrefix(session, ingested, msg, contentWithReminder, deps)
+              : "";
+          deliveryContent = sourcePrefix + contentWithReminder;
+        }
         deps.addPendingCodexInput(session, {
           id: ingested.historyEntry.id,
           ...(msg.client_msg_id ? { clientMsgId: msg.client_msg_id } : {}),
@@ -1987,11 +2032,20 @@ export function routeAdapterBrowserMessage(
         typed.content,
         ingested?.needsInputReminderText,
       ) as string;
+      const sourceThreadKey =
+        ingested?.historyEntry.threadKey ??
+        (deps.getLauncherSessionInfo(session.id)?.isOrchestrator === true ? "main" : undefined);
       adapterMsg = {
         ...adapterMsg,
         content:
-          buildTimestampTag(session, msgTs, deps.getLauncherSessionInfo, msg.agentSource, contentWithReminder) +
-          contentWithReminder,
+          buildTimestampTag(
+            session,
+            msgTs,
+            deps.getLauncherSessionInfo,
+            msg.agentSource,
+            contentWithReminder,
+            sourceThreadKey,
+          ) + contentWithReminder,
       } as BrowserOutgoingMessage;
     }
     const adapter = session.codexAdapter || session.claudeSdkAdapter;

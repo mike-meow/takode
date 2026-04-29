@@ -1068,6 +1068,22 @@ export function PlaygroundStateSections() {
                   role: "assistant",
                   content: "Checked worker state, inspected the board, and prepared the next dispatch.",
                   timestamp: Date.now() - 120000,
+                  metadata: {
+                    threadKey: "main",
+                  },
+                }}
+              />
+              <MessageBubble
+                message={{
+                  id: "playground-threaded-user-reply",
+                  role: "user",
+                  content: "I replied from the quest thread, so route the next leader answer there.",
+                  timestamp: Date.now() - 90000,
+                  metadata: {
+                    threadKey: "q-43",
+                    questId: "q-43",
+                    threadRefs: [{ threadKey: "q-43", questId: "q-43", source: "explicit" }],
+                  },
                 }}
               />
               <MessageBubble

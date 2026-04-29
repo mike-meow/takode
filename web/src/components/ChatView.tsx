@@ -29,6 +29,7 @@ import {
   getQuestJourneyPhaseForState,
   getQuestJourneyPresentation,
 } from "../../shared/quest-journey.js";
+import { parseCommandThreadComment, parseThreadTextPrefix } from "../../shared/thread-routing.js";
 import type { BoardParticipantStatus, BoardRowSessionStatus, ChatMessage, QuestmasterTask } from "../types.js";
 
 type LeaderThreadRow = {
@@ -51,12 +52,31 @@ const EMPTY_MESSAGES: ChatMessage[] = [];
 function messageThreadKeys(message: ChatMessage): string[] {
   const keys = new Set<string>();
   const metadata = message.metadata;
-  if (!metadata) return [];
-  if (metadata.threadKey && metadata.threadKey !== "main") keys.add(metadata.threadKey.toLowerCase());
-  if (metadata.questId) keys.add(metadata.questId.toLowerCase());
-  if (metadata.quest?.questId) keys.add(metadata.quest.questId.toLowerCase());
-  for (const ref of metadata.threadRefs ?? []) {
-    if (ref.threadKey !== "main") keys.add(ref.threadKey.toLowerCase());
+  const addThreadKey = (threadKey: string | undefined) => {
+    if (!threadKey || threadKey === "main") return;
+    keys.add(threadKey.toLowerCase());
+  };
+
+  addThreadKey(metadata?.threadKey);
+  addThreadKey(metadata?.questId);
+  addThreadKey(metadata?.quest?.questId);
+  for (const ref of metadata?.threadRefs ?? []) {
+    addThreadKey(ref.threadKey);
+  }
+
+  const parsedContentPrefix = parseThreadTextPrefix(message.content);
+  if (parsedContentPrefix.ok) {
+    addThreadKey(parsedContentPrefix.target.threadKey);
+  }
+
+  for (const block of message.contentBlocks ?? []) {
+    if (block.type === "text") {
+      const parsedBlockPrefix = parseThreadTextPrefix(block.text);
+      if (parsedBlockPrefix.ok) addThreadKey(parsedBlockPrefix.target.threadKey);
+    }
+    if (block.type === "tool_use" && block.name === "Bash" && typeof block.input?.command === "string") {
+      addThreadKey(parseCommandThreadComment(block.input.command)?.threadKey);
+    }
   }
   return [...keys];
 }

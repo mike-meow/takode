@@ -347,6 +347,104 @@ describe("ChatView backend banners", () => {
     expect(scope.getByTestId("composer")).toHaveAttribute("data-quest-id", "q-941");
   });
 
+  it("materializes off-board quest threads from explicit text thread syntax", () => {
+    // Explicit thread routing should reveal a selectable quest thread even
+    // before the quest is present in the board/quest snapshots.
+    resetStore({
+      sessions: new Map([["s1", { backend_state: "connected", backend_error: null, isOrchestrator: true }]]),
+      sdkSessions: [{ sessionId: "s1", archived: false, isOrchestrator: true }],
+      messages: new Map([
+        [
+          "s1",
+          [
+            {
+              id: "m1",
+              role: "assistant",
+              content: "[thread:q-958]\nI will route this in the new quest thread.",
+              timestamp: 1,
+            },
+          ],
+        ],
+      ]),
+      quests: [],
+    });
+
+    const view = render(<ChatView sessionId="s1" />);
+    const scope = within(view.container);
+    const row = scope.getByTestId("leader-thread-row");
+
+    expect(row).toHaveAttribute("data-thread-key", "q-958");
+    expect(within(row).getByRole("link", { name: "q-958" })).toBeInTheDocument();
+    fireEvent.click(row);
+    expect(scope.getByTestId("message-feed")).toHaveAttribute("data-thread-key", "q-958");
+  });
+
+  it("materializes off-board quest threads from explicit Bash command comments", () => {
+    // Command comments are a separate leader-visible routing path from text
+    // prefixes and should create the same selector row.
+    resetStore({
+      sessions: new Map([["s1", { backend_state: "connected", backend_error: null, isOrchestrator: true }]]),
+      sdkSessions: [{ sessionId: "s1", archived: false, isOrchestrator: true }],
+      messages: new Map([
+        [
+          "s1",
+          [
+            {
+              id: "m1",
+              role: "assistant",
+              content: "",
+              timestamp: 1,
+              contentBlocks: [
+                {
+                  type: "tool_use",
+                  id: "tool-1",
+                  name: "Bash",
+                  input: { command: "# thread:q-959\nquest show q-959" },
+                },
+              ],
+            },
+          ],
+        ],
+      ]),
+      quests: [],
+    });
+
+    const view = render(<ChatView sessionId="s1" />);
+    const scope = within(view.container);
+    const row = scope.getByTestId("leader-thread-row");
+
+    expect(row).toHaveAttribute("data-thread-key", "q-959");
+    expect(within(row).getByRole("link", { name: "q-959" })).toBeInTheDocument();
+  });
+
+  it("does not materialize quest threads from plain quest mentions", () => {
+    resetStore({
+      sessions: new Map([["s1", { backend_state: "connected", backend_error: null, isOrchestrator: true }]]),
+      sdkSessions: [{ sessionId: "s1", archived: false, isOrchestrator: true }],
+      messages: new Map([
+        [
+          "s1",
+          [
+            {
+              id: "m1",
+              role: "assistant",
+              content: "Please compare [q-960](quest:q-960) with q-961 before deciding.",
+              timestamp: 1,
+            },
+          ],
+        ],
+      ]),
+      quests: [],
+    });
+
+    const view = render(<ChatView sessionId="s1" />);
+    const scope = within(view.container);
+
+    expect(scope.getByTestId("leader-thread-switcher")).toBeInTheDocument();
+    expect(scope.queryByTestId("leader-thread-row")).not.toBeInTheDocument();
+    expect(scope.getByTestId("message-feed")).toHaveAttribute("data-thread-key", "main");
+  });
+
   it("makes only the quest token a quest link and keeps title clicks routed to the thread", () => {
     resetStore({
       sessions: new Map([["s1", { backend_state: "connected", backend_error: null, isOrchestrator: true }]]),

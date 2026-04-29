@@ -263,11 +263,13 @@ export function PendingUserUploadList({ sessionId, uploads }: { sessionId: strin
               mediaType,
             })),
             timestamp: upload.timestamp,
-            ...(upload.vscodeSelection || upload.replyContext
+            ...(upload.vscodeSelection || upload.replyContext || upload.threadKey || upload.questId
               ? {
                   metadata: {
                     ...(upload.replyContext ? { replyContext: upload.replyContext } : {}),
                     ...(upload.vscodeSelection ? { vscodeSelection: upload.vscodeSelection } : {}),
+                    ...(upload.threadKey ? { threadKey: upload.threadKey } : {}),
+                    ...(upload.questId ? { questId: upload.questId } : {}),
                   },
                 }
               : {}),
@@ -294,6 +296,8 @@ export function PendingUserUploadList({ sessionId, uploads }: { sessionId: strin
               imageRefs: upload.prepared.imageRefs,
               ...(upload.replyContext ? { replyContext: upload.replyContext } : {}),
               ...(upload.vscodeSelection ? { vscodeSelection: upload.vscodeSelection } : {}),
+              ...(upload.threadKey ? { threadKey: upload.threadKey } : {}),
+              ...(upload.questId ? { questId: upload.questId } : {}),
               session_id: sessionId,
               client_msg_id: upload.id,
             });

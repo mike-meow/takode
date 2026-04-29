@@ -24,6 +24,7 @@ import { SessionHoverCard } from "./SessionHoverCard.js";
 import type { SidebarSessionItem as SessionItemType } from "../utils/sidebar-session-item.js";
 import { createComposerDraftImage } from "./composer-image-utils.js";
 import { NotificationMarker } from "./NotificationMarker.js";
+import { formatThreadMarker } from "../../shared/thread-routing.js";
 
 export { NotificationMarker } from "./NotificationMarker.js";
 
@@ -410,6 +411,28 @@ function AgentSourceBadge({ source }: { source: { sessionId: string; sessionLabe
         <span className="font-mono-code">via {label}</span>
       </button>
       {menuPos && <ContextMenu x={menuPos.x} y={menuPos.y} items={items} onClose={() => setMenuPos(null)} />}
+    </div>
+  );
+}
+
+function getMessageThreadKey(message: ChatMessage): string | null {
+  const metadata = message.metadata;
+  if (!metadata) return null;
+  if (metadata.threadKey) return metadata.threadKey;
+  if (metadata.questId) return metadata.questId;
+  const firstRef = metadata.threadRefs?.[0];
+  return firstRef?.threadKey ?? null;
+}
+
+function ThreadSourceBadge({ threadKey }: { threadKey: string }) {
+  return (
+    <div className="mb-1.5">
+      <span
+        className="inline-flex max-w-full items-center rounded-md border border-cc-border/40 bg-cc-hover/35 px-1.5 py-0.5 font-mono-code text-[10px] leading-none text-cc-muted/80"
+        data-testid="thread-source-badge"
+      >
+        {formatThreadMarker(threadKey)}
+      </span>
     </div>
   );
 }
@@ -913,6 +936,7 @@ function UserMessage({
   );
   const localImageEntries = message.localImages ?? [];
   const remoteImageEntries = message.images ?? [];
+  const threadKey = getMessageThreadKey(message);
   const pendingLabel =
     message.pendingState === "uploading"
       ? "Uploading image…"
@@ -925,6 +949,7 @@ function UserMessage({
   return (
     <div className="flex justify-end items-start gap-1 group/msg animate-[fadeSlideIn_0.2s_ease-out]">
       <div className="max-w-[85%] sm:max-w-[80%] sm:min-w-[200px] px-3 sm:px-4 py-2.5 rounded-[14px] rounded-br-[4px] bg-cc-user-bubble text-cc-fg">
+        {threadKey && <ThreadSourceBadge threadKey={threadKey} />}
         {message.agentSource && <AgentSourceBadge source={message.agentSource} />}
         {replyContext && <UserReplyChip previewText={replyContext.previewText} messageId={replyContext.messageId} />}
         {message.metadata?.vscodeSelection && (
@@ -1284,6 +1309,7 @@ function AssistantMessage({
   });
   const resolvedNotification = message.notification ?? inboxAnchoredNotification;
   const suppressToolNotificationMarker = !!resolvedNotification;
+  const threadKey = getMessageThreadKey(message);
 
   // Only show copy-message button when there's actual text content to copy
   const hasTextContent = message.content || blocks.some((b) => b.type === "text" || b.type === "thinking");
@@ -1297,6 +1323,7 @@ function AssistantMessage({
       <div className={`group/msg relative flex items-start ${hidePaw ? "" : "gap-3"}`}>
         {!hidePaw && <PawTrailAvatar />}
         <div ref={contentRef} className="flex-1 min-w-0 pr-6">
+          {threadKey && <ThreadSourceBadge threadKey={threadKey} />}
           <MarkdownContent
             text={message.content}
             sessionId={sessionId}
@@ -1323,6 +1350,7 @@ function AssistantMessage({
     <div className={`group/msg relative flex items-start ${hidePaw ? "" : "gap-3"}`}>
       {!hidePaw && <PawTrailAvatar />}
       <div ref={contentRef} className="flex-1 min-w-0 space-y-3 pr-6">
+        {threadKey && <ThreadSourceBadge threadKey={threadKey} />}
         {shouldRenderContentFallback && (
           <MarkdownContent
             text={message.content}

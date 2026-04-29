@@ -173,6 +173,18 @@ describe("MessageBubble - user messages", () => {
     expect((time.textContent || "").length).toBeGreaterThan(0);
   });
 
+  it("renders the stable thread source badge for user messages", () => {
+    const msg = makeMessage({
+      role: "user",
+      content: "Quest-thread reply",
+      metadata: { threadKey: "q-941", questId: "q-941" },
+    });
+
+    render(<MessageBubble message={msg} />);
+
+    expect(screen.getByTestId("thread-source-badge").textContent).toBe("[thread:q-941]");
+  });
+
   it("renders a VS Code selection attachment above the user message content", () => {
     const msg = makeMessage({
       role: "user",
@@ -476,6 +488,21 @@ describe("MessageBubble - user messages", () => {
     } finally {
       useStore.setState({ sessions: prevSessions });
     }
+  });
+});
+
+describe("MessageBubble - assistant thread source", () => {
+  it("renders the stable thread source badge for assistant messages", () => {
+    const msg = makeMessage({
+      role: "assistant",
+      content: "Main response",
+      contentBlocks: [{ type: "text", text: "Main response" }],
+      metadata: { threadKey: "main" },
+    });
+
+    render(<MessageBubble message={msg} />);
+
+    expect(screen.getByTestId("thread-source-badge").textContent).toBe("[thread:main]");
   });
 });
 

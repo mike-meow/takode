@@ -21,6 +21,10 @@ export function normalizeThreadTarget(raw: string): ThreadRouteTarget | null {
   return null;
 }
 
+export function formatThreadMarker(threadKey: string): string {
+  return `[thread:${threadKey}]`;
+}
+
 export function parseThreadTextPrefix(text: string): ThreadRouteParseResult {
   const lines = text.split(/\r?\n/);
   const first = firstNonEmptyLine(lines);

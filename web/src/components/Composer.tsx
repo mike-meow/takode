@@ -742,6 +742,8 @@ export function Composer({
         stage: "delivering",
         ...(currentReplyContext ? { replyContext: currentReplyContext } : {}),
         ...(vscodeSelectionPayload ? { vscodeSelection: vscodeSelectionPayload } : {}),
+        threadKey,
+        ...(threadKey !== "main" ? { questId: questId ?? threadKey } : {}),
         prepared: {
           deliveryContent,
           imageRefs,
@@ -759,7 +761,8 @@ export function Composer({
         imageRefs,
         session_id: sessionId,
         client_msg_id: pendingId,
-        ...(threadKey !== "main" ? { threadKey, questId: questId ?? threadKey } : {}),
+        threadKey,
+        ...(threadKey !== "main" ? { questId: questId ?? threadKey } : {}),
         ...(vscodeSelectionPayload ? { vscodeSelection: vscodeSelectionPayload } : {}),
       });
 
@@ -778,7 +781,8 @@ export function Composer({
       content: finalContent,
       ...(currentReplyContext ? { deliveryContent: replyDeliveryContent, replyContext: currentReplyContext } : {}),
       session_id: sessionId,
-      ...(threadKey !== "main" ? { threadKey, questId: questId ?? threadKey } : {}),
+      threadKey,
+      ...(threadKey !== "main" ? { questId: questId ?? threadKey } : {}),
       ...(vscodeSelectionPayload ? { vscodeSelection: vscodeSelectionPayload } : {}),
     });
 

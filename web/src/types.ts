@@ -186,6 +186,8 @@ export interface PendingUserUpload {
   error?: string;
   replyContext?: ReplyContext;
   vscodeSelection?: VsCodeSelectionMetadata;
+  threadKey?: string;
+  questId?: string;
   prepared?: {
     deliveryContent: string;
     imageRefs: ImageRef[];
