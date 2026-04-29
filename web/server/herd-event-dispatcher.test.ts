@@ -1258,6 +1258,55 @@ describe("HerdEventDispatcher", () => {
     dispatcher.destroy();
   });
 
+  it("delivers same-range turn_end events when material payload fields change", () => {
+    // Same message range alone is not enough to prove staleness: corrected
+    // outcome, tools, quest change, user-message, or preview payloads matter.
+    const { bridge, launcher } = createMocks();
+    const dispatcher = new HerdEventDispatcher(bridge, launcher);
+    dispatcher.setupForOrchestrator("orch-1");
+
+    vi.mocked(bridge.isSessionIdle).mockReturnValue(true);
+
+    triggerEvent(
+      makeEvent({
+        id: 1,
+        event: "turn_end",
+        data: {
+          duration_ms: 5000,
+          msgRange: { from: 1957, to: 1967 },
+          tools: { Edit: 1 },
+          resultPreview: "alive for q-968",
+          userMsgs: { count: 1, ids: [1957] },
+          questChange: { questId: "q-968", from: "IMPLEMENTING", to: "PORTING" },
+        },
+      }),
+    );
+    vi.advanceTimersByTime(600);
+    expect(bridge.injectUserMessage).toHaveBeenCalledTimes(1);
+
+    dispatcher.onOrchestratorTurnEnd("orch-1");
+    triggerEvent(
+      makeEvent({
+        id: 2,
+        event: "turn_end",
+        data: {
+          duration_ms: 5000,
+          is_error: true,
+          compacted: true,
+          msgRange: { from: 1957, to: 1967 },
+          tools: { Edit: 1, Bash: 1 },
+          resultPreview: "failed while validating q-968",
+          userMsgs: { count: 2, ids: [1957, 1958] },
+          questChange: { questId: "q-968", from: "PORTING", to: "IMPLEMENTING" },
+        },
+      }),
+    );
+    vi.advanceTimersByTime(600);
+    expect(bridge.injectUserMessage).toHaveBeenCalledTimes(2);
+
+    dispatcher.destroy();
+  });
+
   it("suppresses duplicate board_stalled events when only age fields change", () => {
     // A still-stalled row should not keep notifying just because stalledForMs
     // or the rendered relative age changed. A changed reason remains deliverable.
@@ -1326,6 +1375,49 @@ describe("HerdEventDispatcher", () => {
           stalledForMs: 573 * 60_000,
           reason: "worker missing",
           action: "inspect worker; review findings or revise the Journey",
+        },
+      }),
+    );
+    vi.advanceTimersByTime(600);
+    expect(bridge.injectUserMessage).toHaveBeenCalledTimes(2);
+
+    dispatcher.destroy();
+  });
+
+  it("delivers board_dispatchable events when the next action changes", () => {
+    const { bridge, launcher } = createMocks();
+    const dispatcher = new HerdEventDispatcher(bridge, launcher);
+    dispatcher.setupForOrchestrator("orch-1");
+
+    vi.mocked(bridge.isSessionIdle).mockReturnValue(true);
+
+    triggerEvent(
+      makeEvent({
+        id: 1,
+        event: "board_dispatchable",
+        data: {
+          questId: "q-77",
+          title: "Dispatch queued follow-up",
+          signature: "dispatchable-sig-1",
+          summary: "q-77 can be dispatched now: wait-for resolved (q-76).",
+          action: "Dispatch it now.",
+        },
+      }),
+    );
+    vi.advanceTimersByTime(600);
+    expect(bridge.injectUserMessage).toHaveBeenCalledTimes(1);
+
+    dispatcher.onOrchestratorTurnEnd("orch-1");
+    triggerEvent(
+      makeEvent({
+        id: 2,
+        event: "board_dispatchable",
+        data: {
+          questId: "q-77",
+          title: "Dispatch queued follow-up",
+          signature: "dispatchable-sig-1",
+          summary: "q-77 can be dispatched now: wait-for resolved (q-76).",
+          action: "Replace QUEUED with IMPLEMENTING before dispatch.",
         },
       }),
     );

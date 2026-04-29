@@ -1298,7 +1298,30 @@ function getStableHerdEventKey(event: TakodeEvent): string | null {
   if (event.event === "turn_end") {
     const range = event.data.msgRange;
     if (!range) return null;
-    return ["turn_end", event.sessionId, range.from, range.to].map(stableKeyPart).join("|");
+    return [
+      "turn_end",
+      event.sessionId,
+      event.data.reason,
+      event.data.duration_ms,
+      event.data.is_error,
+      event.data.interrupted,
+      event.data.interrupt_source,
+      event.data.interrupt_origin,
+      event.data.restart_prep_operation_id,
+      event.data.compacted,
+      stableToolCountsPart(event.data.tools),
+      truncate(typeof event.data.resultPreview === "string" ? event.data.resultPreview : "", 60),
+      range.from,
+      range.to,
+      event.data.questChange?.questId,
+      event.data.questChange?.from,
+      event.data.questChange?.to,
+      event.data.userMsgs?.count,
+      stableNumberListPart(event.data.userMsgs?.ids),
+      event.data.turn_source,
+    ]
+      .map(stableKeyPart)
+      .join("|");
   }
   if (event.event === "board_stalled") {
     return [
@@ -1316,7 +1339,14 @@ function getStableHerdEventKey(event: TakodeEvent): string | null {
       .join("|");
   }
   if (event.event === "board_dispatchable") {
-    return ["board_dispatchable", event.sessionId, event.data.questId, event.data.signature, event.data.summary]
+    return [
+      "board_dispatchable",
+      event.sessionId,
+      event.data.questId,
+      event.data.signature,
+      event.data.summary,
+      event.data.action,
+    ]
       .map(stableKeyPart)
       .join("|");
   }
@@ -1336,6 +1366,18 @@ function trimRecentEventKeys(inbox: HerdInbox): void {
     removed += 1;
     if (removed >= excess) break;
   }
+}
+
+function stableToolCountsPart(tools: Record<string, number> | undefined): string {
+  if (!tools) return "";
+  return Object.entries(tools)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([tool, count]) => `${tool}:${count}`)
+    .join(",");
+}
+
+function stableNumberListPart(values: number[] | undefined): string {
+  return values?.join(",") ?? "";
 }
 
 function stableKeyPart(value: unknown): string {
