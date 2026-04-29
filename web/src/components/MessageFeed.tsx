@@ -18,7 +18,7 @@ import { CollapseFooter, TurnCollapseFooter } from "./CollapseFooter.js";
 import { api } from "../api.js";
 import { ElapsedTimer, FeedStatusPill, PendingCodexInputList, PendingUserUploadList } from "./MessageFeedStatus.js";
 import { FeedFooter, TurnEntries, findPreviousSectionStartIndex } from "./MessageFeedEntries.js";
-import { SAVE_THREAD_VIEWPORT_EVENT } from "../utils/thread-viewport.js";
+import { SAVE_THREAD_VIEWPORT_EVENT, getFeedViewportKey } from "../utils/thread-viewport.js";
 import {
   CodexTerminalInspector,
   LiveCodexTerminalStub,
@@ -234,9 +234,10 @@ export function MessageFeed({
   const containerRef = useRef<HTMLDivElement>(null);
   const textSelection = useTextSelection(containerRef);
   const contentRootRef = useRef<HTMLDivElement>(null);
+  const viewportKey = useMemo(() => getFeedViewportKey(sessionId, threadKey), [sessionId, threadKey]);
   // Initialize isNearBottom from saved scroll position — if the user was scrolled
   // up when they left this session, don't auto-scroll to bottom on re-mount.
-  const savedScrollPos = useStore.getState().feedScrollPosition.get(sessionId);
+  const savedScrollPos = useStore.getState().feedScrollPosition.get(viewportKey);
   const autoFollowEnabledRef = useRef(savedScrollPos ? savedScrollPos.isAtBottom : true);
   const isNearBottom = useRef(savedScrollPos ? savedScrollPos.isAtBottom : true);
   const lastScrollTopRef = useRef(savedScrollPos?.scrollTop ?? 0);
@@ -260,9 +261,10 @@ export function MessageFeed({
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const isTouch = useMemo(() => isTouchDevice(), []);
   const taskTurnOffsetsRef = useRef<TurnOffsetIndex[]>([]);
-  const restoredSessionIdRef = useRef<string | null>(null);
+  const restoredViewportKeyRef = useRef<string | null>(null);
   const overlayViewportRef = useRef<HTMLDivElement>(null);
   const lastViewportAnchorRef = useRef<{
+    viewportKey: string;
     signature: string;
     wasAutoFollowing: boolean;
     anchor: FeedViewportAnchor | null;
@@ -504,7 +506,7 @@ export function MessageFeed({
     const container = containerRef.current;
     if (!container) return;
     const anchor = findVisibleTurnAnchor(container);
-    useStore.getState().setFeedScrollPosition(sessionId, {
+    useStore.getState().setFeedScrollPosition(viewportKey, {
       scrollTop: container.scrollTop,
       scrollHeight: container.scrollHeight,
       isAtBottom: autoFollowEnabledRef.current && isNearBottom.current,
@@ -512,7 +514,7 @@ export function MessageFeed({
       anchorOffsetTop: anchor?.offsetTop,
       lastSeenContentBottom: lastSeenContentBottomRef.current ?? getRealContentBottom(),
     });
-  }, [findVisibleTurnAnchor, getRealContentBottom, sessionId]);
+  }, [findVisibleTurnAnchor, getRealContentBottom, viewportKey]);
 
   // Save scroll position on unmount. Uses useLayoutEffect so the cleanup runs
   // in the layout phase — BEFORE the new component's effects try to restore,
@@ -667,12 +669,13 @@ export function MessageFeed({
   const snapshotViewportAnchor = useCallback(
     (container: HTMLDivElement) => {
       lastViewportAnchorRef.current = {
+        viewportKey,
         signature: collapseLayoutSignature,
         wasAutoFollowing: autoFollowEnabledRef.current,
         anchor: findVisibleFeedAnchor(container),
       };
     },
-    [collapseLayoutSignature, findVisibleFeedAnchor],
+    [collapseLayoutSignature, findVisibleFeedAnchor, viewportKey],
   );
 
   const moveSectionWindow = useCallback(
@@ -1080,9 +1083,9 @@ export function MessageFeed({
   // useLayoutEffect runs before the browser paints, preventing the flash
   // where the feed appears at scrollTop=0 for one frame before jumping.
   useLayoutEffect(() => {
-    if (restoredSessionIdRef.current === sessionId) return;
+    if (restoredViewportKeyRef.current === viewportKey) return;
     if (showConversationLoading) return;
-    const pos = useStore.getState().feedScrollPosition.get(sessionId);
+    const pos = useStore.getState().feedScrollPosition.get(viewportKey);
     if (messages.length === 0 && pos?.anchorTurnId) return;
     const desiredSectionWindowStart = pos?.anchorTurnId ? getSectionWindowStartForTurnId(pos.anchorTurnId) : null;
     if (desiredSectionWindowStart !== sectionWindowStart) {
@@ -1113,7 +1116,7 @@ export function MessageFeed({
     } else {
       scrollToBottom("auto");
     }
-    restoredSessionIdRef.current = sessionId;
+    restoredViewportKeyRef.current = viewportKey;
   }, [
     getSectionWindowStartForTurnId,
     messages.length,
@@ -1122,6 +1125,7 @@ export function MessageFeed({
     sectionWindowStart,
     sessionId,
     showConversationLoading,
+    viewportKey,
   ]);
 
   useEffect(() => {
@@ -1131,7 +1135,7 @@ export function MessageFeed({
     lastObservedContentBottomRef.current = savedScrollPos?.lastSeenContentBottom ?? null;
     suppressLatestPillOnRestoreRef.current = savedScrollPos?.lastSeenContentBottom != null;
     setShowLatestPill(false);
-  }, [savedScrollPos?.lastSeenContentBottom, sessionId, showConversationLoading]);
+  }, [savedScrollPos?.lastSeenContentBottom, sessionId, showConversationLoading, viewportKey]);
 
   useEffect(() => {
     if (showConversationLoading) return;
@@ -1265,7 +1269,7 @@ export function MessageFeed({
     if (!container) return;
 
     const previous = lastViewportAnchorRef.current;
-    if (previous && previous.signature !== collapseLayoutSignature) {
+    if (previous && previous.viewportKey === viewportKey && previous.signature !== collapseLayoutSignature) {
       if (previous.wasAutoFollowing) {
         const realContentBottom = getRealContentBottom() ?? container.scrollHeight;
         const maxScrollTop = Math.max(0, container.scrollHeight - container.clientHeight);
@@ -1283,7 +1287,14 @@ export function MessageFeed({
       }
     }
     snapshotViewportAnchor(container);
-  }, [collapseLayoutSignature, getRealContentBottom, restoreFeedAnchor, setContainerScrollTop, snapshotViewportAnchor]);
+  }, [
+    collapseLayoutSignature,
+    getRealContentBottom,
+    restoreFeedAnchor,
+    setContainerScrollTop,
+    snapshotViewportAnchor,
+    viewportKey,
+  ]);
 
   // Scroll-to-turn: triggered from the Session Tasks panel
   const scrollToTurnId = useStore((s) => s.scrollToTurnId.get(sessionId));

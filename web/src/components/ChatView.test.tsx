@@ -254,6 +254,7 @@ vi.mock("./QuestJourneyTimeline.js", () => ({
 }));
 
 import { ChatView } from "./ChatView.js";
+import { SAVE_THREAD_VIEWPORT_EVENT } from "../utils/thread-viewport.js";
 
 beforeEach(() => {
   resetStore();
@@ -400,6 +401,51 @@ describe("ChatView backend banners", () => {
     expect(scope.getByTestId("composer")).toHaveAttribute("data-quest-id", "q-941");
     expect(scope.getByTestId("quest-thread-banner")).toHaveTextContent("Viewing quest thread");
     expect(scope.getByTestId("quest-thread-banner")).toHaveTextContent("q-941");
+  });
+
+  it("snapshots the current feed before switching leader threads", () => {
+    // Thread navigation must save the outgoing thread viewport first so Main
+    // can restore its prior reading position after visiting a quest thread.
+    resetStore({
+      sessions: new Map([["s1", { backend_state: "connected", backend_error: null, isOrchestrator: true }]]),
+      sdkSessions: [{ sessionId: "s1", archived: false, isOrchestrator: true }],
+      messages: new Map([
+        [
+          "s1",
+          [
+            { id: "m-main", role: "assistant", content: "Main update", timestamp: 1 },
+            {
+              id: "m-q941",
+              role: "assistant",
+              content: "q-941 update",
+              timestamp: 2,
+              metadata: { threadRefs: [{ threadKey: "q-941", questId: "q-941", source: "explicit" }] },
+            },
+          ],
+        ],
+      ]),
+      quests: [{ questId: "q-941", title: "Quest thread MVP", status: "in_progress" }],
+    });
+
+    const view = render(<ChatView sessionId="s1" />);
+    const scope = within(view.container);
+    const snapshots: Array<{ sessionId?: string | null; threadKey: string | null }> = [];
+    const handleSnapshot = (event: Event) => {
+      snapshots.push({
+        sessionId: (event as CustomEvent<{ sessionId?: string | null }>).detail?.sessionId,
+        threadKey: scope.getByTestId("message-feed").getAttribute("data-thread-key"),
+      });
+    };
+    window.addEventListener(SAVE_THREAD_VIEWPORT_EVENT, handleSnapshot);
+
+    try {
+      fireEvent.click(scope.getByRole("button", { name: /q-941/i }));
+    } finally {
+      window.removeEventListener(SAVE_THREAD_VIEWPORT_EVENT, handleSnapshot);
+    }
+
+    expect(snapshots).toEqual([{ sessionId: "s1", threadKey: "main" }]);
+    expect(scope.getByTestId("message-feed")).toHaveAttribute("data-thread-key", "q-941");
   });
 
   it("offers All Threads as a global projection while keeping a Main/global composer available", () => {

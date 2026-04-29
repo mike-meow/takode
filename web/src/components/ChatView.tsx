@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useStore } from "../store.js";
 import { api } from "../api.js";
@@ -26,7 +26,8 @@ import {
   getQuestJourneyPresentation,
 } from "../../shared/quest-journey.js";
 import { parseCommandThreadComment, parseThreadTextPrefix } from "../../shared/thread-routing.js";
-import { ALL_THREADS_KEY, MAIN_THREAD_KEY } from "../utils/thread-projection.js";
+import { ALL_THREADS_KEY, MAIN_THREAD_KEY, normalizeThreadKey } from "../utils/thread-projection.js";
+import { requestThreadViewportSnapshot } from "../utils/thread-viewport.js";
 import type { BoardRowSessionStatus, ChatMessage, QuestmasterTask } from "../types.js";
 
 type LeaderThreadRow = {
@@ -360,6 +361,15 @@ export function ChatView({ sessionId, preview = false }: { sessionId: string; pr
     isQuestThreadKey(selectedThreadKey);
   const composerThreadKey = isLeaderSession ? composeThreadKeyForSelection(selectedThreadKey) : MAIN_THREAD_KEY;
   const composerQuestId = isLeaderSession && isQuestThreadKey(composerThreadKey) ? composerThreadKey : undefined;
+  const handleSelectThread = useCallback(
+    (threadKey: string) => {
+      const nextThreadKey = normalizeThreadKey(threadKey || MAIN_THREAD_KEY);
+      if (nextThreadKey === normalizeThreadKey(selectedThreadKey)) return;
+      requestThreadViewportSnapshot(sessionId);
+      setSelectedThreadKey(nextThreadKey);
+    },
+    [selectedThreadKey, sessionId],
+  );
 
   useEffect(() => {
     setSelectedThreadKey(MAIN_THREAD_KEY);
@@ -519,8 +529,8 @@ export function ChatView({ sessionId, preview = false }: { sessionId: string; pr
           sessionId={sessionId}
           currentThreadKey={isLeaderSession ? selectedThreadKey : MAIN_THREAD_KEY}
           currentThreadLabel={isLeaderSession ? selectedThreadLabel : "Main"}
-          onReturnToMain={isLeaderSession ? () => setSelectedThreadKey(MAIN_THREAD_KEY) : undefined}
-          onSelectThread={isLeaderSession ? setSelectedThreadKey : undefined}
+          onReturnToMain={isLeaderSession ? () => handleSelectThread(MAIN_THREAD_KEY) : undefined}
+          onSelectThread={isLeaderSession ? handleSelectThread : undefined}
           threadRows={isLeaderSession ? workBoardThreadRows : undefined}
         />
       )}
@@ -534,13 +544,13 @@ export function ChatView({ sessionId, preview = false }: { sessionId: string; pr
             <QuestThreadBanner
               row={selectedThreadRow}
               threadKey={selectedThreadKey}
-              onReturnToMain={() => setSelectedThreadKey(MAIN_THREAD_KEY)}
+              onReturnToMain={() => handleSelectThread(MAIN_THREAD_KEY)}
             />
           )}
           <MessageFeed
             sessionId={sessionId}
             threadKey={isLeaderSession ? selectedThreadKey : MAIN_THREAD_KEY}
-            onSelectThread={isLeaderSession ? setSelectedThreadKey : undefined}
+            onSelectThread={isLeaderSession ? handleSelectThread : undefined}
           />
         </div>
       )}

@@ -138,7 +138,7 @@ import {
   findVisibleSectionEndIndex,
   findVisibleSectionStartIndex,
 } from "./MessageFeed.js";
-import { requestThreadViewportSnapshot } from "../utils/thread-viewport.js";
+import { getFeedViewportKey, requestThreadViewportSnapshot } from "../utils/thread-viewport.js";
 
 function makeMessage(overrides: Partial<ChatMessage> & { role: ChatMessage["role"] }): ChatMessage {
   return {
@@ -275,9 +275,10 @@ function setStoreFeedScrollPosition(
     anchorOffsetTop?: number;
     lastSeenContentBottom?: number | null;
   },
+  threadKey = "main",
 ) {
   const map = new Map();
-  map.set(sessionId, pos);
+  map.set(getFeedViewportKey(sessionId, threadKey), pos);
   mockStoreValues.feedScrollPosition = map;
 }
 
@@ -632,8 +633,8 @@ describe("MessageFeed - scroll behavior", () => {
       },
     });
 
-    mockSetFeedScrollPosition.mockImplementationOnce((sessionId, pos) => {
-      setStoreFeedScrollPosition(sessionId, pos);
+    mockSetFeedScrollPosition.mockImplementationOnce((viewportKey, pos) => {
+      mockStoreValues.feedScrollPosition = new Map([[viewportKey, pos]]);
     });
 
     try {
@@ -678,8 +679,8 @@ describe("MessageFeed - scroll behavior", () => {
       makeMessage({ id: "a3", role: "assistant", content: "Third result" }),
     ]);
 
-    mockSetFeedScrollPosition.mockImplementation((sessionId, pos) => {
-      setStoreFeedScrollPosition(sessionId, pos);
+    mockSetFeedScrollPosition.mockImplementation((viewportKey, pos) => {
+      mockStoreValues.feedScrollPosition = new Map([[viewportKey, pos]]);
     });
 
     const { container } = render(<MessageFeed sessionId={sid} />);
@@ -753,7 +754,7 @@ describe("MessageFeed - scroll behavior", () => {
       fireEvent.scroll(scrollContainer);
       requestThreadViewportSnapshot(sid);
       expect(mockSetFeedScrollPosition).toHaveBeenCalledWith(
-        sid,
+        getFeedViewportKey(sid),
         expect.objectContaining({
           scrollTop: 720,
           isAtBottom: false,
