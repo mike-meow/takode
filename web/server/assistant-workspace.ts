@@ -62,7 +62,7 @@ Use \`companion\` to manage Takode. All commands output JSON.
 ## Creating Skills
 
 Skills are reusable workflow templates for Claude Code and Codex.
-They live in \`~/.claude/skills/<slug>/SKILL.md\` (Claude) and \`~/.codex/skills/<slug>/SKILL.md\` (Codex),
+They live in \`~/.claude/skills/<slug>/SKILL.md\` (Claude) and \`~/.agents/skills/<slug>/SKILL.md\` (Codex/new agents),
 and become available as \`/<slug>\` commands in new sessions.
 
 ### Skill File Format

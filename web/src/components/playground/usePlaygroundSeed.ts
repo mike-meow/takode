@@ -292,12 +292,12 @@ export function usePlaygroundSeed() {
       skill_metadata: [
         {
           name: "doc-coauthoring",
-          path: "/Users/stan/.codex/skills/doc-coauthoring/SKILL.md",
+          path: "/Users/stan/.agents/skills/doc-coauthoring/SKILL.md",
           description: "Draft and edit design docs",
         },
         {
           name: "frontend-design",
-          path: "/Users/stan/.codex/skills/frontend-design/SKILL.md",
+          path: "/Users/stan/.agents/skills/frontend-design/SKILL.md",
           description: "Polish React UI states",
         },
       ],

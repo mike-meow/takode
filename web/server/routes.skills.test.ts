@@ -185,14 +185,14 @@ describe("skills routes backend targeting", () => {
     state.files.clear();
     state.dirs.clear();
 
-    // Seed independent skills in Claude and Codex homes.
+    // Seed independent skills in Claude and .agents homes.
     addFile(
       "/home/tester/.claude/skills/quest/SKILL.md",
       "---\nname: quest\ndescription: Claude quest\n---\n\n# Quest",
     );
     addFile(
-      "/home/tester/.codex/skills/codex-only/SKILL.md",
-      "---\nname: codex-only\ndescription: Codex skill\n---\n\n# Codex",
+      "/home/tester/.agents/skills/agent-only/SKILL.md",
+      "---\nname: agent-only\ndescription: Agent skill\n---\n\n# Agent",
     );
 
     const sessionStore = { setArchived: vi.fn(async () => true), flushAll: vi.fn(async () => {}) } as any;
@@ -216,12 +216,12 @@ describe("skills routes backend targeting", () => {
     expect(json).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ slug: "quest", backends: ["claude"] }),
-        expect.objectContaining({ slug: "codex-only", backends: ["codex"] }),
+        expect.objectContaining({ slug: "agent-only", backends: ["codex"] }),
       ]),
     );
   });
 
-  it("creates skill only in codex root when backend=codex", async () => {
+  it("creates skill only in agents root when backend=codex", async () => {
     // Validates backend scoping for POST /api/skills.
     const res = await app.request("/api/skills?backend=codex", {
       method: "POST",
@@ -229,7 +229,8 @@ describe("skills routes backend targeting", () => {
       body: JSON.stringify({ name: "new skill", description: "d", content: "# New" }),
     });
     expect(res.status).toBe(200);
-    expect(state.files.has("/home/tester/.codex/skills/new-skill/SKILL.md")).toBe(true);
+    expect(state.files.has("/home/tester/.agents/skills/new-skill/SKILL.md")).toBe(true);
+    expect(state.files.has("/home/tester/.codex/skills/new-skill/SKILL.md")).toBe(false);
     expect(state.files.has("/home/tester/.claude/skills/new-skill/SKILL.md")).toBe(false);
   });
 

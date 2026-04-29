@@ -8,6 +8,7 @@ const fsMocks = vi.hoisted(() => ({
     throw new Error("ENOENT");
   }),
   readlinkSync: vi.fn(),
+  readdirSync: vi.fn((): any[] => []),
   unlinkSync: vi.fn(),
   rmSync: vi.fn(),
 }));
@@ -38,12 +39,13 @@ describe("ensureSkillSymlinks", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     fsMocks.existsSync.mockReturnValue(true);
+    fsMocks.readdirSync.mockReturnValue([]);
     fsMocks.lstatSync.mockImplementation((_targetDir: string): { isSymbolicLink: () => boolean } => {
       throw new Error("ENOENT");
     });
   });
 
-  it("symlinks project skills into Claude, Codex, and agents homes", async () => {
+  it("symlinks project skills into Claude and agents homes", async () => {
     // Validates the shared project-skill fallback used by takode-orchestration,
     // which currently only exists under the repo's .claude/skills directory.
     fsMocks.existsSync.mockImplementation((targetDir: string) => {
@@ -58,11 +60,11 @@ describe("ensureSkillSymlinks", () => {
     );
     expect(fsMocks.symlinkSync).toHaveBeenCalledWith(
       "/repo/.claude/skills/takode-orchestration",
-      "/home/tester/.codex/skills/takode-orchestration",
-    );
-    expect(fsMocks.symlinkSync).toHaveBeenCalledWith(
-      "/repo/.claude/skills/takode-orchestration",
       "/home/tester/.agents/skills/takode-orchestration",
+    );
+    expect(fsMocks.symlinkSync).not.toHaveBeenCalledWith(
+      expect.any(String),
+      "/home/tester/.codex/skills/takode-orchestration",
     );
   });
 
@@ -106,15 +108,15 @@ describe("ensureSkillSymlinks", () => {
       "/repo/.agents/skills/playwright-e2e-tester",
       "/home/tester/.agents/skills/playwright-e2e-tester",
     );
-    expect(fsMocks.symlinkSync).toHaveBeenCalledWith(
-      "/repo/.claude/skills/playwright-e2e-tester",
+    expect(fsMocks.symlinkSync).not.toHaveBeenCalledWith(
+      expect.any(String),
       "/home/tester/.codex/skills/playwright-e2e-tester",
     );
   });
 
-  it("uses repo-local Codex skill directories when present", async () => {
-    // Validates Codex-specific variants are preserved instead of always
-    // falling back to the repo's Claude skill directory.
+  it("ignores repo-local legacy Codex skill directories for active installs", async () => {
+    // Validates .codex is compatibility-only; project-specific non-Claude
+    // variants now come from .agents, then fall back to .claude.
     fsMocks.existsSync.mockImplementation((targetDir: string) => {
       return (
         targetDir === "/repo/.codex/skills/takode-orchestration" ||
@@ -125,12 +127,32 @@ describe("ensureSkillSymlinks", () => {
     await ensureSkillSymlinks(["takode-orchestration"]);
 
     expect(fsMocks.symlinkSync).toHaveBeenCalledWith(
-      "/repo/.codex/skills/takode-orchestration",
-      "/home/tester/.codex/skills/takode-orchestration",
-    );
-    expect(fsMocks.symlinkSync).toHaveBeenCalledWith(
       "/repo/.claude/skills/takode-orchestration",
       "/home/tester/.agents/skills/takode-orchestration",
+    );
+    expect(fsMocks.symlinkSync).not.toHaveBeenCalledWith(
+      "/repo/.codex/skills/takode-orchestration",
+      expect.any(String),
+    );
+  });
+
+  it("migrates legacy-only global Codex skills into agents with symlinks", async () => {
+    // Validates unique old ~/.codex/skills content remains discoverable after
+    // .agents becomes the active non-Claude skill root.
+    fsMocks.existsSync.mockImplementation((targetDir: string) => {
+      return (
+        targetDir === "/home/tester/.codex/skills" ||
+        targetDir === "/home/tester/.codex/skills/pdf" ||
+        targetDir === "/repo/.claude/skills/takode-orchestration"
+      );
+    });
+    fsMocks.readdirSync.mockReturnValue([{ name: "pdf" } as any]);
+
+    await ensureSkillSymlinks(["takode-orchestration"]);
+
+    expect(fsMocks.symlinkSync).toHaveBeenCalledWith(
+      "/home/tester/.codex/skills/pdf",
+      "/home/tester/.agents/skills/pdf",
     );
   });
 

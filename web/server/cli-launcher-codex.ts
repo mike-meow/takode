@@ -40,6 +40,7 @@ const maiWrapperRootMarker = ".mai-agents-root";
 const maiWrapperEnvHostPrefix = "companion-codex-home-";
 const maiWrapperHostnameShimDirName = ".mai-wrapper-bin";
 const imagegenSkillRelativePath = ".system/imagegen";
+const agentsSkillsHome = join(homedir(), ".agents", "skills");
 const defaultCodexEffectiveContextWindowPercent = 95;
 const defaultCodexNonLeaderAutoCompactThresholdPercent = 90;
 
@@ -761,40 +762,100 @@ function isExcludedSeedPath(path: string, excludedRelativePaths: Set<string>): b
   return false;
 }
 
-async function copyDirectoryWithExclusions(
+async function mergeSkillDirectory(
   src: string,
   dest: string,
-  excludedRelativePaths: Set<string>,
+  options: { overwriteExisting: boolean; excludedRelativePaths?: Set<string> },
 ): Promise<"missing" | "unchanged" | "created"> {
   if (!(await fileExists(src))) return "missing";
 
   const sourceRoot = await realpath(src).catch(() => src);
-  await rm(dest, { recursive: true, force: true }).catch(() => {});
-  await mkdir(dest, { recursive: true });
+  const entries = await readdir(sourceRoot, { withFileTypes: true }).catch(() => []);
+  let copied = false;
 
-  const stack: Array<{ srcDir: string; destDir: string }> = [{ srcDir: sourceRoot, destDir: dest }];
+  await mkdir(dest, { recursive: true });
+  for (const entry of entries) {
+    const entrySrc = join(sourceRoot, entry.name);
+    const entryDest = join(dest, entry.name);
+    const relativePath = normalizeRelativeSeedPath(relative(sourceRoot, entrySrc));
+    if (options.excludedRelativePaths && isExcludedSeedPath(relativePath, options.excludedRelativePaths)) continue;
+
+    const refreshFilteredSystemDir =
+      !options.overwriteExisting && entry.name === ".system" && options.excludedRelativePaths;
+    if (!options.overwriteExisting && !refreshFilteredSystemDir && (await fileExists(entryDest))) continue;
+    if (options.overwriteExisting || refreshFilteredSystemDir) {
+      await rm(entryDest, { recursive: true, force: true }).catch(() => {});
+    }
+    await copySeedEntry(entrySrc, entryDest, sourceRoot, options.excludedRelativePaths);
+    copied = true;
+  }
+
+  return copied ? "created" : "unchanged";
+}
+
+async function copySeedEntry(
+  entrySrc: string,
+  entryDest: string,
+  sourceRoot: string,
+  excludedRelativePaths?: Set<string>,
+): Promise<void> {
+  const entryStat = await lstat(entrySrc).catch(() => null);
+  if (!entryStat || !entryStat.isDirectory() || entryStat.isSymbolicLink()) {
+    await cp(entrySrc, entryDest, { recursive: true });
+    return;
+  }
+
+  await mkdir(entryDest, { recursive: true });
+  const stack: Array<{ srcDir: string; destDir: string }> = [{ srcDir: entrySrc, destDir: entryDest }];
   while (stack.length > 0) {
     const current = stack.pop();
     if (!current) continue;
 
     const entries = await readdir(current.srcDir, { withFileTypes: true }).catch(() => []);
-    for (const entry of entries) {
-      const entrySrc = join(current.srcDir, entry.name);
-      const entryDest = join(current.destDir, entry.name);
-      const relativePath = normalizeRelativeSeedPath(relative(sourceRoot, entrySrc));
-      if (isExcludedSeedPath(relativePath, excludedRelativePaths)) continue;
+    for (const child of entries) {
+      const childSrc = join(current.srcDir, child.name);
+      const childDest = join(current.destDir, child.name);
+      const relativePath = normalizeRelativeSeedPath(relative(sourceRoot, childSrc));
+      if (excludedRelativePaths && isExcludedSeedPath(relativePath, excludedRelativePaths)) continue;
 
-      if (entry.isDirectory() && !entry.isSymbolicLink()) {
-        await mkdir(entryDest, { recursive: true });
-        stack.push({ srcDir: entrySrc, destDir: entryDest });
+      if (child.isDirectory() && !child.isSymbolicLink()) {
+        await mkdir(childDest, { recursive: true });
+        stack.push({ srcDir: childSrc, destDir: childDest });
         continue;
       }
 
-      await cp(entrySrc, entryDest, { recursive: true });
+      await cp(childSrc, childDest, { recursive: true });
     }
   }
+}
 
-  return "created";
+async function seedCodexSkillsDirectory(
+  codexHome: string,
+  sourceHome: string,
+  options?: { filterImagegenSkill?: boolean },
+): Promise<void> {
+  const dest = join(codexHome, "skills");
+  const excludedRelativePaths = options?.filterImagegenSkill ? new Set([imagegenSkillRelativePath]) : undefined;
+
+  await mergeSkillDirectory(agentsSkillsHome, dest, {
+    overwriteExisting: true,
+    excludedRelativePaths,
+  });
+
+  const legacyCandidates = Array.from(
+    new Set([join(sourceHome, "skills"), join(getLegacyCodexHome(), "skills")].map((candidate) => resolve(candidate))),
+  );
+  for (const legacySkillsHome of legacyCandidates) {
+    if (legacySkillsHome === resolve(agentsSkillsHome) || legacySkillsHome === resolve(dest)) continue;
+    await mergeSkillDirectory(legacySkillsHome, dest, {
+      overwriteExisting: false,
+      excludedRelativePaths,
+    });
+  }
+
+  if (await fileExists(dest)) {
+    await pruneBrokenSymlinks(dest);
+  }
 }
 
 async function prepareCodexHome(
@@ -806,66 +867,68 @@ async function prepareCodexHome(
   await mkdir(codexHome, { recursive: true });
 
   const sourceHome = resolve(seedSourceHome || getLegacyCodexHome());
-  if (sourceHome === resolve(codexHome) || !(await fileExists(sourceHome))) {
-    return;
-  }
+  const canSeedSourceHome = sourceHome !== resolve(codexHome) && (await fileExists(sourceHome));
 
   const fileSeeds = ["auth.json", "config.toml", "models_cache.json", "version.json"];
-  for (const name of fileSeeds) {
-    try {
-      const candidateSources = [join(sourceHome, name)];
-      const legacyCodexHome = resolve(getLegacyCodexHome());
-      const mayFallbackToLegacyAuth = name !== "auth.json" || options?.allowLegacyAuthFallback !== false;
-      if (
-        (name === "auth.json" || name === "models_cache.json") &&
-        legacyCodexHome !== sourceHome &&
-        mayFallbackToLegacyAuth
-      ) {
-        candidateSources.push(join(legacyCodexHome, name));
-      }
-
-      let src: string | null = null;
-      for (const candidate of candidateSources) {
-        if (await fileExists(candidate)) {
-          src = candidate;
-          break;
+  if (canSeedSourceHome) {
+    for (const name of fileSeeds) {
+      try {
+        const candidateSources = [join(sourceHome, name)];
+        const legacyCodexHome = resolve(getLegacyCodexHome());
+        const mayFallbackToLegacyAuth = name !== "auth.json" || options?.allowLegacyAuthFallback !== false;
+        if (
+          (name === "auth.json" || name === "models_cache.json") &&
+          legacyCodexHome !== sourceHome &&
+          mayFallbackToLegacyAuth
+        ) {
+          candidateSources.push(join(legacyCodexHome, name));
         }
-      }
 
-      const dest = join(codexHome, name);
-      if (!src) {
-        if (name === "auth.json" && options?.allowLegacyAuthFallback === false) {
-          await unlink(dest).catch(() => {});
+        let src: string | null = null;
+        for (const candidate of candidateSources) {
+          if (await fileExists(candidate)) {
+            src = candidate;
+            break;
+          }
         }
-        continue;
+
+        const dest = join(codexHome, name);
+        if (!src) {
+          if (name === "auth.json" && options?.allowLegacyAuthFallback === false) {
+            await unlink(dest).catch(() => {});
+          }
+          continue;
+        }
+        if (name === "auth.json") {
+          await linkCodexAuthFile(src, dest);
+          continue;
+        }
+        if (!(await fileExists(dest))) {
+          await copyFile(src, dest);
+        }
+      } catch (error) {
+        console.warn(`[cli-launcher] Failed to bootstrap ${name} from legacy home:`, error);
       }
-      if (name === "auth.json") {
-        await linkCodexAuthFile(src, dest);
-        continue;
-      }
-      if (!(await fileExists(dest))) {
-        await copyFile(src, dest);
-      }
-    } catch (error) {
-      console.warn(`[cli-launcher] Failed to bootstrap ${name} from legacy home:`, error);
     }
   }
 
-  const dirSeeds = ["skills", "vendor_imports", "prompts", "rules"];
-  for (const name of dirSeeds) {
-    try {
-      const src = join(sourceHome, name);
-      const dest = join(codexHome, name);
-      const synced =
-        name === "skills" && options?.filterImagegenSkill
-          ? await copyDirectoryWithExclusions(src, dest, new Set([imagegenSkillRelativePath]))
-          : await syncSeededDirectory(src, dest);
-      if (name === "skills" && (synced === "created" || (await fileExists(dest)))) {
-        await pruneBrokenSymlinks(dest);
+  if (canSeedSourceHome) {
+    const dirSeeds = ["vendor_imports", "prompts", "rules"];
+    for (const name of dirSeeds) {
+      try {
+        const src = join(sourceHome, name);
+        const dest = join(codexHome, name);
+        await syncSeededDirectory(src, dest);
+      } catch (error) {
+        console.warn(`[cli-launcher] Failed to bootstrap ${name}/ from legacy home:`, error);
       }
-    } catch (error) {
-      console.warn(`[cli-launcher] Failed to bootstrap ${name}/ from legacy home:`, error);
     }
+  }
+
+  try {
+    await seedCodexSkillsDirectory(codexHome, sourceHome, { filterImagegenSkill: options?.filterImagegenSkill });
+  } catch (error) {
+    console.warn(`[cli-launcher] Failed to bootstrap skills/ from agent skill homes:`, error);
   }
 
   try {

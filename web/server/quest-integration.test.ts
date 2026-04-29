@@ -39,19 +39,24 @@ describe("ensureQuestmasterIntegration", () => {
     fsMocks.existsSync.mockReturnValue(false);
   });
 
-  it("writes quest skill to both Claude and Codex skill homes", async () => {
+  it("writes quest skill to Claude and agents skill homes", async () => {
     await ensureQuestmasterIntegration(3456, "/repo/web");
 
     expect(fsMocks.mkdirSync).toHaveBeenCalledWith("/home/tester/.claude/skills/quest", { recursive: true });
-    expect(fsMocks.mkdirSync).toHaveBeenCalledWith("/home/tester/.codex/skills/quest", { recursive: true });
+    expect(fsMocks.mkdirSync).toHaveBeenCalledWith("/home/tester/.agents/skills/quest", { recursive: true });
     expect(fsMocks.writeFileSync).toHaveBeenCalledWith(
       "/home/tester/.claude/skills/quest/SKILL.md",
       expect.stringContaining("name: quest"),
       "utf-8",
     );
     expect(fsMocks.writeFileSync).toHaveBeenCalledWith(
-      "/home/tester/.codex/skills/quest/SKILL.md",
+      "/home/tester/.agents/skills/quest/SKILL.md",
       expect.stringContaining("name: quest"),
+      "utf-8",
+    );
+    expect(fsMocks.writeFileSync).not.toHaveBeenCalledWith(
+      "/home/tester/.codex/skills/quest/SKILL.md",
+      expect.anything(),
       "utf-8",
     );
   });
@@ -60,7 +65,7 @@ describe("ensureQuestmasterIntegration", () => {
     await ensureQuestmasterIntegration(3456, "/repo/web");
 
     const codexSkillWrite = fsMocks.writeFileSync.mock.calls.find(
-      (call) => call[0] === "/home/tester/.codex/skills/quest/SKILL.md",
+      (call) => call[0] === "/home/tester/.agents/skills/quest/SKILL.md",
     );
     expect(codexSkillWrite).toBeDefined();
 
@@ -105,7 +110,7 @@ describe("ensureQuestmasterIntegration", () => {
     await ensureQuestmasterIntegration(3456, "/repo/web");
 
     const codexSkillWrite = fsMocks.writeFileSync.mock.calls.find(
-      (call) => call[0] === "/home/tester/.codex/skills/quest/SKILL.md",
+      (call) => call[0] === "/home/tester/.agents/skills/quest/SKILL.md",
     );
     expect(codexSkillWrite).toBeDefined();
 
@@ -140,7 +145,7 @@ describe("ensureQuestmasterIntegration", () => {
     await ensureQuestmasterIntegration(3456, "/repo/web");
 
     const codexSkillWrite = fsMocks.writeFileSync.mock.calls.find(
-      (call) => call[0] === "/home/tester/.codex/skills/quest/SKILL.md",
+      (call) => call[0] === "/home/tester/.agents/skills/quest/SKILL.md",
     );
     expect(codexSkillWrite).toBeDefined();
 
@@ -154,7 +159,7 @@ describe("ensureQuestmasterIntegration", () => {
     await ensureQuestmasterIntegration(3456, "/repo/web");
 
     const codexSkillWrite = fsMocks.writeFileSync.mock.calls.find(
-      (call) => call[0] === "/home/tester/.codex/skills/quest/SKILL.md",
+      (call) => call[0] === "/home/tester/.agents/skills/quest/SKILL.md",
     );
     expect(codexSkillWrite).toBeDefined();
 
@@ -189,7 +194,7 @@ describe("ensureQuestmasterIntegration", () => {
     await ensureQuestmasterIntegration(3456, "/repo/web");
 
     const codexSkillWrite = fsMocks.writeFileSync.mock.calls.find(
-      (call) => call[0] === "/home/tester/.codex/skills/quest/SKILL.md",
+      (call) => call[0] === "/home/tester/.agents/skills/quest/SKILL.md",
     );
     expect(codexSkillWrite).toBeDefined();
 
@@ -273,7 +278,7 @@ describe("ensureQuestmasterIntegration", () => {
     await ensureQuestmasterIntegration(3456, "/repo/web");
 
     const codexSkillWrite = fsMocks.writeFileSync.mock.calls.find(
-      (call) => call[0] === "/home/tester/.codex/skills/quest/SKILL.md",
+      (call) => call[0] === "/home/tester/.agents/skills/quest/SKILL.md",
     );
     expect(codexSkillWrite).toBeDefined();
 
@@ -289,7 +294,7 @@ describe("ensureQuestmasterIntegration", () => {
     await ensureQuestmasterIntegration(3456, "/repo/web");
 
     const codexSkillWrite = fsMocks.writeFileSync.mock.calls.find(
-      (call) => call[0] === "/home/tester/.codex/skills/quest/SKILL.md",
+      (call) => call[0] === "/home/tester/.agents/skills/quest/SKILL.md",
     );
     expect(codexSkillWrite).toBeDefined();
 
@@ -305,7 +310,7 @@ describe("ensureQuestmasterIntegration", () => {
     await ensureQuestmasterIntegration(3456, "/repo/web");
 
     const codexSkillWrite = fsMocks.writeFileSync.mock.calls.find(
-      (call) => call[0] === "/home/tester/.codex/skills/quest/SKILL.md",
+      (call) => call[0] === "/home/tester/.agents/skills/quest/SKILL.md",
     );
     expect(codexSkillWrite).toBeDefined();
 
@@ -321,7 +326,7 @@ describe("ensureQuestmasterIntegration", () => {
     await ensureQuestmasterIntegration(3456, "/repo/web");
 
     const codexSkillWrite = fsMocks.writeFileSync.mock.calls.find(
-      (call) => call[0] === "/home/tester/.codex/skills/quest/SKILL.md",
+      (call) => call[0] === "/home/tester/.agents/skills/quest/SKILL.md",
     );
     expect(codexSkillWrite).toBeDefined();
 

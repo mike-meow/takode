@@ -541,7 +541,7 @@ describe("Composer dollar mention menu", () => {
         skill_metadata: [
           {
             name: "review",
-            path: "/Users/test/.codex/skills/review/SKILL.md",
+            path: "/Users/test/.agents/skills/review/SKILL.md",
             description: "Review code changes",
           },
         ],
@@ -599,7 +599,7 @@ describe("Composer dollar mention menu", () => {
         skill_metadata: [
           {
             name: "review",
-            path: "/Users/test/.codex/skills/review/SKILL.md",
+            path: "/Users/test/.agents/skills/review/SKILL.md",
             description: "Review code changes",
           },
         ],
@@ -611,7 +611,7 @@ describe("Composer dollar mention menu", () => {
     fireEvent.change(textarea, { target: { value: "Run $rev", selectionStart: "Run $rev".length } });
     fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
 
-    expect(textarea.value).toBe("Run [$review](/Users/test/.codex/skills/review/SKILL.md) ");
+    expect(textarea.value).toBe("Run [$review](/Users/test/.agents/skills/review/SKILL.md) ");
   });
 
   it("accepts the highlighted skill after arrow navigation and keyup selection refresh", () => {
@@ -645,7 +645,7 @@ describe("Composer dollar mention menu", () => {
         skill_metadata: [
           {
             name: "review",
-            path: "/Users/test/.codex/skills/review/SKILL.md",
+            path: "/Users/test/.agents/skills/review/SKILL.md",
             description: "Review code changes",
           },
         ],
@@ -660,7 +660,7 @@ describe("Composer dollar mention menu", () => {
     });
     fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
 
-    expect(textarea.value).toBe("Run [$review](/Users/test/.codex/skills/review/SKILL.md) now");
+    expect(textarea.value).toBe("Run [$review](/Users/test/.agents/skills/review/SKILL.md) now");
   });
 
   it("does not accept a stale skill mention after the caret leaves the active word", () => {

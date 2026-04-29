@@ -628,7 +628,7 @@ describe("Codex adapter result handling", () => {
         skill_metadata: [
           {
             name: "review",
-            path: "/Users/test/.codex/skills/review/SKILL.md",
+            path: "/Users/test/.agents/skills/review/SKILL.md",
             description: "Review code changes",
           },
         ],
@@ -649,7 +649,7 @@ describe("Codex adapter result handling", () => {
     expect(state.skill_metadata).toEqual([
       {
         name: "review",
-        path: "/Users/test/.codex/skills/review/SKILL.md",
+        path: "/Users/test/.agents/skills/review/SKILL.md",
         description: "Review code changes",
       },
     ]);

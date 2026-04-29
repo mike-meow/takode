@@ -97,6 +97,7 @@ const isMockedPath = vi.hoisted(() => (path: string): boolean => {
   return (
     path.includes(".claude") ||
     path.includes(".codex") ||
+    path.includes(".agents") ||
     path.includes(".companion") ||
     path.startsWith("/tmp/worktrees/") ||
     path.startsWith("/tmp/main-repo")
@@ -1502,6 +1503,52 @@ describe("launch", () => {
     }
   });
 
+  it("seeds Codex session skills from agents and keeps legacy-only Codex skills", async () => {
+    // Validates .agents is the active Codex skill source, with ~/.codex used
+    // only to preserve skill slugs that have not been migrated yet.
+    mockResolveBinary.mockReturnValue("/opt/fake/codex");
+    mockSpawn.mockReturnValueOnce(createMockCodexProc());
+
+    const agentsSkills = join(homedir(), ".agents", "skills");
+    const legacyHome = join(homedir(), ".codex");
+    const legacySkills = join(legacyHome, "skills");
+    const sessionSkills = join(homedir(), ".companion", "codex-home", "test-session-id", "skills");
+    const agentReview = join(agentsSkills, "review");
+    const legacyReview = join(legacySkills, "review");
+    const legacyOnly = join(legacySkills, "legacy-only");
+
+    mockExistsSync.mockImplementation((path: string) => {
+      if (path === agentsSkills) return true;
+      if (path === legacyHome) return true;
+      if (path === legacySkills) return true;
+      if (path === join(sessionSkills, "review")) return true;
+      return false;
+    });
+    mockReaddir.mockImplementation(async (path: string, options?: { withFileTypes?: boolean }) => {
+      if (path === agentsSkills && options?.withFileTypes) {
+        return [{ name: "review", isSymbolicLink: () => false, isDirectory: () => true }];
+      }
+      if (path === legacySkills && options?.withFileTypes) {
+        return [
+          { name: "review", isSymbolicLink: () => false, isDirectory: () => true },
+          { name: "legacy-only", isSymbolicLink: () => false, isDirectory: () => true },
+        ];
+      }
+      return [];
+    });
+
+    await launcher.launch({
+      backendType: "codex",
+      cwd: "/tmp/project",
+      codexSandbox: "workspace-write",
+    });
+    await waitForSpawnCalls(1);
+
+    expect(mockCp).toHaveBeenCalledWith(agentReview, join(sessionSkills, "review"), { recursive: true });
+    expect(mockCp).not.toHaveBeenCalledWith(legacyReview, join(sessionSkills, "review"), { recursive: true });
+    expect(mockCp).toHaveBeenCalledWith(legacyOnly, join(sessionSkills, "legacy-only"), { recursive: true });
+  });
+
   it("rebuilds MAI-wrapper-backed skills without imagegen even when the wrapper host home exposes a symlink", async () => {
     const customHome = mkdtempSync(join(tmpdir(), "codex-home-test-"));
     const hostCodexHome = mkdtempSync(join(tmpdir(), "codex-host-home-test-"));
@@ -1692,9 +1739,19 @@ describe("launch", () => {
     mockExistsSync.mockImplementation((path: string) => {
       if (path === legacyHome) return true;
       if (path === legacySkills) return true;
+      if (path === sessionSkills) return true;
       return false;
     });
     mockReaddir.mockImplementation(async (path: string, options?: { withFileTypes?: boolean }) => {
+      if (path === legacySkills && options?.withFileTypes) {
+        return [
+          {
+            name: "cron-scheduling",
+            isSymbolicLink: () => true,
+            isDirectory: () => false,
+          },
+        ];
+      }
       if (path === sessionSkills && options?.withFileTypes) {
         return [
           {
@@ -1720,7 +1777,7 @@ describe("launch", () => {
     });
     await waitForSpawnCalls(1);
 
-    expect(mockCp).toHaveBeenCalledWith(legacySkills, sessionSkills, { recursive: true });
+    expect(mockCp).toHaveBeenCalledWith(join(legacySkills, "cron-scheduling"), brokenSkill, { recursive: true });
     expect(mockUnlink).toHaveBeenCalledWith(brokenSkill);
   });
 

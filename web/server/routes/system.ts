@@ -807,7 +807,7 @@ export function createSystemRoutes(ctx: RouteContext) {
 
   type SkillBackend = "claude" | "codex" | "both";
   const CLAUDE_SKILLS_DIR = join(homedir(), ".claude", "skills");
-  const CODEX_SKILLS_DIR = join(getLegacyCodexHome(), "skills");
+  const AGENTS_SKILLS_DIR = join(homedir(), ".agents", "skills");
 
   function parseSkillBackend(raw: string | undefined): SkillBackend | null {
     if (!raw || raw === "both") return "both";
@@ -817,10 +817,10 @@ export function createSystemRoutes(ctx: RouteContext) {
 
   function getSkillRoots(backend: SkillBackend): Array<{ backend: "claude" | "codex"; dir: string }> {
     if (backend === "claude") return [{ backend: "claude", dir: CLAUDE_SKILLS_DIR }];
-    if (backend === "codex") return [{ backend: "codex", dir: CODEX_SKILLS_DIR }];
+    if (backend === "codex") return [{ backend: "codex", dir: AGENTS_SKILLS_DIR }];
     return [
       { backend: "claude", dir: CLAUDE_SKILLS_DIR },
-      { backend: "codex", dir: CODEX_SKILLS_DIR },
+      { backend: "codex", dir: AGENTS_SKILLS_DIR },
     ];
   }
 

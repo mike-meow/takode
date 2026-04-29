@@ -13,7 +13,7 @@ Use Questmaster to track project progress for this repository. Treat project tas
 
 ## Skills (Auto-Installed)
 
-The Takode server symlinks project skills into global skill directories at startup (see `web/server/skill-symlink.ts` and `web/server/index.ts`). Each skill is symlinked into three locations: `~/.claude/skills/` (Claude Code), `~/.codex/skills/` (legacy Codex), and `~/.agents/skills/` (new agents format). The canonical source is `.claude/skills/` in the project repo -- edit skills there, not in the global directories. If a backend-specific override exists (e.g. `.codex/skills/<slug>/`), that version is used for that backend instead.
+The Takode server symlinks project skills into global skill directories at startup (see `web/server/skill-symlink.ts` and `web/server/index.ts`). Claude-facing skills are installed into `~/.claude/skills/`; Codex/new-agent skills are installed into `~/.agents/skills/`. The canonical Claude-facing project source remains `.claude/skills/` in the repo, while `.agents/skills/` is the single non-Claude project skill source. Legacy `.codex/skills/` content is compatibility-only and may be migrated into `.agents`; do not add new project skills there.
 
 | Skill | Source | Purpose |
 |-------|--------|---------|
@@ -36,7 +36,7 @@ The Takode server symlinks project skills into global skill directories at start
 | `worktree-rules` (`/port-changes`) | `.claude/skills/worktree-rules/` | Worktree-to-main-repo porting workflow; `worktree-rules` is the underlying skill slug and `/port-changes` is the user-facing command/alias |
 | `playwright-e2e-tester` | `.claude/skills/playwright-e2e-tester/` | E2E browser testing via Playwright MCP |
 
-Additionally, `quest-integration.ts` generates and installs the `quest` skill docs (from `web/server/templates/quest-skill-docs.md`) into both Claude and Codex skill directories at startup.
+Additionally, `quest-integration.ts` generates and installs the `quest` skill docs (from `web/server/templates/quest-skill-docs.md`) into the Claude and `.agents` skill directories at startup.
 Legacy compatibility aliases also remain installed for older references: `quest-journey-implementation`, `quest-journey-skeptic-review`, `quest-journey-reviewer-groom`, and `quest-journey-porting`. New work should use the canonical phase skills above.
 
 ## Development Commands

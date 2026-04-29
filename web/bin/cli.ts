@@ -42,7 +42,7 @@ Management commands (requires running server):
   sessions    Manage sessions (list, create, kill, relaunch, archive, rename, send-message)
   envs        Manage environment profiles (list, get, create, update, delete)
   cron        Manage scheduled jobs (list, get, create, update, delete, toggle, run)
-  skills      Manage Claude Code skills (list, get, create, update, delete)
+  skills      Manage Claude/.agents skills (list, get, create, update, delete)
   settings    Manage settings (get, set)
   assistant   Manage the Takode Assistant (status, launch, stop, config)
 

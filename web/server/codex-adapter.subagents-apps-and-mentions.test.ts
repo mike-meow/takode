@@ -633,7 +633,7 @@ describe("CodexAdapter", () => {
               skills: [
                 {
                   name: "review",
-                  path: "/Users/test/.codex/skills/review/SKILL.md",
+                  path: "/Users/test/.agents/skills/review/SKILL.md",
                   description: "Review code changes",
                   enabled: true,
                 },
@@ -681,7 +681,7 @@ describe("CodexAdapter", () => {
       {
         type: "skill",
         name: "review",
-        path: "/Users/test/.codex/skills/review/SKILL.md",
+        path: "/Users/test/.agents/skills/review/SKILL.md",
       },
     ]);
   });

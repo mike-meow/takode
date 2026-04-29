@@ -11,7 +11,7 @@ import {
 } from "./cli-wrapper-paths.js";
 
 const CLAUDE_SKILL_DIR = join(homedir(), ".claude", "skills", "quest");
-const CODEX_SKILL_DIR = join(homedir(), ".codex", "skills", "quest");
+const AGENTS_SKILL_DIR = join(homedir(), ".agents", "skills", "quest");
 const OLD_SLASH_COMMAND = join(homedir(), ".claude", "commands", "quest.md");
 const OLD_API_DOC = join(homedir(), ".companion", "questmaster", "API.md");
 const TEMPLATE_PATH = join(dirname(fileURLToPath(import.meta.url)), "templates", "quest-skill-docs.md");
@@ -27,7 +27,7 @@ async function getQuestSkillDocsTemplate(): Promise<string> {
 /**
  * Set up Questmaster CLI integration on server startup:
  * 1. Write copied global wrapper scripts at ~/.companion/bin/quest and ~/.companion/bin/stream
- * 2. Write an agent skill for both Claude and Codex skill homes
+ * 2. Write an agent skill for Claude and the shared non-Claude skill home
  * 3. Clean up old files (slash command, API.md)
  */
 export async function ensureQuestmasterIntegration(port: number, packageRoot: string): Promise<void> {
@@ -37,7 +37,7 @@ export async function ensureQuestmasterIntegration(port: number, packageRoot: st
   writeRipgrepShim();
   const skillContent = await getQuestSkillDocsTemplate();
   writeAgentSkill(CLAUDE_SKILL_DIR, skillContent);
-  writeAgentSkill(CODEX_SKILL_DIR, skillContent);
+  writeAgentSkill(AGENTS_SKILL_DIR, skillContent);
   cleanupOldFiles();
   console.log("[quest-integration] CLI wrapper and agent skill installed");
 }
