@@ -39,6 +39,7 @@ import type {
   SessionNotification,
   TakodeHerdBatchSnapshot,
   ThreadRef,
+  ActiveTurnRoute,
 } from "./session-types.js";
 import { TOOL_RESULT_PREVIEW_LIMIT, assertNever, formatVsCodeSelectionPrompt } from "./session-types.js";
 import type { QuestJourneyState } from "./session-types.js";
@@ -409,6 +410,8 @@ interface Session {
   /** Interrupt sources aligned with queued follow-up turns.
    *  A queued follow-up does not prove the active turn was interrupted. */
   queuedTurnInterruptSources: (InterruptSource | null)[];
+  /** Explicit active-thread route aligned with queued follow-up turns. */
+  queuedTurnActiveRoutes?: (ActiveTurnRoute | null)[];
   /** Codex-only: active turn id that must end before a follow-up can start a fresh turn.
    *  Used for denied ExitPlanMode so new input does not get steered into the old plan turn. */
   codexFreshTurnRequiredUntilTurnId: string | null;

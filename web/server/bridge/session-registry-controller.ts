@@ -152,6 +152,7 @@ function createSessionRuntime(
     queuedTurnReasons: [],
     queuedTurnUserMessageIds: [],
     queuedTurnInterruptSources: [],
+    queuedTurnActiveRoutes: [],
     cliInitReceived: false,
     lastCliMessageAt: 0,
     lastCliPingAt: 0,
@@ -283,6 +284,7 @@ export function prepareSessionForRevert(
   session.queuedTurnReasons = [];
   session.queuedTurnUserMessageIds = [];
   session.queuedTurnInterruptSources = [];
+  session.queuedTurnActiveRoutes = [];
   session.interruptedDuringTurn = false;
   session.interruptSourceDuringTurn = null;
   session.isGenerating = false;

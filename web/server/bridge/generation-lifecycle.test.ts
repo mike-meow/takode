@@ -16,6 +16,7 @@ import {
   type GenerationLifecycleSession,
   type GenerationLifecycleDeps,
 } from "./generation-lifecycle.js";
+import { deriveActiveTurnRoute } from "./browser-transport-controller.js";
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -31,10 +32,12 @@ function makeSession(overrides: Partial<GenerationLifecycleSession> = {}): Gener
     interruptSourceDuringTurn: null,
     compactedDuringTurn: false,
     userMessageIdsThisTurn: [],
+    activeTurnRoute: null,
     queuedTurnStarts: 0,
     queuedTurnReasons: [],
     queuedTurnUserMessageIds: [],
     queuedTurnInterruptSources: [],
+    queuedTurnActiveRoutes: [],
     optimisticRunningTimer: null,
     state: {},
     messageHistory: [],
@@ -98,6 +101,38 @@ describe("setGenerating(false) — queued turn handling", () => {
     expect(session.isGenerating).toBe(true);
     // One queued turn was consumed, one remains
     expect(session.queuedTurnStarts).toBe(1);
+  });
+
+  it("preserves a queued Codex quest-thread active route through promotion", () => {
+    const statusRoutes: unknown[] = [];
+    deps = makeDeps({
+      isHerdedWorker: vi.fn(() => true),
+      broadcastStatus: vi.fn((targetSession, status) => {
+        statusRoutes.push({
+          status,
+          activeTurnRoute: deriveActiveTurnRoute(targetSession as any),
+        });
+      }),
+    });
+    deps.sessions.set(session.id, session);
+
+    markRunningFromUserDispatch(deps, session, "user_message");
+    markRunningFromUserDispatch(deps, session, "user_message", null, undefined, {
+      threadKey: "q-968",
+      questId: "q-968",
+    });
+
+    expect(session.queuedTurnStarts).toBe(1);
+    expect(session.queuedTurnActiveRoutes).toEqual([{ threadKey: "q-968", questId: "q-968" }]);
+
+    setGenerating(deps, session, false, "result");
+
+    expect(statusRoutes).toEqual([
+      { status: "running", activeTurnRoute: { threadKey: "main" } },
+      { status: "running", activeTurnRoute: { threadKey: "q-968", questId: "q-968" } },
+    ]);
+    expect(session.activeTurnRoute).toEqual({ threadKey: "q-968", questId: "q-968" });
+    expect(session.userMessageIdsThisTurn).toEqual([]);
   });
 
   it("drains ALL queued turns on 'stuck_auto_recovery' reason", () => {

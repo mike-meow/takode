@@ -4,6 +4,7 @@ import type { CodexResumeSnapshot, CodexResumeTurnSnapshot } from "../codex-adap
 import type {
   BrowserIncomingMessage,
   CLIResultMessage,
+  ActiveTurnRoute,
   BrowserOutgoingMessage,
   CodexOutboundTurn,
   PendingCodexInput,
@@ -47,6 +48,7 @@ export interface CodexRecoveryOrchestratorSessionLike {
   queuedTurnReasons: string[];
   queuedTurnUserMessageIds: number[][];
   queuedTurnInterruptSources: Array<InterruptSource | null>;
+  queuedTurnActiveRoutes?: Array<ActiveTurnRoute | null>;
   lastUserMessage?: string;
   codexAdapter: {
     getCurrentTurnId(): string | null;
@@ -1308,6 +1310,7 @@ export function reconcileRecoveredQueuedTurnLifecycle(
     reason: entry.reason,
     userMessageIds: [...entry.userMessageIds],
     interruptSource: entry.interruptSource,
+    activeTurnRoute: entry.activeTurnRoute,
   }));
   let clearedQueuedHead = false;
   if (options.releasedHeadQueuedTurn && nextEntries.length > 0) {
@@ -1321,8 +1324,12 @@ export function reconcileRecoveredQueuedTurnLifecycle(
       nextEntries.shift();
     }
   }
-  const rebuiltEntries: Array<{ reason: string; userMessageIds: number[]; interruptSource: InterruptSource | null }> =
-    [];
+  const rebuiltEntries: Array<{
+    reason: string;
+    userMessageIds: number[];
+    interruptSource: InterruptSource | null;
+    activeTurnRoute: ActiveTurnRoute | null;
+  }> = [];
   let nextEntryIdx = 0;
   for (const turn of liveTurns) {
     const isExplicitQueuedTurn = turn.turnTarget === "queued";
@@ -1339,6 +1346,7 @@ export function reconcileRecoveredQueuedTurnLifecycle(
       reason: nextEntries[nextEntryIdx]?.reason ?? "queued_user_message",
       userMessageIds: nextEntries[nextEntryIdx]?.userMessageIds ?? (turn.historyIndex >= 0 ? [turn.historyIndex] : []),
       interruptSource: nextEntries[nextEntryIdx]?.interruptSource ?? null,
+      activeTurnRoute: nextEntries[nextEntryIdx]?.activeTurnRoute ?? null,
     });
     nextEntryIdx += 1;
   }
@@ -1473,6 +1481,7 @@ type QueuedTurnLifecycleEntry = {
   reason: string;
   userMessageIds: number[];
   interruptSource: InterruptSource | null;
+  activeTurnRoute: ActiveTurnRoute | null;
 };
 function getQueuedTurnLifecycleEntries(session: CodexRecoveryOrchestratorSessionLike): QueuedTurnLifecycleEntry[] {
   return Array.from({ length: session.queuedTurnStarts }, (_, idx) => ({
@@ -1481,6 +1490,7 @@ function getQueuedTurnLifecycleEntries(session: CodexRecoveryOrchestratorSession
       ? [...session.queuedTurnUserMessageIds[idx]!]
       : [],
     interruptSource: session.queuedTurnInterruptSources[idx] ?? null,
+    activeTurnRoute: session.queuedTurnActiveRoutes?.[idx] ?? null,
   }));
 }
 function replaceQueuedTurnLifecycleEntries(
@@ -1491,4 +1501,5 @@ function replaceQueuedTurnLifecycleEntries(
   session.queuedTurnReasons = entries.map((entry) => entry.reason);
   session.queuedTurnUserMessageIds = entries.map((entry) => [...entry.userMessageIds]);
   session.queuedTurnInterruptSources = entries.map((entry) => entry.interruptSource);
+  session.queuedTurnActiveRoutes = entries.map((entry) => entry.activeTurnRoute);
 }

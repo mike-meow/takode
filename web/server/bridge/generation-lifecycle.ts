@@ -31,6 +31,7 @@ export interface GenerationLifecycleSession {
   queuedTurnReasons: string[];
   queuedTurnUserMessageIds: number[][];
   queuedTurnInterruptSources: (InterruptSource | null)[];
+  queuedTurnActiveRoutes?: (ActiveTurnRoute | null)[];
   optimisticRunningTimer: ReturnType<typeof setTimeout> | null;
   lastUserMessage?: string;
   state: {
@@ -90,6 +91,7 @@ export interface QueuedTurnLifecycleEntry {
   reason: string;
   userMessageIds: number[];
   interruptSource: InterruptSource | null;
+  activeTurnRoute: ActiveTurnRoute | null;
 }
 
 function interruptSourcePriority(source: InterruptSource | null): number {
@@ -166,10 +168,16 @@ export function markRunningFromUserDispatch<S extends GenerationLifecycleSession
     restartOptimisticRunningTimer(deps, session, reason);
   }
   if (wasGenerating) {
+    const queuedTurnActiveRoutes = session.queuedTurnActiveRoutes ?? [];
+    while (queuedTurnActiveRoutes.length < session.queuedTurnStarts) {
+      queuedTurnActiveRoutes.push(null);
+    }
     session.queuedTurnStarts += 1;
     session.queuedTurnReasons.push(reason);
     session.queuedTurnUserMessageIds.push(userMessageHistoryIndex === undefined ? [] : [userMessageHistoryIndex]);
     session.queuedTurnInterruptSources.push(queuedInterruptSource);
+    queuedTurnActiveRoutes.push(activeTurnRoute ?? null);
+    session.queuedTurnActiveRoutes = queuedTurnActiveRoutes;
     deps.persistSession(session);
     return "queued";
   }
@@ -208,11 +216,13 @@ export function getQueuedTurnLifecycleEntries<S extends GenerationLifecycleSessi
     session.queuedTurnReasons.length,
     session.queuedTurnUserMessageIds.length,
     session.queuedTurnInterruptSources.length,
+    session.queuedTurnActiveRoutes?.length ?? 0,
   );
   return Array.from({ length: count }, (_, idx) => ({
     reason: session.queuedTurnReasons[idx] ?? "queued_user_message",
     userMessageIds: [...(session.queuedTurnUserMessageIds[idx] ?? [])],
     interruptSource: session.queuedTurnInterruptSources[idx] ?? null,
+    activeTurnRoute: session.queuedTurnActiveRoutes?.[idx] ?? null,
   }));
 }
 
@@ -224,6 +234,7 @@ export function replaceQueuedTurnLifecycleEntries<S extends GenerationLifecycleS
   session.queuedTurnReasons = entries.map((entry) => entry.reason);
   session.queuedTurnUserMessageIds = entries.map((entry) => [...entry.userMessageIds]);
   session.queuedTurnInterruptSources = entries.map((entry) => entry.interruptSource);
+  session.queuedTurnActiveRoutes = entries.map((entry) => entry.activeTurnRoute);
 }
 
 function startQueuedTurn<S extends GenerationLifecycleSession>(
@@ -244,7 +255,7 @@ function startQueuedTurn<S extends GenerationLifecycleSession>(
   session.restartPrepInterruptOrigin = null;
   session.compactedDuringTurn = false;
   session.userMessageIdsThisTurn = [...entry.userMessageIds];
-  session.activeTurnRoute = null;
+  session.activeTurnRoute = entry.activeTurnRoute;
   console.log(`[ws-bridge] Generation started for session ${sessionTag(session.id)} (${turnReason})`);
   deps.recordGenerationStarted?.(session, turnReason);
   deps.emitTakodeEvent(session.id, "turn_start", {

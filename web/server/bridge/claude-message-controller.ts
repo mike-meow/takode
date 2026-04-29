@@ -20,6 +20,7 @@ import type {
   SessionState,
   ContentBlock,
   ToolResultPreview,
+  ActiveTurnRoute,
 } from "../session-types.js";
 import {
   computeContextUsedPercent,
@@ -322,6 +323,7 @@ interface ClaudeSdkBrowserMessageSessionLike {
   queuedTurnReasons: string[];
   queuedTurnUserMessageIds: number[][];
   queuedTurnInterruptSources: Array<"user" | "leader" | "system" | null>;
+  queuedTurnActiveRoutes?: Array<ActiveTurnRoute | null>;
   userMessageIdsThisTurn: number[];
   state: SessionState;
 }
@@ -963,6 +965,7 @@ function handleSdkBrowserMessage(
       session.queuedTurnReasons = [];
       session.queuedTurnUserMessageIds = [];
       session.queuedTurnInterruptSources = [];
+      session.queuedTurnActiveRoutes = [];
     }
     handleResultMessage(session, (msg as any).data ?? msg, resultMessageDeps);
     return true;
