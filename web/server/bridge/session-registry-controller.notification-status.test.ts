@@ -70,6 +70,50 @@ describe("session notification status metadata", () => {
     );
   });
 
+  it("applies inferred thread route metadata to fallback needs-input anchor messages", () => {
+    const session = makeSession({
+      messageHistory: [
+        {
+          type: "user_message",
+          id: "u-q968",
+          content: "Quest-scoped context",
+          timestamp: 1,
+          threadKey: "q-968",
+          questId: "q-968",
+          threadRefs: [{ threadKey: "q-968", questId: "q-968", source: "explicit" }],
+        },
+      ],
+    });
+    const deps = {
+      ...makeDeps(),
+      getLauncherSessionInfo: vi.fn(() => ({ isOrchestrator: true })),
+    };
+
+    notifyUser(session, "needs-input", "Need q-968 input", deps);
+
+    expect(session.messageHistory[1]).toMatchObject({
+      type: "leader_user_message",
+      content: "Needs input: Need q-968 input",
+      threadKey: "q-968",
+      questId: "q-968",
+      threadRefs: [{ threadKey: "q-968", questId: "q-968", source: "explicit" }],
+    });
+    expect(session.notifications[0]).toMatchObject({
+      category: "needs-input",
+      threadKey: "q-968",
+      questId: "q-968",
+      messageId: session.messageHistory[1].id,
+    });
+    expect(deps.broadcastToBrowsers).toHaveBeenCalledWith(
+      session,
+      expect.objectContaining({
+        type: "leader_user_message",
+        threadKey: "q-968",
+        questId: "q-968",
+      }),
+    );
+  });
+
   it("persists and restores notification status metadata", async () => {
     const persisted = buildPersistedSessionPayload(
       makeSession({

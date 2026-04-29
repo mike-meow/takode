@@ -374,6 +374,98 @@ describe("permission response handling in browser routing", () => {
     ]);
   });
 
+  it("does not auto-reject pending ExitPlanMode from a different thread", async () => {
+    const session = makeSession();
+    session.pendingPermissions.set("req-main-plan", {
+      request_id: "req-main-plan",
+      tool_name: "ExitPlanMode",
+      input: { plan: "## Plan\n\n1. Main-thread plan" },
+      tool_use_id: "tool-main-plan",
+      timestamp: 1,
+      threadKey: "main",
+    });
+    const deps = makeDeps();
+
+    await routeBrowserMessage(
+      session as any,
+      {
+        type: "user_message",
+        content: "Quest thread follow-up",
+        threadKey: "q-968",
+        questId: "q-968",
+        agentSource: { sessionId: "leader-7", sessionLabel: "#7 Leader" },
+      },
+      undefined,
+      deps,
+    );
+
+    expect(session.pendingPermissions.has("req-main-plan")).toBe(true);
+    expect(deps.handleInterruptFallback).not.toHaveBeenCalled();
+    const sendCalls = (deps.sendToCLI as any).mock.calls.map(([targetSession, payload]: [unknown, string]) => [
+      targetSession,
+      JSON.parse(payload),
+    ]);
+    expect(sendCalls).toHaveLength(1);
+    expect(sendCalls[0]).toEqual([
+      session,
+      expect.objectContaining({
+        type: "user",
+        message: expect.objectContaining({
+          role: "user",
+          content: expect.stringContaining("Quest thread follow-up"),
+        }),
+      }),
+    ]);
+  });
+
+  it("auto-rejects pending ExitPlanMode from the same quest thread", async () => {
+    const session = makeSession();
+    session.pendingPermissions.set("req-quest-plan", {
+      request_id: "req-quest-plan",
+      tool_name: "ExitPlanMode",
+      input: { plan: "## Plan\n\n1. Quest-thread plan" },
+      tool_use_id: "tool-quest-plan",
+      timestamp: 1,
+      threadKey: "q-968",
+      questId: "q-968",
+    });
+    const deps = makeDeps();
+
+    await routeBrowserMessage(
+      session as any,
+      {
+        type: "user_message",
+        content: "Implement now in quest thread",
+        threadKey: "q-968",
+        questId: "q-968",
+        agentSource: { sessionId: "leader-7", sessionLabel: "#7 Leader" },
+      },
+      undefined,
+      deps,
+    );
+
+    expect(session.pendingPermissions.size).toBe(0);
+    expect(session.messageHistory.slice(-2).map((entry) => entry.type)).toEqual(["permission_denied", "user_message"]);
+    expect(deps.handleInterruptFallback).toHaveBeenCalledWith(session, "leader");
+    const sendCalls = (deps.sendToCLI as any).mock.calls.map(([targetSession, payload]: [unknown, string]) => [
+      targetSession,
+      JSON.parse(payload),
+    ]);
+    expect(sendCalls[0]).toEqual([
+      session,
+      expect.objectContaining({
+        type: "control_response",
+        response: expect.objectContaining({
+          request_id: "req-quest-plan",
+          response: expect.objectContaining({
+            behavior: "deny",
+            message: "Plan rejected — leader sent a new message",
+          }),
+        }),
+      }),
+    ]);
+  });
+
   it("auto-answers pending AskUserQuestion from a fresh leader message instead of sending a new turn", async () => {
     const session = makeSession();
     session.pendingPermissions.set("req-leader-question", {

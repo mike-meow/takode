@@ -263,11 +263,14 @@ function getInterruptSourceFromActorSessionId(actorSessionId: string | undefined
   return isSystemSourceTag({ sessionId: actorSessionId }) ? "system" : "leader";
 }
 
-function findPendingExitPlanPermission(session: AdapterBrowserRoutingSessionLike): PermissionRequest | undefined {
-  for (const perm of session.pendingPermissions.values()) {
-    if (perm.tool_name === "ExitPlanMode") return perm;
-  }
-  return undefined;
+function findPendingExitPlanPermission(
+  session: AdapterBrowserRoutingSessionLike,
+  route: ThreadRouteMetadata | null,
+): PermissionRequest | undefined {
+  const pending = [...session.pendingPermissions.values()].filter((perm) => perm.tool_name === "ExitPlanMode");
+  if (pending.length === 0) return undefined;
+  const sameThread = route ? pending.filter((perm) => sameThreadRoute(perm, route)) : [];
+  return sameThread.length === 1 ? sameThread[0] : undefined;
 }
 
 function findPendingAskUserQuestionPermission(
@@ -363,10 +366,11 @@ function maybeAutoRejectPendingPlanForUserMessage(
   msg: BrowserUserMessage,
   deps: AdapterBrowserRoutingDeps,
 ): void {
-  const pending = findPendingExitPlanPermission(session);
-  if (!pending) return;
   if (msg.agentSource?.sessionId === "herd-events") return;
   if (isSystemSourceTag(msg.agentSource)) return;
+  const route = browserMessageRoute(msg) ?? { threadKey: "main" };
+  const pending = findPendingExitPlanPermission(session, route);
+  if (!pending) return;
 
   const actorSessionId = msg.agentSource?.sessionId;
   const denial: PermissionResponseMessage = {

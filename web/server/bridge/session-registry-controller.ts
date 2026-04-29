@@ -1041,6 +1041,11 @@ export function notifyUser(
   session.notificationCounter = nextNotificationCounter;
   const notificationId = `n-${nextNotificationCounter}`;
   const threadRoute = inferThreadRouteForNotificationAnchor(session.messageHistory, anchorIndex);
+  if (createdFallbackMessage) {
+    createdFallbackMessage.threadKey = threadRoute.threadKey;
+    if (threadRoute.questId) createdFallbackMessage.questId = threadRoute.questId;
+    if (threadRoute.threadRefs?.length) createdFallbackMessage.threadRefs = threadRoute.threadRefs;
+  }
   const anchoredNotification = withThreadRoute(
     {
       id: notificationId,
