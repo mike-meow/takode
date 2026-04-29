@@ -152,7 +152,7 @@ describe("normalizeHistoryMessageToChatMessages", () => {
       {
         id: "marker-q-941",
         role: "system",
-        content: "2 messages to q-941 - 1-2",
+        content: "2 messages moved to q-941",
         timestamp: 1234,
         historyIndex: 9,
         variant: "info",

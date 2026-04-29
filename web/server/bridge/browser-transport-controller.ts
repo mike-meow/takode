@@ -428,7 +428,6 @@ export function injectUserMessage(
       if (existing.cancelable) {
         deps.queueCodexPendingStartBatch(session, "inject_herd_event_retry");
       }
-      if (backendLive) return "sent";
       return getPendingCodexInputDeliveryState(session, existing.id);
     }
   }
@@ -460,7 +459,6 @@ export function injectUserMessage(
             samePendingThreadRoute(input, threadRoute),
         );
       if (pending) {
-        if (backendLive) return "sent";
         return getPendingCodexInputDeliveryState(session, pending.id);
       }
     }

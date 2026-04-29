@@ -188,23 +188,37 @@ describe("tree_groups_update replay-buffer exclusion", () => {
 });
 
 describe("Codex herd event injection", () => {
-  it("treats a live Codex pending herd input as accepted and dedupes retry content by age suffix", () => {
+  it("reports a live Codex pending herd input as queued until retry accepts it", () => {
     const agentSource = { sessionId: "herd-events", sessionLabel: "Herd Events" };
     const session = makeSession({
       backendType: "codex",
       state: { permissionMode: "default", backend_state: "connected", cwd: "/repo" } as any,
     });
     const routeBrowserMessage = vi.fn((target: BrowserTransportSessionLike, msg: any) => {
+      const id = `pending-${target.pendingCodexInputs.length + 1}`;
       target.pendingCodexInputs.push({
-        id: `pending-${target.pendingCodexInputs.length + 1}`,
+        id,
         content: msg.content,
         timestamp: Date.now(),
         cancelable: true,
         agentSource: msg.agentSource,
         threadKey: msg.threadKey,
       });
+      target.pendingCodexTurns.push({
+        userMessageId: id,
+        pendingInputIds: [id],
+        adapterMsg: { type: "codex_start_pending", inputIds: [id] } as any,
+        status: "queued",
+        turnTarget: "current",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        dispatchCount: 0,
+      } as any);
     });
-    const deps = makeInjectDeps({ routeBrowserMessage });
+    const queueCodexPendingStartBatch = vi.fn((target: BrowserTransportSessionLike) => {
+      target.pendingCodexTurns[0]!.status = "dispatched";
+    });
+    const deps = makeInjectDeps({ routeBrowserMessage, queueCodexPendingStartBatch });
     const threadRoute = { threadKey: "q-975", questId: "q-975" } as any;
 
     const first = injectUserMessage(
@@ -215,7 +229,7 @@ describe("Codex herd event injection", () => {
       deps,
       threadRoute,
     );
-    expect(first).toBe("sent");
+    expect(first).toBe("queued");
     expect(session.pendingCodexInputs).toHaveLength(1);
 
     const retry = injectUserMessage(
@@ -229,6 +243,6 @@ describe("Codex herd event injection", () => {
     expect(retry).toBe("sent");
     expect(routeBrowserMessage).toHaveBeenCalledTimes(1);
     expect(session.pendingCodexInputs).toHaveLength(1);
-    expect(deps.queueCodexPendingStartBatch).toHaveBeenCalledWith(session, "inject_herd_event_retry");
+    expect(queueCodexPendingStartBatch).toHaveBeenCalledWith(session, "inject_herd_event_retry");
   });
 });

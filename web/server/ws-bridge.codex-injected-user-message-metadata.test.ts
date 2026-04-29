@@ -660,8 +660,7 @@ describe("Codex injected user_message metadata", () => {
       status: "queued",
     });
 
-    vi.advanceTimersByTime(2100);
-    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(2100);
 
     expect(session.pendingCodexInputs).toHaveLength(1);
     expect(session.pendingCodexTurns).toHaveLength(1);
@@ -718,8 +717,7 @@ describe("Codex injected user_message metadata", () => {
 
     const session = bridge.getSession(leaderId)!;
     expect(getPendingCodexTurn(session)).toMatchObject({ status: "queued" });
-    vi.advanceTimersByTime(2100);
-    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(2100);
     expect(getPendingCodexTurn(session)).toMatchObject({ status: "dispatched" });
 
     adapter.emitTurnStarted("turn-herd-events-follow-up");
