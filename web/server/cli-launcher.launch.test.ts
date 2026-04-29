@@ -1558,7 +1558,7 @@ describe("launch", () => {
     expect(mockCp).not.toHaveBeenCalledWith(legacyOnly, join(sessionSkills, "legacy-only"), { recursive: true });
   });
 
-  it("migrates MAI-wrapper-backed legacy skills into agents without imagegen", async () => {
+  it("migrates MAI-wrapper-backed legacy skills without mutating existing agents system skills", async () => {
     const customHome = mkdtempSync(join(tmpdir(), "codex-home-test-"));
     const hostCodexHome = mkdtempSync(join(tmpdir(), "codex-host-home-test-"));
     const sharedSkills = mkdtempSync(join(tmpdir(), "codex-shared-skills-test-"));
@@ -1578,6 +1578,7 @@ describe("launch", () => {
 
       mkdirSync(join(sessionSkills, ".system", "imagegen"), { recursive: true });
       writeFileSync(join(sessionSkills, ".system", "imagegen", "SKILL.md"), "stale copied skill\n");
+      mockExistingPaths(join(agentsSkills, ".system"));
 
       mockResolveBinary.mockImplementation((name: string): string | null => {
         if (name === wrapperPath) return wrapperPath;
@@ -1602,12 +1603,11 @@ describe("launch", () => {
         join(agentsSkills, "quest", "SKILL.md"),
         { recursive: true },
       );
-      expect(mockCp).toHaveBeenCalledWith(
+      expect(mockRm).not.toHaveBeenCalledWith(join(agentsSkills, ".system"), { recursive: true, force: true });
+      expect(mockCp).not.toHaveBeenCalledWith(
         join(resolvedSharedSkills, ".system", "README.txt"),
         join(agentsSkills, ".system", "README.txt"),
-        {
-          recursive: true,
-        },
+        { recursive: true },
       );
       expect(mockCp).not.toHaveBeenCalledWith(
         join(resolvedSharedSkills, ".system", "imagegen"),

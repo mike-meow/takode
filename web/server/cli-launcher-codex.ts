@@ -763,11 +763,9 @@ async function mergeSkillDirectory(
     const relativePath = normalizeRelativeSeedPath(relative(sourceRoot, entrySrc));
     if (options.excludedRelativePaths && isExcludedSeedPath(relativePath, options.excludedRelativePaths)) continue;
 
-    const refreshFilteredSystemDir =
-      !options.overwriteExisting && entry.name === ".system" && options.excludedRelativePaths;
-    if (!options.overwriteExisting && !refreshFilteredSystemDir && (await fileExists(entryDest))) continue;
+    if (!options.overwriteExisting && (await fileExists(entryDest))) continue;
     await removeBrokenSymlink(entryDest);
-    if (options.overwriteExisting || refreshFilteredSystemDir) {
+    if (options.overwriteExisting) {
       await rm(entryDest, { recursive: true, force: true }).catch(() => {});
     }
     await copySeedEntry(entrySrc, entryDest, sourceRoot, options.excludedRelativePaths);
