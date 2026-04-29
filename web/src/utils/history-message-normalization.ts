@@ -1,4 +1,5 @@
 import type { BrowserIncomingMessage, ContentBlock, ChatMessage } from "../types.js";
+import { formatThreadAttachmentMarkerSummary } from "./thread-projection.js";
 import {
   parseCommandThreadComment,
   parseThreadTextPrefix,
@@ -287,6 +288,20 @@ export function normalizeHistoryMessageToChatMessages(
         timestamp: histMsg.timestamp,
         historyIndex,
         variant: "info",
+      },
+    ];
+  }
+
+  if (histMsg.type === "thread_attachment_marker") {
+    return [
+      {
+        id: histMsg.id,
+        role: "system",
+        content: formatThreadAttachmentMarkerSummary(histMsg),
+        timestamp: histMsg.timestamp,
+        historyIndex,
+        variant: "info",
+        metadata: { threadAttachmentMarker: histMsg },
       },
     ];
   }

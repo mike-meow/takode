@@ -33,6 +33,7 @@ import {
 import type { FeedSection } from "./message-feed-sections.js";
 import { YarnBallDot, YarnBallSpinner } from "./CatIcons.js";
 import { PawTrailAvatar, HidePawContext } from "./PawTrail.js";
+import { formatThreadAttachmentMarkerSummary, isThreadAttachmentMarkerMessage } from "../utils/thread-projection.js";
 
 function useExpandForScrollTarget(
   sessionId: string,
@@ -290,6 +291,43 @@ function HerdEventBatchGroup({ messages, sessionId }: { messages: ChatMessage[];
   );
 }
 
+function ThreadAttachmentMarkerRow({
+  message,
+  onSelectThread,
+}: {
+  message: ChatMessage;
+  onSelectThread?: (threadKey: string) => void;
+}) {
+  const marker = message.metadata?.threadAttachmentMarker;
+  if (!marker) return null;
+  const destination = marker.questId ?? marker.threadKey;
+  const label = formatThreadAttachmentMarkerSummary(marker);
+
+  return (
+    <div
+      className="flex justify-center animate-[fadeSlideIn_0.2s_ease-out]"
+      data-testid="thread-attachment-marker"
+      data-thread-key={marker.threadKey}
+      data-message-id={message.id}
+      data-feed-block-id={getMessageFeedBlockId(message.id)}
+    >
+      <button
+        type="button"
+        onClick={() => onSelectThread?.(marker.threadKey)}
+        className="inline-flex max-w-full items-center gap-2 rounded-full border border-blue-400/20 bg-blue-400/10 px-3 py-1.5 text-[11px] text-blue-200 transition-colors hover:bg-blue-400/15 disabled:cursor-default disabled:hover:bg-blue-400/10"
+        disabled={!onSelectThread}
+        title={`Open ${destination} thread`}
+      >
+        <svg className="h-3 w-3 shrink-0 text-blue-300/80" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M4 5.5h8M4 8h5.5M4 10.5h7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+          <rect x="2" y="2.5" width="12" height="11" rx="2" stroke="currentColor" strokeWidth="1.2" />
+        </svg>
+        <span className="min-w-0 truncate font-mono-code">{label}</span>
+      </button>
+    </div>
+  );
+}
+
 function ToolMessageGroup({
   group,
   sessionId,
@@ -401,6 +439,7 @@ export const FeedEntries = memo(function FeedEntries({
   isCodexSession,
   activeCodexTerminalIds,
   onOpenCodexTerminal,
+  onSelectThread,
 }: {
   entries: FeedEntry[];
   sessionId: string;
@@ -408,6 +447,7 @@ export const FeedEntries = memo(function FeedEntries({
   isCodexSession: boolean;
   activeCodexTerminalIds: Set<string>;
   onOpenCodexTerminal: (toolUseId: string) => void;
+  onSelectThread?: (threadKey: string) => void;
 }) {
   const rendered = useMemo(() => {
     const result: React.ReactNode[] = [];
@@ -439,6 +479,13 @@ export const FeedEntries = memo(function FeedEntries({
           i = j;
           continue;
         }
+      }
+      if (entry.kind === "message" && isThreadAttachmentMarkerMessage(entry.msg)) {
+        result.push(
+          <ThreadAttachmentMarkerRow key={entry.msg.id} message={entry.msg} onSelectThread={onSelectThread} />,
+        );
+        i++;
+        continue;
       }
       if (entry.kind === "tool_msg_group") {
         result.push(
@@ -503,7 +550,15 @@ export const FeedEntries = memo(function FeedEntries({
       i++;
     }
     return result;
-  }, [activeCodexTerminalIds, entries, isCodexSession, minuteBoundaryLabels, onOpenCodexTerminal, sessionId]);
+  }, [
+    activeCodexTerminalIds,
+    entries,
+    isCodexSession,
+    minuteBoundaryLabels,
+    onOpenCodexTerminal,
+    onSelectThread,
+    sessionId,
+  ]);
 
   return <>{rendered}</>;
 });
@@ -574,6 +629,7 @@ export const TurnEntriesExpanded = memo(function TurnEntriesExpanded({
   isCodexSession,
   activeCodexTerminalIds,
   onOpenCodexTerminal,
+  onSelectThread,
 }: {
   turn: Turn;
   sessionId: string;
@@ -583,6 +639,7 @@ export const TurnEntriesExpanded = memo(function TurnEntriesExpanded({
   isCodexSession: boolean;
   activeCodexTerminalIds: Set<string>;
   onOpenCodexTerminal: (toolUseId: string) => void;
+  onSelectThread?: (threadKey: string) => void;
 }) {
   const headerRef = useRef<HTMLButtonElement>(null);
 
@@ -598,6 +655,7 @@ export const TurnEntriesExpanded = memo(function TurnEntriesExpanded({
         isCodexSession={isCodexSession}
         activeCodexTerminalIds={activeCodexTerminalIds}
         onOpenCodexTerminal={onOpenCodexTerminal}
+        onSelectThread={onSelectThread}
       />
       {turn.agentEntries.length > 0 && <TurnCollapseFooter headerRef={headerRef} onCollapse={onCollapse} />}
     </>
@@ -1109,6 +1167,7 @@ export const TurnEntries = memo(function TurnEntries({
   isCodexSession,
   activeCodexTerminalIds,
   onOpenCodexTerminal,
+  onSelectThread,
   turnStates,
   toggleTurn,
 }: {
@@ -1118,6 +1177,7 @@ export const TurnEntries = memo(function TurnEntries({
   isCodexSession: boolean;
   activeCodexTerminalIds: Set<string>;
   onOpenCodexTerminal: (toolUseId: string) => void;
+  onSelectThread?: (threadKey: string) => void;
   turnStates: Array<{ isActivityExpanded: boolean } | undefined>;
   toggleTurn: (turnId: string) => void;
 }) {
@@ -1170,6 +1230,7 @@ export const TurnEntries = memo(function TurnEntries({
                         isCodexSession={isCodexSession}
                         activeCodexTerminalIds={activeCodexTerminalIds}
                         onOpenCodexTerminal={onOpenCodexTerminal}
+                        onSelectThread={onSelectThread}
                       />
                     )}
 
@@ -1183,6 +1244,7 @@ export const TurnEntries = memo(function TurnEntries({
                           isCodexSession={isCodexSession}
                           activeCodexTerminalIds={activeCodexTerminalIds}
                           onOpenCodexTerminal={onOpenCodexTerminal}
+                          onSelectThread={onSelectThread}
                           onCollapse={() => toggleTurn(turn.id)}
                         />
                       )
@@ -1196,6 +1258,7 @@ export const TurnEntries = memo(function TurnEntries({
                             isCodexSession={isCodexSession}
                             activeCodexTerminalIds={activeCodexTerminalIds}
                             onOpenCodexTerminal={onOpenCodexTerminal}
+                            onSelectThread={onSelectThread}
                           />
                         )}
                         {(turn.agentEntries.length > 0 ||
@@ -1223,6 +1286,7 @@ export const TurnEntries = memo(function TurnEntries({
                                         isCodexSession={isCodexSession}
                                         activeCodexTerminalIds={activeCodexTerminalIds}
                                         onOpenCodexTerminal={onOpenCodexTerminal}
+                                        onSelectThread={onSelectThread}
                                       />
                                     ))}
                                   </HidePawContext.Provider>
@@ -1238,6 +1302,7 @@ export const TurnEntries = memo(function TurnEntries({
                                       isCodexSession={isCodexSession}
                                       activeCodexTerminalIds={activeCodexTerminalIds}
                                       onOpenCodexTerminal={onOpenCodexTerminal}
+                                      onSelectThread={onSelectThread}
                                     />
                                   </HidePawContext.Provider>
                                 </div>
@@ -1251,6 +1316,7 @@ export const TurnEntries = memo(function TurnEntries({
                                       isCodexSession={isCodexSession}
                                       activeCodexTerminalIds={activeCodexTerminalIds}
                                       onOpenCodexTerminal={onOpenCodexTerminal}
+                                      onSelectThread={onSelectThread}
                                     />
                                   </HidePawContext.Provider>
                                 </div>

@@ -277,6 +277,29 @@ export function PlaygroundOverviewSections() {
       </Section>
 
       <Section
+        title="Thread Projections"
+        description="Main shows staging activity and attachment markers, All Threads preserves the global view, and quest projections keep attached context with routed activity."
+      >
+        <div className="grid gap-4 xl:grid-cols-3">
+          <Card label="Main">
+            <div className="h-[280px] overflow-hidden rounded-xl border border-cc-border bg-cc-card">
+              <MessageFeed sessionId={PLAYGROUND_THREAD_PANEL_SESSION_ID} threadKey="main" />
+            </div>
+          </Card>
+          <Card label="All Threads">
+            <div className="h-[280px] overflow-hidden rounded-xl border border-cc-border bg-cc-card">
+              <MessageFeed sessionId={PLAYGROUND_THREAD_PANEL_SESSION_ID} threadKey="all" />
+            </div>
+          </Card>
+          <Card label="Quest Thread">
+            <div className="h-[280px] overflow-hidden rounded-xl border border-cc-border bg-cc-card">
+              <MessageFeed sessionId={PLAYGROUND_THREAD_PANEL_SESSION_ID} threadKey="q-961" />
+            </div>
+          </Card>
+        </div>
+      </Section>
+
+      <Section
         title="MessageFeed Section Windowing"
         description="Fixed 50-turn sections with older-history browsing mounted in a bounded window. This mock opens on an older section so the newer-section control is visible."
       >

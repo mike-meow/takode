@@ -136,7 +136,27 @@ vi.mock("./TodoStatusLine.js", () => ({
 }));
 
 vi.mock("./WorkBoardBar.js", () => ({
-  WorkBoardBar: () => <div data-testid="work-board-bar" />,
+  WorkBoardBar: ({
+    currentThreadKey,
+    currentThreadLabel,
+    onReturnToMain,
+  }: {
+    currentThreadKey?: string;
+    currentThreadLabel?: string;
+    onReturnToMain?: () => void;
+  }) => (
+    <div
+      data-testid="work-board-bar"
+      data-current-thread-key={currentThreadKey}
+      data-current-thread-label={currentThreadLabel}
+    >
+      {onReturnToMain && (
+        <button type="button" onClick={onReturnToMain}>
+          Return to Main
+        </button>
+      )}
+    </div>
+  ),
 }));
 
 vi.mock("./CatIcons.js", () => ({
@@ -349,6 +369,42 @@ describe("ChatView backend banners", () => {
     expect(scope.getByTestId("message-feed")).toHaveAttribute("data-thread-key", "q-941");
     expect(scope.getByTestId("composer")).toHaveAttribute("data-thread-key", "q-941");
     expect(scope.getByTestId("composer")).toHaveAttribute("data-quest-id", "q-941");
+  });
+
+  it("offers All Threads as a global read-only projection with a return path to Main", () => {
+    resetStore({
+      sessions: new Map([["s1", { backend_state: "connected", backend_error: null, isOrchestrator: true }]]),
+      sdkSessions: [{ sessionId: "s1", archived: false, isOrchestrator: true }],
+      messages: new Map([
+        [
+          "s1",
+          [
+            { id: "m-main", role: "assistant", content: "Main update", timestamp: 1 },
+            {
+              id: "m-q941",
+              role: "assistant",
+              content: "q-941 update",
+              timestamp: 2,
+              metadata: { threadRefs: [{ threadKey: "q-941", questId: "q-941", source: "explicit" }] },
+            },
+          ],
+        ],
+      ]),
+      quests: [{ questId: "q-941", title: "Quest thread MVP", status: "in_progress" }],
+    });
+
+    const view = render(<ChatView sessionId="s1" />);
+    const scope = within(view.container);
+
+    fireEvent.click(scope.getByTestId("leader-thread-all-row"));
+    expect(scope.getByTestId("message-feed")).toHaveAttribute("data-thread-key", "all");
+    expect(scope.queryByTestId("composer")).not.toBeInTheDocument();
+    expect(scope.getByTestId("work-board-bar")).toHaveAttribute("data-current-thread-key", "all");
+    expect(scope.getByTestId("work-board-bar")).toHaveAttribute("data-current-thread-label", "All Threads");
+
+    fireEvent.click(scope.getByTestId("all-threads-return-main"));
+    expect(scope.getByTestId("message-feed")).toHaveAttribute("data-thread-key", "main");
+    expect(scope.getByTestId("composer")).toHaveAttribute("data-thread-key", "main");
   });
 
   it("materializes off-board quest threads from explicit text thread syntax", () => {

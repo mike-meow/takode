@@ -126,6 +126,41 @@ describe("normalizeHistoryMessageToChatMessages", () => {
     ]);
   });
 
+  it("normalizes thread attachment markers into compact system messages", () => {
+    // Attachment markers are persisted in messageHistory and drive Main
+    // projection display while keeping the raw marker available to UI filters.
+    const message: BrowserIncomingMessage = {
+      type: "thread_attachment_marker",
+      id: "marker-q-941",
+      timestamp: 1234,
+      markerKey: "thread-attachment:q-941:m1,m2",
+      threadKey: "q-941",
+      questId: "q-941",
+      attachedAt: 1234,
+      attachedBy: "session-1",
+      messageIds: ["m1", "m2"],
+      messageIndices: [1, 2],
+      ranges: ["1-2"],
+      count: 2,
+      firstMessageId: "m1",
+      firstMessageIndex: 1,
+    };
+
+    const normalized = normalizeHistoryMessageToChatMessages(message, 9);
+
+    expect(normalized).toEqual([
+      {
+        id: "marker-q-941",
+        role: "system",
+        content: "2 messages to q-941 - 1-2",
+        timestamp: 1234,
+        historyIndex: 9,
+        variant: "info",
+        metadata: { threadAttachmentMarker: message },
+      },
+    ]);
+  });
+
   it("replays leader user-visible messages as assistant Markdown", () => {
     const message: BrowserIncomingMessage = {
       type: "leader_user_message",

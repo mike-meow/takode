@@ -500,9 +500,9 @@ function makeDomRect(height: number, width = 0): DOMRect {
 }
 
 describe("MessageFeed - collapsed turns", () => {
-  it("leader sessions render the full Main stream instead of private collapsed activity", () => {
-    // q-941 pivot: Main is the complete old-style leader transcript. Filtering
-    // comes from selected quest threads, not global leader activity hiding.
+  it("leader sessions render unthreaded Main activity instead of private collapsed activity", () => {
+    // Main remains a readable staging thread. Unthreaded leader activity is
+    // visible directly instead of being hidden behind a synthetic activity bar.
     const sid = "test-leader-main-full-stream";
     setStoreSdkSessionRole(sid, { isOrchestrator: true });
     setStoreMessages(sid, [
@@ -517,6 +517,145 @@ describe("MessageFeed - collapsed turns", () => {
     expect(screen.getByText("Private orchestration detail")).toBeTruthy();
     expect(screen.getByText("Published leader update")).toBeTruthy();
     expect(screen.queryByText("Leader activity")).toBeNull();
+  });
+
+  it("keeps explicitly routed quest messages out of Main", () => {
+    // Clean Main excludes messages with explicit non-main route metadata while
+    // leaving unrouted staging activity visible.
+    const sid = "test-main-clean-explicit-route";
+    setStoreMessages(sid, [
+      makeMessage({ id: "u1", role: "user", content: "Main-only setup" }),
+      makeMessage({
+        id: "a-q941",
+        role: "assistant",
+        content: "q-941 routed update",
+        metadata: { threadRefs: [{ threadKey: "q-941", questId: "q-941", source: "explicit" }] },
+      }),
+    ]);
+
+    render(<MessageFeed sessionId={sid} />);
+
+    expect(screen.getByText("Main-only setup")).toBeTruthy();
+    expect(screen.queryByText("q-941 routed update")).toBeNull();
+  });
+
+  it("shows marker-backed attachment summaries in Main and hides the covered backfill messages", () => {
+    // A persisted attachment marker is the compatibility boundary: Main keeps
+    // the summary row but removes the moved/attached backfill content.
+    const sid = "test-main-marker-backed-backfill";
+    const marker = {
+      type: "thread_attachment_marker" as const,
+      id: "marker-q-941",
+      timestamp: 3,
+      markerKey: "thread-attachment:q-941:m-backfill",
+      threadKey: "q-941",
+      questId: "q-941",
+      attachedAt: 3,
+      attachedBy: "session-1",
+      messageIds: ["m-backfill"],
+      messageIndices: [1],
+      ranges: ["1"],
+      count: 1,
+      firstMessageId: "m-backfill",
+      firstMessageIndex: 1,
+    };
+    setStoreMessages(sid, [
+      makeMessage({ id: "u1", role: "user", content: "Main setup", historyIndex: 0 }),
+      makeMessage({
+        id: "m-backfill",
+        role: "assistant",
+        content: "Attached historical context",
+        historyIndex: 1,
+        metadata: { threadRefs: [{ threadKey: "q-941", questId: "q-941", source: "backfill" }] },
+      }),
+      makeMessage({
+        id: marker.id,
+        role: "system",
+        content: "1 message to q-941 - 1",
+        timestamp: marker.timestamp,
+        historyIndex: 2,
+        variant: "info",
+        metadata: { threadAttachmentMarker: marker },
+      }),
+    ]);
+
+    render(<MessageFeed sessionId={sid} onSelectThread={vi.fn()} />);
+
+    expect(screen.getByText("Main setup")).toBeTruthy();
+    expect(screen.getByTestId("thread-attachment-marker").getAttribute("data-thread-key")).toBe("q-941");
+    expect(screen.getByText("1 message to q-941 - 1")).toBeTruthy();
+    expect(screen.queryByText("Attached historical context")).toBeNull();
+  });
+
+  it("keeps old unmarked backfill references visible in Main", () => {
+    // Older sessions may have backfill threadRefs without a marker. Without the
+    // marker boundary, Main preserves historical visibility.
+    const sid = "test-main-old-backfill-compat";
+    setStoreMessages(sid, [
+      makeMessage({
+        id: "m-old-backfill",
+        role: "assistant",
+        content: "Old backfill still visible",
+        historyIndex: 1,
+        metadata: { threadRefs: [{ threadKey: "q-941", questId: "q-941", source: "backfill" }] },
+      }),
+    ]);
+
+    render(<MessageFeed sessionId={sid} />);
+
+    expect(screen.getByText("Old backfill still visible")).toBeTruthy();
+  });
+
+  it("renders All Threads as the global view", () => {
+    const sid = "test-all-threads-global-view";
+    setStoreMessages(sid, [
+      makeMessage({ id: "u1", role: "user", content: "Main-only setup" }),
+      makeMessage({
+        id: "a-q941",
+        role: "assistant",
+        content: "q-941 routed update",
+        metadata: { threadRefs: [{ threadKey: "q-941", questId: "q-941", source: "explicit" }] },
+      }),
+    ]);
+
+    render(<MessageFeed sessionId={sid} threadKey="all" />);
+
+    expect(screen.getByText("Main-only setup")).toBeTruthy();
+    expect(screen.getByText("q-941 routed update")).toBeTruthy();
+  });
+
+  it("uses attachment marker clicks to select the destination thread", () => {
+    const sid = "test-marker-selects-thread";
+    const onSelectThread = vi.fn();
+    const marker = {
+      type: "thread_attachment_marker" as const,
+      id: "marker-q-941",
+      timestamp: 1,
+      markerKey: "thread-attachment:q-941:m1",
+      threadKey: "q-941",
+      questId: "q-941",
+      attachedAt: 1,
+      attachedBy: "session-1",
+      messageIds: ["m1"],
+      messageIndices: [1],
+      ranges: ["1"],
+      count: 1,
+    };
+    setStoreMessages(sid, [
+      makeMessage({
+        id: marker.id,
+        role: "system",
+        content: "1 message to q-941 - 1",
+        timestamp: marker.timestamp,
+        variant: "info",
+        metadata: { threadAttachmentMarker: marker },
+      }),
+    ]);
+
+    render(<MessageFeed sessionId={sid} onSelectThread={onSelectThread} />);
+    fireEvent.click(screen.getByRole("button", { name: "1 message to q-941 - 1" }));
+
+    expect(onSelectThread).toHaveBeenCalledWith("q-941");
   });
 
   it("filters quest-thread views to associated messages while Main stays implicit", () => {

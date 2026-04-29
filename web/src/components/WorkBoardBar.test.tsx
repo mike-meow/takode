@@ -200,6 +200,26 @@ describe("WorkBoardBar", () => {
     expect(getByText("2 items")).toBeInTheDocument();
   });
 
+  it("shows the current thread and can return to Main from a quest thread", () => {
+    const onReturnToMain = vi.fn();
+    resetStore({
+      sdkSessions: [{ sessionId: "s1", isOrchestrator: true }],
+      sessionBoards: new Map([["s1", BOARD_DATA]]),
+    });
+    const { getByTestId } = render(
+      <WorkBoardBar
+        sessionId="s1"
+        currentThreadKey="q-968"
+        currentThreadLabel="q-968"
+        onReturnToMain={onReturnToMain}
+      />,
+    );
+
+    expect(getByTestId("workboard-current-thread")).toHaveTextContent("q-968");
+    fireEvent.click(getByTestId("workboard-return-main"));
+    expect(onReturnToMain).toHaveBeenCalledTimes(1);
+  });
+
   it("does not show BoardTable when collapsed (default)", () => {
     resetStore({
       sdkSessions: [{ sessionId: "s1", isOrchestrator: true }],

@@ -552,6 +552,7 @@ describe("cat herding", () => {
           sessionLabel: "Herd Events",
         },
         undefined,
+        { threadKey: "main" },
       );
 
       dispatcher.onOrchestratorTurnEnd("orch-1");

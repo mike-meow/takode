@@ -21,6 +21,7 @@ import type {
   VsCodeSelectionState,
   SessionNotification,
   ThreadRef,
+  ThreadAttachmentMarker,
   ThreadRoutingError,
 } from "../server/session-types.js";
 import { assertNever, isClaudeFamily } from "../server/session-types.js";
@@ -64,6 +65,7 @@ export type {
   SessionTimer,
   SessionNotification,
   ThreadRef,
+  ThreadAttachmentMarker,
   ThreadRoutingError,
 };
 export type { TreeGroup, TreeGroupState } from "../server/tree-group-store.js";
@@ -141,6 +143,7 @@ export interface ChatMessage {
     threadRefs?: ThreadRef[];
     threadKey?: string;
     questId?: string;
+    threadAttachmentMarker?: ThreadAttachmentMarker;
     threadRoutingError?: ThreadRoutingError;
     replyContext?: ReplyContext;
     vscodeSelection?: VsCodeSelectionMetadata;

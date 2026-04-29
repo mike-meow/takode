@@ -59,8 +59,13 @@ import {
   appendTimedMessagesFromEntries,
   isTimedChatMessage,
 } from "./message-feed-utils.js";
-import type { ChatMessage, ContentBlock } from "../types.js";
 import { isSubagentToolName } from "../types.js";
+import {
+  collectMessageToolUseIds,
+  filterMessagesForThread,
+  isAllThreadsKey,
+  isMainThreadKey,
+} from "../utils/thread-projection.js";
 import { YarnBallDot, YarnBallSpinner, SleepingCat } from "./CatIcons.js";
 import { PawTrailAvatar, PawCounterContext, PawScrollProvider, HidePawContext } from "./PawTrail.js";
 import { isTouchDevice } from "../utils/mobile.js";
@@ -184,55 +189,6 @@ interface FeedViewportAnchor {
   offsetTop: number;
 }
 
-function contentBlockToolUseId(block: ContentBlock): string | null {
-  if (block.type === "tool_use") return block.id;
-  if (block.type === "tool_result") return block.tool_use_id;
-  return null;
-}
-
-function messageToolUseIds(message: ChatMessage): string[] {
-  return (message.contentBlocks ?? []).map(contentBlockToolUseId).filter((id): id is string => Boolean(id));
-}
-
-function collectMessageToolUseIds(messages: ChatMessage[]): Set<string> {
-  const ids = new Set<string>();
-  for (const message of messages) {
-    for (const toolUseId of messageToolUseIds(message)) {
-      ids.add(toolUseId);
-    }
-  }
-  return ids;
-}
-
-function messageHasThreadRef(message: ChatMessage, threadKey: string): boolean {
-  const normalized = threadKey.toLowerCase();
-  const metadata = message.metadata;
-  if (!metadata) return false;
-  if (metadata.threadKey?.toLowerCase() === normalized) return true;
-  if (metadata.questId?.toLowerCase() === normalized) return true;
-  if (metadata.quest?.questId.toLowerCase() === normalized) return true;
-  return (metadata.threadRefs ?? []).some((ref) => ref.threadKey.toLowerCase() === normalized);
-}
-
-function filterMessagesForThread(messages: ChatMessage[], threadKey: string): ChatMessage[] {
-  const normalized = threadKey.toLowerCase();
-  if (normalized === "main") return messages;
-
-  const includedToolUseIds = new Set<string>();
-  for (const message of messages) {
-    if (!messageHasThreadRef(message, normalized)) continue;
-    for (const toolUseId of messageToolUseIds(message)) {
-      includedToolUseIds.add(toolUseId);
-    }
-  }
-
-  return messages.filter((message) => {
-    if (messageHasThreadRef(message, normalized)) return true;
-    if (message.parentToolUseId && includedToolUseIds.has(message.parentToolUseId)) return true;
-    return messageToolUseIds(message).some((toolUseId) => includedToolUseIds.has(toolUseId));
-  });
-}
-
 // ─── Main Feed ───────────────────────────────────────────────────────────────
 
 export function MessageFeed({
@@ -242,6 +198,7 @@ export function MessageFeed({
   latestIndicatorMode = "overlay",
   onLatestIndicatorVisibleChange,
   onJumpToLatestReady,
+  onSelectThread,
 }: {
   sessionId: string;
   threadKey?: string;
@@ -249,11 +206,12 @@ export function MessageFeed({
   latestIndicatorMode?: "overlay" | "external";
   onLatestIndicatorVisibleChange?: (visible: boolean) => void;
   onJumpToLatestReady?: ((scrollToLatest: (() => void) | null) => void) | undefined;
+  onSelectThread?: (threadKey: string) => void;
 }) {
   const allMessages = useStore((s) => s.messages.get(sessionId) ?? EMPTY_MESSAGES);
   const messages = useMemo(() => filterMessagesForThread(allMessages, threadKey), [allMessages, threadKey]);
   const visibleToolUseIds = useMemo(
-    () => (threadKey.toLowerCase() === "main" ? undefined : collectMessageToolUseIds(messages)),
+    () => (isMainThreadKey(threadKey) || isAllThreadsKey(threadKey) ? undefined : collectMessageToolUseIds(messages)),
     [messages, threadKey],
   );
   const pendingUserUploads = useStore((s) => s.pendingUserUploads.get(sessionId) ?? EMPTY_PENDING_USER_UPLOADS);
@@ -1581,6 +1539,7 @@ export function MessageFeed({
                   isCodexSession={isCodexSession}
                   activeCodexTerminalIds={activeCodexTerminalIds}
                   onOpenCodexTerminal={setSelectedCodexTerminalId}
+                  onSelectThread={onSelectThread}
                   turnStates={turnStates}
                   toggleTurn={toggleTurn}
                 />

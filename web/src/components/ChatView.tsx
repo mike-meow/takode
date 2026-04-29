@@ -32,6 +32,7 @@ import {
   getWaitForRefKind,
 } from "../../shared/quest-journey.js";
 import { parseCommandThreadComment, parseThreadTextPrefix } from "../../shared/thread-routing.js";
+import { ALL_THREADS_KEY, MAIN_THREAD_KEY, filterMessagesForThread } from "../utils/thread-projection.js";
 import type { BoardParticipantStatus, BoardRowSessionStatus, ChatMessage, QuestmasterTask } from "../types.js";
 
 type LeaderThreadRow = {
@@ -464,6 +465,7 @@ function LeaderThreadSwitcher({
 }) {
   const { messages, activeRows, doneRows } = useLeaderThreadModel(sessionId);
   const normalizedSelected = selectedThreadKey.toLowerCase();
+  const mainMessageCount = useMemo(() => filterMessagesForThread(messages, MAIN_THREAD_KEY).length, [messages]);
   const desktopClass =
     mode === "mobile"
       ? "hidden"
@@ -473,12 +475,24 @@ function LeaderThreadSwitcher({
     <aside className={desktopClass} data-testid="leader-thread-switcher">
       <button
         type="button"
-        onClick={() => onSelectThread("main")}
+        onClick={() => onSelectThread(MAIN_THREAD_KEY)}
         className={`shrink-0 border-r border-cc-border/60 px-3 py-2 text-left transition-colors sm:w-full sm:border-r-0 sm:border-b ${
-          normalizedSelected === "main" ? "bg-cc-hover text-cc-fg" : "text-cc-muted hover:bg-cc-hover/60"
+          normalizedSelected === MAIN_THREAD_KEY ? "bg-cc-hover text-cc-fg" : "text-cc-muted hover:bg-cc-hover/60"
         }`}
+        data-testid="leader-thread-main-row"
       >
         <div className="text-xs font-semibold">Main</div>
+        <div className="text-[10px] text-cc-muted/80 tabular-nums">{mainMessageCount} messages</div>
+      </button>
+      <button
+        type="button"
+        onClick={() => onSelectThread(ALL_THREADS_KEY)}
+        className={`shrink-0 border-r border-cc-border/60 px-3 py-2 text-left transition-colors sm:w-full sm:border-r-0 sm:border-b ${
+          normalizedSelected === ALL_THREADS_KEY ? "bg-cc-hover text-cc-fg" : "text-cc-muted hover:bg-cc-hover/60"
+        }`}
+        data-testid="leader-thread-all-row"
+      >
+        <div className="text-xs font-semibold">All Threads</div>
         <div className="text-[10px] text-cc-muted/80 tabular-nums">{messages.length} messages</div>
       </button>
       {activeRows.length > 0 && (
@@ -587,14 +601,26 @@ function summarizeMobileThreadRows({
   return { primary: "Main", secondary: "No threads" };
 }
 
+function threadLabelForKey(threadKey: string, rows: LeaderThreadRow[]): string {
+  const normalized = threadKey.toLowerCase();
+  if (normalized === MAIN_THREAD_KEY) return "Main";
+  if (normalized === ALL_THREADS_KEY) return "All Threads";
+  const row = rows.find((candidate) => candidate.threadKey === normalized);
+  return row?.questId ?? row?.title ?? threadKey;
+}
+
 function MobileMainThreadButton({
   selected,
   messageCount,
   onSelect,
+  label = "Main",
+  testId = "mobile-thread-main-row",
 }: {
   selected: boolean;
   messageCount: number;
   onSelect: () => void;
+  label?: string;
+  testId?: string;
 }) {
   return (
     <button
@@ -605,9 +631,9 @@ function MobileMainThreadButton({
           ? "border-cc-primary/40 bg-cc-primary/10 text-cc-fg"
           : "border-cc-border/70 bg-cc-card/80 text-cc-muted hover:bg-cc-hover/60"
       }`}
-      data-testid="mobile-thread-main-row"
+      data-testid={testId}
     >
-      <div className="text-xs font-semibold">Main</div>
+      <div className="text-xs font-semibold">{label}</div>
       <div className="mt-0.5 text-[10px] tabular-nums text-cc-muted/80">
         {messageCount} message{messageCount !== 1 ? "s" : ""}
       </div>
@@ -664,6 +690,7 @@ function MobileLeaderThreadSwitcher({
   const summary = summarizeMobileThreadRows({ activeRows, doneRows });
   const mobileRows = splitMobileThreadRows(activeRows);
   const mobileOnlyClass = mode === "mobile" ? "" : " sm:hidden";
+  const mainMessageCount = useMemo(() => filterMessagesForThread(messages, MAIN_THREAD_KEY).length, [messages]);
 
   useEffect(() => {
     if (!open) return;
@@ -732,9 +759,16 @@ function MobileLeaderThreadSwitcher({
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
             <MobileMainThreadButton
-              selected={normalizedSelected === "main"}
+              selected={normalizedSelected === MAIN_THREAD_KEY}
+              messageCount={mainMessageCount}
+              onSelect={() => handleSelectThread(MAIN_THREAD_KEY)}
+            />
+            <MobileMainThreadButton
+              selected={normalizedSelected === ALL_THREADS_KEY}
               messageCount={messages.length}
-              onSelect={() => handleSelectThread("main")}
+              onSelect={() => handleSelectThread(ALL_THREADS_KEY)}
+              label="All Threads"
+              testId="mobile-thread-all-row"
             />
             <MobileThreadSection
               title="Active"
@@ -798,9 +832,15 @@ export function ChatView({
     })),
   );
   const [selectedThreadKey, setSelectedThreadKey] = useState("main");
+  const { rows: threadRows } = useLeaderThreadModel(sessionId);
+  const selectedThreadLabel = useMemo(
+    () => threadLabelForKey(selectedThreadKey, threadRows),
+    [selectedThreadKey, threadRows],
+  );
+  const selectedThreadCanCompose = !isLeaderSession || selectedThreadKey.toLowerCase() !== ALL_THREADS_KEY;
 
   useEffect(() => {
-    setSelectedThreadKey("main");
+    setSelectedThreadKey(MAIN_THREAD_KEY);
   }, [sessionId]);
 
   // Within-session search
@@ -973,7 +1013,11 @@ export function ChatView({
               />
             </>
           )}
-          <MessageFeed sessionId={sessionId} threadKey={isLeaderSession ? selectedThreadKey : "main"} />
+          <MessageFeed
+            sessionId={sessionId}
+            threadKey={isLeaderSession ? selectedThreadKey : MAIN_THREAD_KEY}
+            onSelectThread={isLeaderSession ? setSelectedThreadKey : undefined}
+          />
         </div>
       )}
 
@@ -1035,15 +1079,37 @@ export function ChatView({
       {!preview && <TodoStatusLine sessionId={sessionId} />}
 
       {/* Persistent work board for orchestrator sessions */}
-      {!preview && <WorkBoardBar sessionId={sessionId} />}
+      {!preview && (
+        <WorkBoardBar
+          sessionId={sessionId}
+          currentThreadKey={isLeaderSession ? selectedThreadKey : MAIN_THREAD_KEY}
+          currentThreadLabel={isLeaderSession ? selectedThreadLabel : "Main"}
+          onReturnToMain={isLeaderSession ? () => setSelectedThreadKey(MAIN_THREAD_KEY) : undefined}
+        />
+      )}
 
       {/* Composer */}
-      {!preview && (
+      {!preview && selectedThreadCanCompose && (
         <Composer
           sessionId={sessionId}
-          threadKey={isLeaderSession ? selectedThreadKey : "main"}
-          questId={isLeaderSession && selectedThreadKey !== "main" ? selectedThreadKey : undefined}
+          threadKey={isLeaderSession ? selectedThreadKey : MAIN_THREAD_KEY}
+          questId={isLeaderSession && selectedThreadKey !== MAIN_THREAD_KEY ? selectedThreadKey : undefined}
         />
+      )}
+      {!preview && !selectedThreadCanCompose && (
+        <div className="shrink-0 border-t border-cc-border bg-cc-card px-3 py-2">
+          <button
+            type="button"
+            onClick={() => setSelectedThreadKey(MAIN_THREAD_KEY)}
+            className="inline-flex max-w-full items-center gap-2 rounded-md border border-cc-border/70 bg-cc-hover/50 px-3 py-1.5 text-xs font-medium text-cc-fg transition-colors hover:bg-cc-hover"
+            data-testid="all-threads-return-main"
+          >
+            <svg className="h-3.5 w-3.5 shrink-0" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M10 4L6 8l4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+            </svg>
+            <span className="truncate">Return to Main</span>
+          </button>
+        </div>
       )}
     </div>
   );

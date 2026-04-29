@@ -1209,7 +1209,12 @@ export function PlaygroundInteractiveSections() {
                 Seed board data
               </button>
               <div className="border border-cc-border rounded-lg overflow-hidden">
-                <WorkBoardBar sessionId="playground-board-bar" />
+                <WorkBoardBar
+                  sessionId="playground-board-bar"
+                  currentThreadKey="q-61"
+                  currentThreadLabel="q-61"
+                  onReturnToMain={() => {}}
+                />
               </div>
               <p className="text-[10px] text-cc-muted">
                 Click "Seed board data" first, then click the bar to toggle between collapsed summary and expanded table

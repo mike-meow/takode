@@ -999,6 +999,7 @@ describe("Takode server-authoritative auth", () => {
           suggestedAnswers: ["ship", "hold"],
           msg_index: 0,
           messageId: "asst-1",
+          threadKey: "main",
         },
       ],
     });
@@ -1037,10 +1038,16 @@ describe("Takode server-authoritative auth", () => {
       answer: "Use the staged rollout.",
       delivery: "sent",
     });
-    expect(bridge.injectUserMessage).toHaveBeenCalledWith("worker-1", "Use the staged rollout.", {
-      sessionId: "orch-1",
-      sessionLabel: "#7",
-    });
+    expect(bridge.injectUserMessage).toHaveBeenCalledWith(
+      "worker-1",
+      "Use the staged rollout.",
+      {
+        sessionId: "orch-1",
+        sessionLabel: "#7",
+      },
+      undefined,
+      { threadKey: "main" },
+    );
     expect(bridge.getSession("worker-1")?.notifications[0]?.done).toBe(true);
   });
 
