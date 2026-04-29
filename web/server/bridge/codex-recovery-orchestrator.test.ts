@@ -279,18 +279,22 @@ describe("handleCodexAdapterInitError", () => {
     });
   });
 
-  it("treats actionable config failures inside transport-close init errors as terminal", () => {
+  it.each([
+    "Error: error loading default config after config error: No such file or directory (os error 2)",
+    'MCP server "codex_apps" startup failed during initialize',
+    "rmcp::transport::worker quit with fatal: Transport channel closed",
+    "TokenRefreshFailed while starting MCP server",
+    "OAuth refresh failed: invalid_grant",
+  ])("treats actionable transport-close init stderr as terminal: %s", (stderr) => {
     // Some startup failures are reported as Transport closed but include a real
-    // local configuration problem in stderr. Those should stay visible instead
-    // of being hidden behind transient restart recovery.
+    // local configuration or auth/MCP problem in stderr. Those should stay
+    // visible instead of being hidden behind transient restart recovery.
     const adapter = { id: "adapter-1" };
     const session = makeSession([]);
     session.codexAdapter = adapter as any;
     (session as any).codexAutoRecoveryReason = "browser_open_dead_backend";
     const deps = makeRecoveryDeps();
-    const error =
-      "Codex initialization failed: Transport closed. Stderr: " +
-      "Error: error loading default config after config error: No such file or directory (os error 2)";
+    const error = `Codex initialization failed: Transport closed. Stderr: ${stderr}`;
 
     const result = handleCodexAdapterInitError(session.id, session, adapter, error, deps);
 

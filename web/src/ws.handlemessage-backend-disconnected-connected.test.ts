@@ -212,17 +212,21 @@ describe("handleMessage: backend_disconnected/connected", () => {
     expect(useStore.getState().cliConnected.get("s1")).toBe(true);
   });
 
-  it("preserves actionable Codex init errors when they include config failure details", () => {
-    // Config failures can also arrive wrapped in Transport closed. Those remain
-    // visible because they are actionable terminal errors, not transient
-    // post-restart startup closes.
+  it.each([
+    "Error: error loading default config after config error: No such file or directory (os error 2)",
+    'MCP server "codex_apps" startup failed during initialize',
+    "rmcp::transport::worker quit with fatal: Transport channel closed",
+    "TokenRefreshFailed while starting MCP server",
+    "OAuth refresh failed: invalid_grant",
+  ])("preserves actionable Codex init errors after backend connects: %s", (stderr) => {
+    // Config/auth/MCP failures can also arrive wrapped in Transport closed.
+    // Those remain visible because they are actionable terminal errors, not
+    // transient post-restart startup closes.
     wsModule.connectSession("s1");
     fireMessage({ type: "session_init", session: { ...makeSession("s1"), backend_type: "codex" } });
     fireMessage({
       type: "error",
-      message:
-        "Codex initialization failed: Transport closed. Stderr: " +
-        "Error: error loading default config after config error: No such file or directory (os error 2)",
+      message: `Codex initialization failed: Transport closed. Stderr: ${stderr}`,
     });
 
     fireMessage({ type: "session_update", session: { backend_state: "connected", backend_error: null } });
@@ -233,6 +237,6 @@ describe("handleMessage: backend_disconnected/connected", () => {
         .getState()
         .messages.get("s1")
         ?.map((msg) => msg.content) ?? [];
-    expect(contents.some((content) => content.includes("error loading default config"))).toBe(true);
+    expect(contents.some((content) => content.includes(stderr))).toBe(true);
   });
 });

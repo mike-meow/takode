@@ -74,6 +74,10 @@ function isRecoverableCodexInitErrorMessage(message: ChatMessage): boolean {
     /\bEACCES\b/i,
     /authentication token is expired/i,
     /\btoken_expired\b/i,
+    /\brmcp::transport\b/i,
+    /\bcodex_apps\b/i,
+    /\bTokenRefreshFailed\b/i,
+    /\binvalid_grant\b/i,
   ].some((pattern) => pattern.test(message.content));
 }
 
