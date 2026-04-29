@@ -38,7 +38,7 @@ const LEGACY_CODEX_SKILLS_HOME = join(getLegacyCodexHome(), "skills");
  * Symlink repo skills into the global Claude and agent skill homes so all
  * sessions discover the same project-defined skills regardless of working
  * directory. `.agents` is the non-Claude source used by Codex/new agents;
- * `.codex` is compatibility-only.
+ * legacy `.codex/skills` content is compatibility-only migration input.
  *
  * Call once at startup with the core skill directory names (slugs). Startup
  * also discovers repo skill slugs from `.claude/skills` and `.agents/skills`

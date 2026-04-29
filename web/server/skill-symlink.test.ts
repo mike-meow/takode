@@ -143,7 +143,7 @@ describe("ensureSkillSymlinks", () => {
   });
 
   it("ignores repo-local legacy Codex skill directories for active installs", async () => {
-    // Validates .codex is compatibility-only; project-specific non-Claude
+    // Validates .codex/skills is compatibility-only; project-specific non-Claude
     // variants now come from .agents, then fall back to .claude.
     fsMocks.existsSync.mockImplementation((targetDir: string) => {
       return (

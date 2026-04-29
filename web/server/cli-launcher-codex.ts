@@ -41,6 +41,7 @@ const maiWrapperEnvHostPrefix = "companion-codex-home-";
 const maiWrapperHostnameShimDirName = ".mai-wrapper-bin";
 const imagegenSkillRelativePath = ".system/imagegen";
 const agentsSkillsHome = join(homedir(), ".agents", "skills");
+const deprecatedCodexSkillsDirName = "skills";
 const defaultCodexEffectiveContextWindowPercent = 95;
 const defaultCodexNonLeaderAutoCompactThresholdPercent = 90;
 
@@ -690,24 +691,6 @@ async function seedCodexResumeRollout(codexHome: string, threadId?: string): Pro
   await copyFile(rolloutPath, destPath);
 }
 
-async function pruneBrokenSymlinks(root: string): Promise<void> {
-  const entries = await readdir(root, { withFileTypes: true }).catch(() => []);
-  for (const entry of entries) {
-    const fullPath = join(root, entry.name);
-    if (entry.isSymbolicLink()) {
-      try {
-        await realpath(fullPath);
-      } catch {
-        await unlink(fullPath).catch(() => {});
-      }
-      continue;
-    }
-    if (entry.isDirectory()) {
-      await pruneBrokenSymlinks(fullPath);
-    }
-  }
-}
-
 function resolveSymlinkTargetPath(linkPath: string, targetPath: string): string {
   return resolve(dirname(linkPath), targetPath);
 }
@@ -783,6 +766,7 @@ async function mergeSkillDirectory(
     const refreshFilteredSystemDir =
       !options.overwriteExisting && entry.name === ".system" && options.excludedRelativePaths;
     if (!options.overwriteExisting && !refreshFilteredSystemDir && (await fileExists(entryDest))) continue;
+    await removeBrokenSymlink(entryDest);
     if (options.overwriteExisting || refreshFilteredSystemDir) {
       await rm(entryDest, { recursive: true, force: true }).catch(() => {});
     }
@@ -791,6 +775,14 @@ async function mergeSkillDirectory(
   }
 
   return copied ? "created" : "unchanged";
+}
+
+async function removeBrokenSymlink(path: string): Promise<void> {
+  const pathStat = await lstat(path).catch(() => null);
+  if (!pathStat?.isSymbolicLink()) return;
+
+  if (await fileExists(path)) return;
+  await unlink(path).catch(() => {});
 }
 
 async function copySeedEntry(
@@ -829,33 +821,29 @@ async function copySeedEntry(
   }
 }
 
-async function seedCodexSkillsDirectory(
-  codexHome: string,
+async function migrateLegacyCodexSkillsToAgentsHome(
   sourceHome: string,
   options?: { filterImagegenSkill?: boolean },
 ): Promise<void> {
-  const dest = join(codexHome, "skills");
+  const dest = agentsSkillsHome;
   const excludedRelativePaths = options?.filterImagegenSkill ? new Set([imagegenSkillRelativePath]) : undefined;
-
-  await mergeSkillDirectory(agentsSkillsHome, dest, {
-    overwriteExisting: true,
-    excludedRelativePaths,
-  });
 
   const legacyCandidates = Array.from(
     new Set([join(sourceHome, "skills"), join(getLegacyCodexHome(), "skills")].map((candidate) => resolve(candidate))),
   );
   for (const legacySkillsHome of legacyCandidates) {
-    if (legacySkillsHome === resolve(agentsSkillsHome) || legacySkillsHome === resolve(dest)) continue;
+    if (legacySkillsHome === resolve(dest)) continue;
     await mergeSkillDirectory(legacySkillsHome, dest, {
       overwriteExisting: false,
       excludedRelativePaths,
     });
   }
+}
 
-  if (await fileExists(dest)) {
-    await pruneBrokenSymlinks(dest);
-  }
+async function removeDeprecatedCodexHomeSkills(codexHome: string): Promise<void> {
+  // Skills are discovered from ~/.agents/skills. Remove old per-session copies
+  // so stale CODEX_HOME/skills content cannot act like an active skill root.
+  await rm(join(codexHome, deprecatedCodexSkillsDirName), { recursive: true, force: true });
 }
 
 async function prepareCodexHome(
@@ -926,9 +914,10 @@ async function prepareCodexHome(
   }
 
   try {
-    await seedCodexSkillsDirectory(codexHome, sourceHome, { filterImagegenSkill: options?.filterImagegenSkill });
+    await removeDeprecatedCodexHomeSkills(codexHome);
+    await migrateLegacyCodexSkillsToAgentsHome(sourceHome, { filterImagegenSkill: options?.filterImagegenSkill });
   } catch (error) {
-    console.warn(`[cli-launcher] Failed to bootstrap skills/ from agent skill homes:`, error);
+    console.warn(`[cli-launcher] Failed to migrate legacy Codex skills into ~/.agents/skills:`, error);
   }
 
   try {

@@ -159,10 +159,11 @@ export class ContainerManager {
       `${homedir}/.claude:/companion-host-claude:ro`,
       "--tmpfs",
       "/root/.claude",
-      // Seed Codex auth/config from .codex and skills from .agents.
+      // Seed Codex auth/config from .codex and official skills from .agents.
       ...(hasHostCodexHome ? ["-v", `${homedir}/.codex:/companion-host-codex:ro`] : []),
       ...(hasHostAgentsHome ? ["-v", `${homedir}/.agents:/companion-host-agents:ro`] : []),
       ...(hasHostCodexHome || hasHostAgentsHome ? ["--tmpfs", "/root/.codex"] : []),
+      ...(hasHostCodexHome || hasHostAgentsHome ? ["--tmpfs", "/root/.agents"] : []),
       // Isolated workspace: named volume populated later via docker cp
       "-v",
       `${volumeName}:/workspace`,
@@ -285,9 +286,9 @@ export class ContainerManager {
   }
 
   /**
-   * Copy Codex auth/config from .codex and skills from .agents into the tmpfs
-   * Codex home. Legacy .codex skills are copied only when the .agents skill
-   * slug is missing.
+   * Copy Codex auth/config from .codex and skills from .agents into their
+   * official runtime homes. Legacy .codex/skills entries are copied only when
+   * the .agents skill slug is missing.
    * Called after both initial create and restart (tmpfs is wiped on stop).
    */
   private seedCodexFiles(containerId: string): void {
@@ -299,11 +300,11 @@ export class ContainerManager {
           "mkdir -p /root/.codex",
           "for f in auth.json config.toml models_cache.json version.json; do " +
             "[ -f /companion-host-codex/$f ] && cp /companion-host-codex/$f /root/.codex/$f 2>/dev/null; done",
-          "[ -d /companion-host-agents/skills ] && mkdir -p /root/.codex/skills && " +
-            "cp -RL /companion-host-agents/skills/. /root/.codex/skills/ 2>/dev/null",
-          "if [ -d /companion-host-codex/skills ]; then mkdir -p /root/.codex/skills; " +
+          "[ -d /companion-host-agents/skills ] && mkdir -p /root/.agents/skills && " +
+            "cp -RL /companion-host-agents/skills/. /root/.agents/skills/ 2>/dev/null",
+          "if [ -d /companion-host-codex/skills ]; then mkdir -p /root/.agents/skills; " +
             'for s in /companion-host-codex/skills/*; do [ -e "$s" ] || continue; name=$(basename "$s"); ' +
-            'target="/root/.codex/skills/$name"; ' +
+            'target="/root/.agents/skills/$name"; ' +
             '[ -L "$target" ] && [ ! -e "$target" ] && rm -f "$target"; ' +
             '[ -e "$target" ] || cp -RL "$s" "$target" 2>/dev/null; done; fi',
           "for d in vendor_imports prompts rules; do " +

@@ -128,6 +128,11 @@ const mockCp = vi.hoisted(() =>
     // no-op for mocked paths
   }),
 );
+const mockRm = vi.hoisted(() =>
+  vi.fn(async (..._args: any[]) => {
+    // no-op for mocked paths
+  }),
+);
 const mockReaddir = vi.hoisted(() => vi.fn(async (..._args: any[]): Promise<any[]> => []));
 const mockStat = vi.hoisted(() =>
   vi.fn(async (..._args: any[]) => ({
@@ -242,6 +247,12 @@ vi.mock("node:fs/promises", async (importOriginal) => {
       }
       return actual.cp(...args);
     },
+    rm: async (...args: any[]) => {
+      if (typeof args[0] === "string" && isMockedPath(args[0])) {
+        return mockRm(...args);
+      }
+      return actual.rm(...args);
+    },
     readdir: async (...args: any[]) => {
       if (typeof args[0] === "string" && isMockedPath(args[0])) {
         return mockReaddir(...args);
@@ -291,7 +302,7 @@ vi.mock("node:fs/promises", async (importOriginal) => {
 // ─── Imports (after mocks) ───────────────────────────────────────────────────
 
 import { SessionStore } from "./session-store.js";
-import { CliLauncher } from "./cli-launcher.js";
+import { CliLauncher, type LaunchOptions } from "./cli-launcher.js";
 import { HerdEventDispatcher } from "./herd-event-dispatcher.js";
 import { createLauncherHerdChangeHandler } from "./herd-change-handler.js";
 import type { TakodeEvent, TakodeHerdReassignedEventData } from "./session-types.js";
@@ -475,12 +486,30 @@ describe("launch", () => {
       await new Promise<void>((r) => setTimeout(r, 10));
     }
   };
+  const launchCodex = async (overrides: LaunchOptions = {}, spawnCalls = 1) => {
+    const info = await launcher.launch({
+      backendType: "codex",
+      cwd: "/tmp/project",
+      codexSandbox: "workspace-write",
+      ...overrides,
+    });
+    await waitForSpawnCalls(spawnCalls);
+    return info;
+  };
+  const mockExistingPaths = (...paths: string[]) => {
+    const existing = new Set(paths);
+    mockExistsSync.mockImplementation((path: string) => existing.has(path));
+  };
+  const mockDirent = (name: string, options: { symlink?: boolean; directory?: boolean } = {}) => ({
+    name,
+    isSymbolicLink: () => options.symlink ?? false,
+    isDirectory: () => options.directory ?? true,
+  });
 
   it("writes session-auth to centralized ~/.companion/session-auth/ directory", async () => {
     mockResolveBinary.mockReturnValue("/opt/fake/codex");
     mockSpawn.mockReturnValueOnce(createMockCodexProc());
-    await launcher.launch({ backendType: "codex", cwd: "/tmp/project" });
-    await waitForSpawnCalls(1);
+    await launchCodex({ codexSandbox: undefined });
 
     // The auth file is written to ~/.companion/session-auth/<hash>-<serverId>.json
     const { getSessionAuthPath } = await import("../shared/session-auth.js");
@@ -832,12 +861,7 @@ describe("launch", () => {
       }),
     });
 
-    await launcher.launch({
-      backendType: "codex",
-      cwd: "/tmp/project",
-      codexSandbox: "workspace-write",
-    });
-    await waitForSpawnCalls(1);
+    await launchCodex();
     const sessionNum = launcher.getSessionNum("test-session-id");
 
     expect(stderrController).not.toBeNull();
@@ -1474,14 +1498,13 @@ describe("launch", () => {
         return "/usr/bin/claude";
       });
       mockCaptureUserShellEnv.mockReturnValue({});
-      mockExistsSync.mockImplementation((path: string) => {
-        if (path === hostCodexHome) return true;
-        if (path === join(hostCodexHome, "skills")) return true;
-        if (path === join(hostCodexHome, "vendor_imports")) return true;
-        if (path === join(hostCodexHome, "prompts")) return true;
-        if (path === join(hostCodexHome, "rules")) return true;
-        return false;
-      });
+      mockExistingPaths(
+        hostCodexHome,
+        join(hostCodexHome, "skills"),
+        join(hostCodexHome, "vendor_imports"),
+        join(hostCodexHome, "prompts"),
+        join(hostCodexHome, "rules"),
+      );
 
       await launcher.launch({
         backendType: "codex",
@@ -1503,9 +1526,9 @@ describe("launch", () => {
     }
   });
 
-  it("seeds Codex session skills from agents and keeps legacy-only Codex skills", async () => {
-    // Validates .agents is the active Codex skill source, with ~/.codex used
-    // only to preserve skill slugs that have not been migrated yet.
+  it("migrates legacy-only Codex skills into the official agents skill home", async () => {
+    // Validates .agents is the active Codex skill source, with ~/.codex/skills
+    // used only to preserve slugs that have not been migrated yet.
     mockResolveBinary.mockReturnValue("/opt/fake/codex");
     mockSpawn.mockReturnValueOnce(createMockCodexProc());
 
@@ -1513,48 +1536,35 @@ describe("launch", () => {
     const legacyHome = join(homedir(), ".codex");
     const legacySkills = join(legacyHome, "skills");
     const sessionSkills = join(homedir(), ".companion", "codex-home", "test-session-id", "skills");
-    const agentReview = join(agentsSkills, "review");
     const legacyReview = join(legacySkills, "review");
     const legacyOnly = join(legacySkills, "legacy-only");
 
-    mockExistsSync.mockImplementation((path: string) => {
-      if (path === agentsSkills) return true;
-      if (path === legacyHome) return true;
-      if (path === legacySkills) return true;
-      if (path === join(sessionSkills, "review")) return true;
-      return false;
-    });
+    mockExistingPaths(agentsSkills, legacyHome, legacySkills, join(agentsSkills, "review"));
     mockReaddir.mockImplementation(async (path: string, options?: { withFileTypes?: boolean }) => {
       if (path === agentsSkills && options?.withFileTypes) {
-        return [{ name: "review", isSymbolicLink: () => false, isDirectory: () => true }];
+        return [mockDirent("review")];
       }
       if (path === legacySkills && options?.withFileTypes) {
-        return [
-          { name: "review", isSymbolicLink: () => false, isDirectory: () => true },
-          { name: "legacy-only", isSymbolicLink: () => false, isDirectory: () => true },
-        ];
+        return [mockDirent("review"), mockDirent("legacy-only")];
       }
       return [];
     });
 
-    await launcher.launch({
-      backendType: "codex",
-      cwd: "/tmp/project",
-      codexSandbox: "workspace-write",
-    });
-    await waitForSpawnCalls(1);
+    await launchCodex();
 
-    expect(mockCp).toHaveBeenCalledWith(agentReview, join(sessionSkills, "review"), { recursive: true });
-    expect(mockCp).not.toHaveBeenCalledWith(legacyReview, join(sessionSkills, "review"), { recursive: true });
-    expect(mockCp).toHaveBeenCalledWith(legacyOnly, join(sessionSkills, "legacy-only"), { recursive: true });
+    expect(mockRm).toHaveBeenCalledWith(sessionSkills, { recursive: true, force: true });
+    expect(mockCp).not.toHaveBeenCalledWith(legacyReview, join(agentsSkills, "review"), { recursive: true });
+    expect(mockCp).toHaveBeenCalledWith(legacyOnly, join(agentsSkills, "legacy-only"), { recursive: true });
+    expect(mockCp).not.toHaveBeenCalledWith(legacyOnly, join(sessionSkills, "legacy-only"), { recursive: true });
   });
 
-  it("rebuilds MAI-wrapper-backed skills without imagegen even when the wrapper host home exposes a symlink", async () => {
+  it("migrates MAI-wrapper-backed legacy skills into agents without imagegen", async () => {
     const customHome = mkdtempSync(join(tmpdir(), "codex-home-test-"));
     const hostCodexHome = mkdtempSync(join(tmpdir(), "codex-host-home-test-"));
     const sharedSkills = mkdtempSync(join(tmpdir(), "codex-shared-skills-test-"));
     const sessionHome = join(customHome, "test-session-id");
     const sessionSkills = join(sessionHome, "skills");
+    const agentsSkills = join(homedir(), ".agents", "skills");
     const { root, wrapperPath } = createMaiWrapperFixture({ hostCodexHome });
 
     try {
@@ -1585,10 +1595,25 @@ describe("launch", () => {
       });
       await waitForSpawnCalls(1);
 
-      expect(lstatSync(sessionSkills).isSymbolicLink()).toBe(false);
-      expect(existsSync(join(sessionSkills, "quest", "SKILL.md"))).toBe(true);
-      expect(existsSync(join(sessionSkills, ".system", "README.txt"))).toBe(true);
-      expect(existsSync(join(sessionSkills, ".system", "imagegen", "SKILL.md"))).toBe(false);
+      const resolvedSharedSkills = realpathSync(sharedSkills);
+      expect(existsSync(sessionSkills)).toBe(false);
+      expect(mockCp).toHaveBeenCalledWith(
+        join(resolvedSharedSkills, "quest", "SKILL.md"),
+        join(agentsSkills, "quest", "SKILL.md"),
+        { recursive: true },
+      );
+      expect(mockCp).toHaveBeenCalledWith(
+        join(resolvedSharedSkills, ".system", "README.txt"),
+        join(agentsSkills, ".system", "README.txt"),
+        {
+          recursive: true,
+        },
+      );
+      expect(mockCp).not.toHaveBeenCalledWith(
+        join(resolvedSharedSkills, ".system", "imagegen"),
+        join(agentsSkills, ".system", "imagegen"),
+        { recursive: true },
+      );
     } finally {
       rmSync(root, { recursive: true, force: true });
       rmSync(customHome, { recursive: true, force: true });
@@ -1653,12 +1678,7 @@ describe("launch", () => {
     mockResolveBinary.mockReturnValue("/opt/fake/codex");
     mockSpawn.mockReturnValueOnce(createMockCodexProc());
 
-    const info = await launcher.launch({
-      backendType: "codex",
-      cwd: "/tmp/project",
-      codexSandbox: "workspace-write",
-    });
-    await waitForSpawnCalls(1);
+    const info = await launchCodex();
 
     const session = launcher.getSession(info.sessionId)!;
     session.isOrchestrator = true;
@@ -1708,124 +1728,66 @@ describe("launch", () => {
     const legacyAuth = join(legacyHome, "auth.json");
     const sessionAuth = join(sessionHome, "auth.json");
 
-    mockExistsSync.mockImplementation((path: string) => {
-      if (path === legacyHome) return true;
-      if (path === legacyAuth) return true;
-      if (path === sessionAuth) return true;
-      return false;
-    });
+    mockExistingPaths(legacyHome, legacyAuth, sessionAuth);
 
-    await launcher.launch({
-      backendType: "codex",
-      cwd: "/tmp/project",
-      codexSandbox: "workspace-write",
-    });
-    await waitForSpawnCalls(1);
+    await launchCodex();
 
     expect(mockSymlink).toHaveBeenCalledWith(legacyAuth, sessionAuth);
   });
 
-  it("prunes broken legacy skill symlinks from the session Codex home", async () => {
-    // q-275: stale broken symlinks in ~/.codex/skills should not be copied into
-    // every per-session Codex home, or each relaunch will spam skill-load errors.
+  it("replaces broken agents skill symlinks before legacy fallback migration", async () => {
+    // Legacy migrations can leave broken ~/.agents/skills symlinks. A missing
+    // slug fallback must replace those placeholders with usable skill contents.
     mockResolveBinary.mockReturnValue("/opt/fake/codex");
     mockSpawn.mockReturnValueOnce(createMockCodexProc());
 
+    const agentsSkills = join(homedir(), ".agents", "skills");
     const legacyHome = join(homedir(), ".codex");
     const legacySkills = join(legacyHome, "skills");
-    const sessionSkills = join(homedir(), ".companion", "codex-home", "test-session-id", "skills");
-    const brokenSkill = join(sessionSkills, "cron-scheduling");
+    const brokenSkill = join(agentsSkills, "cron-scheduling");
 
-    mockExistsSync.mockImplementation((path: string) => {
-      if (path === legacyHome) return true;
-      if (path === legacySkills) return true;
-      if (path === sessionSkills) return true;
-      return false;
-    });
+    mockExistingPaths(agentsSkills, legacyHome, legacySkills);
     mockReaddir.mockImplementation(async (path: string, options?: { withFileTypes?: boolean }) => {
       if (path === legacySkills && options?.withFileTypes) {
-        return [
-          {
-            name: "cron-scheduling",
-            isSymbolicLink: () => true,
-            isDirectory: () => false,
-          },
-        ];
+        return [mockDirent("cron-scheduling", { symlink: true, directory: false })];
       }
-      if (path === sessionSkills && options?.withFileTypes) {
-        return [
-          {
-            name: "cron-scheduling",
-            isSymbolicLink: () => true,
-            isDirectory: () => false,
-          },
-        ];
+      if (path === agentsSkills && options?.withFileTypes) {
+        return [mockDirent("cron-scheduling", { symlink: true, directory: false })];
       }
       return [];
     });
-    mockRealpath.mockImplementation(async (path: string) => {
+    mockLstatSync.mockImplementation((path?: string) => {
       if (path === brokenSkill) {
-        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+        return {
+          isSymbolicLink: () => true,
+          isDirectory: () => false,
+        };
       }
-      return path;
+      throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
     });
 
-    await launcher.launch({
-      backendType: "codex",
-      cwd: "/tmp/project",
-      codexSandbox: "workspace-write",
-    });
-    await waitForSpawnCalls(1);
+    await launchCodex();
 
     expect(mockCp).toHaveBeenCalledWith(join(legacySkills, "cron-scheduling"), brokenSkill, { recursive: true });
     expect(mockUnlink).toHaveBeenCalledWith(brokenSkill);
   });
 
-  it("prunes broken skill symlinks from an existing session Codex home on relaunch", async () => {
-    // q-275 follow-up: once a session-specific skills/ directory already exists,
-    // relaunch must still clean stale broken symlinks instead of only fixing the
-    // first bootstrap copy.
+  it("removes deprecated session Codex skill directories on relaunch", async () => {
+    // CODEX_HOME/skills used to be populated as a custom skill root. New
+    // launches remove it so official ~/.agents/skills remains the active path.
     mockResolveBinary.mockReturnValue("/opt/fake/codex");
     mockSpawn.mockReturnValueOnce(createMockCodexProc());
 
     const legacyHome = join(homedir(), ".codex");
     const sessionHome = join(homedir(), ".companion", "codex-home", "test-session-id");
     const sessionSkills = join(sessionHome, "skills");
-    const brokenSkill = join(sessionSkills, "cron-scheduling");
 
-    mockExistsSync.mockImplementation((path: string) => {
-      if (path === legacyHome) return true;
-      if (path === sessionSkills) return true;
-      return false;
-    });
-    mockReaddir.mockImplementation(async (path: string, options?: { withFileTypes?: boolean }) => {
-      if (path === sessionSkills && options?.withFileTypes) {
-        return [
-          {
-            name: "cron-scheduling",
-            isSymbolicLink: () => true,
-            isDirectory: () => false,
-          },
-        ];
-      }
-      return [];
-    });
-    mockRealpath.mockImplementation(async (path: string) => {
-      if (path === brokenSkill) {
-        throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
-      }
-      return path;
-    });
+    mockExistingPaths(legacyHome, sessionSkills);
 
-    await launcher.launch({
-      backendType: "codex",
-      cwd: "/tmp/project",
-      codexSandbox: "workspace-write",
-    });
-    await waitForSpawnCalls(1);
+    await launchCodex();
 
+    expect(mockRm).toHaveBeenCalledWith(sessionSkills, { recursive: true, force: true });
     expect(mockCp).not.toHaveBeenCalledWith(join(legacyHome, "skills"), sessionSkills, { recursive: true });
-    expect(mockUnlink).toHaveBeenCalledWith(brokenSkill);
   });
 
   it("seeds the matching Codex rollout file into the session home for external resume", async () => {
@@ -1863,13 +1825,7 @@ describe("launch", () => {
       throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
     });
 
-    await launcher.launch({
-      backendType: "codex",
-      cwd: "/tmp/project",
-      codexSandbox: "workspace-write",
-      resumeCliSessionId: "thread-abc",
-    });
-    await waitForSpawnCalls(1);
+    await launchCodex({ resumeCliSessionId: "thread-abc" });
 
     expect(mockCopyFile).toHaveBeenCalledWith(rolloutPath, seededRollout);
   });
@@ -1908,10 +1864,7 @@ describe("launch", () => {
     );
 
     try {
-      await launcher.launch({
-        backendType: "codex",
-        cwd: "/tmp/project",
-        codexSandbox: "workspace-write",
+      await launchCodex({
         codexHome: customHome,
         env: {
           COMPANION_PORT: "3456",
@@ -1919,7 +1872,6 @@ describe("launch", () => {
           TAKODE_API_PORT: "3456",
         },
       });
-      await waitForSpawnCalls(1);
 
       const [cmdAndArgs, options] = mockSpawn.mock.calls[0];
       expect(cmdAndArgs).toContain("app-server");
@@ -1958,13 +1910,7 @@ describe("launch", () => {
     );
     process.env.LITELLM_API_KEY = "stale-daemon-key";
 
-    await launcher.launch({
-      backendType: "codex",
-      cwd: "/tmp/project",
-      codexInternetAccess: true,
-      codexSandbox: "workspace-write",
-    });
-    await waitForSpawnCalls(1);
+    await launchCodex({ codexInternetAccess: true });
 
     const [, options] = mockSpawn.mock.calls[0];
     const dirs = options.env.PATH.split(":");
@@ -1999,12 +1945,7 @@ describe("launch", () => {
     mockResolveBinary.mockReturnValue(fakeCodex);
     mockSpawn.mockReturnValueOnce(createMockCodexProc());
 
-    await launcher.launch({
-      backendType: "codex",
-      cwd: "/tmp/project",
-      codexSandbox: "workspace-write",
-    });
-    await waitForSpawnCalls(1);
+    await launchCodex();
 
     const [cmdAndArgs] = mockSpawn.mock.calls[0];
     // Sibling node exists, so it should use explicit node invocation
@@ -2029,12 +1970,7 @@ describe("launch", () => {
     mockResolveBinary.mockReturnValue(fakeCodex);
     mockSpawn.mockReturnValueOnce(createMockCodexProc());
 
-    await launcher.launch({
-      backendType: "codex",
-      cwd: "/tmp/project",
-      codexSandbox: "workspace-write",
-    });
-    await waitForSpawnCalls(1);
+    await launchCodex();
 
     const [cmdAndArgs] = mockSpawn.mock.calls[0];
     expect(cmdAndArgs[0]).toBe(fakeCodex);
