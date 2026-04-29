@@ -124,6 +124,7 @@ Remove row(s) manually.
 - Every `QUEUED` row must keep an explicit `--wait-for` reason.
 - `--wait-for` and `--wait-for-input` are mutually exclusive on a single row.
 - `--wait-for-input` is valid on active rows and proposed approval-hold rows. Do not use it on `QUEUED` rows.
+- When an active phase is paused because a human or safety decision is needed before continuing, keep the row active, create a `needs-input` notification, and attach it with `--wait-for-input <id>`. Do not convert the row to `QUEUED --wait-for #N`; use `QUEUED --wait-for` only for pre-active scheduling/dependency waits.
 - Update the board immediately when herd events change quest state.
 - Do not restate current board rows in chat after updating the board; the UI already shows them live.
 - Treat quest threads as the shared quest-scoped context surface: Main remains the complete leader transcript, while quest-backed threads show filtered activity and status for a specific quest. Chat should carry the next decision, reasoning, and facts that are not yet modeled structurally.
