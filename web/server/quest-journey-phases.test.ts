@@ -108,6 +108,45 @@ describe("Quest Journey phase directory loading", () => {
     expect(explorePhase?.assigneeBrief).toContain("evidence that may justify leader-owned Journey revision");
   });
 
+  it("seeds reviewer briefs with target-specific skill and context loading guidance", async () => {
+    const companionHome = await makeCompanionHome();
+    await ensureBuiltInQuestJourneyPhaseData({ packageRoot: PACKAGE_ROOT, companionHome });
+
+    const phases = await loadBuiltInQuestJourneyPhases({ companionHome });
+    const codeReviewPhase = phases.find((phase) => phase.id === "code-review");
+    const mentalSimulationPhase = phases.find((phase) => phase.id === "mental-simulation");
+    const outcomeReviewPhase = phases.find((phase) => phase.id === "outcome-review");
+
+    for (const phase of [codeReviewPhase, mentalSimulationPhase, outcomeReviewPhase]) {
+      expect(phase?.leaderBrief).toContain("fresh reviewers");
+      expect(phase?.leaderBrief).toContain("`quest` when reviewing quest state or feedback");
+      expect(phase?.leaderBrief).toContain("`takode-orchestration` when inspecting prior sessions");
+      expect(phase?.assigneeBrief).toContain("Load the essential skills and context");
+      expect(phase?.assigneeBrief).toContain("load the `quest` skill");
+      expect(phase?.assigneeBrief).toContain("load `takode-orchestration`");
+      expect(phase?.assigneeBrief).toContain("Query board state only when");
+    }
+  });
+
+  it("seeds Mental Simulation briefs with abstract end-to-end validation boundaries", async () => {
+    const companionHome = await makeCompanionHome();
+    await ensureBuiltInQuestJourneyPhaseData({ packageRoot: PACKAGE_ROOT, companionHome });
+
+    const phases = await loadBuiltInQuestJourneyPhases({ companionHome });
+    const mentalSimulationPhase = phases.find((phase) => phase.id === "mental-simulation");
+
+    expect(mentalSimulationPhase?.contract).toContain("abstract end-to-end correctness validation");
+    expect(mentalSimulationPhase?.leaderBrief).toContain("abstract end-to-end correctness validation");
+    expect(mentalSimulationPhase?.leaderBrief).toContain("Actual `EXECUTING` plus `OUTCOME_REVIEWING` is preferred");
+    expect(mentalSimulationPhase?.assigneeBrief).toContain(
+      "after implementation exists, or after the design is concrete enough",
+    );
+    expect(mentalSimulationPhase?.assigneeBrief).toContain(
+      "Do not reject pre-implementation use when the leader has supplied a concrete enough design",
+    );
+    expect(mentalSimulationPhase?.assigneeBrief).toContain("when real execution is hard");
+  });
+
   it("builds a read-only phase catalog with source metadata and exact display paths", async () => {
     const companionHome = await makeCompanionHome();
     await ensureBuiltInQuestJourneyPhaseData({ packageRoot: PACKAGE_ROOT, companionHome });

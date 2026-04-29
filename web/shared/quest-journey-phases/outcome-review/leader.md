@@ -6,6 +6,7 @@ Leader actions:
 - Keep the board row in `OUTCOME_REVIEWING`.
 - Include the exact assignee brief path in the instruction: `~/.companion/quest-journey-phases/outcome-review/assignee.md`.
 - Use this as a reviewer-owned acceptance phase after the worker has usually produced the outcome evidence first.
+- Tell fresh reviewers to load the essential skills/context for the target first: `quest` when reviewing quest state or feedback, and `takode-orchestration` when inspecting prior sessions or cross-session history.
 - Point the reviewer to the exact logs, metrics, artifacts, behaviors, or UX evidence to judge.
 - Ask for an outcome judgment tied to concrete evidence.
 - Keep the reviewer scoped to judging sufficiency of the existing evidence, with only small bounded reruns or repros when needed for acceptance.
