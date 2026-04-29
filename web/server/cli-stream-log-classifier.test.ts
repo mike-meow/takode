@@ -25,6 +25,50 @@ describe("CLI stream log classification", () => {
     expect(classifyCliStreamLogLevel("stderr", line)).toBe("warn");
   });
 
+  it("classifies multiline Codex refresh-token reuse JSON blocks as warn", () => {
+    // Live Codex stderr can split the actionable-looking auth-manager prefix
+    // from the refresh_token_reused code across JSON continuation lines.
+    const chunk = [
+      "\u001b[2m2026-04-29T00:01:30.944029Z\u001b[0m \u001b[31mERROR\u001b[0m \u001b[2mcodex_login::auth::manager\u001b[0m\u001b[2m:\u001b[0m Failed to refresh token: 401 Unauthorized: {",
+      '  "error": {',
+      '    "message": "Your refresh token has already been used to generate a new access token. Please try signing in again.",',
+      '    "type": "invalid_request_error",',
+      '    "param": null,',
+      '    "code": "refresh_token_reused"',
+      "  }",
+      "}",
+    ].join("\n");
+
+    expect(isCodexRefreshTokenReusedNoise(chunk)).toBe(true);
+    expect(classifyCliStreamLogLevel("stderr", chunk)).toBe("warn");
+  });
+
+  it("classifies chunks containing multiple refresh-token reuse records as warn", () => {
+    // Bun stream chunks can contain more than one complete Codex stderr record.
+    const chunk = [
+      "2026-04-29T00:02:11.754143Z ERROR codex_login::auth::manager: Failed to refresh token: 401 Unauthorized: {",
+      '  "error": {',
+      '    "message": "Your refresh token has already been used to generate a new access token. Please try signing in again.",',
+      '    "type": "invalid_request_error",',
+      '    "param": null,',
+      '    "code": "refresh_token_reused"',
+      "  }",
+      "}",
+      "2026-04-29T00:02:11.754166Z ERROR codex_login::auth::manager: Failed to refresh token: Your access token could not be refreshed because your refresh token was already used. Please log out and sign in again.",
+      "2026-04-29T00:02:11.754210Z ERROR codex_login::auth::manager: Failed to refresh token: 401 Unauthorized: {",
+      '  "error": {',
+      '    "message": "Your refresh token has already been used to generate a new access token. Please try signing in again.",',
+      '    "type": "invalid_request_error",',
+      '    "param": null,',
+      '    "code": "refresh_token_reused"',
+      "  }",
+      "}",
+    ].join("\n");
+
+    expect(isCodexRefreshTokenReusedNoise(chunk)).toBe(true);
+    expect(classifyCliStreamLogLevel("stderr", chunk)).toBe("warn");
+  });
+
   it("keeps auth-degraded feature failures as errors", () => {
     // Feature failures from expired auth remain actionable and should stay ERROR.
     const line =
@@ -42,6 +86,32 @@ describe("CLI stream log classification", () => {
     ].join("\n");
 
     expect(classifyCliStreamLogLevel("stderr", chunk)).toBe("error");
+  });
+
+  it("does not demote multiline refresh-token reuse chunks that include token_expired", () => {
+    // The refresh-token reuse is noisy, but nearby MCP/app auth failures are real
+    // degraded feature state and must remain visible as ERROR.
+    const chunk = [
+      "2026-04-29T00:02:12.177672Z ERROR codex_login::auth::manager: Failed to refresh token: 401 Unauthorized: {",
+      '  "error": {',
+      '    "message": "Your refresh token has already been used to generate a new access token. Please try signing in again.",',
+      '    "type": "invalid_request_error",',
+      '    "param": null,',
+      '    "code": "refresh_token_reused"',
+      "  }",
+      "}",
+      '2026-04-29T00:02:12.393367Z ERROR rmcp::transport::worker: worker quit with fatal: Transport channel closed, when UnexpectedContentType(Some("text/plain; body: {\\n  \\"error\\": {\\n    \\"message\\": \\"Provided authentication token is expired. Please try signing in again.\\",\\n    \\"type\\": null,\\n    \\"code\\": \\"token_expired\\",\\n    \\"param\\": null\\n  },\\n  \\"status\\": 401\\n}"))',
+    ].join("\n");
+
+    expect(isCodexRefreshTokenReusedNoise(chunk)).toBe(false);
+    expect(classifyCliStreamLogLevel("stderr", chunk)).toBe("error");
+  });
+
+  it("keeps codex_apps startup failures as errors", () => {
+    const line =
+      'WARN codex-adapter MCP server "codex_apps" startup failed for session c910f457: Provided authentication token is expired.';
+
+    expect(classifyCliStreamLogLevel("stderr", line)).toBe("error");
   });
 
   it("rate-limits repeated Codex refresh-token reuse lines per session", () => {

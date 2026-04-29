@@ -8,6 +8,18 @@ export interface CodexTokenRefreshNoiseState {
 export const CODEX_TOKEN_REFRESH_SUPPRESSION_MS = 60_000;
 
 const ANSI_ESCAPE_RE = /\x1b\[[0-9;]*m/g;
+const CODEX_REFRESH_TOKEN_REUSE_PATTERNS = [
+  "refresh_token_reused",
+  "refresh token was already used",
+  "refresh token has already been used",
+] as const;
+
+const CODEX_ACTIONABLE_AUTH_FAILURE_PATTERNS = [
+  "token_expired",
+  "rmcp::transport::worker",
+  "codex_apps",
+  "mcp server",
+] as const;
 
 export function classifyCliStreamLogLevel(label: "stdout" | "stderr", text: string): CliStreamLogLevel {
   if (label === "stdout") return "info";
@@ -18,17 +30,44 @@ export function classifyCliStreamLogLevel(label: "stdout" | "stderr", text: stri
 
 export function isCodexRefreshTokenReusedNoise(text: string): boolean {
   const lines = normalizedLines(text);
-  return lines.length > 0 && lines.every(isCodexRefreshTokenReusedLine);
+  if (lines.length === 0) return false;
+  if (lines.some(isCodexActionableAuthFailureLine)) return false;
+
+  let hasActiveRecord = false;
+  let activeRecordHasRefreshReuse = false;
+
+  for (const line of lines) {
+    if (isCodexRefreshTokenFailureHeaderLine(line)) {
+      if (hasActiveRecord && !activeRecordHasRefreshReuse) return false;
+      hasActiveRecord = true;
+      activeRecordHasRefreshReuse = hasCodexRefreshTokenReusePattern(line);
+      continue;
+    }
+
+    if (!hasActiveRecord || !isCodexAuthRefreshJsonLine(line)) return false;
+    if (hasCodexRefreshTokenReusePattern(line)) activeRecordHasRefreshReuse = true;
+  }
+
+  return hasActiveRecord && activeRecordHasRefreshReuse;
 }
 
-function isCodexRefreshTokenReusedLine(normalized: string): boolean {
+function isCodexRefreshTokenFailureHeaderLine(normalized: string): boolean {
   if (!normalized.includes("codex_login::auth::manager")) return false;
   if (!normalized.includes("failed to refresh token")) return false;
-  return (
-    normalized.includes("refresh_token_reused") ||
-    normalized.includes("refresh token was already used") ||
-    normalized.includes("refresh token has already been used")
-  );
+  return true;
+}
+
+function hasCodexRefreshTokenReusePattern(normalized: string): boolean {
+  return CODEX_REFRESH_TOKEN_REUSE_PATTERNS.some((pattern) => normalized.includes(pattern));
+}
+
+function isCodexActionableAuthFailureLine(normalized: string): boolean {
+  return CODEX_ACTIONABLE_AUTH_FAILURE_PATTERNS.some((pattern) => normalized.includes(pattern));
+}
+
+function isCodexAuthRefreshJsonLine(normalized: string): boolean {
+  if (/^[{},]+$/.test(normalized)) return true;
+  return /^"(error|message|type|param|code|status)"\s*:/.test(normalized);
 }
 
 export function maybeFormatCodexTokenRefreshLogLine(
