@@ -129,6 +129,7 @@ export interface WsBridgeHandle {
   isSessionIdle?(sessionId: string): boolean;
   /** Test-only escape hatch while production callers move to the shared idle helper. */
   wakeIdleKilledSession?(sessionId: string): boolean;
+  wakeUnavailableOrchestratorForPendingEvents?(sessionId: string, reason: string): boolean;
   getSession(sessionId: string):
     | {
         messageHistory: BrowserIncomingMessage[];
@@ -589,6 +590,14 @@ export class HerdEventDispatcher {
       console.log(
         `[herd-dispatcher] Woke idle-killed leader ${orchId} to deliver ${this.pendingCount(inbox)} pending herd event(s)`,
       );
+    } else if (this.wakeUnavailableOrchestratorForPendingEvents(orchId, "pending_herd_event_dead_backend")) {
+      console.log(
+        `[herd-dispatcher] Requested unavailable leader recovery for ${orchId} to deliver ${this.pendingCount(inbox)} pending herd event(s)`,
+      );
+    } else {
+      // If recovery is already in flight or the leader is merely busy, keep
+      // rechecking so a later cleared recovery guard cannot strand this event.
+      this.scheduleRetry(orchId);
     }
     // If generating, events accumulate — delivered on next onOrchestratorTurnEnd
   }
@@ -729,6 +738,8 @@ export class HerdEventDispatcher {
       // when its turn ends (onOrchestratorTurnEnd) or on the next retry.
       if (this.wakeIdleKilledSession(orchId)) {
         console.log(`[herd-dispatcher] Woke idle-killed leader ${orchId} during flush retry`);
+      } else if (this.wakeUnavailableOrchestratorForPendingEvents(orchId, "pending_herd_event_flush_retry")) {
+        console.log(`[herd-dispatcher] Requested unavailable leader recovery for ${orchId} during flush retry`);
       } else {
         this.scheduleRetry(orchId);
       }
@@ -947,6 +958,14 @@ export class HerdEventDispatcher {
         this.scheduleDelivery(leaderId);
       } else if (this.wakeIdleKilledSession(leaderId)) {
         console.log(`[herd-dispatcher] Woke idle-killed leader ${leaderId} after restart-prep hold expired`);
+      } else if (
+        this.wakeUnavailableOrchestratorForPendingEvents(leaderId, "pending_herd_event_restart_prep_release")
+      ) {
+        console.log(
+          `[herd-dispatcher] Requested unavailable leader recovery for ${leaderId} after restart-prep hold expired`,
+        );
+      } else {
+        this.scheduleRetry(leaderId);
       }
     }
   }
@@ -984,6 +1003,10 @@ export class HerdEventDispatcher {
           this.runtime?.requestCliRelaunch,
         )
       : false;
+  }
+
+  private wakeUnavailableOrchestratorForPendingEvents(sessionId: string, reason: string): boolean {
+    return this.wsBridge.wakeUnavailableOrchestratorForPendingEvents?.(sessionId, reason) ?? false;
   }
 
   private getLeaderIdleState(): LeaderIdleStateLike | null {

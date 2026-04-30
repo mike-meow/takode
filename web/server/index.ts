@@ -45,6 +45,7 @@ import { ImageStore } from "./image-store.js";
 import { IdleManager } from "./idle-manager.js";
 import { SleepInhibitor } from "./sleep-inhibitor.js";
 import { HerdEventDispatcher } from "./herd-event-dispatcher.js";
+import { createUnavailableOrchestratorRecoveryWake } from "./unavailable-orchestrator-recovery.js";
 import { createLauncherHerdChangeHandler } from "./herd-change-handler.js";
 import { resumeRestartContinuations } from "./restart-continuation-store.js";
 import { runStartupRecovery } from "./startup-recovery.js";
@@ -210,7 +211,15 @@ await wsBridge.restoreFromDisk();
 containerManager.restoreState(CONTAINER_STATE_PATH);
 
 // Push-based herd event delivery: wire dispatcher after bridge + launcher are ready
-const herdEventDispatcher = new HerdEventDispatcher(wsBridge, launcher, {
+const herdBridge = Object.assign(wsBridge, {
+  wakeUnavailableOrchestratorForPendingEvents: createUnavailableOrchestratorRecoveryWake({
+    getSession: (sessionId) => wsBridge.getSession(sessionId),
+    getLauncherSessionInfo: (sessionId) => launcher.getSession(sessionId),
+    requestCodexAutoRecovery: (session, reason) => bridgeAny.requestCodexAutoRecovery(session, reason),
+    requestCliRelaunch: (sessionId) => wsBridge.onCLIRelaunchNeeded?.(sessionId),
+  }),
+});
+const herdEventDispatcher = new HerdEventDispatcher(herdBridge, launcher, {
   requestCliRelaunch: (sessionId) => wsBridge.onCLIRelaunchNeeded?.(sessionId),
   getSessionNum: (sessionId) => launcher.getSessionNum(sessionId),
   getSessionName: (sessionId) => sessionNames.getName(sessionId),
