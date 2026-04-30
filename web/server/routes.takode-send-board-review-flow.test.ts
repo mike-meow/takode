@@ -625,7 +625,13 @@ describe("Takode server-authoritative auth", () => {
       body: JSON.stringify({ content: "ship it" }),
     });
     expect(allowed.status).toBe(200);
-    expect(bridge.injectUserMessage).toHaveBeenCalledWith("worker-1", "ship it", { sessionId: "orch-1" });
+    expect(bridge.injectUserMessage).toHaveBeenCalledWith(
+      "worker-1",
+      "ship it",
+      { sessionId: "orch-1" },
+      undefined,
+      undefined,
+    );
   });
 
   it("rejects archived takode message targets before routing", async () => {
