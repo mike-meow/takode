@@ -77,7 +77,7 @@ describe("Playground", () => {
     expect(within(marker).getByRole("button", { name: "thread:q-962" })).toBeTruthy();
   });
 
-  it("documents Work Board Bar tab shrinking and phase legend states", () => {
+  it("documents Work Board Bar tab shrinking, phase legend, and shared quest hover states", async () => {
     render(<Playground />);
 
     fireEvent.click(screen.getByText("Seed board data"));
@@ -113,6 +113,19 @@ describe("Playground", () => {
       "data-title-color",
       "var(--color-cc-muted)",
     );
+    const activeQuestTab = tabs.find((tab) => tab.getAttribute("data-thread-key") === "q-42");
+    expect(activeQuestTab).toHaveAttribute("data-has-quest-hover", "true");
+    expect(activeQuestTab).not.toHaveAttribute("title");
+
+    fireEvent.mouseEnter(activeQuestTab!);
+    const hoverCard = await screen.findByTestId("quest-hover-card");
+    expect(within(hoverCard).getByText("Fix mobile sidebar overflow")).toBeTruthy();
+    expect(within(hoverCard).getByTestId("quest-journey-preview-card")).toBeTruthy();
+    expect(within(hoverCard).getByTestId("quest-journey-timeline")).toHaveAttribute("data-journey-mode", "active");
+    expect(within(hoverCard).getByTestId("quest-hover-worker-session")).toHaveTextContent("Worker");
+    expect(within(hoverCard).getByTestId("quest-hover-reviewer-session")).toHaveTextContent("Reviewer");
+    expect(within(hoverCard).getByRole("link", { name: "#5" })).toBeTruthy();
+    expect(within(hoverCard).getByRole("link", { name: "#6" })).toBeTruthy();
 
     fireEvent.click(screen.getByText("Simulate moved-message tab"));
     const movedTabs = screen.getAllByTestId("thread-tab");

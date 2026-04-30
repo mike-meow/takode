@@ -23,6 +23,8 @@ import { isCompletedJourneyPresentationStatus } from "./QuestJourneyTimeline.js"
 import { scopedGetItem, scopedSetItem } from "../utils/scoped-storage.js";
 import { ALL_THREADS_KEY, MAIN_THREAD_KEY } from "../utils/thread-projection.js";
 import { isAttentionRecordActive, type AttentionRecord } from "../utils/attention-records.js";
+import type { QuestmasterTask } from "../types.js";
+import { QuestHoverCard } from "./QuestHoverCard.js";
 
 export interface WorkBoardThreadNavigationRow {
   threadKey: string;
@@ -488,9 +490,30 @@ function ThreadTabRail({
   const mainNeedsInput = mainState?.needsInput ?? false;
   const sessionStatus = useStore((s) => s.sessionStatus.get(sessionId));
   const activeTurnRoute = useStore((s) => s.activeTurnRoutes.get(sessionId));
+  const quests = useStore((s) => s.quests);
+  const questById = useMemo(() => new Map(quests.map((quest) => [normalizeThreadKey(quest.questId), quest])), [quests]);
+  const [hoveredQuest, setHoveredQuest] = useState<{ quest: QuestmasterTask; anchorRect: DOMRect } | null>(null);
+  const hideQuestHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const runningActiveTurnRoute = sessionStatus === "running" ? activeTurnRoute : null;
   const mainActiveOutput = isActiveOutputThread(runningActiveTurnRoute, MAIN_THREAD_KEY);
   const mainTone = tabTone({ selected: mainSelected, needsInput: mainNeedsInput });
+  useEffect(
+    () => () => {
+      if (hideQuestHoverTimerRef.current) clearTimeout(hideQuestHoverTimerRef.current);
+    },
+    [],
+  );
+
+  function showQuestHover(quest: QuestmasterTask | undefined, anchorRect: DOMRect) {
+    if (!quest) return;
+    if (hideQuestHoverTimerRef.current) clearTimeout(hideQuestHoverTimerRef.current);
+    setHoveredQuest({ quest, anchorRect });
+  }
+
+  function scheduleQuestHoverHide() {
+    if (hideQuestHoverTimerRef.current) clearTimeout(hideQuestHoverTimerRef.current);
+    hideQuestHoverTimerRef.current = setTimeout(() => setHoveredQuest(null), 100);
+  }
 
   return (
     <div
@@ -529,10 +552,17 @@ function ThreadTabRail({
           const activeOutput = isActiveOutputThread(runningActiveTurnRoute, tab.threadKey);
           const tone = tabTone({ selected, needsInput: tab.needsInput });
           const newTab = newTabKeys?.has(tab.threadKey) ?? false;
+          const hoverQuest = tab.questId ? questById.get(normalizeThreadKey(tab.questId)) : undefined;
           return (
             <div
               key={tab.threadKey}
-              title={`${tab.questId ? `${tab.questId}: ${tab.title}` : tab.title}${tab.needsInput ? " needs input" : ""}`}
+              title={
+                hoverQuest
+                  ? undefined
+                  : `${tab.questId ? `${tab.questId}: ${tab.title}` : tab.title}${tab.needsInput ? " needs input" : ""}`
+              }
+              onMouseEnter={(event) => showQuestHover(hoverQuest, event.currentTarget.getBoundingClientRect())}
+              onMouseLeave={hoverQuest ? scheduleQuestHoverHide : undefined}
               className={`group inline-flex min-w-[6.25rem] max-w-[18rem] flex-[1_1_11rem] items-stretch rounded-t-md border text-[11px] font-medium transition-colors ${newTab ? "thread-tab-pop" : ""} ${tone}`}
               data-testid="thread-tab"
               data-thread-key={tab.threadKey}
@@ -540,6 +570,7 @@ function ThreadTabRail({
               data-new-tab={newTab ? "true" : "false"}
               data-min-label={tab.questId ?? tab.threadKey}
               data-closable={tab.canClose ? "true" : "false"}
+              data-has-quest-hover={hoverQuest ? "true" : "false"}
             >
               <button
                 type="button"
@@ -578,6 +609,16 @@ function ThreadTabRail({
           );
         })}
       </div>
+      {hoveredQuest && (
+        <QuestHoverCard
+          quest={hoveredQuest.quest}
+          anchorRect={hoveredQuest.anchorRect}
+          onMouseEnter={() => {
+            if (hideQuestHoverTimerRef.current) clearTimeout(hideQuestHoverTimerRef.current);
+          }}
+          onMouseLeave={() => setHoveredQuest(null)}
+        />
+      )}
     </div>
   );
 }

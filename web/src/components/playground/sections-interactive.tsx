@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { NotificationMarker } from "../MessageBubble.js";
 import { BoardBlock } from "../BoardBlock.js";
+import type { BoardRowData } from "../BoardTable.js";
 import { CatPawAvatar } from "../CatIcons.js";
 import { ReplyChip } from "../Composer.js";
 import { WorkBoardBar } from "../WorkBoardBar.js";
@@ -1163,7 +1164,8 @@ export function PlaygroundInteractiveSections() {
                   const boardSessionId = "playground-board-bar";
                   // Seed Zustand store with mock board and orchestrator session
                   const state = useStore.getState();
-                  const boardData = [
+                  const now = Date.now();
+                  const boardData: BoardRowData[] = [
                     {
                       questId: "q-42",
                       title: "Fix mobile sidebar overflow",
@@ -1171,7 +1173,12 @@ export function PlaygroundInteractiveSections() {
                       workerNum: 5,
                       status: "IMPLEMENTING",
                       waitForInput: ["n-3"],
-                      updatedAt: Date.now() - 60000,
+                      updatedAt: now - 60000,
+                      journey: {
+                        mode: "active" as const,
+                        phaseIds: ["alignment", "implement", "execute", "code-review", "port"],
+                        currentPhaseId: "implement",
+                      },
                     },
                     {
                       questId: "q-55",
@@ -1180,14 +1187,22 @@ export function PlaygroundInteractiveSections() {
                       workerNum: 8,
                       status: "QUEUED",
                       waitFor: ["#5"],
-                      updatedAt: Date.now() - 30000,
+                      updatedAt: now - 30000,
+                      journey: {
+                        mode: "proposed" as const,
+                        phaseIds: ["alignment", "implement", "code-review", "port"],
+                      },
                     },
                     {
                       questId: "q-61",
                       title: "Optimize DB queries",
                       status: "PROPOSED",
                       waitForInput: ["n-19"],
-                      updatedAt: Date.now(),
+                      updatedAt: now,
+                      journey: {
+                        mode: "proposed" as const,
+                        phaseIds: ["alignment", "explore", "implement", "execute", "port"],
+                      },
                     },
                   ];
                   state.setSessionBoard(boardSessionId, boardData);
@@ -1201,19 +1216,44 @@ export function PlaygroundInteractiveSections() {
                         name: "Clear Mesa",
                         status: "running",
                       },
-                      reviewer: { sessionId: "playground-board-reviewer", sessionNum: 6, status: "idle" },
+                      reviewer: {
+                        sessionId: "playground-board-reviewer",
+                        sessionNum: 6,
+                        name: "Review Lead",
+                        status: "idle",
+                      },
                     },
                     "q-55": {
-                      worker: { sessionId: "playground-board-worker-queued", sessionNum: 8, status: "idle" },
+                      worker: {
+                        sessionId: "playground-board-worker-queued",
+                        sessionNum: 8,
+                        name: "Queued Worker",
+                        status: "idle",
+                      },
                       reviewer: null,
                     },
                     "q-61": {
                       worker: {
                         sessionId: "playground-board-worker-proposed",
                         sessionNum: 9,
+                        name: "Proposal Worker",
                         status: "disconnected",
                       },
                       reviewer: null,
+                    },
+                    "q-88": {
+                      worker: {
+                        sessionId: "playground-board-worker-done",
+                        sessionNum: 10,
+                        name: "Done Worker",
+                        status: "archived",
+                      },
+                      reviewer: {
+                        sessionId: "playground-board-reviewer-done",
+                        sessionNum: 11,
+                        name: "Done Reviewer",
+                        status: "archived",
+                      },
                     },
                   });
                   state.setSessionCompletedBoard(boardSessionId, [
@@ -1221,8 +1261,13 @@ export function PlaygroundInteractiveSections() {
                       questId: "q-88",
                       title: "Reviewed collapsed-result handling",
                       status: "DONE",
-                      updatedAt: Date.now() - 120000,
-                      completedAt: Date.now() - 110000,
+                      updatedAt: now - 120000,
+                      completedAt: now - 110000,
+                      journey: {
+                        mode: "active" as const,
+                        phaseIds: ["alignment", "implement", "execute", "code-review", "port"],
+                        currentPhaseId: "port",
+                      },
                     },
                   ]);
                   state.setSessionAttentionRecords(boardSessionId, [
@@ -1237,8 +1282,8 @@ export function PlaygroundInteractiveSections() {
                       actionLabel: "Answer",
                       priority: "needs_input",
                       state: "unresolved",
-                      createdAt: Date.now() - 55_000,
-                      updatedAt: Date.now() - 11_000,
+                      createdAt: now - 55_000,
+                      updatedAt: now - 11_000,
                       route: { threadKey: "main" },
                       chipEligible: true,
                       ledgerEligible: true,
@@ -1256,8 +1301,8 @@ export function PlaygroundInteractiveSections() {
                       actionLabel: "Answer",
                       priority: "needs_input",
                       state: "unresolved",
-                      createdAt: Date.now() - 50_000,
-                      updatedAt: Date.now() - 10_000,
+                      createdAt: now - 50_000,
+                      updatedAt: now - 10_000,
                       route: { threadKey: "q-42", questId: "q-42" },
                       chipEligible: true,
                       ledgerEligible: true,
@@ -1275,8 +1320,8 @@ export function PlaygroundInteractiveSections() {
                       actionLabel: "Open",
                       priority: "milestone",
                       state: "reopened",
-                      createdAt: Date.now() - 40_000,
-                      updatedAt: Date.now() - 20_000,
+                      createdAt: now - 40_000,
+                      updatedAt: now - 20_000,
                       route: { threadKey: "q-77", questId: "q-77" },
                       chipEligible: false,
                       ledgerEligible: true,
@@ -1294,8 +1339,8 @@ export function PlaygroundInteractiveSections() {
                       actionLabel: "Answer",
                       priority: "needs_input",
                       state: "unresolved",
-                      createdAt: Date.now() - 25_000,
-                      updatedAt: Date.now() - 12_000,
+                      createdAt: now - 25_000,
+                      updatedAt: now - 12_000,
                       route: { threadKey: "q-61", questId: "q-61" },
                       chipEligible: true,
                       ledgerEligible: true,
@@ -1313,16 +1358,105 @@ export function PlaygroundInteractiveSections() {
                       actionLabel: "Review",
                       priority: "review",
                       state: "unresolved",
-                      createdAt: Date.now() - 30_000,
-                      updatedAt: Date.now() - 15_000,
+                      createdAt: now - 30_000,
+                      updatedAt: now - 15_000,
                       route: { threadKey: "q-88", questId: "q-88" },
                       chipEligible: true,
                       ledgerEligible: true,
                       dedupeKey: "playground-board-bar-review",
                     },
                   ]);
-                  // Ensure sdkSessions includes an orchestrator entry
-                  const existing = state.sdkSessions.filter((s) => s.sessionId !== boardSessionId);
+                  const questIds = ["q-42", "q-55", "q-61", "q-77", "q-88", "q-99"];
+                  const quests = state.quests
+                    .filter((quest) => !questIds.includes(quest.questId))
+                    .concat([
+                      {
+                        id: "q-42-v1",
+                        questId: "q-42",
+                        version: 1,
+                        title: "Fix mobile sidebar overflow",
+                        status: "in_progress" as const,
+                        description: "Keep narrow mobile layouts from clipping the primary shell.",
+                        createdAt: now - 4_800_000,
+                        sessionId: "playground-board-worker",
+                        claimedAt: now - 3_600_000,
+                        leaderSessionId: boardSessionId,
+                        tags: ["ui", "mobile", "journey"],
+                      },
+                      {
+                        id: "q-55-v1",
+                        questId: "q-55",
+                        version: 1,
+                        title: "Add dark mode toggle",
+                        status: "refined" as const,
+                        description: "Queued UI control work with proposed Journey metadata.",
+                        createdAt: now - 3_900_000,
+                        tags: ["ui"],
+                      },
+                      {
+                        id: "q-61-v1",
+                        questId: "q-61",
+                        version: 1,
+                        title: "Optimize DB queries",
+                        status: "refined" as const,
+                        description: "Proposal row used to exercise non-current Journey preview rendering.",
+                        createdAt: now - 3_600_000,
+                        tags: ["backend"],
+                      },
+                      {
+                        id: "q-77-v1",
+                        questId: "q-77",
+                        version: 1,
+                        title: "Off-board routed discussion",
+                        status: "in_progress" as const,
+                        description: "Off-board thread surfaced by attention, without active Journey metadata.",
+                        createdAt: now - 3_000_000,
+                        sessionId: "playground-board-worker",
+                        claimedAt: now - 2_900_000,
+                        tags: ["threads"],
+                      },
+                      {
+                        id: "q-88-v2",
+                        questId: "q-88",
+                        version: 2,
+                        title: "Reviewed collapsed-result handling",
+                        status: "done" as const,
+                        description: "Completed quest retained in history with Journey preview data.",
+                        createdAt: now - 7_200_000,
+                        completedAt: now - 110_000,
+                        verificationItems: [],
+                        tags: ["done", "journey"],
+                      },
+                      {
+                        id: "q-99-v1",
+                        questId: "q-99",
+                        version: 1,
+                        title: "Newly moved user request",
+                        status: "in_progress" as const,
+                        description: "Recently created quest tab used for insertion and hover preview checks.",
+                        createdAt: now - 45_000,
+                        sessionId: "playground-board-worker",
+                        claimedAt: now - 30_000,
+                        tags: ["threads"],
+                      },
+                    ]);
+                  const playgroundSessionIds = [
+                    boardSessionId,
+                    "playground-board-worker",
+                    "playground-board-reviewer",
+                    "playground-board-worker-queued",
+                    "playground-board-worker-proposed",
+                    "playground-board-worker-done",
+                    "playground-board-reviewer-done",
+                  ];
+                  const existing = state.sdkSessions.filter((s) => !playgroundSessionIds.includes(s.sessionId));
+                  const sessionNames = new Map(state.sessionNames);
+                  sessionNames.set("playground-board-worker", "Clear Mesa");
+                  sessionNames.set("playground-board-reviewer", "Review Lead");
+                  sessionNames.set("playground-board-worker-queued", "Queued Worker");
+                  sessionNames.set("playground-board-worker-proposed", "Proposal Worker");
+                  sessionNames.set("playground-board-worker-done", "Done Worker");
+                  sessionNames.set("playground-board-reviewer-done", "Done Reviewer");
                   useStore.setState({
                     sdkSessions: [
                       ...existing,
@@ -1330,10 +1464,56 @@ export function PlaygroundInteractiveSections() {
                         sessionId: boardSessionId,
                         state: "connected",
                         cwd: "/mock/playground",
-                        createdAt: Date.now(),
+                        createdAt: now,
                         isOrchestrator: true,
-                      } as any,
+                        sessionNum: 402,
+                      },
+                      {
+                        sessionId: "playground-board-worker",
+                        state: "running",
+                        cwd: "/mock/playground",
+                        createdAt: now - 3_600_000,
+                        sessionNum: 5,
+                        herdedBy: boardSessionId,
+                      },
+                      {
+                        sessionId: "playground-board-reviewer",
+                        state: "connected",
+                        cwd: "/mock/playground",
+                        createdAt: now - 2_400_000,
+                        sessionNum: 6,
+                      },
+                      {
+                        sessionId: "playground-board-worker-queued",
+                        state: "connected",
+                        cwd: "/mock/playground",
+                        createdAt: now - 2_000_000,
+                        sessionNum: 8,
+                      },
+                      {
+                        sessionId: "playground-board-worker-proposed",
+                        state: "exited",
+                        cwd: "/mock/playground",
+                        createdAt: now - 1_800_000,
+                        sessionNum: 9,
+                      },
+                      {
+                        sessionId: "playground-board-worker-done",
+                        state: "exited",
+                        cwd: "/mock/playground",
+                        createdAt: now - 6_000_000,
+                        sessionNum: 10,
+                      },
+                      {
+                        sessionId: "playground-board-reviewer-done",
+                        state: "exited",
+                        cwd: "/mock/playground",
+                        createdAt: now - 5_000_000,
+                        sessionNum: 11,
+                      },
                     ],
+                    sessionNames,
+                    quests,
                   });
                 }}
                 className="text-xs font-medium px-3 py-1.5 rounded-md bg-blue-500/20 hover:bg-blue-500/30 text-blue-300 transition-colors cursor-pointer"
@@ -1505,7 +1685,8 @@ export function PlaygroundInteractiveSections() {
                 Click "Seed board data" first, then click the bar to toggle between collapsed summary and expanded table
                 view. The constrained width keeps several open tabs visible so their quest-id minimums, phase-colored
                 titles, compact close affordances, horizontal overflow behavior, and newly inserted tab pop state can be
-                inspected.
+                inspected. Hover quest tabs to inspect the shared quest hover card with full Journey and participant
+                context.
               </p>
             </div>
           </Card>

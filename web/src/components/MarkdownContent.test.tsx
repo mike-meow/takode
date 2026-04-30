@@ -301,7 +301,7 @@ describe("MarkdownContent quest links", () => {
     expect(screen.getByText("Auth Worker")).toBeTruthy();
   });
 
-  it("shows leader attribution and compact Journey data when hovering an orchestrated quest link", async () => {
+  it("shows leader attribution and full Journey data when hovering an orchestrated quest link", async () => {
     useStore.setState((state) => ({
       ...state,
       quests: [
@@ -335,10 +335,18 @@ describe("MarkdownContent quest links", () => {
           sessionNum: 7,
           isOrchestrator: true,
         },
+        {
+          sessionId: "reviewer-abc",
+          state: "connected",
+          cwd: "/repo",
+          createdAt: 1,
+          sessionNum: 8,
+        },
       ],
       sessionNames: new Map([
         ["session-abc", "Auth Worker"],
         ["leader-abc", "Quest Leader"],
+        ["reviewer-abc", "Quest Reviewer"],
       ]),
       sessionBoards: new Map([
         [
@@ -357,6 +365,17 @@ describe("MarkdownContent quest links", () => {
           ],
         ],
       ]),
+      sessionBoardRowStatuses: new Map([
+        [
+          "leader-abc",
+          {
+            "q-42": {
+              worker: { sessionId: "session-abc", sessionNum: 123, name: "Auth Worker", status: "running" },
+              reviewer: { sessionId: "reviewer-abc", sessionNum: 8, name: "Quest Reviewer", status: "idle" },
+            },
+          },
+        ],
+      ]),
     }));
 
     render(<MarkdownContent text="[q-42](quest:q-42)" />);
@@ -366,8 +385,64 @@ describe("MarkdownContent quest links", () => {
     expect(await screen.findByTestId("quest-hover-leader-session")).toBeTruthy();
     expect(within(screen.getByTestId("quest-hover-leader-session")).getByRole("link", { name: "#7" })).toBeTruthy();
     expect(screen.getByText("Quest Leader")).toBeTruthy();
-    expect(screen.getByTestId("quest-journey-compact-summary").getAttribute("data-journey-mode")).toBe("active");
+    expect(screen.getByTestId("quest-hover-worker-session").textContent).toContain("Worker");
+    expect(screen.getByTestId("quest-hover-reviewer-session").textContent).toContain("Reviewer");
+    expect(within(screen.getByTestId("quest-hover-worker-session")).getByRole("link", { name: "#123" })).toBeTruthy();
+    expect(within(screen.getByTestId("quest-hover-reviewer-session")).getByRole("link", { name: "#8" })).toBeTruthy();
+    expect(screen.queryByTestId("quest-hover-owner-session")).toBeNull();
+    expect(screen.getByTestId("quest-journey-preview-card")).toBeTruthy();
+    expect(screen.getByTestId("quest-journey-timeline").getAttribute("data-journey-mode")).toBe("active");
+    expect(screen.getByText("Active Journey")).toBeTruthy();
     expect(screen.getByText("Implement")).toBeTruthy();
+  });
+
+  it("shows completed quests with the full completed Journey in the shared hover card", async () => {
+    useStore.setState((state) => ({
+      ...state,
+      quests: [
+        {
+          id: "q-77-v1",
+          questId: "q-77",
+          version: 1,
+          title: "Finish hover Journey",
+          createdAt: 1,
+          status: "done",
+          description: "Completed quest with retained Journey metadata.",
+          completedAt: 4,
+          verificationItems: [],
+        },
+      ],
+      sessionCompletedBoards: new Map([
+        [
+          "leader-abc",
+          [
+            {
+              questId: "q-77",
+              title: "Finish hover Journey",
+              status: "PORTING",
+              updatedAt: 3,
+              completedAt: 4,
+              journey: {
+                mode: "active",
+                phaseIds: ["alignment", "implement", "code-review", "port"],
+                currentPhaseId: "port",
+              },
+            },
+          ],
+        ],
+      ]),
+    }));
+
+    render(<MarkdownContent text="[q-77](quest:q-77)" />);
+    fireEvent.mouseEnter(screen.getByRole("link", { name: "q-77" }));
+
+    const card = await screen.findByTestId("quest-hover-card");
+    const timeline = within(card).getByTestId("quest-journey-timeline");
+    expect(within(card).getByTestId("quest-journey-preview-card")).toBeTruthy();
+    expect(timeline.getAttribute("data-journey-mode")).toBe("completed");
+    expect(within(card).getByText("Completed Journey")).toBeTruthy();
+    expect(within(card).queryByText("Active Journey")).toBeNull();
+    expect(within(card).queryByText("current")).toBeNull();
   });
 
   it("keeps external links as normal web links", () => {

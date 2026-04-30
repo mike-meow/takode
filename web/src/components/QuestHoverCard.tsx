@@ -1,11 +1,11 @@
-import { useLayoutEffect, useRef } from "react";
+import { useLayoutEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
-import type { QuestmasterTask } from "../types.js";
+import type { BoardParticipantStatus, BoardRowSessionStatus, QuestmasterTask } from "../types.js";
 import { getQuestStatusTheme } from "../utils/quest-status-theme.js";
 import { getQuestLeaderSessionId, getQuestOwnerSessionId } from "../utils/quest-helpers.js";
 import { useStore } from "../store.js";
 import type { QuestJourneyPlanState } from "../../shared/quest-journey.js";
-import { isCompletedJourneyPresentationStatus, QuestJourneyCompactSummary } from "./QuestJourneyTimeline.js";
+import { isCompletedJourneyPresentationStatus, QuestJourneyPreviewCard } from "./QuestJourneyTimeline.js";
 import { SessionInlineLink } from "./SessionInlineLink.js";
 
 interface QuestHoverCardProps {
@@ -19,6 +19,15 @@ interface QuestJourneyBoardRow {
   questId: string;
   journey?: QuestJourneyPlanState;
   status?: string;
+  worker?: string;
+  workerNum?: number;
+  completedAt?: number;
+}
+
+interface QuestJourneyContext {
+  row: QuestJourneyBoardRow;
+  rowStatus?: BoardRowSessionStatus;
+  completed: boolean;
 }
 
 export function QuestHoverCard({ quest, anchorRect, onMouseEnter, onMouseLeave }: QuestHoverCardProps) {
@@ -46,15 +55,24 @@ export function QuestHoverCard({ quest, anchorRect, onMouseEnter, onMouseLeave }
       ? (state.sdkSessions.find((session) => session.sessionId === leaderSessionId)?.sessionNum ?? null)
       : null,
   );
-  const journeyBoardRow = useStore((state) =>
-    findQuestJourneyBoardRow(quest.questId, state.sessionBoards, state.sessionCompletedBoards),
+  const sessionBoards = useStore((state) => state.sessionBoards);
+  const sessionCompletedBoards = useStore((state) => state.sessionCompletedBoards);
+  const sessionBoardRowStatuses = useStore((state) => state.sessionBoardRowStatuses);
+  const journeyContext = useMemo(
+    () => findQuestJourneyContext(quest.questId, sessionBoards, sessionCompletedBoards, sessionBoardRowStatuses),
+    [quest.questId, sessionBoards, sessionCompletedBoards, sessionBoardRowStatuses],
   );
+  const journeyBoardRow = journeyContext?.row;
+  const workerParticipant = resolveWorkerParticipant(journeyBoardRow, journeyContext?.rowStatus);
+  const reviewerParticipant = journeyContext?.rowStatus?.reviewer ?? null;
 
   const cardWidth = getResponsiveCardWidth();
   const gap = 6;
   const left = anchorRect.left;
   const top = anchorRect.bottom + gap;
-  const journeyStatus = isCompletedJourneyPresentationStatus(quest.status) ? "done" : journeyBoardRow?.status;
+  const journeyStatus =
+    isCompletedJourneyPresentationStatus(quest.status) || journeyContext?.completed ? "done" : journeyBoardRow?.status;
+  const showOwnerSession = !!ownerSessionId && workerParticipant?.sessionId !== ownerSessionId;
 
   useLayoutEffect(() => {
     if (!cardRef.current) return;
@@ -81,7 +99,7 @@ export function QuestHoverCard({ quest, anchorRect, onMouseEnter, onMouseLeave }
       onMouseLeave={onMouseLeave}
       data-testid="quest-hover-card"
     >
-      <div className="bg-cc-card border border-cc-border rounded-xl shadow-xl px-3 py-2.5">
+      <div className="max-h-[min(32rem,calc(100vh-1rem))] overflow-y-auto rounded-xl border border-cc-border bg-cc-card px-3 py-2.5 shadow-xl">
         <div className="min-w-0">
           <div className="text-[11px] text-cc-muted">{quest.questId}</div>
           <div
@@ -114,11 +132,26 @@ export function QuestHoverCard({ quest, anchorRect, onMouseEnter, onMouseLeave }
         )}
         {journeyBoardRow?.journey && (
           <div data-testid="quest-hover-journey" className="mt-2 pt-2 border-t border-cc-border/50">
-            <div className="mb-1 text-[10px] uppercase tracking-wider text-cc-muted/60">Quest Journey</div>
-            <QuestJourneyCompactSummary journey={journeyBoardRow.journey} status={journeyStatus} />
+            <QuestJourneyPreviewCard journey={journeyBoardRow.journey} status={journeyStatus} />
           </div>
         )}
-        {ownerSessionId && (
+        {workerParticipant && (
+          <ParticipantMetadataRow
+            testId="quest-hover-worker-session"
+            label="Worker"
+            participant={workerParticipant}
+            tone="worker"
+          />
+        )}
+        {reviewerParticipant && (
+          <ParticipantMetadataRow
+            testId="quest-hover-reviewer-session"
+            label="Reviewer"
+            participant={reviewerParticipant}
+            tone="reviewer"
+          />
+        )}
+        {showOwnerSession && ownerSessionId && (
           <SessionMetadataRow
             testId="quest-hover-owner-session"
             label="Owner session"
@@ -150,19 +183,68 @@ function getResponsiveCardWidth(): number {
   return Math.max(240, Math.min(preferredWidth, window.innerWidth - 16));
 }
 
-function findQuestJourneyBoardRow(
+function findQuestJourneyContext(
   questId: string,
   sessionBoards: ReadonlyMap<string, readonly QuestJourneyBoardRow[]>,
   completedBoards: ReadonlyMap<string, readonly QuestJourneyBoardRow[]>,
-): QuestJourneyBoardRow | null {
+  rowStatuses: ReadonlyMap<string, Record<string, BoardRowSessionStatus>>,
+): QuestJourneyContext | null {
   const normalizedQuestId = questId.toLowerCase();
-  for (const board of [...sessionBoards.values(), ...completedBoards.values()]) {
-    const match = board.find(
-      (row) => row.questId.toLowerCase() === normalizedQuestId && (row.journey?.phaseIds?.length ?? 0) > 0,
-    );
-    if (match) return match;
+  for (const [sessionId, board] of sessionBoards) {
+    const match = board.find((row) => row.questId.toLowerCase() === normalizedQuestId);
+    if (match) {
+      return { row: match, rowStatus: rowStatuses.get(sessionId)?.[match.questId], completed: false };
+    }
+  }
+  for (const [sessionId, board] of completedBoards) {
+    const match = board.find((row) => row.questId.toLowerCase() === normalizedQuestId);
+    if (match) {
+      return { row: match, rowStatus: rowStatuses.get(sessionId)?.[match.questId], completed: true };
+    }
   }
   return null;
+}
+
+function resolveWorkerParticipant(
+  row: QuestJourneyBoardRow | undefined,
+  rowStatus: BoardRowSessionStatus | undefined,
+): BoardParticipantStatus | null {
+  if (rowStatus?.worker) return rowStatus.worker;
+  if (!row?.worker) return null;
+  return { sessionId: row.worker, sessionNum: row.workerNum ?? null, status: "idle" };
+}
+
+function ParticipantMetadataRow({
+  testId,
+  label,
+  participant,
+  tone,
+}: {
+  testId: string;
+  label: string;
+  participant: BoardParticipantStatus;
+  tone: "worker" | "reviewer";
+}) {
+  const toneClass =
+    tone === "reviewer"
+      ? "border-violet-400/20 bg-violet-400/10 text-violet-200 hover:bg-violet-400/20"
+      : "border-cc-primary/15 bg-cc-primary/10 text-cc-primary hover:bg-cc-primary/20";
+  return (
+    <div data-testid={testId} className="mt-2 pt-2 border-t border-cc-border/50">
+      <div className="text-[10px] uppercase tracking-wider text-cc-muted/60">{label}</div>
+      <div className="mt-1 flex items-center gap-2 min-w-0 flex-wrap">
+        <SessionInlineLink
+          sessionId={participant.sessionId}
+          sessionNum={participant.sessionNum}
+          className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium transition-colors ${toneClass}`}
+        >
+          {participant.sessionNum != null ? `#${participant.sessionNum}` : participant.sessionId.slice(0, 8)}
+        </SessionInlineLink>
+        {participant.name && <span className="min-w-0 truncate text-[11px] text-cc-muted">{participant.name}</span>}
+        <span className="shrink-0 text-[10px] capitalize text-cc-muted/80">{participant.status}</span>
+      </div>
+    </div>
+  );
 }
 
 function SessionMetadataRow({

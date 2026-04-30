@@ -6,7 +6,7 @@ import { boardSummary } from "./WorkBoardBar.js";
 import type { BoardRowData } from "./BoardTable.js";
 import { scopedKey } from "../utils/scoped-storage.js";
 import { getQuestJourneyPhaseForState } from "../../shared/quest-journey.js";
-import type { SessionAttentionRecord } from "../types.js";
+import type { QuestmasterTask, SessionAttentionRecord, SessionState } from "../types.js";
 
 // ─── boardSummary unit tests ──────────────────────────────────────────────────
 
@@ -115,7 +115,23 @@ interface MockStoreState {
   sessionBoards: Map<string, BoardRowData[]>;
   sessionBoardRowStatuses: Map<string, Record<string, import("../types.js").BoardRowSessionStatus>>;
   sessionCompletedBoards: Map<string, BoardRowData[]>;
-  sdkSessions: Array<{ sessionId: string; isOrchestrator?: boolean }>;
+  sdkSessions: Array<{
+    sessionId: string;
+    isOrchestrator?: boolean;
+    sessionNum?: number;
+    state?: string;
+    cwd?: string;
+    createdAt?: number;
+  }>;
+  sessions: Map<string, SessionState>;
+  sessionNames: Map<string, string>;
+  sessionPreviews: Map<string, string>;
+  sessionTaskHistory: Map<string, unknown[]>;
+  pendingPermissions: Map<string, Map<string, unknown>>;
+  cliConnected: Map<string, boolean>;
+  askPermission: Map<string, boolean>;
+  cliDisconnectReason: Map<string, "idle_limit" | "broken" | null>;
+  quests: QuestmasterTask[];
   sessionStatus: Map<string, "idle" | "running" | "compacting" | "reverting" | null>;
   activeTurnRoutes: Map<string, import("../types.js").ActiveTurnRoute | null>;
 }
@@ -128,6 +144,15 @@ function resetStore(overrides: Partial<MockStoreState> = {}) {
     sessionBoardRowStatuses: new Map(),
     sessionCompletedBoards: new Map(),
     sdkSessions: [],
+    sessions: new Map(),
+    sessionNames: new Map(),
+    sessionPreviews: new Map(),
+    sessionTaskHistory: new Map(),
+    pendingPermissions: new Map(),
+    cliConnected: new Map(),
+    askPermission: new Map(),
+    cliDisconnectReason: new Map(),
+    quests: [],
     sessionStatus: new Map(),
     activeTurnRoutes: new Map(),
     ...overrides,
@@ -141,6 +166,7 @@ vi.mock("../store.js", () => ({
       setExpandAllInTurn: vi.fn(),
     }),
   }),
+  countUserPermissions: (permissions: Map<string, unknown> | undefined) => permissions?.size ?? 0,
 }));
 
 // Mock BoardTable to avoid needing full store for QuestLink/WorkerLink.
@@ -359,6 +385,78 @@ describe("WorkBoardBar", () => {
     expect(tabs[0]).toHaveAttribute("data-closable", "false");
     expect(tabs[1]).toHaveAttribute("data-closable", "false");
     expect(queryByText("Active")).not.toBeInTheDocument();
+  });
+
+  it("uses the shared quest hover card for quest thread tabs", async () => {
+    resetStore({
+      sdkSessions: [
+        { sessionId: "s1", isOrchestrator: true },
+        { sessionId: "worker-1", sessionNum: 11, state: "connected", cwd: "/repo", createdAt: 1 },
+        { sessionId: "reviewer-1", sessionNum: 12, state: "connected", cwd: "/repo", createdAt: 1 },
+      ],
+      sessionNames: new Map([
+        ["worker-1", "Worker One"],
+        ["reviewer-1", "Reviewer One"],
+      ]),
+      quests: [
+        {
+          id: "q-1-v1",
+          questId: "q-1",
+          version: 1,
+          title: "Fix tab hover preview",
+          status: "in_progress",
+          description: "Use one quest hover card.",
+          createdAt: 1,
+          sessionId: "worker-1",
+          claimedAt: 1,
+        },
+      ],
+      sessionBoards: new Map([
+        [
+          "s1",
+          [
+            {
+              questId: "q-1",
+              title: "Fix tab hover preview",
+              status: "IMPLEMENTING",
+              worker: "worker-1",
+              workerNum: 11,
+              updatedAt: 2,
+              journey: { mode: "active", phaseIds: ["alignment", "implement", "code-review"] },
+            },
+          ],
+        ],
+      ]),
+      sessionBoardRowStatuses: new Map([
+        [
+          "s1",
+          {
+            "q-1": {
+              worker: { sessionId: "worker-1", sessionNum: 11, name: "Worker One", status: "running" },
+              reviewer: { sessionId: "reviewer-1", sessionNum: 12, name: "Reviewer One", status: "idle" },
+            },
+          },
+        ],
+      ]),
+    });
+
+    const view = render(<WorkBoardBar sessionId="s1" />);
+    const tab = view
+      .getAllByTestId("thread-tab")
+      .find((candidate) => candidate.getAttribute("data-thread-key") === "q-1")!;
+
+    expect(tab).toHaveAttribute("data-has-quest-hover", "true");
+    expect(tab).not.toHaveAttribute("title");
+    fireEvent.mouseEnter(tab);
+
+    const card = await view.findByTestId("quest-hover-card");
+    expect(within(card).getByText("Fix tab hover preview")).toBeInTheDocument();
+    expect(within(card).getByTestId("quest-journey-preview-card")).toBeInTheDocument();
+    expect(within(card).getByTestId("quest-journey-timeline")).toHaveAttribute("data-journey-mode", "active");
+    expect(within(card).getByTestId("quest-hover-worker-session")).toHaveTextContent("Worker");
+    expect(within(card).getByTestId("quest-hover-reviewer-session")).toHaveTextContent("Reviewer");
+    expect(within(card).getByText("#11")).toBeInTheDocument();
+    expect(within(card).getByText("#12")).toBeInTheDocument();
   });
 
   it("lets off-board auto-surfaced attention tabs be dismissed from the unified track", () => {

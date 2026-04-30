@@ -1003,10 +1003,24 @@ export function PlaygroundHoverCrossLinkDemo({ text }: { text: string }) {
           herdedBy: "playground-hover-leader",
         });
       }
+      if (!nextSdkSessions.some((session) => session.sessionId === "playground-hover-reviewer")) {
+        nextSdkSessions.push({
+          sessionId: "playground-hover-reviewer",
+          state: "connected",
+          cwd: "/Users/stan/Dev/takode",
+          createdAt: Date.now() - 90000,
+          sessionNum: 567,
+          cliConnected: true,
+          backendType: "codex",
+          model: "gpt-5.4",
+          repoRoot: "/Users/stan/Dev/takode",
+        });
+      }
 
       const nextSessionNames = new Map(state.sessionNames);
       nextSessionNames.set("playground-hover-leader", "Leader Hover Demo");
       nextSessionNames.set("playground-hover-worker", "Worker Hover Demo");
+      nextSessionNames.set("playground-hover-reviewer", "Reviewer Hover Demo");
 
       const nextQuests = [...state.quests];
       const hoverQuest = {
@@ -1049,6 +1063,24 @@ export function PlaygroundHoverCrossLinkDemo({ text }: { text: string }) {
         },
         ...leaderBoard,
       ]);
+      const nextSessionBoardRowStatuses = new Map(state.sessionBoardRowStatuses);
+      nextSessionBoardRowStatuses.set("playground-hover-leader", {
+        ...(nextSessionBoardRowStatuses.get("playground-hover-leader") ?? {}),
+        "q-418": {
+          worker: {
+            sessionId: "playground-hover-worker",
+            sessionNum: 566,
+            name: "Worker Hover Demo",
+            status: "running",
+          },
+          reviewer: {
+            sessionId: "playground-hover-reviewer",
+            sessionNum: 567,
+            name: "Reviewer Hover Demo",
+            status: "idle",
+          },
+        },
+      });
 
       return {
         ...state,
@@ -1056,6 +1088,7 @@ export function PlaygroundHoverCrossLinkDemo({ text }: { text: string }) {
         sessionNames: nextSessionNames,
         quests: nextQuests,
         sessionBoards: nextSessionBoards,
+        sessionBoardRowStatuses: nextSessionBoardRowStatuses,
       };
     });
   }, []);
