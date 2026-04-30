@@ -932,7 +932,7 @@ export function PlaygroundOverviewSections() {
             toolUseId="tb-10-pending"
             sessionId={MOCK_SESSION_ID}
           />
-          {/* Takode Notify pills */}
+          {/* Takode notify command/fallback states */}
           <ToolBlock
             name="Bash"
             input={{ command: "takode notify needs-input" }}

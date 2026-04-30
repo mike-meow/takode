@@ -324,11 +324,14 @@ const ToolBlockInner = memo(function ToolBlockInner({
     return s.sessions.get(sessionId)?.cwd ?? s.sdkSessions.find((sdk) => sdk.sessionId === sessionId)?.cwd ?? null;
   });
 
-  // takode notify: render inline notification chip instead of terminal block.
+  // takode notify review: render an inline review chip before inbox hydration.
+  // needs-input notifications have richer generated surfaces; their command
+  // tool calls should stay normal Bash rows instead of a generic amber chip.
   const notifyMatch =
     !disableInlineSpecialCases && name === "Bash" ? parseTakodeNotifyCommand(String(input.command || "")) : null;
+  const inlineNotifyMatch = notifyMatch?.category === "review" ? notifyMatch : null;
   const anchoredNotificationSummary = useStore((s) => {
-    if (!notifyMatch || !sessionId || !parentMessageId) return undefined;
+    if (!inlineNotifyMatch || !sessionId || !parentMessageId) return undefined;
     return getSingleAnchoredNotification(s.sessionNotifications?.get(sessionId), parentMessageId)?.summary;
   });
 
@@ -355,10 +358,10 @@ const ToolBlockInner = memo(function ToolBlockInner({
     );
   }
 
-  if (notifyMatch && !suppressNotificationMarker) {
+  if (inlineNotifyMatch && !suppressNotificationMarker) {
     return (
       <NotificationMarker
-        category={notifyMatch.category}
+        category={inlineNotifyMatch.category}
         summary={anchoredNotificationSummary}
         sessionId={sessionId}
         messageId={parentMessageId}

@@ -296,4 +296,55 @@ describe("MessageFeed duplicate rendering regression", () => {
     expect(screen.getAllByRole("button", { name: /Mark handled|Mark unhandled/ })).toHaveLength(1);
     expect(screen.getAllByText("Pick the dispatch order")).toHaveLength(1);
   });
+
+  it("renders needs-input notify tool calls as normal commands beside the generated notification chip", () => {
+    // q-1013: the notification can be anchored to the preceding leader message
+    // while a later Bash tool call contains `takode notify needs-input`. The
+    // tool call must not add a second generic amber "Needs input" chip.
+    const sid = "test-needs-input-tool-call-normal-command";
+    setStoreMessages(sid, [
+      makeMessage({ id: "u1", role: "user", content: "Please ask before queuing the quest." }),
+      makeMessage({
+        id: "a-question",
+        role: "assistant",
+        content: "I need approval before continuing.",
+        notification: {
+          id: "n-needs-input",
+          category: "needs-input",
+          timestamp: Date.now(),
+          summary: "approve Worker Stream follow-up quest",
+        },
+      }),
+      makeMessage({
+        id: "a-tool",
+        role: "assistant",
+        content: "",
+        contentBlocks: [
+          {
+            type: "tool_use",
+            id: "tu-needs-input",
+            name: "Bash",
+            input: { command: 'takode notify needs-input "approve Worker Stream follow-up quest"' },
+          },
+        ],
+      }),
+    ]);
+    setStoreNotifications(sid, [
+      {
+        id: "n-needs-input",
+        category: "needs-input",
+        timestamp: Date.now(),
+        messageId: "a-question",
+        summary: "approve Worker Stream follow-up quest",
+        done: false,
+      },
+    ]);
+
+    render(<MessageFeed sessionId={sid} />);
+
+    expect(screen.getAllByText("approve Worker Stream follow-up quest")).toHaveLength(1);
+    expect(screen.getByText(/takode notify needs-input/)).toBeTruthy();
+    expect(screen.queryByText("Needs input")).toBeNull();
+    expect(screen.getAllByRole("button", { name: /Mark handled|Mark unhandled/ })).toHaveLength(1);
+  });
 });
