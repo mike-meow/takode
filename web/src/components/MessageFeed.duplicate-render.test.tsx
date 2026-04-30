@@ -259,4 +259,41 @@ describe("MessageFeed duplicate rendering regression", () => {
     expect(screen.getAllByRole("button", { name: /Mark as reviewed|Mark as not reviewed/ })).toHaveLength(1);
     expect(screen.queryByText("Ready for review")).toBeNull();
   });
+
+  it("does not add a Main ledger row for an anchored needs-input notification", () => {
+    const sid = "test-tool-only-needs-input-no-ledger";
+    setStoreMessages(sid, [
+      makeMessage({ id: "u1", role: "user", content: "Tell me if you need a decision." }),
+      makeMessage({
+        id: "a1",
+        role: "assistant",
+        content: "",
+        contentBlocks: [
+          {
+            type: "tool_use",
+            id: "tu-needs-input",
+            name: "Bash",
+            input: { command: 'takode notify needs-input "Pick the dispatch order"' },
+          },
+        ],
+      }),
+      makeMessage({ id: "u2", role: "user", content: "Thanks" }),
+    ]);
+    setStoreNotifications(sid, [
+      {
+        id: "n-needs-input",
+        category: "needs-input",
+        timestamp: Date.now(),
+        messageId: "a1",
+        summary: "Pick the dispatch order",
+        done: false,
+      },
+    ]);
+
+    render(<MessageFeed sessionId={sid} />);
+
+    expect(screen.queryByTestId("attention-ledger-row")).toBeNull();
+    expect(screen.getAllByRole("button", { name: /Mark handled|Mark unhandled/ })).toHaveLength(1);
+    expect(screen.getAllByText("Pick the dispatch order")).toHaveLength(1);
+  });
 });

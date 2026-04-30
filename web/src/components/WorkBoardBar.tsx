@@ -19,7 +19,7 @@ import { BoardTable, orderBoardRows } from "./BoardTable.js";
 import type { BoardRowData } from "./BoardTable.js";
 import { scopedGetItem, scopedSetItem } from "../utils/scoped-storage.js";
 import { ALL_THREADS_KEY, isMainThreadKey } from "../utils/thread-projection.js";
-import { selectAttentionChipRecords, type AttentionRecord } from "../utils/attention-records.js";
+import { isAttentionRecordActive, type AttentionRecord } from "../utils/attention-records.js";
 
 export interface WorkBoardThreadNavigationRow {
   threadKey: string;
@@ -129,6 +129,17 @@ function ThreadNavButton({
   );
 }
 
+interface PrimaryThreadChip {
+  threadKey: string;
+  questId?: string;
+  title: string;
+  detail?: string;
+  messageCount?: number;
+  needsInput: boolean;
+  route?: AttentionRecord["route"];
+  updatedAt: number;
+}
+
 function OtherThreadList({
   rows,
   currentThreadKey,
@@ -163,32 +174,142 @@ function OtherThreadList({
   );
 }
 
-function attentionChipTone(record: AttentionRecord): string {
-  if (record.priority === "review") return "border-emerald-500/25 bg-emerald-500/10 text-emerald-100";
-  if (record.priority === "blocked") return "border-red-400/25 bg-red-400/10 text-red-100";
-  if (record.state === "seen") return "border-amber-400/20 bg-amber-400/5 text-amber-100/90";
-  return "border-amber-400/30 bg-amber-400/10 text-amber-100";
+function recordThreadKey(record: AttentionRecord): string {
+  return normalizeThreadKey(record.route.threadKey || record.threadKey || record.questId || "main");
 }
 
-function AttentionChipStrip({
-  records,
+function isPrimaryThreadAttention(record: AttentionRecord): boolean {
+  if (!isAttentionRecordActive(record)) return false;
+  if (record.priority === "review" || record.priority === "completed") return false;
+  return record.type !== "review_ready" && record.type !== "quest_completed_recent";
+}
+
+function isNeedsInputAttention(record: AttentionRecord): boolean {
+  return isAttentionRecordActive(record) && record.priority === "needs_input" && record.type === "needs_input";
+}
+
+function boardRowDetail(row: BoardRowData): string | undefined {
+  if ((row.waitForInput?.length ?? 0) > 0) return "Needs input";
+  const currentPhase = getQuestJourneyPhase(getQuestJourneyCurrentPhaseId(row.journey, row.status));
+  if (currentPhase) return currentPhase.label;
+  const presentation = getQuestJourneyPresentation(row.status);
+  if (presentation) return presentation.label;
+  return row.status;
+}
+
+function threadRowDetail(row: WorkBoardThreadNavigationRow): string {
+  const count = row.messageCount ?? 0;
+  return `${count} message${count === 1 ? "" : "s"}`;
+}
+
+function mergePrimaryThreadChip(chips: Map<string, PrimaryThreadChip>, chip: PrimaryThreadChip) {
+  const existing = chips.get(chip.threadKey);
+  if (!existing) {
+    chips.set(chip.threadKey, chip);
+    return;
+  }
+  chips.set(chip.threadKey, {
+    ...existing,
+    questId: existing.questId ?? chip.questId,
+    title: existing.title || chip.title,
+    detail: existing.needsInput ? existing.detail : (chip.detail ?? existing.detail),
+    messageCount: Math.max(existing.messageCount ?? 0, chip.messageCount ?? 0),
+    needsInput: existing.needsInput || chip.needsInput,
+    route: existing.route ?? chip.route,
+    updatedAt: Math.max(existing.updatedAt, chip.updatedAt),
+  });
+}
+
+function buildPrimaryThreadChips({
+  activeBoardRows,
+  threadRows,
+  attentionRecords,
+}: {
+  activeBoardRows: BoardRowData[];
+  threadRows: WorkBoardThreadNavigationRow[];
+  attentionRecords: ReadonlyArray<AttentionRecord>;
+}): PrimaryThreadChip[] {
+  const chips = new Map<string, PrimaryThreadChip>();
+  const primaryAttentionByThread = new Map<string, AttentionRecord[]>();
+
+  for (const record of attentionRecords) {
+    if (!isPrimaryThreadAttention(record)) continue;
+    const key = recordThreadKey(record);
+    const existing = primaryAttentionByThread.get(key);
+    if (existing) existing.push(record);
+    else primaryAttentionByThread.set(key, [record]);
+  }
+
+  const boardRowKeys = new Set<string>();
+  for (const row of orderBoardRows(activeBoardRows)) {
+    const threadKey = normalizeThreadKey(row.questId);
+    boardRowKeys.add(threadKey);
+    const attention = primaryAttentionByThread.get(threadKey) ?? [];
+    mergePrimaryThreadChip(chips, {
+      threadKey,
+      questId: row.questId,
+      title: row.title ?? row.questId,
+      detail: boardRowDetail(row),
+      needsInput: (row.waitForInput?.length ?? 0) > 0 || attention.some(isNeedsInputAttention),
+      route: attention[0]?.route,
+      updatedAt: Math.max(row.updatedAt, ...attention.map((record) => record.updatedAt), 0),
+    });
+  }
+
+  for (const row of threadRows) {
+    const threadKey = normalizeThreadKey(row.threadKey);
+    if (row.section !== "active" || boardRowKeys.has(threadKey)) continue;
+    const attention = primaryAttentionByThread.get(threadKey) ?? [];
+    if (attention.length === 0) continue;
+    mergePrimaryThreadChip(chips, {
+      threadKey,
+      questId: row.questId,
+      title: row.title,
+      detail: threadRowDetail(row),
+      messageCount: row.messageCount,
+      needsInput: attention.some(isNeedsInputAttention),
+      route: attention[0]?.route,
+      updatedAt: Math.max(...attention.map((record) => record.updatedAt), 0),
+    });
+  }
+
+  for (const records of primaryAttentionByThread.values()) {
+    const record = records[0];
+    const threadKey = recordThreadKey(record);
+    if (chips.has(threadKey)) continue;
+    mergePrimaryThreadChip(chips, {
+      threadKey,
+      questId: record.route.questId ?? record.questId,
+      title: record.title,
+      detail: record.actionLabel,
+      needsInput: records.some(isNeedsInputAttention),
+      route: record.route,
+      updatedAt: Math.max(...records.map((candidate) => candidate.updatedAt), 0),
+    });
+  }
+
+  return [...chips.values()].sort((a, b) => b.updatedAt - a.updatedAt || a.threadKey.localeCompare(b.threadKey));
+}
+
+function ThreadChipStrip({
+  chips,
   sessionId,
   currentThreadKey,
   onSelectThread,
 }: {
-  records: AttentionRecord[];
+  chips: PrimaryThreadChip[];
   sessionId: string;
   currentThreadKey: string;
   onSelectThread?: (threadKey: string) => void;
 }) {
-  const openRecord = (record: AttentionRecord) => {
-    const targetThread = normalizeThreadKey(record.route.threadKey || record.threadKey || "main");
+  const openChip = (chip: PrimaryThreadChip) => {
+    const targetThread = normalizeThreadKey(chip.threadKey || "main");
     const selectedThread = normalizeThreadKey(currentThreadKey || "main");
     const scrollToRouteTarget = () => {
-      if (!record.route.messageId) return;
+      if (!chip.route?.messageId) return;
       const store = useStore.getState();
-      store.requestScrollToMessage(sessionId, record.route.messageId);
-      store.setExpandAllInTurn(sessionId, record.route.messageId);
+      store.requestScrollToMessage(sessionId, chip.route.messageId);
+      store.setExpandAllInTurn(sessionId, chip.route.messageId);
     };
 
     if (onSelectThread && (selectedThread === ALL_THREADS_KEY || selectedThread !== targetThread)) {
@@ -203,36 +324,45 @@ function AttentionChipStrip({
   return (
     <div
       className="border-b border-cc-border bg-cc-card px-3 py-1.5 sm:px-4"
-      data-testid="attention-chip-strip"
-      data-attention-count={records.length}
+      data-testid="thread-chip-strip"
+      data-thread-count={chips.length}
     >
-      {records.length === 0 ? (
-        <div className="flex min-h-[1.5rem] items-center text-[11px] text-cc-muted" data-testid="attention-empty-state">
-          No current attention
+      {chips.length === 0 ? (
+        <div className="flex min-h-[1.5rem] items-center text-[11px] text-cc-muted" data-testid="thread-empty-state">
+          No active threads
         </div>
       ) : (
         <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto">
           <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.08em] text-cc-muted/70">
-            Attention
+            Threads
           </span>
-          {records.map((record) => (
-            <button
-              key={record.id}
-              type="button"
-              onClick={() => openRecord(record)}
-              title={record.summary}
-              className={`inline-flex max-w-[18rem] shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors hover:bg-cc-hover ${attentionChipTone(
-                record,
-              )}`}
-              data-testid="attention-chip"
-              data-attention-state={record.state}
-              data-attention-type={record.type}
-            >
-              <span className="shrink-0 font-semibold">{record.actionLabel}</span>
-              <span className="min-w-0 truncate">{record.title}</span>
-              {record.questId && <span className="shrink-0 font-mono-code text-cc-muted/80">{record.questId}</span>}
-            </button>
-          ))}
+          {chips.map((chip) => {
+            const selected = isSelectedThread(currentThreadKey, chip.threadKey);
+            const tone = chip.needsInput
+              ? "border-amber-400/35 bg-amber-400/10 text-amber-100 hover:bg-amber-400/15"
+              : selected
+                ? "border-cc-primary/45 bg-cc-primary/12 text-cc-fg"
+                : "border-cc-border/70 bg-cc-hover/35 text-cc-muted hover:bg-cc-hover/65 hover:text-cc-fg";
+            const dot = chip.needsInput ? "bg-amber-400" : selected ? "bg-cc-primary" : "bg-cc-muted/50";
+            return (
+              <button
+                key={chip.threadKey}
+                type="button"
+                onClick={() => openChip(chip)}
+                title={chip.questId ? `${chip.questId}: ${chip.title}` : chip.title}
+                className={`inline-flex max-w-[18rem] shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors ${tone}`}
+                data-testid="thread-chip"
+                data-thread-key={chip.threadKey}
+                data-needs-input={chip.needsInput ? "true" : "false"}
+                aria-pressed={selected}
+              >
+                <span className={`h-2 w-2 shrink-0 rounded-full ${dot}`} aria-hidden="true" />
+                {chip.questId && <span className="shrink-0 font-mono-code">{chip.questId}</span>}
+                <span className="min-w-0 truncate">{chip.title}</span>
+                {chip.detail && <span className="shrink-0 text-[10px] text-cc-muted/80">{chip.detail}</span>}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
@@ -292,7 +422,10 @@ export function WorkBoardBar({
   const activeBoardRows = board ?? [];
   const completedBoardRows = completedBoard ?? [];
   const showReturnToMain = !isMainThreadKey(currentThreadKey) && !!onReturnToMain;
-  const attentionChipRecords = useMemo(() => selectAttentionChipRecords(attentionRecords), [attentionRecords]);
+  const activeThreadChips = useMemo(
+    () => buildPrimaryThreadChips({ activeBoardRows, threadRows, attentionRecords }),
+    [activeBoardRows, attentionRecords, threadRows],
+  );
   const boardThreadKeys = useMemo(() => {
     const keys = new Set<string>();
     for (const row of activeBoardRows) keys.add(normalizeThreadKey(row.questId));
@@ -403,8 +536,8 @@ export function WorkBoardBar({
         )}
       </div>
 
-      <AttentionChipStrip
-        records={attentionChipRecords}
+      <ThreadChipStrip
+        chips={activeThreadChips}
         sessionId={sessionId}
         currentThreadKey={currentThreadKey}
         onSelectThread={onSelectThread}

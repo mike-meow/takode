@@ -228,7 +228,7 @@ describe("WorkBoardBar", () => {
     const { getByText, getByTestId } = render(<WorkBoardBar sessionId="s1" />);
     expect(getByText("Empty")).toBeInTheDocument();
     expect(getByTestId("workboard-current-thread")).toHaveTextContent("Main");
-    expect(getByTestId("attention-empty-state")).toHaveTextContent("No current attention");
+    expect(getByTestId("thread-empty-state")).toHaveTextContent("No active threads");
   });
 
   it("keeps the primary workboard navigator visible when no board data exists for session", () => {
@@ -282,42 +282,68 @@ describe("WorkBoardBar", () => {
     expect(queryByTestId("board-table")).not.toBeInTheDocument();
   });
 
-  it("renders active attention chips using the shared attention selector", () => {
+  it("renders active thread chips from board rows and active blockers", () => {
     resetStore({
       sdkSessions: [{ sessionId: "s1", isOrchestrator: true }],
       sessionBoards: new Map([["s1", BOARD_DATA]]),
+      sessionCompletedBoards: new Map([
+        ["s1", [{ questId: "q-3", status: "DONE", title: "Finished work", updatedAt: 3, completedAt: 3 }]],
+      ]),
     });
     const { getAllByTestId, queryByText } = render(
       <WorkBoardBar
         sessionId="s1"
         attentionRecords={[
-          attentionRecord({ id: "unresolved", state: "unresolved", dedupeKey: "unresolved", title: "Answer q-1" }),
+          attentionRecord({ id: "needs-input", state: "unresolved", dedupeKey: "needs-input", title: "Answer q-1" }),
           attentionRecord({
-            id: "seen",
-            state: "seen",
-            dedupeKey: "seen",
-            title: "Seen but unresolved",
+            id: "review",
+            type: "review_ready",
+            priority: "review",
+            actionLabel: "Review",
+            route: { threadKey: "q-4", questId: "q-4" },
+            threadKey: "q-4",
+            questId: "q-4",
+            dedupeKey: "review",
+            title: "q-4 ready for review",
+          }),
+          attentionRecord({
+            id: "reopened",
+            type: "quest_reopened_or_rework",
+            priority: "milestone",
+            actionLabel: "Open",
+            state: "reopened",
+            route: { threadKey: "q-5", questId: "q-5" },
+            threadKey: "q-5",
+            questId: "q-5",
+            dedupeKey: "reopened",
+            title: "q-5 rework requested",
             updatedAt: 300,
           }),
-          attentionRecord({ id: "resolved", state: "resolved", dedupeKey: "resolved", title: "Resolved item" }),
-          attentionRecord({ id: "dismissed", state: "dismissed", dedupeKey: "dismissed", title: "Dismissed item" }),
         ]}
       />,
     );
 
-    const chips = getAllByTestId("attention-chip");
-    expect(chips.map((chip) => chip.getAttribute("data-attention-state"))).toEqual(["seen", "unresolved"]);
-    expect(queryByText("Resolved item")).not.toBeInTheDocument();
-    expect(queryByText("Dismissed item")).not.toBeInTheDocument();
+    const chips = getAllByTestId("thread-chip");
+    expect(chips.map((chip) => chip.getAttribute("data-thread-key"))).toEqual(["q-5", "q-1", "q-2"]);
+    expect(chips.find((chip) => chip.getAttribute("data-thread-key") === "q-1")).toHaveAttribute(
+      "data-needs-input",
+      "true",
+    );
+    expect(chips.find((chip) => chip.getAttribute("data-thread-key") === "q-2")).toHaveAttribute(
+      "data-needs-input",
+      "false",
+    );
+    expect(queryByText("q-4 ready for review")).not.toBeInTheDocument();
+    expect(queryByText("Finished work")).not.toBeInTheDocument();
   });
 
-  it("routes attention chip clicks to the record thread", () => {
+  it("routes thread chip clicks to the owning thread", () => {
     const onSelectThread = vi.fn();
     resetStore({
       sdkSessions: [{ sessionId: "s1", isOrchestrator: true }],
       sessionBoards: new Map([["s1", BOARD_DATA]]),
     });
-    const { getByTestId } = render(
+    const { getAllByTestId } = render(
       <WorkBoardBar
         sessionId="s1"
         currentThreadKey="main"
@@ -326,7 +352,7 @@ describe("WorkBoardBar", () => {
       />,
     );
 
-    fireEvent.click(getByTestId("attention-chip"));
+    fireEvent.click(getAllByTestId("thread-chip").find((chip) => chip.getAttribute("data-thread-key") === "q-2")!);
     expect(onSelectThread).toHaveBeenCalledWith("q-2");
   });
 
@@ -495,8 +521,6 @@ describe("WorkBoardBar", () => {
     fireEvent.change(getByLabelText("Search threads, board, and history"), { target: { value: "archived" } });
 
     expect(getByTestId("workboard-off-board-threads")).toHaveTextContent("Archived follow-up thread");
-    expect(queryByText("Fix bug")).not.toBeInTheDocument();
-    expect(queryByText("Add feature")).not.toBeInTheDocument();
     expect(queryByText("No active items match")).toBeInTheDocument();
   });
 });

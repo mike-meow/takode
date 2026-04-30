@@ -64,7 +64,9 @@ export function buildAttentionRecords(input: BuildAttentionRecordsInput): Attent
 }
 
 export function selectMainLedgerRecords(records: ReadonlyArray<AttentionRecord>): AttentionRecord[] {
-  return records.filter((record) => record.ledgerEligible).sort(compareAttentionRecordsChronologically);
+  return records
+    .filter((record) => record.ledgerEligible && !isRedundantActiveNeedsInputNotification(record))
+    .sort(compareAttentionRecordsChronologically);
 }
 
 export function selectAttentionChipRecords(records: ReadonlyArray<AttentionRecord>): AttentionRecord[] {
@@ -75,6 +77,15 @@ export function selectAttentionChipRecords(records: ReadonlyArray<AttentionRecor
 
 export function isAttentionRecordActive(record: Pick<AttentionRecord, "state">): boolean {
   return ACTIVE_ATTENTION_STATES.has(record.state);
+}
+
+function isRedundantActiveNeedsInputNotification(record: AttentionRecord): boolean {
+  return (
+    record.source.kind === "notification" &&
+    record.priority === "needs_input" &&
+    record.type === "needs_input" &&
+    isAttentionRecordActive(record)
+  );
 }
 
 export function isAttentionLedgerMessage(message: ChatMessage): boolean {

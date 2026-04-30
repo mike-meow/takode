@@ -687,9 +687,8 @@ describe("MessageFeed - collapsed turns", () => {
     expect(onSelectThread).toHaveBeenCalledWith("q-975");
   });
 
-  it("renders Main attention ledger rows from routed notifications and jumps to the owner thread", async () => {
+  it("does not duplicate active needs-input notifications as Main ledger rows", () => {
     const sid = "test-main-attention-ledger-notification";
-    const onSelectThread = vi.fn();
     setStoreMessages(sid, [
       makeMessage({ id: "u-main", role: "user", content: "Coordinate active quests", timestamp: 100 }),
       makeMessage({
@@ -713,21 +712,12 @@ describe("MessageFeed - collapsed turns", () => {
       },
     ]);
 
-    render(<MessageFeed sessionId={sid} onSelectThread={onSelectThread} />);
+    render(<MessageFeed sessionId={sid} />);
 
-    const row = screen.getByTestId("attention-ledger-row");
-    expect(row.getAttribute("data-attention-state")).toBe("unresolved");
-    expect(screen.getAllByText("Approve the implementation direction")).toHaveLength(2);
-    expect(screen.getByText("Needs attention")).toBeTruthy();
+    expect(screen.queryByTestId("attention-ledger-row")).toBeNull();
+    expect(screen.queryByText("Approve the implementation direction")).toBeNull();
     expect(screen.queryByText("Hidden q-983 implementation note")).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "Answer" }));
-    expect(onSelectThread).toHaveBeenCalledWith("q-983");
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-    expect(mockRequestScrollToMessage).toHaveBeenCalledWith(sid, "a-q983");
-    expect(mockSetExpandAllInTurn).toHaveBeenCalledWith(sid, "a-q983");
+    expect(screen.getByText("1 activity in")).toBeTruthy();
   });
 
   it("keeps resolved attention ledger rows visible with resolved state", () => {
