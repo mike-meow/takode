@@ -15,14 +15,16 @@ import {
 import { useStore, COLOR_THEMES } from "../store.js";
 import { recordShortcutBindingFromEvent, type ShortcutActionId } from "../shortcuts.js";
 import { NamerDebugPanel } from "./NamerDebugPanel.js";
-import { AutoApprovalDebugPanel } from "./AutoApprovalDebugPanel.js";
-import { TranscriptionDebugPanel } from "./TranscriptionDebugPanel.js";
-import { EnhancementTester } from "./EnhancementTester.js";
 import { CollapsibleSection, isCollapsibleSectionCollapsed } from "./CollapsibleSection.js";
-import { FolderPicker } from "./FolderPicker.js";
-import { AutoApprovalConfigCard } from "./AutoApprovalConfigCard.js";
+import { SettingsAutoApprovalSection } from "./SettingsAutoApprovalSection.js";
 import { SettingsServerDiagnosticsSection } from "./SettingsServerDiagnosticsSection.js";
 import { SettingsShortcutSection } from "./SettingsShortcutSection.js";
+import {
+  BUILT_IN_STT_MODELS,
+  CUSTOM_STT_MODEL_VALUE,
+  DEFAULT_STT_MODEL,
+  SettingsVoiceTranscriptionSection,
+} from "./SettingsVoiceTranscriptionSection.js";
 import { SettingsPageHeader } from "./SettingsPageHeader.js";
 import { SettingsSearchControls, SettingsSectionNav, useSettingsSearchNavigation } from "./settings-search.js";
 import { EDIT_BLOCKS_EXPANDED_KEY } from "./ToolBlock.js";
@@ -35,13 +37,6 @@ const DEFAULT_PUSHOVER_EVENT_FILTERS: PushoverEventFilters = {
   review: true,
   error: true,
 };
-const DEFAULT_STT_MODEL = "gpt-4o-mini-transcribe";
-const CUSTOM_STT_MODEL_VALUE = "__custom__";
-const BUILT_IN_STT_MODELS = [
-  "gpt-4o-mini-transcribe",
-  "gpt-4o-transcribe",
-  "gpt-4o-mini-transcribe-2025-12-15",
-] as const;
 
 interface SettingsPageProps {
   embedded?: boolean;
@@ -1717,294 +1712,38 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
               </div>
             </CollapsibleSection>
 
-            {/* ── 6. Auto-Approval (LLM) ──────────────────────────── */}
-            <CollapsibleSection
-              id="auto-approval"
-              title="Auto-Approval (LLM)"
-              description="When enabled, permission requests are first evaluated by a fast LLM against your project-specific criteria. If the LLM approves, the permission is auto-approved. Otherwise, it falls through to you as usual."
-              {...settingsSearch.sectionSearch("auto-approval")}
-            >
-              {/* Master toggle + model selector — auto-save on change */}
-              <div className="flex items-center gap-4 flex-wrap">
-                <label className="flex items-center gap-2 text-xs text-cc-fg cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={aaEnabled}
-                    disabled={aaSaving}
-                    onChange={async (e) => {
-                      const newEnabled = e.target.checked;
-                      setAaEnabled(newEnabled);
-                      setAaSaving(true);
-                      setAaError("");
-                      try {
-                        const res = await api.updateSettings({ autoApprovalEnabled: newEnabled });
-                        setAaEnabled(res.autoApprovalEnabled);
-                      } catch (err: unknown) {
-                        setAaEnabled(!newEnabled);
-                        setAaError(err instanceof Error ? err.message : String(err));
-                      } finally {
-                        setAaSaving(false);
-                      }
-                    }}
-                    className="accent-cc-primary"
-                  />
-                  Enabled {aaSaving && <span className="text-cc-muted">(saving...)</span>}
-                </label>
-                <label className="flex items-center gap-2 text-xs text-cc-fg">
-                  <span className="text-cc-muted">Model:</span>
-                  <select
-                    value={aaModel}
-                    disabled={aaSaving}
-                    onChange={async (e) => {
-                      const newModel = e.target.value;
-                      const oldModel = aaModel;
-                      setAaModel(newModel);
-                      setAaSaving(true);
-                      setAaError("");
-                      try {
-                        const res = await api.updateSettings({ autoApprovalModel: newModel });
-                        setAaModel(res.autoApprovalModel);
-                      } catch (err: unknown) {
-                        setAaModel(oldModel);
-                        setAaError(err instanceof Error ? err.message : String(err));
-                      } finally {
-                        setAaSaving(false);
-                      }
-                    }}
-                    className="px-2 py-1 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/50"
-                  >
-                    <option value="">Default (session model)</option>
-                    <option value="haiku">Haiku (fast, cheap)</option>
-                    <option value="sonnet">Sonnet (more capable)</option>
-                  </select>
-                </label>
-                {aaError && <span className="text-xs text-cc-error">{aaError}</span>}
-              </div>
-
-              {/* Concurrency + Timeout controls */}
-              <div className="flex items-center gap-4 flex-wrap">
-                <label className="flex items-center gap-2 text-xs text-cc-fg">
-                  <span className="text-cc-muted">Max concurrency:</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={20}
-                    value={aaMaxConcurrency}
-                    disabled={aaSaving}
-                    onChange={async (e) => {
-                      const val = Math.max(1, Math.min(20, Math.floor(Number(e.target.value) || 4)));
-                      const old = aaMaxConcurrency;
-                      setAaMaxConcurrency(val);
-                      setAaSaving(true);
-                      setAaError("");
-                      try {
-                        const res = await api.updateSettings({ autoApprovalMaxConcurrency: val });
-                        setAaMaxConcurrency(res.autoApprovalMaxConcurrency);
-                      } catch (err: unknown) {
-                        setAaMaxConcurrency(old);
-                        setAaError(err instanceof Error ? err.message : String(err));
-                      } finally {
-                        setAaSaving(false);
-                      }
-                    }}
-                    className="w-16 px-2 py-1 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/50"
-                  />
-                </label>
-                <label className="flex items-center gap-2 text-xs text-cc-fg">
-                  <span className="text-cc-muted">Timeout:</span>
-                  <input
-                    type="number"
-                    min={5}
-                    max={120}
-                    value={aaTimeoutSeconds}
-                    disabled={aaSaving}
-                    onChange={async (e) => {
-                      const val = Math.max(5, Math.min(120, Math.floor(Number(e.target.value) || 45)));
-                      const old = aaTimeoutSeconds;
-                      setAaTimeoutSeconds(val);
-                      setAaSaving(true);
-                      setAaError("");
-                      try {
-                        const res = await api.updateSettings({ autoApprovalTimeoutSeconds: val });
-                        setAaTimeoutSeconds(res.autoApprovalTimeoutSeconds);
-                      } catch (err: unknown) {
-                        setAaTimeoutSeconds(old);
-                        setAaError(err instanceof Error ? err.message : String(err));
-                      } finally {
-                        setAaSaving(false);
-                      }
-                    }}
-                    className="w-16 px-2 py-1 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/50"
-                  />
-                  <span className="text-cc-muted">seconds</span>
-                </label>
-              </div>
-
-              {/* Project configs list */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium text-cc-fg">Project Rules</span>
-                  <button
-                    type="button"
-                    onClick={loadAutoApprovalConfigs}
-                    disabled={aaConfigsLoading}
-                    className="text-[10px] text-cc-muted hover:text-cc-fg cursor-pointer"
-                  >
-                    {aaConfigsLoading ? "Loading..." : "Refresh"}
-                  </button>
-                </div>
-
-                {aaConfigs.length === 0 && !aaConfigsLoading && (
-                  <p className="text-xs text-cc-muted italic">No project rules configured yet.</p>
-                )}
-
-                {aaConfigs.map((config) => (
-                  <AutoApprovalConfigCard key={config.slug} config={config} onUpdate={loadAutoApprovalConfigs} />
-                ))}
-
-                {/* Add new config form */}
-                <div className="border border-dashed border-cc-border rounded-lg p-3 space-y-2">
-                  <span className="text-xs font-medium text-cc-muted">Add Project Rule</span>
-
-                  {/* Project paths */}
-                  <div className="space-y-1">
-                    {aaNewProjectPaths.map((p, i) => (
-                      <div key={i} className="flex items-center gap-1">
-                        <span
-                          className="flex-1 px-2 py-1 text-[10px] font-mono-code bg-cc-hover rounded truncate"
-                          title={p}
-                        >
-                          {p}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setAaNewProjectPaths(aaNewProjectPaths.filter((_, j) => j !== i))}
-                          className="text-[10px] text-cc-error/60 hover:text-cc-error cursor-pointer px-1"
-                          title="Remove path"
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                    <div className="flex items-center gap-1.5">
-                      <input
-                        type="text"
-                        value={aaNewPathInput}
-                        onChange={(e) => setAaNewPathInput(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            e.preventDefault();
-                            const trimmed = aaNewPathInput.trim();
-                            if (trimmed && !aaNewProjectPaths.includes(trimmed)) {
-                              setAaNewProjectPaths([...aaNewProjectPaths, trimmed]);
-                              if (!aaNewLabel.trim()) setAaNewLabel(trimmed.split("/").pop() || "");
-                              setAaNewPathInput("");
-                            }
-                          }
-                        }}
-                        placeholder={
-                          aaNewProjectPaths.length === 0
-                            ? "Project path (e.g. /home/user/my-project)"
-                            : "Add another project path..."
-                        }
-                        className="flex-1 px-2.5 py-1.5 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted/50 focus:outline-none focus:border-cc-primary/50"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowAaFolderPicker(true)}
-                        className="shrink-0 w-7 h-7 flex items-center justify-center rounded-lg border border-cc-border text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
-                        title="Browse folders"
-                      >
-                        <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
-                          <path d="M1 3.5A1.5 1.5 0 012.5 2h3.379a1.5 1.5 0 011.06.44l.622.621a.5.5 0 00.353.146H13.5A1.5 1.5 0 0115 4.707V12.5a1.5 1.5 0 01-1.5 1.5h-11A1.5 1.5 0 011 12.5v-9z" />
-                        </svg>
-                      </button>
-                      {aaNewPathInput.trim() && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const trimmed = aaNewPathInput.trim();
-                            if (trimmed && !aaNewProjectPaths.includes(trimmed)) {
-                              setAaNewProjectPaths([...aaNewProjectPaths, trimmed]);
-                              if (!aaNewLabel.trim()) setAaNewLabel(trimmed.split("/").pop() || "");
-                              setAaNewPathInput("");
-                            }
-                          }}
-                          className="text-[10px] text-cc-primary hover:text-cc-primary-hover cursor-pointer px-1"
-                        >
-                          Add
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  {showAaFolderPicker && (
-                    <FolderPicker
-                      initialPath={aaNewPathInput || ""}
-                      onSelect={(path) => {
-                        if (!aaNewProjectPaths.includes(path)) {
-                          setAaNewProjectPaths([...aaNewProjectPaths, path]);
-                        }
-                        if (!aaNewLabel.trim()) setAaNewLabel(path.split("/").pop() || "");
-                        setAaNewPathInput("");
-                      }}
-                      onClose={() => setShowAaFolderPicker(false)}
-                    />
-                  )}
-                  <input
-                    type="text"
-                    value={aaNewLabel}
-                    onChange={(e) => setAaNewLabel(e.target.value)}
-                    placeholder="Label (e.g. My Project)"
-                    className="w-full px-2.5 py-1.5 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted/50 focus:outline-none focus:border-cc-primary/50"
-                  />
-                  <textarea
-                    value={aaNewCriteria}
-                    onChange={(e) => setAaNewCriteria(e.target.value)}
-                    placeholder="Criteria (natural language rules, e.g. 'Allow all read operations. Allow git commands. Deny rm and chmod.')"
-                    rows={3}
-                    className="w-full px-2.5 py-1.5 text-xs bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg placeholder:text-cc-muted/50 focus:outline-none focus:border-cc-primary/50 resize-y"
-                  />
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      disabled={
-                        aaCreating || aaNewProjectPaths.length === 0 || !aaNewLabel.trim() || !aaNewCriteria.trim()
-                      }
-                      onClick={async () => {
-                        setAaCreating(true);
-                        setAaCreateError("");
-                        try {
-                          await api.createAutoApprovalConfig({
-                            projectPath: aaNewProjectPaths[0],
-                            projectPaths: aaNewProjectPaths.length > 1 ? aaNewProjectPaths : undefined,
-                            label: aaNewLabel.trim(),
-                            criteria: aaNewCriteria.trim(),
-                          });
-                          setAaNewProjectPaths([]);
-                          setAaNewPathInput("");
-                          setAaNewLabel("");
-                          setAaNewCriteria("");
-                          loadAutoApprovalConfigs();
-                        } catch (err: unknown) {
-                          setAaCreateError(err instanceof Error ? err.message : String(err));
-                        } finally {
-                          setAaCreating(false);
-                        }
-                      }}
-                      className="px-3 py-1.5 text-xs font-medium rounded-lg bg-cc-primary hover:bg-cc-primary-hover text-white disabled:opacity-50 transition-colors cursor-pointer"
-                    >
-                      {aaCreating ? "Creating..." : "Add Rule"}
-                    </button>
-                    {aaCreateError && <span className="text-xs text-cc-error">{aaCreateError}</span>}
-                  </div>
-                </div>
-              </div>
-
-              {/* Debug panel */}
-              <div className="border-t border-cc-border pt-4">
-                <AutoApprovalDebugPanel />
-              </div>
-            </CollapsibleSection>
+            <SettingsAutoApprovalSection
+              sectionSearchProps={settingsSearch.sectionSearch("auto-approval")}
+              aaEnabled={aaEnabled}
+              setAaEnabled={setAaEnabled}
+              aaModel={aaModel}
+              setAaModel={setAaModel}
+              aaMaxConcurrency={aaMaxConcurrency}
+              setAaMaxConcurrency={setAaMaxConcurrency}
+              aaTimeoutSeconds={aaTimeoutSeconds}
+              setAaTimeoutSeconds={setAaTimeoutSeconds}
+              aaSaving={aaSaving}
+              setAaSaving={setAaSaving}
+              aaError={aaError}
+              setAaError={setAaError}
+              aaConfigs={aaConfigs}
+              aaConfigsLoading={aaConfigsLoading}
+              aaNewProjectPaths={aaNewProjectPaths}
+              setAaNewProjectPaths={setAaNewProjectPaths}
+              aaNewPathInput={aaNewPathInput}
+              setAaNewPathInput={setAaNewPathInput}
+              aaNewLabel={aaNewLabel}
+              setAaNewLabel={setAaNewLabel}
+              aaNewCriteria={aaNewCriteria}
+              setAaNewCriteria={setAaNewCriteria}
+              aaCreating={aaCreating}
+              setAaCreating={setAaCreating}
+              aaCreateError={aaCreateError}
+              setAaCreateError={setAaCreateError}
+              showAaFolderPicker={showAaFolderPicker}
+              setShowAaFolderPicker={setShowAaFolderPicker}
+              loadAutoApprovalConfigs={loadAutoApprovalConfigs}
+            />
 
             {/* ── 7. Session Namer ─────────────────────────────────── */}
             <CollapsibleSection
@@ -2172,193 +1911,32 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
               <NamerDebugPanel />
             </CollapsibleSection>
 
-            {/* ── 8. Voice Transcription ──────────────────────────── */}
-            <CollapsibleSection
-              id="voice-transcription"
-              title="Voice Transcription"
-              description="Configure the OpenAI-compatible Whisper API for voice-to-text input. Optionally enable LLM enhancement to clean up transcribed text before sending."
-              {...settingsSearch.sectionSearch("voice-transcription")}
-            >
-              <div className="space-y-3 pl-3 border-l-2 border-cc-border">
-                <div>
-                  <label className="block text-xs font-medium text-cc-muted mb-1.5" htmlFor="transcription-api-key">
-                    API Key
-                  </label>
-                  <input
-                    id="transcription-api-key"
-                    type="password"
-                    value={transcriptionApiKey}
-                    onChange={(e) => setTranscriptionApiKey(e.target.value)}
-                    onFocus={() => {
-                      if (transcriptionApiKey === "***") setTranscriptionApiKey("");
-                    }}
-                    placeholder="sk-..."
-                    className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60 font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-cc-muted mb-1.5" htmlFor="transcription-base-url">
-                    Base URL
-                  </label>
-                  <input
-                    id="transcription-base-url"
-                    type="text"
-                    value={transcriptionBaseUrl}
-                    onChange={(e) => setTranscriptionBaseUrl(e.target.value)}
-                    placeholder="https://api.openai.com/v1"
-                    className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60 font-mono"
-                  />
-                  <p className="mt-1 text-xs text-cc-muted">
-                    Leave empty for OpenAI. Use a custom URL for Groq, local Whisper, etc.
-                  </p>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-cc-muted mb-1.5" htmlFor="stt-model">
-                    STT Model
-                  </label>
-                  <select
-                    id="stt-model"
-                    value={sttModel}
-                    onChange={(e) => setSttModel(e.target.value)}
-                    className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60 font-mono"
-                  >
-                    {BUILT_IN_STT_MODELS.map((model) => (
-                      <option key={model} value={model}>
-                        {model}
-                      </option>
-                    ))}
-                    <option value={CUSTOM_STT_MODEL_VALUE}>Custom Model</option>
-                  </select>
-                </div>
-                {sttModel === CUSTOM_STT_MODEL_VALUE && (
-                  <div>
-                    <label className="block text-xs font-medium text-cc-muted mb-1.5" htmlFor="custom-stt-model">
-                      Custom STT Model
-                    </label>
-                    <input
-                      id="custom-stt-model"
-                      type="text"
-                      value={customSttModel}
-                      onChange={(e) => setCustomSttModel(e.target.value)}
-                      placeholder="whisper-large-v3"
-                      className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60 font-mono"
-                    />
-                  </div>
-                )}
-                <div>
-                  <label className="block text-xs font-medium text-cc-muted mb-1.5" htmlFor="transcription-model">
-                    Enhancement Model
-                  </label>
-                  <input
-                    id="transcription-model"
-                    type="text"
-                    value={transcriptionModel}
-                    onChange={(e) => setTranscriptionModel(e.target.value)}
-                    placeholder="gpt-5-mini"
-                    className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60 font-mono"
-                  />
-                </div>
-                <label className="flex items-center gap-2 text-xs text-cc-fg cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={transcriptionEnhancement}
-                    onChange={(e) => setTranscriptionEnhancement(e.target.checked)}
-                    className="accent-cc-primary"
-                  />
-                  Enable Enhancement
-                </label>
-                {transcriptionEnhancement && (
-                  <div>
-                    <label className="block text-xs font-medium text-cc-muted mb-1.5">Enhancement Style</label>
-                    <select
-                      value={enhancementMode}
-                      onChange={(e) => setEnhancementMode(e.target.value as "default" | "bullet")}
-                      className="w-full bg-cc-input-bg text-cc-fg border border-cc-border rounded-lg px-3 py-2 text-xs"
-                    >
-                      <option value="default">Prose</option>
-                      <option value="bullet">Bullet Points</option>
-                    </select>
-                    <p className="mt-1 text-xs text-cc-muted">
-                      Prose outputs clean paragraphs. Bullet Points structures dictation as organized lists.
-                    </p>
-                  </div>
-                )}
-                <div>
-                  <label className="block text-xs font-medium text-cc-muted mb-1.5" htmlFor="transcription-vocabulary">
-                    Custom Vocabulary
-                  </label>
-                  <input
-                    id="transcription-vocabulary"
-                    type="text"
-                    value={transcriptionVocabulary}
-                    onChange={(e) => setTranscriptionVocabulary(e.target.value)}
-                    placeholder="Takode, LiteLLM, worktree, mai-agents"
-                    className="w-full px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60 font-mono"
-                  />
-                  <p className="mt-1 text-xs text-cc-muted">
-                    Comma-separated terms the STT model frequently mishears. Injected as vocabulary hints.
-                  </p>
-                </div>
-              </div>
-
-              {transcriptionError && (
-                <div className="px-3 py-2 rounded-lg bg-cc-error/10 border border-cc-error/20 text-xs text-cc-error">
-                  {transcriptionError}
-                </div>
-              )}
-              {transcriptionSaved && (
-                <div className="px-3 py-2 rounded-lg bg-cc-success/10 border border-cc-success/20 text-xs text-cc-success">
-                  Voice transcription settings saved.
-                </div>
-              )}
-
-              <div className="flex justify-end">
-                <button
-                  type="button"
-                  disabled={transcriptionSaving || loading}
-                  onClick={async () => {
-                    setTranscriptionError("");
-                    setTranscriptionSaved(false);
-                    const resolvedSttModel =
-                      sttModel === CUSTOM_STT_MODEL_VALUE ? customSttModel.trim() : sttModel.trim();
-                    if (!resolvedSttModel) {
-                      setTranscriptionError("Custom STT model is required.");
-                      return;
-                    }
-                    setTranscriptionSaving(true);
-                    try {
-                      const config: TranscriptionConfig = {
-                        apiKey: transcriptionApiKey === "***" ? "***" : transcriptionApiKey,
-                        baseUrl: transcriptionBaseUrl,
-                        enhancementEnabled: transcriptionEnhancement,
-                        enhancementModel: transcriptionModel,
-                        customVocabulary: transcriptionVocabulary,
-                        enhancementMode,
-                        sttModel: resolvedSttModel,
-                      };
-                      await api.updateSettings({ transcriptionConfig: config });
-                      if (sttModel === CUSTOM_STT_MODEL_VALUE) setCustomSttModel(resolvedSttModel);
-                      setTranscriptionSaved(true);
-                      setTimeout(() => setTranscriptionSaved(false), 3000);
-                    } catch (err: unknown) {
-                      setTranscriptionError(err instanceof Error ? err.message : String(err));
-                    } finally {
-                      setTranscriptionSaving(false);
-                    }
-                  }}
-                  className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    transcriptionSaving || loading
-                      ? "bg-cc-hover text-cc-muted cursor-not-allowed"
-                      : "bg-cc-primary hover:bg-cc-primary-hover text-white cursor-pointer"
-                  }`}
-                >
-                  {transcriptionSaving ? "Saving..." : "Save"}
-                </button>
-              </div>
-
-              <TranscriptionDebugPanel />
-              <EnhancementTester />
-            </CollapsibleSection>
+            <SettingsVoiceTranscriptionSection
+              loading={loading}
+              sectionSearchProps={settingsSearch.sectionSearch("voice-transcription")}
+              transcriptionApiKey={transcriptionApiKey}
+              setTranscriptionApiKey={setTranscriptionApiKey}
+              transcriptionBaseUrl={transcriptionBaseUrl}
+              setTranscriptionBaseUrl={setTranscriptionBaseUrl}
+              transcriptionModel={transcriptionModel}
+              setTranscriptionModel={setTranscriptionModel}
+              sttModel={sttModel}
+              setSttModel={setSttModel}
+              customSttModel={customSttModel}
+              setCustomSttModel={setCustomSttModel}
+              transcriptionEnhancement={transcriptionEnhancement}
+              setTranscriptionEnhancement={setTranscriptionEnhancement}
+              enhancementMode={enhancementMode}
+              setEnhancementMode={setEnhancementMode}
+              transcriptionVocabulary={transcriptionVocabulary}
+              setTranscriptionVocabulary={setTranscriptionVocabulary}
+              transcriptionSaving={transcriptionSaving}
+              setTranscriptionSaving={setTranscriptionSaving}
+              transcriptionSaved={transcriptionSaved}
+              setTranscriptionSaved={setTranscriptionSaved}
+              transcriptionError={transcriptionError}
+              setTranscriptionError={setTranscriptionError}
+            />
 
             <SettingsServerDiagnosticsSection
               logFile={logFile}
