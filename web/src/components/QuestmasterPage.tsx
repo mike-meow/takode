@@ -405,6 +405,14 @@ function QuestTldrMarkdown({
   );
 }
 
+function isInteractiveDescendantKeyTarget(target: EventTarget | null, container: HTMLElement): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const interactive = target.closest<HTMLElement>(
+    "a,button,input,textarea,select,summary,[contenteditable='true'],[role='link'],[role='button']",
+  );
+  return !!interactive && interactive !== container;
+}
+
 function QuestStatusHoverTarget({ quest, children }: { quest: QuestmasterTask; children: ReactNode }) {
   const [hoverRect, setHoverRect] = useState<DOMRect | null>(null);
   const hideHoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2036,6 +2044,7 @@ const CompactQuestRow = memo(function CompactQuestRow({
       onClick={() => onOpenQuest(quest)}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
+          if (isInteractiveDescendantKeyTarget(e.target, e.currentTarget)) return;
           e.preventDefault();
           onOpenQuest(quest);
         }

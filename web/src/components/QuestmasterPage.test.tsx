@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import type { QuestmasterTask } from "../types.js";
 
@@ -452,6 +452,33 @@ describe("QuestmasterPage status display", () => {
     mockState.openQuestOverlay.mockClear();
     fireEvent.click(tldrLink);
     expect(mockState.openQuestOverlay.mock.calls.map((call) => call[0])).toEqual(["q-986"]);
+  });
+
+  it("does not intercept keyboard activation on compact TLDR markdown links", async () => {
+    mockGetSettings.mockResolvedValueOnce({ questmasterViewMode: "compact" });
+    mockState.quests = [
+      {
+        ...buildVerificationQuest({ id: "q-90-v1", questId: "q-90", title: "Markdown TLDR quest" }),
+        tldr: "Use [q-986](quest:q-986) direction.",
+      } as QuestmasterTask,
+    ];
+
+    renderQuestmaster({ isActive: true });
+
+    await screen.findByRole("button", { name: /q-90 Markdown TLDR quest/ });
+    const tldrLink = screen.getByRole("link", { name: "q-986" });
+    tldrLink.focus();
+    expect(tldrLink).toHaveFocus();
+
+    const enterEvent = createEvent.keyDown(tldrLink, { key: "Enter" });
+    fireEvent(tldrLink, enterEvent);
+    expect(enterEvent.defaultPrevented).toBe(false);
+
+    const spaceEvent = createEvent.keyDown(tldrLink, { key: " " });
+    fireEvent(tldrLink, spaceEvent);
+    expect(spaceEvent.defaultPrevented).toBe(false);
+    expect(mockState.openQuestOverlay).not.toHaveBeenCalled();
+    expect(mockState.questOverlayId).toBeNull();
   });
 
   it("pauses fallback polling while the tab is hidden and resumes on visibility", async () => {
