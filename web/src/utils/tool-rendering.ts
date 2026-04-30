@@ -17,12 +17,31 @@ export interface ParseEditToolInputOptions {
   fallbackToFirstChangePath?: boolean;
 }
 
+export function getDistinctChangeFilePaths(input: Record<string, unknown>): string[] {
+  const changes = Array.isArray(input.changes) ? (input.changes as Array<Record<string, unknown>>) : [];
+  const paths: string[] = [];
+  const seen = new Set<string>();
+
+  for (const change of changes) {
+    const path = getChangeFilePath(change);
+    if (!path || seen.has(path)) continue;
+    seen.add(path);
+    paths.push(path);
+  }
+
+  return paths;
+}
+
 export function getChangePatch(change: Record<string, unknown>): string {
   const candidates = [change.diff, change.unified_diff, change.unifiedDiff, change.patch];
   for (const candidate of candidates) {
     if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
   }
   return "";
+}
+
+export function getChangeFilePath(change: Record<string, unknown>): string {
+  return firstNonEmptyString(change, ["path", "file_path", "filePath", "filename"]);
 }
 
 function firstNonEmptyString(obj: Record<string, unknown>, keys: string[]): string {
@@ -89,7 +108,7 @@ export function parseEditToolInput(
   options: ParseEditToolInputOptions = {},
 ): ParsedEditToolInput {
   const changes = Array.isArray(input.changes) ? (input.changes as Array<Record<string, unknown>>) : [];
-  const firstChangePath = changes.find((c) => typeof c.path === "string")?.path as string | undefined;
+  const firstChangePath = changes.map((change) => getChangeFilePath(change)).find(Boolean);
   const filePath = options.fallbackToFirstChangePath
     ? String(input.file_path || firstChangePath || "")
     : String(input.file_path || "");
@@ -126,7 +145,7 @@ export function parseEditToolInput(
 
 export function parseWriteToolInput(input: Record<string, unknown>): ParsedWriteToolInput {
   const changes = Array.isArray(input.changes) ? (input.changes as Array<Record<string, unknown>>) : [];
-  const firstChangePath = changes.find((c) => typeof c.path === "string")?.path as string | undefined;
+  const firstChangePath = changes.map((change) => getChangeFilePath(change)).find(Boolean);
   const filePath = String(input.file_path || firstChangePath || "");
   const unifiedDiff = changes
     .map((change) => getChangePatch(change))

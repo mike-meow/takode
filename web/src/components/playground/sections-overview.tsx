@@ -748,6 +748,7 @@ export function PlaygroundOverviewSections() {
           <ToolBlock
             name="Edit"
             input={{
+              file_path: "src/remote-workflow.ts",
               changes: [
                 {
                   path: "src/remote-workflow.ts",

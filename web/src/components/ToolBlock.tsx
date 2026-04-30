@@ -12,7 +12,13 @@ import { BoardBlock, type BoardProposalReviewPayload, type BoardRowData } from "
 import { useStore } from "../store.js";
 import { api } from "../api.js";
 import { getSingleAnchoredNotification } from "../utils/anchored-notifications.js";
-import { getChangePatch, parseEditToolInput, parseWriteToolInput } from "../utils/tool-rendering.js";
+import {
+  getChangeFilePath,
+  getChangePatch,
+  getDistinctChangeFilePaths,
+  parseEditToolInput,
+  parseWriteToolInput,
+} from "../utils/tool-rendering.js";
 import type { BoardRowSessionStatus } from "../types.js";
 import type { BoardQueueWarning } from "../../shared/quest-journey.js";
 import {
@@ -304,9 +310,13 @@ const ToolBlockInner = memo(function ToolBlockInner({
   const preview = getPreview(name, input);
   const hideHeaderLabel = hideLabel || name === "Bash";
   // File-operation tools show smart-truncated path + Open File button in the header
-  const isFileTool = (name === "Read" || name === "Write" || name === "Edit") && !!input.file_path;
+  const changedFilePaths = name === "Write" || name === "Edit" ? getDistinctChangeFilePaths(input) : ([] as string[]);
+  const isMultiFileChangeTool = (name === "Write" || name === "Edit") && changedFilePaths.length > 1;
+  const isFileTool =
+    (name === "Read" || ((name === "Write" || name === "Edit") && !isMultiFileChangeTool)) && !!input.file_path;
   const filePath = isFileTool ? String(input.file_path) : "";
   const filePathParts = isFileTool ? formatFileHeaderPath(filePath) : null;
+  const multiFilePreview = isMultiFileChangeTool ? `${changedFilePaths.length} files` : "";
 
   // Session cwd for the header Open File button (only subscribed for file tools)
   const sessionCwd = useStore((s) => {
@@ -387,11 +397,11 @@ const ToolBlockInner = memo(function ToolBlockInner({
             {filePathParts.dirLabel && <span className="text-cc-muted">{filePathParts.dirLabel}</span>}
             <span className="font-semibold text-cc-fg">{filePathParts.baseLabel}</span>
           </span>
-        ) : preview ? (
+        ) : multiFilePreview || preview ? (
           <span
             className={`text-xs truncate flex-1 font-mono-code ${hideHeaderLabel ? "text-cc-fg/90" : "text-cc-muted"}`}
           >
-            {preview}
+            {multiFilePreview || preview}
           </span>
         ) : null}
         {/* Open File in header for file tools. Uses line=1 because the header doesn't
@@ -912,6 +922,40 @@ function getFirstChangedLineForEditFile(parsed: ReturnType<typeof parseEditToolI
   return 1;
 }
 
+interface ChangePatchGroup {
+  filePath: string;
+  changes: Array<Record<string, unknown>>;
+  unifiedDiff: string;
+}
+
+function buildChangePatchGroups(changes: Array<Record<string, unknown>>, fallbackFilePath = ""): ChangePatchGroup[] {
+  const groups: ChangePatchGroup[] = [];
+  const groupIndexes = new Map<string, number>();
+
+  for (const change of changes) {
+    const filePath = getChangeFilePath(change) || fallbackFilePath;
+    if (!filePath) continue;
+
+    const existingIndex = groupIndexes.get(filePath);
+    if (existingIndex !== undefined) {
+      groups[existingIndex].changes.push(change);
+      continue;
+    }
+
+    groupIndexes.set(filePath, groups.length);
+    groups.push({ filePath, changes: [change], unifiedDiff: "" });
+  }
+
+  for (const group of groups) {
+    group.unifiedDiff = group.changes
+      .map((change) => getChangePatch(change))
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  return groups;
+}
+
 /** Memoized pure component for "Open File" buttons in diff headers.
  *  Accepts `cwd` as a prop instead of reading it from the Zustand store.
  *  This is critical: DiffViewer calls `renderHeaderActions` during its render
@@ -978,6 +1022,7 @@ function BashDetail({ input }: { input: Record<string, unknown> }) {
 function EditToolDetail({ input, sessionId }: { input: Record<string, unknown>; sessionId?: string }) {
   const parsed = useMemo(() => parseEditToolInput(input), [input]);
   const { filePath, oldText: oldStr, newText: newStr, changes, unifiedDiff } = parsed;
+  const changePatchGroups = useMemo(() => buildChangePatchGroups(changes, filePath), [changes, filePath]);
 
   // Session cwd for the changes-list Open File buttons (the main header Open File
   // button is now in ToolBlockInner, so this is only needed for the multi-change path).
@@ -990,6 +1035,27 @@ function EditToolDetail({ input, sessionId }: { input: Record<string, unknown>; 
   // no longer needs fileName or renderHeaderActions for single-file edits.
 
   if (!oldStr && !newStr && unifiedDiff) {
+    if (changePatchGroups.length > 1) {
+      return (
+        <div className="space-y-2">
+          {changePatchGroups.map((group) => (
+            <DiffViewer
+              key={group.filePath}
+              unifiedDiff={group.unifiedDiff}
+              fileName={group.filePath}
+              mode="full"
+              headerActions={
+                <DiffOpenFileButton
+                  filePath={group.filePath}
+                  cwd={sessionCwd}
+                  line={getFirstChangedLineForEditFile(parsed, group.filePath)}
+                />
+              }
+            />
+          ))}
+        </div>
+      );
+    }
     return <DiffViewer unifiedDiff={unifiedDiff} mode="full" />;
   }
 
@@ -1035,6 +1101,7 @@ function EditToolDetail({ input, sessionId }: { input: Record<string, unknown>; 
 
 function WriteToolDetail({ input, sessionId }: { input: Record<string, unknown>; sessionId?: string }) {
   const { filePath, content, changes, unifiedDiff } = useMemo(() => parseWriteToolInput(input), [input]);
+  const changePatchGroups = useMemo(() => buildChangePatchGroups(changes, filePath), [changes, filePath]);
 
   // Session cwd for the changes-list Open File buttons only
   const sessionCwd = useStore((s) => {
@@ -1045,6 +1112,21 @@ function WriteToolDetail({ input, sessionId }: { input: Record<string, unknown>;
   // File path and Open File button are now in the ToolBlock header
 
   if (!content && unifiedDiff) {
+    if (changePatchGroups.length > 1) {
+      return (
+        <div className="space-y-2">
+          {changePatchGroups.map((group) => (
+            <DiffViewer
+              key={group.filePath}
+              unifiedDiff={group.unifiedDiff}
+              fileName={group.filePath}
+              mode="full"
+              headerActions={<DiffOpenFileButton filePath={group.filePath} cwd={sessionCwd} line={1} />}
+            />
+          ))}
+        </div>
+      );
+    }
     return <DiffViewer unifiedDiff={unifiedDiff} mode="full" />;
   }
 
