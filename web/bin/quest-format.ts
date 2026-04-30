@@ -165,6 +165,8 @@ export function formatQuestDetail(
           authorSessionId?: string;
           images?: { filename: string; path: string }[];
           tldr?: string;
+          phaseId?: string;
+          phasePosition?: number;
         }[];
       }
     ).feedback;
@@ -181,8 +183,11 @@ export function formatQuestDetail(
         const tag = entry.addressed
           ? `${authorLabel}, addressed, ${timeAgo(entry.ts)}`
           : `${authorLabel}, ${timeAgo(entry.ts)}`;
+        const phaseLabel = entry.phaseId
+          ? ` (${entry.phaseId}${entry.phasePosition ? `@${entry.phasePosition}` : ""})`
+          : "";
         const entryTldr = normalizeTldr(entry.tldr);
-        lines.push(`  #${index} [${tag}] ${entryTldr ? `TLDR: ${entryTldr}` : entry.text}`);
+        lines.push(`  #${index} [${tag}]${phaseLabel} ${entryTldr ? `TLDR: ${entryTldr}` : entry.text}`);
         if (entryTldr) {
           lines.push(`    Full: ${entry.text}`);
         }

@@ -173,6 +173,82 @@ describe("quest CLI safer rich-text inputs", () => {
     }
   });
 
+  it("passes phase documentation flags through the feedback endpoint", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "quest-feedback-phase-flags-"));
+    const authDir = getSessionAuthDir(tmp);
+    mkdirSync(authDir, { recursive: true });
+    const authPath = centralAuthPath(tmp, tmp);
+    const seenBodies: JsonObject[] = [];
+    const server = createServer(async (req, res) => {
+      if (req.method === "POST" && req.url === "/api/quests/q-1/feedback") {
+        seenBodies.push(await readJson(req));
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ questId: "q-1", title: "Quest", status: "in_progress", feedback: [] }));
+        return;
+      }
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    });
+    server.listen(0);
+    await once(server, "listening");
+    const port = (server.address() as AddressInfo).port;
+
+    writeFileSync(
+      authPath,
+      JSON.stringify({ sessionId: "session-file", authToken: "file-token", port, serverId: "test-server-id" }),
+      "utf-8",
+    );
+
+    try {
+      const result = await runQuest(
+        [
+          "feedback",
+          "add",
+          "q-1",
+          "--text",
+          "Summary: implement docs",
+          "--tldr",
+          "Docs summary",
+          "--phase",
+          "implement",
+          "--phase-position",
+          "3",
+          "--phase-occurrence",
+          "1",
+          "--journey-run",
+          "run-1",
+          "--kind",
+          "phase-summary",
+          "--json",
+        ],
+        {
+          ...process.env,
+          COMPANION_SESSION_ID: undefined,
+          COMPANION_AUTH_TOKEN: undefined,
+          COMPANION_PORT: undefined,
+          HOME: tmp,
+        },
+        tmp,
+      );
+
+      expect(result.status).toBe(0);
+      expect(seenBodies[0]).toMatchObject({
+        text: "Summary: implement docs",
+        tldr: "Docs summary",
+        author: "agent",
+        sessionId: "session-file",
+        phase: "implement",
+        phasePosition: "3",
+        phaseOccurrence: "1",
+        journeyRunId: "run-1",
+        kind: "phase-summary",
+      });
+    } finally {
+      server.close();
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it("reads feedback text from stdin via --text-file -", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "quest-feedback-stdin-"));
     const authDir = getSessionAuthDir(tmp);

@@ -24,8 +24,13 @@
 //   - Quests in other states (done, refined, idea) are
 //     unaffected — a session can have any number of those.
 
+import type { QuestJourneyPhaseId } from "../shared/quest-journey.js";
+
 export type QuestStatus = "idea" | "refined" | "in_progress" | "done";
 export type LegacyQuestStatus = QuestStatus | "needs_verification";
+export type QuestFeedbackKind = "comment" | "phase_summary" | "phase_finding" | "review" | "artifact" | "system";
+export type QuestJourneyRunStatus = "active" | "completed" | "archived" | "manual";
+export type QuestPhaseOccurrenceStatus = "pending" | "active" | "completed" | "skipped" | "manual";
 
 export interface QuestVerificationItem {
   text: string;
@@ -34,7 +39,11 @@ export interface QuestVerificationItem {
 
 /** A single entry in the quest feedback thread (PR-review style). */
 export interface QuestFeedbackEntry {
+  /** Stable optional identifier for newer structured feedback/documentation entries. */
+  entryId?: string;
   author: "human" | "agent";
+  /** Entry role. Omitted legacy entries are plain comments. */
+  kind?: QuestFeedbackKind;
   text: string;
   /** Human-readable scan summary for long feedback/comment text. */
   tldr?: string;
@@ -45,6 +54,51 @@ export interface QuestFeedbackEntry {
   images?: QuestImage[];
   /** Whether this feedback has been addressed (only meaningful for human entries) */
   addressed?: boolean;
+  /** Stable Journey run this entry documents, when phase-scoped. */
+  journeyRunId?: string;
+  /** Stable phase occurrence this entry documents, when available. */
+  phaseOccurrenceId?: string;
+  /** Canonical Quest Journey phase id for scoped entries. */
+  phaseId?: QuestJourneyPhaseId;
+  /** Zero-based phase index within the run/board plan. */
+  phaseIndex?: number;
+  /** One-based phase position within the run/board plan. */
+  phasePosition?: number;
+  /** One-based occurrence count for repeated phases of the same phase id. */
+  phaseOccurrence?: number;
+}
+
+export interface QuestPhaseOccurrence {
+  occurrenceId: string;
+  phaseId: QuestJourneyPhaseId;
+  /** Zero-based phase index within this run. */
+  phaseIndex: number;
+  /** One-based phase position within this run. */
+  phasePosition: number;
+  /** One-based occurrence count for repeated phases of the same phase id. */
+  phaseOccurrence: number;
+  status: QuestPhaseOccurrenceStatus;
+  boardState?: string;
+  assigneeSessionId?: string;
+  assigneeSessionNum?: number;
+  startedAt?: number;
+  completedAt?: number;
+}
+
+export interface QuestJourneyRun {
+  runId: string;
+  leaderSessionId?: string;
+  workerSessionId?: string;
+  workerSessionNum?: number;
+  source: "board" | "manual";
+  sourceBoardSessionId?: string;
+  sourceBoardCreatedAt?: number;
+  phaseIds: QuestJourneyPhaseId[];
+  status: QuestJourneyRunStatus;
+  createdAt: number;
+  updatedAt: number;
+  completedAt?: number;
+  phaseOccurrences: QuestPhaseOccurrence[];
 }
 
 /** An image attached to a quest, stored on disk. */
@@ -91,6 +145,8 @@ interface QuestBase {
   leaderSessionId?: string;
   /** Ordered synced commit SHAs associated with this quest's verification handoff. */
   commitShas?: string[];
+  /** Durable Quest Journey run snapshots used by phase-scoped documentation. */
+  journeyRuns?: QuestJourneyRun[];
   /** Threaded feedback conversation that must survive quest version transitions. */
   feedback?: QuestFeedbackEntry[];
 }
@@ -205,6 +261,8 @@ export interface QuestPatchInput {
   tags?: string[];
   /** Replace the feedback thread (used by the append endpoint after adding an entry) */
   feedback?: QuestFeedbackEntry[];
+  /** Replace durable Journey run snapshots used by phase-scoped documentation */
+  journeyRuns?: QuestJourneyRun[];
 }
 
 /** Status transitions. Always creates a new version linked to the previous. */

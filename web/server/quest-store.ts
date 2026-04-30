@@ -1301,6 +1301,7 @@ function buildTransitionedQuest(
   const newVersion = current.version + 1;
   const tldr = input.tldr !== undefined ? normalizeTldr(input.tldr) : normalizeTldr(current.tldr);
   const currentFeedback = current.feedback;
+  const currentJourneyRuns = current.journeyRuns;
   const currentActiveSessionId = getActiveSessionId(current);
   const currentPreviousOwners = getPreviousOwnerSessionIds(current);
   const leaderSessionId = input.leaderSessionId?.trim() || getLeaderSessionId(current);
@@ -1319,6 +1320,7 @@ function buildTransitionedQuest(
     ...(leaderSessionId ? { leaderSessionId } : {}),
     ...(current.commitShas?.length ? { commitShas: current.commitShas } : {}),
     ...(previousOwners.length ? { previousOwnerSessionIds: previousOwners } : {}),
+    ...(currentJourneyRuns?.length ? { journeyRuns: currentJourneyRuns } : {}),
     ...(currentFeedback?.length ? { feedback: currentFeedback } : {}),
   };
   if (input.commitShas !== undefined && targetStatus !== "done") {
@@ -1438,6 +1440,7 @@ function buildCancelledQuest(current: QuestmasterTask, notes: string | undefined
     previousOwners.push(currentActiveSessionId);
   }
   const cancelFeedback = current.feedback;
+  const cancelJourneyRuns = current.journeyRuns;
   const quest: QuestDone = {
     id: liveStore ? current.questId : nextVersionId(current.questId, current.version),
     questId: current.questId,
@@ -1460,6 +1463,7 @@ function buildCancelledQuest(current: QuestmasterTask, notes: string | undefined
     ...(leaderSessionId ? { leaderSessionId } : {}),
     ...(previousOwners.length ? { previousOwnerSessionIds: previousOwners } : {}),
     ...(current.commitShas?.length ? { commitShas: current.commitShas } : {}),
+    ...(cancelJourneyRuns?.length ? { journeyRuns: cancelJourneyRuns } : {}),
     status: "done",
     ...(description ? { description } : {}),
     claimedAt: "claimedAt" in current ? (current as QuestInProgress).claimedAt : now,
@@ -1572,6 +1576,10 @@ export async function patchQuest(
         (updated as { feedback?: QuestFeedbackEntry[] }).feedback =
           patch.feedback.length > 0 ? patch.feedback : undefined;
       }
+      if (patch.journeyRuns !== undefined) {
+        (updated as { journeyRuns?: QuestmasterTask["journeyRuns"] }).journeyRuns =
+          patch.journeyRuns.length > 0 ? patch.journeyRuns : undefined;
+      }
       if (markVerificationInboxUnread && hasQuestReviewMetadata(updated)) {
         (updated as QuestDone).verificationInboxUnread = true;
       }
@@ -1599,6 +1607,10 @@ export async function patchQuest(
   }
   if (patch.feedback !== undefined) {
     (updated as { feedback?: QuestFeedbackEntry[] }).feedback = patch.feedback.length > 0 ? patch.feedback : undefined;
+  }
+  if (patch.journeyRuns !== undefined) {
+    (updated as { journeyRuns?: QuestmasterTask["journeyRuns"] }).journeyRuns =
+      patch.journeyRuns.length > 0 ? patch.journeyRuns : undefined;
   }
   if (markVerificationInboxUnread && hasQuestReviewMetadata(updated)) {
     (updated as QuestDone).verificationInboxUnread = true;

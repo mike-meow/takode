@@ -177,6 +177,14 @@ function feedbackEntriesEqual(a: QuestFeedbackEntry | undefined, b: QuestFeedbac
     a.ts === b.ts &&
     a.authorSessionId === b.authorSessionId &&
     a.addressed === b.addressed &&
+    a.entryId === b.entryId &&
+    a.kind === b.kind &&
+    a.journeyRunId === b.journeyRunId &&
+    a.phaseOccurrenceId === b.phaseOccurrenceId &&
+    a.phaseId === b.phaseId &&
+    a.phaseIndex === b.phaseIndex &&
+    a.phasePosition === b.phasePosition &&
+    a.phaseOccurrence === b.phaseOccurrence &&
     questImagesEqual(a.images, b.images)
   );
 }

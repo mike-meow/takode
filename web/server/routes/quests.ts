@@ -13,6 +13,12 @@ import { broadcastQuestUpdate } from "./quest-helpers.js";
 import type { OptionalAuthResult, RouteContext } from "./context.js";
 import { isSharpUnavailableError, SHARP_UNAVAILABLE_MESSAGE } from "../image-store.js";
 import { normalizeTldr, QUEST_TLDR_WARNING_HEADER, tldrWarningForContent } from "../quest-tldr.js";
+import {
+  QUEST_PHASE_DOCUMENTATION_WARNING_HEADER,
+  resolveQuestFeedbackDocumentation,
+  sameQuestFeedbackDocumentationScope,
+  type QuestBoardRowCandidate,
+} from "../quest-phase-docs.js";
 
 const DIFF_MAX_BUFFER = 10 * 1024 * 1024;
 const MAX_DIFF_BYTES = 512 * 1024;
@@ -42,10 +48,11 @@ function isAgentSummaryFeedback(text: string): boolean {
   return SUMMARY_FEEDBACK_PREFIXES.some((prefix) => normalized.startsWith(prefix));
 }
 
-function findLatestAgentSummaryFeedbackIndex(entries: QuestFeedbackEntry[]): number {
+function findLatestAgentSummaryFeedbackIndex(entries: QuestFeedbackEntry[], target?: QuestFeedbackEntry): number {
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const entry = entries[index];
     if (entry?.author !== "agent") continue;
+    if (target && !sameQuestFeedbackDocumentationScope(entry, target)) continue;
     if (isAgentSummaryFeedback(entry.text)) return index;
   }
   return -1;
@@ -138,6 +145,22 @@ export function createQuestRoutes(ctx: RouteContext) {
     ...(hasQuestReviewMetadata(quest) ? { verificationInboxUnread: quest.verificationInboxUnread } : {}),
     ...(quest.leaderSessionId ? { leaderSessionId: quest.leaderSessionId } : {}),
   });
+  const boardRowCandidatesForQuest = (quest: QuestmasterTask): QuestBoardRowCandidate[] => {
+    const leaderIds = new Set<string>();
+    if (quest.leaderSessionId) leaderIds.add(quest.leaderSessionId);
+    for (const session of launcher.listSessions()) {
+      const sessionId = typeof session.sessionId === "string" ? session.sessionId : undefined;
+      if (sessionId && session.isOrchestrator === true && session.archived !== true) leaderIds.add(sessionId);
+    }
+    const candidates: QuestBoardRowCandidate[] = [];
+    for (const leaderSessionId of leaderIds) {
+      const leaderSession = launcher.getSession(leaderSessionId);
+      if (leaderSession?.archived === true) continue;
+      const row = wsBridge.getSession(leaderSessionId)?.board?.get(quest.questId);
+      if (row) candidates.push({ leaderSessionId, row });
+    }
+    return candidates;
+  };
 
   const persistSessionTaskHistory = (sessionId: string) => {
     const session = wsBridge.getSession(sessionId);
@@ -667,11 +690,21 @@ export function createQuestRoutes(ctx: RouteContext) {
       if (authorSessionId) entry.authorSessionId = authorSessionId;
       const hasImagesField = body.images !== undefined;
       if (Array.isArray(body.images) && body.images.length > 0) entry.images = body.images;
+      const documentation = resolveQuestFeedbackDocumentation({
+        quest: current,
+        authorSessionId,
+        request: body,
+        boardRows: boardRowCandidatesForQuest(current),
+      });
+      if (documentation.error)
+        return c.json({ error: documentation.error }, (documentation.status ?? 400) as 400 | 409);
+      Object.assign(entry, documentation.entryPatch);
+      if (documentation.warning) c.header(QUEST_PHASE_DOCUMENTATION_WARNING_HEADER, documentation.warning);
 
       let nextFeedback = [...existing, entry];
       let entryForWarning = entry;
       if (author === "agent" && isAgentSummaryFeedback(entry.text)) {
-        const summaryIndex = findLatestAgentSummaryFeedbackIndex(existing);
+        const summaryIndex = findLatestAgentSummaryFeedbackIndex(existing, entry);
         if (summaryIndex !== -1) {
           nextFeedback = [...existing];
           const previousEntry = nextFeedback[summaryIndex]!;
@@ -691,7 +724,14 @@ export function createQuestRoutes(ctx: RouteContext) {
         }
       }
 
-      const quest = await questStore.patchQuest(c.req.param("questId"), { feedback: nextFeedback }, { current });
+      const quest = await questStore.patchQuest(
+        c.req.param("questId"),
+        {
+          feedback: nextFeedback,
+          ...(documentation.journeyRuns ? { journeyRuns: documentation.journeyRuns } : {}),
+        },
+        { current },
+      );
       if (!quest) return c.json({ error: "Quest not found" }, 404);
       if (author === "agent") {
         setTldrWarningHeader(c, tldrWarningForContent("feedback", entryForWarning.text, entryForWarning.tldr));

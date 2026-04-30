@@ -972,6 +972,209 @@ describe("POST /api/quests/:questId/feedback", () => {
     });
   });
 
+  it("infers phase documentation scope from the quest leader board row", async () => {
+    launcher.getSession.mockImplementation((sid: string) =>
+      sid === "worker-1" || sid === "leader-1"
+        ? { sessionId: sid, state: "running", cwd: "/test", archived: false, isOrchestrator: sid === "leader-1" }
+        : undefined,
+    );
+    launcher.listSessions.mockReturnValue([{ sessionId: "leader-1", isOrchestrator: true }]);
+    ensureBridgeSession(bridge, "leader-1", {
+      board: new Map([
+        [
+          "q-1",
+          {
+            questId: "q-1",
+            worker: "worker-1",
+            workerNum: 12,
+            status: "IMPLEMENTING",
+            createdAt: 10,
+            updatedAt: 20,
+            journey: {
+              phaseIds: ["alignment", "explore", "implement", "code-review"],
+              activePhaseIndex: 2,
+              currentPhaseId: "implement",
+            },
+          },
+        ],
+      ]),
+      completedBoard: new Map(),
+    });
+    vi.spyOn(questStore, "getQuest").mockResolvedValueOnce({
+      id: "q-1",
+      questId: "q-1",
+      version: 1,
+      title: "Quest",
+      createdAt: 1,
+      status: "in_progress",
+      description: "Ready",
+      sessionId: "worker-1",
+      claimedAt: 2,
+      leaderSessionId: "leader-1",
+      feedback: [],
+    } as any);
+    const patchSpy = vi.spyOn(questStore, "patchQuest").mockImplementationOnce(
+      async (_id, patch) =>
+        ({
+          id: "q-1",
+          questId: "q-1",
+          version: 1,
+          title: "Quest",
+          createdAt: 1,
+          status: "in_progress",
+          description: "Ready",
+          sessionId: "worker-1",
+          claimedAt: 2,
+          leaderSessionId: "leader-1",
+          feedback: (patch as any).feedback,
+          journeyRuns: (patch as any).journeyRuns,
+        }) as any,
+    );
+
+    const res = await app.request("/api/quests/q-1/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text: "Summary: implemented phase docs",
+        tldr: "Implemented phase docs",
+        author: "agent",
+        sessionId: "worker-1",
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const patch = patchSpy.mock.calls[0]?.[1] as {
+      feedback: Array<{ phaseId?: string; phasePosition?: number; tldr?: string; kind?: string }>;
+      journeyRuns?: Array<{ runId: string; phaseOccurrences: Array<{ occurrenceId: string }> }>;
+    };
+    expect(patch.feedback[0]).toMatchObject({
+      kind: "phase_summary",
+      phaseId: "implement",
+      phasePosition: 3,
+      tldr: "Implemented phase docs",
+    });
+    expect(patch.journeyRuns?.[0]?.runId).toBe("board-leader-1-10");
+    expect(patch.journeyRuns?.[0]?.phaseOccurrences[2]?.occurrenceId).toBe("board-leader-1-10:p3");
+  });
+
+  it("falls back to flat feedback with a warning when inferred board context is missing", async () => {
+    launcher.getSession.mockImplementation((sid: string) =>
+      sid === "worker-1" ? { sessionId: "worker-1", state: "running", cwd: "/test", archived: false } : undefined,
+    );
+    vi.spyOn(questStore, "getQuest").mockResolvedValueOnce({
+      id: "q-1",
+      questId: "q-1",
+      version: 1,
+      title: "Quest",
+      createdAt: 1,
+      status: "in_progress",
+      description: "Ready",
+      sessionId: "worker-1",
+      claimedAt: 2,
+      leaderSessionId: "leader-1",
+      feedback: [],
+    } as any);
+    const patchSpy = vi.spyOn(questStore, "patchQuest").mockResolvedValueOnce({
+      id: "q-1",
+      questId: "q-1",
+      version: 1,
+      title: "Quest",
+      createdAt: 1,
+      status: "in_progress",
+      description: "Ready",
+      sessionId: "worker-1",
+      claimedAt: 2,
+      feedback: [{ author: "agent", text: "Flat fallback", ts: Date.now(), authorSessionId: "worker-1" }],
+    } as any);
+
+    const res = await app.request("/api/quests/q-1/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: "Flat fallback", author: "agent", sessionId: "worker-1" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("x-quest-phase-documentation-warning")).toContain("No active leader board row");
+    const feedback = (patchSpy.mock.calls[0]?.[1] as { feedback: Array<{ phaseId?: string }> }).feedback;
+    expect(feedback[0]?.phaseId).toBeUndefined();
+  });
+
+  it("ignores archived leader board rows during phase inference", async () => {
+    launcher.getSession.mockImplementation((sid: string) => {
+      if (sid === "worker-1") return { sessionId: "worker-1", state: "running", cwd: "/test", archived: false };
+      if (sid === "leader-1")
+        return {
+          sessionId: "leader-1",
+          state: "exited",
+          cwd: "/test",
+          archived: true,
+          isOrchestrator: true,
+        };
+      return undefined;
+    });
+    launcher.listSessions.mockReturnValue([{ sessionId: "leader-1", isOrchestrator: true, archived: true }]);
+    ensureBridgeSession(bridge, "leader-1", {
+      board: new Map([
+        [
+          "q-1",
+          {
+            questId: "q-1",
+            worker: "worker-1",
+            status: "IMPLEMENTING",
+            createdAt: 10,
+            updatedAt: 20,
+            journey: {
+              phaseIds: ["alignment", "implement", "code-review"],
+              activePhaseIndex: 1,
+              currentPhaseId: "implement",
+            },
+          },
+        ],
+      ]),
+      completedBoard: new Map(),
+    });
+    vi.spyOn(questStore, "getQuest").mockResolvedValueOnce({
+      id: "q-1",
+      questId: "q-1",
+      version: 1,
+      title: "Quest",
+      createdAt: 1,
+      status: "in_progress",
+      description: "Ready",
+      sessionId: "worker-1",
+      claimedAt: 2,
+      leaderSessionId: "leader-1",
+      feedback: [],
+    } as any);
+    const patchSpy = vi.spyOn(questStore, "patchQuest").mockResolvedValueOnce({
+      id: "q-1",
+      questId: "q-1",
+      version: 1,
+      title: "Quest",
+      createdAt: 1,
+      status: "in_progress",
+      description: "Ready",
+      sessionId: "worker-1",
+      claimedAt: 2,
+      feedback: [{ author: "agent", text: "Archived fallback", ts: Date.now(), authorSessionId: "worker-1" }],
+    } as any);
+
+    const res = await app.request("/api/quests/q-1/feedback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: "Archived fallback", author: "agent", sessionId: "worker-1" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("x-quest-phase-documentation-warning")).toContain("No active leader board row");
+    const patch = patchSpy.mock.calls[0]?.[1] as {
+      feedback: Array<{ phaseId?: string }>;
+      journeyRuns?: unknown[];
+    };
+    expect(patch.feedback[0]?.phaseId).toBeUndefined();
+    expect(patch.journeyRuns).toBeUndefined();
+  });
+
   it("upserts the latest agent summary comment instead of appending a near-duplicate summary entry", async () => {
     launcher.getSession.mockReturnValue({
       sessionId: "session-1",

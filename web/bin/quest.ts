@@ -57,6 +57,7 @@ import {
   tldrWarningForContent,
   QUEST_TLDR_WARNING_HEADER,
 } from "../server/quest-tldr.js";
+import { QUEST_PHASE_DOCUMENTATION_WARNING_HEADER } from "../server/quest-phase-docs.js";
 import {
   completionHygieneWarnings,
   feedbackAddWarnings,
@@ -500,7 +501,8 @@ function formatFeedbackEntry(entry: IndexedFeedbackEntry, options: { full?: bool
   const imageNote = entry.images?.length
     ? ` (${entry.images.length} image${entry.images.length === 1 ? "" : "s"})`
     : "";
-  return `#${entry.index} [${entry.author}, ${state}, ${timeAgo(entry.ts)}] ${text}${imageNote}`;
+  const phaseNote = entry.phaseId ? `, ${entry.phaseId}${entry.phasePosition ? `@${entry.phasePosition}` : ""}` : "";
+  return `#${entry.index} [${entry.author}, ${state}${phaseNote}, ${timeAgo(entry.ts)}] ${text}${imageNote}`;
 }
 
 function formatStatusSummary(quest: QuestmasterTask, sessionMetadata?: Map<string, SessionMetadata>): string {
@@ -1583,7 +1585,25 @@ async function cmdFeedbackShow(): Promise<void> {
 }
 
 async function cmdFeedbackAdd(addOptions: { explicitAdd: boolean }): Promise<void> {
-  validateFlags(["text", "text-file", "tldr", "tldr-file", "author", "session", "image", "images", "json"]);
+  validateFlags([
+    "text",
+    "text-file",
+    "tldr",
+    "tldr-file",
+    "author",
+    "session",
+    "image",
+    "images",
+    "phase",
+    "phase-position",
+    "phase-occurrence",
+    "phase-occurrence-id",
+    "journey-run",
+    "kind",
+    "infer-phase",
+    "no-phase",
+    "json",
+  ]);
   const id = positional(addOptions.explicitAdd ? 1 : 0);
   if (!id) {
     die(
@@ -1634,6 +1654,14 @@ async function cmdFeedbackAdd(addOptions: { explicitAdd: boolean }): Promise<voi
         author,
         ...(author === "agent" && sessionId ? { sessionId } : {}),
         ...(uploadedImages?.length ? { images: uploadedImages } : {}),
+        ...(option("phase") ? { phase: option("phase") } : {}),
+        ...(option("phase-position") ? { phasePosition: option("phase-position") } : {}),
+        ...(option("phase-occurrence") ? { phaseOccurrence: option("phase-occurrence") } : {}),
+        ...(option("phase-occurrence-id") ? { phaseOccurrenceId: option("phase-occurrence-id") } : {}),
+        ...(option("journey-run") ? { journeyRunId: option("journey-run") } : {}),
+        ...(option("kind") ? { kind: option("kind") } : {}),
+        ...(flag("infer-phase") ? { inferPhase: true } : {}),
+        ...(flag("no-phase") ? { noPhase: true } : {}),
       }),
       signal: AbortSignal.timeout(5000),
     });
@@ -1643,6 +1671,7 @@ async function cmdFeedbackAdd(addOptions: { explicitAdd: boolean }): Promise<voi
     }
     const quest = (await res.json()) as QuestmasterTask;
     const tldrHeaderWarning = res.headers.get(QUEST_TLDR_WARNING_HEADER);
+    const phaseHeaderWarning = res.headers.get(QUEST_PHASE_DOCUMENTATION_WARNING_HEADER);
     const mutationWarnings = feedbackAddWarnings({ before, after: quest, author, text: text.trim() });
     const tldrWarnings = tldrHeaderWarning
       ? [tldrHeaderWarning]
@@ -1651,12 +1680,12 @@ async function cmdFeedbackAdd(addOptions: { explicitAdd: boolean }): Promise<voi
         : [];
     if (jsonOutput) {
       out(quest);
-      warnAll([...mutationWarnings, ...tldrWarnings]);
+      warnAll([...mutationWarnings, ...tldrWarnings, ...(phaseHeaderWarning ? [phaseHeaderWarning] : [])]);
     } else {
       const entries = "feedback" in quest ? (quest as { feedback?: { author: string; text: string }[] }).feedback : [];
       const imageNote = uploadedImages?.length ? `, ${uploadedImages.length} image(s)` : "";
       console.log(`Added feedback to ${quest.questId} (${entries?.length ?? 0} entries total${imageNote})`);
-      warnAll([...mutationWarnings, ...tldrWarnings]);
+      warnAll([...mutationWarnings, ...tldrWarnings, ...(phaseHeaderWarning ? [phaseHeaderWarning] : [])]);
     }
   } catch (e) {
     die((e as Error).message);
@@ -1860,9 +1889,9 @@ Commands:
   edit   <id> [--title "..." | --title-file <path>|-] [--desc "..." | --desc-file <path>|-] [--tldr "..." | --tldr-file <path>|-] [--tags "t1,t2"] [--json]
                                                          Edit in place
   check  <id> <index> [--json]                           Toggle verification item
-  feedback <id> [--text "..." | --text-file <path>|-] [--tldr "..." | --tldr-file <path>|-] [--author agent|human] [--session <sid>] [--image <path>] [--images "p1,p2"] [--json]
+  feedback <id> [--text "..." | --text-file <path>|-] [--tldr "..." | --tldr-file <path>|-] [--author agent|human] [--session <sid>] [--phase <id>] [--phase-position <n>] [--journey-run <id>] [--kind <kind>] [--no-phase] [--image <path>] [--images "p1,p2"] [--json]
                                                          Add feedback entry
-  feedback add <id> [--text "..." | --text-file <path>|-] [--tldr "..." | --tldr-file <path>|-] [--author agent|human] [--session <sid>] [--image <path>] [--images "p1,p2"] [--json]
+  feedback add <id> [--text "..." | --text-file <path>|-] [--tldr "..." | --tldr-file <path>|-] [--author agent|human] [--session <sid>] [--phase <id>] [--phase-position <n>] [--journey-run <id>] [--kind <kind>] [--no-phase] [--image <path>] [--images "p1,p2"] [--json]
                                                          Add feedback entry explicitly
   feedback list <id> [--last N] [--author human|agent|all] [--unaddressed] [--json]
                                                          List indexed feedback entries

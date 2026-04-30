@@ -1689,6 +1689,52 @@ describe("feedback", () => {
     expect(fb![0].author).toBe("human");
   });
 
+  it("preserves scoped phase documentation metadata and Journey runs across transitions", async () => {
+    await setupVerificationQuest();
+    const entry = {
+      author: "agent" as const,
+      kind: "phase_summary" as const,
+      text: "Summary: implemented phase docs",
+      tldr: "Phase docs done",
+      ts: Date.now(),
+      journeyRunId: "run-1",
+      phaseOccurrenceId: "run-1:p3",
+      phaseId: "implement" as const,
+      phaseIndex: 2,
+      phasePosition: 3,
+      phaseOccurrence: 1,
+    };
+    const run: import("./quest-types.js").QuestJourneyRun = {
+      runId: "run-1",
+      source: "board" as const,
+      phaseIds: ["alignment", "explore", "implement"],
+      status: "active" as const,
+      createdAt: 1,
+      updatedAt: 2,
+      phaseOccurrences: [
+        {
+          occurrenceId: "run-1:p3",
+          phaseId: "implement" as const,
+          phaseIndex: 2,
+          phasePosition: 3,
+          phaseOccurrence: 1,
+          status: "active" as const,
+        },
+      ],
+    };
+
+    await questStore.patchQuest("q-1", { feedback: [entry], journeyRuns: [run] });
+    const result = await questStore.transitionQuest("q-1", { status: "in_progress", sessionId: "sess-1" });
+
+    expect(result?.feedback?.[0]).toMatchObject({
+      kind: "phase_summary",
+      tldr: "Phase docs done",
+      phaseId: "implement",
+      phaseOccurrenceId: "run-1:p3",
+    });
+    expect(result?.journeyRuns?.[0]).toMatchObject({ runId: "run-1" });
+  });
+
   it("clears feedback when set to empty array", async () => {
     await setupVerificationQuest();
     const entry = { author: "human" as const, text: "Some feedback", ts: Date.now() };

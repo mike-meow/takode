@@ -82,8 +82,8 @@ quest later  <id> [--json]                                    Move review-pendin
 quest inbox  <id> [--json]                                    Move review-pending quest back to inbox
 quest edit   <id> [--title "..." | --title-file <path>|-] [--desc "..." | --desc-file <path>|-] [--tldr "..." | --tldr-file <path>|-] [--tags "t1,t2"] [--json]     Edit in place (NEVER use to create)
 quest check  <id> <index> [--json]                            Toggle verification item
-quest feedback <id> [--text "..." | --text-file <path>|-] [--tldr "..." | --tldr-file <path>|-] [--author agent|human] [--image <path>] [--images "p1,p2"] [--json]  Add feedback entry
-quest feedback add <id> [--text "..." | --text-file <path>|-] [--tldr "..." | --tldr-file <path>|-] [--author agent|human] [--image <path>] [--images "p1,p2"] [--json]  Add feedback entry explicitly
+quest feedback <id> [--text "..." | --text-file <path>|-] [--tldr "..." | --tldr-file <path>|-] [--author agent|human] [--phase <id>] [--phase-position <n>] [--journey-run <id>] [--kind <kind>] [--no-phase] [--image <path>] [--images "p1,p2"] [--json]  Add feedback entry
+quest feedback add <id> [--text "..." | --text-file <path>|-] [--tldr "..." | --tldr-file <path>|-] [--author agent|human] [--phase <id>] [--phase-position <n>] [--journey-run <id>] [--kind <kind>] [--no-phase] [--image <path>] [--images "p1,p2"] [--json]  Add feedback entry explicitly
 quest feedback list <id> [--last N] [--author human|agent|all] [--unaddressed] [--json]  List indexed feedback entries
 quest feedback latest <id> [--author human|agent|all] [--unaddressed] [--full] [--json]  Show latest matching feedback
 quest feedback show <id> <index> [--json]                     Show one indexed feedback entry
@@ -204,6 +204,13 @@ quest transition q-12 --status in_progress --desc-file /tmp/quest-description.md
 | `--tldr-file <path>` | Read TLDR metadata from a file, or use `-` to read from stdin |
 | `--author agent\|human` | Who wrote this (default: "agent") |
 | `--session <id>` | Session ID |
+| `--phase <id>` | Manually attach the entry to a Quest Journey phase |
+| `--phase-position <n>` | Manually attach to a 1-based phase position, useful for repeated phases |
+| `--phase-occurrence <n>` | Manually attach to a repeated occurrence of the named phase |
+| `--phase-occurrence-id <id>` | Attach to an existing durable phase occurrence ID |
+| `--journey-run <id>` | Attach to an existing durable Journey run ID |
+| `--kind <kind>` | Structured entry kind: comment, phase-summary, phase-finding, review, artifact, or system |
+| `--no-phase` | Force a flat unscoped feedback entry even when phase inference is available |
 | `--image <path>` | Attach an image (can repeat: --image a.png --image b.png) |
 | `--images "a.png,b.png"` | Attach multiple images (comma-separated) |
 | `--json` | Output JSON |
