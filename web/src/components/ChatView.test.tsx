@@ -154,6 +154,8 @@ vi.mock("./WorkBoardBar.js", () => ({
     currentThreadLabel,
     onReturnToMain,
     onSelectThread,
+    openThreadKeys = [],
+    onCloseThreadTab,
     threadRows = [],
     attentionRecords = [],
   }: {
@@ -161,6 +163,8 @@ vi.mock("./WorkBoardBar.js", () => ({
     currentThreadLabel?: string;
     onReturnToMain?: () => void;
     onSelectThread?: (threadKey: string) => void;
+    openThreadKeys?: string[];
+    onCloseThreadTab?: (threadKey: string) => void;
     threadRows?: Array<{ threadKey: string; questId?: string; title: string; messageCount?: number }>;
     attentionRecords?: Array<unknown>;
   }) => (
@@ -169,6 +173,7 @@ vi.mock("./WorkBoardBar.js", () => ({
       data-current-thread-key={currentThreadKey}
       data-current-thread-label={currentThreadLabel}
       data-attention-count={attentionRecords.length}
+      data-open-thread-keys={openThreadKeys.join(",")}
     >
       {onSelectThread && (
         <>
@@ -191,6 +196,18 @@ vi.mock("./WorkBoardBar.js", () => ({
           ))}
         </>
       )}
+      {onCloseThreadTab &&
+        openThreadKeys.map((threadKey) => (
+          <button
+            type="button"
+            key={`close-${threadKey}`}
+            data-testid="mock-workboard-close-tab"
+            data-thread-key={threadKey}
+            onClick={() => onCloseThreadTab(threadKey)}
+          >
+            Close {threadKey}
+          </button>
+        ))}
       {onReturnToMain && (
         <button type="button" onClick={onReturnToMain}>
           Return to Main
@@ -274,6 +291,8 @@ import { SAVE_THREAD_VIEWPORT_EVENT } from "../utils/thread-viewport.js";
 
 beforeEach(() => {
   resetStore();
+  localStorage.clear();
+  localStorage.setItem("cc-server-id", "test-server");
   window.location.hash = "#/session/s1";
   mockUnarchiveSession.mockClear();
   mockRelaunchSession.mockClear();
@@ -419,6 +438,7 @@ describe("ChatView backend banners", () => {
     expect(scope.getByTestId("composer")).toHaveAttribute("data-quest-id", "q-941");
     expect(scope.getByTestId("quest-thread-banner")).toHaveTextContent("Viewing quest thread");
     expect(scope.getByTestId("quest-thread-banner")).toHaveTextContent("q-941");
+    expect(scope.getByTestId("work-board-bar")).toHaveAttribute("data-open-thread-keys", "q-941");
   });
 
   it("passes shared attention records into the top workboard navigator", () => {
@@ -459,6 +479,69 @@ describe("ChatView backend banners", () => {
 
     expect(scope.getByTestId("work-board-bar")).toHaveAttribute("data-attention-count", "1");
     expect(scope.getByTestId("mock-workboard-thread")).toHaveAttribute("data-thread-key", "q-941");
+  });
+
+  it("persists opened leader thread tabs locally and closes them without touching server state", () => {
+    resetStore({
+      sessions: new Map([["s1", { backend_state: "connected", backend_error: null, isOrchestrator: true }]]),
+      sdkSessions: [{ sessionId: "s1", archived: false, isOrchestrator: true }],
+      messages: new Map([
+        [
+          "s1",
+          [
+            {
+              id: "m-q941",
+              role: "assistant",
+              content: "q-941 update",
+              timestamp: 2,
+              metadata: { threadRefs: [{ threadKey: "q-941", questId: "q-941", source: "explicit" }] },
+            },
+          ],
+        ],
+      ]),
+      quests: [{ questId: "q-941", title: "Quest thread MVP", status: "in_progress" }],
+    });
+
+    const view = render(<ChatView sessionId="s1" />);
+    const scope = within(view.container);
+
+    fireEvent.click(scope.getByRole("button", { name: /q-941 quest thread mvp/i }));
+    expect(scope.getByTestId("work-board-bar")).toHaveAttribute("data-open-thread-keys", "q-941");
+    expect(localStorage.getItem("test-server:cc-leader-open-thread-tabs:s1")).toBe('["q-941"]');
+
+    fireEvent.click(scope.getByTestId("mock-workboard-close-tab"));
+    expect(scope.getByTestId("message-feed")).toHaveAttribute("data-thread-key", "main");
+    expect(scope.getByTestId("work-board-bar")).toHaveAttribute("data-open-thread-keys", "");
+    expect(localStorage.getItem("test-server:cc-leader-open-thread-tabs:s1")).toBe("[]");
+  });
+
+  it("restores persisted leader thread tabs without selecting them", () => {
+    localStorage.setItem("test-server:cc-leader-open-thread-tabs:s1", '["q-941"]');
+    resetStore({
+      sessions: new Map([["s1", { backend_state: "connected", backend_error: null, isOrchestrator: true }]]),
+      sdkSessions: [{ sessionId: "s1", archived: false, isOrchestrator: true }],
+      messages: new Map([
+        [
+          "s1",
+          [
+            {
+              id: "m-q941",
+              role: "assistant",
+              content: "q-941 update",
+              timestamp: 2,
+              metadata: { threadRefs: [{ threadKey: "q-941", questId: "q-941", source: "explicit" }] },
+            },
+          ],
+        ],
+      ]),
+      quests: [{ questId: "q-941", title: "Quest thread MVP", status: "in_progress" }],
+    });
+
+    const view = render(<ChatView sessionId="s1" />);
+    const scope = within(view.container);
+
+    expect(scope.getByTestId("message-feed")).toHaveAttribute("data-thread-key", "main");
+    expect(scope.getByTestId("work-board-bar")).toHaveAttribute("data-open-thread-keys", "q-941");
   });
 
   it("snapshots the current feed before switching leader threads", () => {
@@ -576,6 +659,7 @@ describe("ChatView backend banners", () => {
     });
     expect(scope.getByTestId("composer")).toHaveAttribute("data-thread-key", "q-941");
     expect(window.location.hash).toBe("#/session/s1?thread=q-941");
+    expect(scope.getByTestId("work-board-bar")).toHaveAttribute("data-open-thread-keys", "q-941");
   });
 
   it("replaces an unavailable leader thread URL with Main after thread sources are loaded", async () => {

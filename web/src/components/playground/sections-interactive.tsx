@@ -1184,7 +1184,7 @@ export function PlaygroundInteractiveSections() {
                       questId: "q-61",
                       title: "Optimize DB queries",
                       status: "PROPOSED",
-                      waitFor: ["q-50", "#8"],
+                      waitForInput: ["n-19"],
                       updatedAt: Date.now(),
                     },
                   ];
@@ -1238,6 +1238,25 @@ export function PlaygroundInteractiveSections() {
                       dedupeKey: "playground-board-bar-rework",
                     },
                     {
+                      id: "playground-board-bar-closed-chip-input",
+                      leaderSessionId: boardSessionId,
+                      type: "needs_input",
+                      source: { kind: "notification", id: "playground-board-bar-closed-chip-input", questId: "q-61" },
+                      questId: "q-61",
+                      threadKey: "q-61",
+                      title: "q-61 needs input",
+                      summary: "The queued thread is blocked on a decision.",
+                      actionLabel: "Answer",
+                      priority: "needs_input",
+                      state: "unresolved",
+                      createdAt: Date.now() - 25_000,
+                      updatedAt: Date.now() - 12_000,
+                      route: { threadKey: "q-61", questId: "q-61" },
+                      chipEligible: true,
+                      ledgerEligible: true,
+                      dedupeKey: "playground-board-bar-closed-chip-input",
+                    },
+                    {
                       id: "playground-board-bar-review",
                       leaderSessionId: boardSessionId,
                       type: "review_ready",
@@ -1279,10 +1298,12 @@ export function PlaygroundInteractiveSections() {
               <div className="border border-cc-border rounded-lg overflow-hidden">
                 <WorkBoardBar
                   sessionId="playground-board-bar"
-                  currentThreadKey="q-61"
-                  currentThreadLabel="q-61"
+                  currentThreadKey="q-42"
+                  currentThreadLabel="q-42"
                   onReturnToMain={() => {}}
                   onSelectThread={() => {}}
+                  openThreadKeys={["q-42", "q-88"]}
+                  onCloseThreadTab={() => {}}
                   threadRows={[
                     {
                       threadKey: "q-42",
@@ -1358,6 +1379,25 @@ export function PlaygroundInteractiveSections() {
                       chipEligible: false,
                       ledgerEligible: true,
                       dedupeKey: "playground-board-bar-rework",
+                    },
+                    {
+                      id: "playground-board-bar-closed-chip-input",
+                      leaderSessionId: "playground-board-bar",
+                      type: "needs_input",
+                      source: { kind: "notification", id: "playground-board-bar-closed-chip-input", questId: "q-61" },
+                      questId: "q-61",
+                      threadKey: "q-61",
+                      title: "q-61 needs input",
+                      summary: "The queued thread is blocked on a decision.",
+                      actionLabel: "Answer",
+                      priority: "needs_input",
+                      state: "unresolved",
+                      createdAt: Date.now() - 25_000,
+                      updatedAt: Date.now() - 12_000,
+                      route: { threadKey: "q-61", questId: "q-61" },
+                      chipEligible: true,
+                      ledgerEligible: true,
+                      dedupeKey: "playground-board-bar-closed-chip-input",
                     },
                     {
                       id: "playground-board-bar-review",

@@ -18,7 +18,7 @@ import {
 import { BoardTable, orderBoardRows } from "./BoardTable.js";
 import type { BoardRowData } from "./BoardTable.js";
 import { scopedGetItem, scopedSetItem } from "../utils/scoped-storage.js";
-import { ALL_THREADS_KEY, isMainThreadKey } from "../utils/thread-projection.js";
+import { ALL_THREADS_KEY, MAIN_THREAD_KEY, isMainThreadKey } from "../utils/thread-projection.js";
 import { isAttentionRecordActive, type AttentionRecord } from "../utils/attention-records.js";
 
 export interface WorkBoardThreadNavigationRow {
@@ -202,6 +202,12 @@ function threadRowDetail(row: WorkBoardThreadNavigationRow): string {
   return `${count} message${count === 1 ? "" : "s"}`;
 }
 
+function doneThreadDetail(row?: WorkBoardThreadNavigationRow): string {
+  if (!row) return "History";
+  if (row.section === "done") return "Done";
+  return threadRowDetail(row);
+}
+
 function mergePrimaryThreadChip(chips: Map<string, PrimaryThreadChip>, chip: PrimaryThreadChip) {
   const existing = chips.get(chip.threadKey);
   if (!existing) {
@@ -291,25 +297,75 @@ function buildPrimaryThreadChips({
   return [...chips.values()].sort((a, b) => b.updatedAt - a.updatedAt || a.threadKey.localeCompare(b.threadKey));
 }
 
-function ThreadChipStrip({
-  chips,
+function buildOpenThreadTabs({
+  openThreadKeys,
+  threadRows,
+  activeThreadChips,
+  activeBoardRows,
+  completedBoardRows,
+}: {
+  openThreadKeys: ReadonlyArray<string>;
+  threadRows: WorkBoardThreadNavigationRow[];
+  activeThreadChips: PrimaryThreadChip[];
+  activeBoardRows: BoardRowData[];
+  completedBoardRows: BoardRowData[];
+}): PrimaryThreadChip[] {
+  const activeByKey = new Map(activeThreadChips.map((chip) => [chip.threadKey, chip]));
+  const rowByKey = new Map(threadRows.map((row) => [normalizeThreadKey(row.threadKey), row]));
+  const boardByKey = new Map(
+    [...activeBoardRows, ...completedBoardRows].map((row) => [normalizeThreadKey(row.questId), row]),
+  );
+  const seen = new Set<string>();
+  const tabs: PrimaryThreadChip[] = [];
+
+  for (const rawKey of openThreadKeys) {
+    const threadKey = normalizeThreadKey(rawKey);
+    if (!threadKey || threadKey === MAIN_THREAD_KEY || threadKey === ALL_THREADS_KEY || seen.has(threadKey)) continue;
+    seen.add(threadKey);
+
+    const active = activeByKey.get(threadKey);
+    const row = rowByKey.get(threadKey);
+    const boardRow = boardByKey.get(threadKey);
+    if (!active && !row && !boardRow) continue;
+
+    tabs.push({
+      threadKey,
+      questId: active?.questId ?? row?.questId ?? boardRow?.questId,
+      title: active?.title ?? row?.title ?? boardRow?.title ?? threadKey,
+      detail: active?.detail ?? (boardRow ? boardRowDetail(boardRow) : doneThreadDetail(row)),
+      messageCount: active?.messageCount ?? row?.messageCount,
+      needsInput: active?.needsInput ?? (boardRow?.waitForInput?.length ?? 0) > 0,
+      route: active?.route,
+      updatedAt: active?.updatedAt ?? boardRow?.updatedAt ?? 0,
+    });
+  }
+
+  return tabs;
+}
+
+function ThreadTabRail({
+  tabs,
+  closedChips,
   sessionId,
   currentThreadKey,
   onSelectThread,
+  onCloseThreadTab,
 }: {
-  chips: PrimaryThreadChip[];
+  tabs: PrimaryThreadChip[];
+  closedChips: PrimaryThreadChip[];
   sessionId: string;
   currentThreadKey: string;
   onSelectThread?: (threadKey: string) => void;
+  onCloseThreadTab?: (threadKey: string) => void;
 }) {
-  const openChip = (chip: PrimaryThreadChip) => {
-    const targetThread = normalizeThreadKey(chip.threadKey || "main");
+  const openThread = (threadKey: string, route?: AttentionRecord["route"]) => {
+    const targetThread = normalizeThreadKey(threadKey || MAIN_THREAD_KEY);
     const selectedThread = normalizeThreadKey(currentThreadKey || "main");
     const scrollToRouteTarget = () => {
-      if (!chip.route?.messageId) return;
+      if (!route?.messageId) return;
       const store = useStore.getState();
-      store.requestScrollToMessage(sessionId, chip.route.messageId);
-      store.setExpandAllInTurn(sessionId, chip.route.messageId);
+      store.requestScrollToMessage(sessionId, route.messageId);
+      store.setExpandAllInTurn(sessionId, route.messageId);
     };
 
     if (onSelectThread && (selectedThread === ALL_THREADS_KEY || selectedThread !== targetThread)) {
@@ -324,47 +380,117 @@ function ThreadChipStrip({
   return (
     <div
       className="border-b border-cc-border bg-cc-card px-3 py-1.5 sm:px-4"
-      data-testid="thread-chip-strip"
-      data-thread-count={chips.length}
+      data-testid="thread-tab-rail"
+      data-open-tab-count={tabs.length + 1}
+      data-closed-chip-count={closedChips.length}
     >
-      {chips.length === 0 ? (
-        <div className="flex min-h-[1.5rem] items-center text-[11px] text-cc-muted" data-testid="thread-empty-state">
-          No active threads
-        </div>
-      ) : (
-        <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto">
-          <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.08em] text-cc-muted/70">
-            Threads
-          </span>
-          {chips.map((chip) => {
-            const selected = isSelectedThread(currentThreadKey, chip.threadKey);
-            const tone = chip.needsInput
-              ? "border-amber-400/35 bg-amber-400/10 text-amber-100 hover:bg-amber-400/15"
-              : selected
-                ? "border-cc-primary/45 bg-cc-primary/12 text-cc-fg"
-                : "border-cc-border/70 bg-cc-hover/35 text-cc-muted hover:bg-cc-hover/65 hover:text-cc-fg";
-            const dot = chip.needsInput ? "bg-amber-400" : selected ? "bg-cc-primary" : "bg-cc-muted/50";
-            return (
-              <button
-                key={chip.threadKey}
-                type="button"
-                onClick={() => openChip(chip)}
-                title={chip.questId ? `${chip.questId}: ${chip.title}` : chip.title}
-                className={`inline-flex max-w-[18rem] shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors ${tone}`}
-                data-testid="thread-chip"
-                data-thread-key={chip.threadKey}
-                data-needs-input={chip.needsInput ? "true" : "false"}
-                aria-pressed={selected}
-              >
-                <span className={`h-2 w-2 shrink-0 rounded-full ${dot}`} aria-hidden="true" />
-                {chip.questId && <span className="shrink-0 font-mono-code">{chip.questId}</span>}
-                <span className="min-w-0 truncate">{chip.title}</span>
-                {chip.detail && <span className="shrink-0 text-[10px] text-cc-muted/80">{chip.detail}</span>}
-              </button>
-            );
-          })}
-        </div>
-      )}
+      <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto">
+        <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.08em] text-cc-muted/70">Tabs</span>
+        <button
+          type="button"
+          onClick={() => openThread(MAIN_THREAD_KEY)}
+          className={`inline-flex max-w-[12rem] shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors ${
+            isSelectedThread(currentThreadKey, MAIN_THREAD_KEY)
+              ? "border-cc-primary/45 bg-cc-primary/12 text-cc-fg"
+              : "border-cc-border/70 bg-cc-hover/35 text-cc-muted hover:bg-cc-hover/65 hover:text-cc-fg"
+          }`}
+          data-testid="thread-main-tab"
+          data-thread-key={MAIN_THREAD_KEY}
+          aria-pressed={isSelectedThread(currentThreadKey, MAIN_THREAD_KEY)}
+        >
+          <span
+            className={`h-2 w-2 shrink-0 rounded-full ${
+              isSelectedThread(currentThreadKey, MAIN_THREAD_KEY) ? "bg-cc-primary" : "bg-cc-muted/50"
+            }`}
+            aria-hidden="true"
+          />
+          <span>Main</span>
+        </button>
+        {tabs.map((tab) => {
+          const selected = isSelectedThread(currentThreadKey, tab.threadKey);
+          const tone = tab.needsInput
+            ? "border-amber-400/35 bg-amber-400/10 text-amber-100 hover:bg-amber-400/15"
+            : selected
+              ? "border-cc-primary/45 bg-cc-primary/12 text-cc-fg"
+              : "border-cc-border/70 bg-cc-hover/35 text-cc-muted hover:bg-cc-hover/65 hover:text-cc-fg";
+          const dot = tab.needsInput ? "bg-amber-400" : selected ? "bg-cc-primary" : "bg-cc-muted/50";
+          return (
+            <button
+              key={tab.threadKey}
+              type="button"
+              onClick={() => openThread(tab.threadKey, tab.route)}
+              title={tab.questId ? `${tab.questId}: ${tab.title}` : tab.title}
+              className={`inline-flex max-w-[18rem] shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors ${tone}`}
+              data-testid="thread-tab"
+              data-thread-key={tab.threadKey}
+              data-needs-input={tab.needsInput ? "true" : "false"}
+              aria-pressed={selected}
+            >
+              <span className={`h-2 w-2 shrink-0 rounded-full ${dot}`} aria-hidden="true" />
+              {tab.questId && <span className="shrink-0 font-mono-code">{tab.questId}</span>}
+              <span className="min-w-0 truncate">{tab.title}</span>
+              {tab.detail && <span className="shrink-0 text-[10px] text-cc-muted/80">{tab.detail}</span>}
+              {onCloseThreadTab && (
+                <span
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Close ${tab.questId ?? tab.title}`}
+                  className="ml-0.5 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded text-cc-muted transition-colors hover:bg-cc-hover hover:text-cc-fg"
+                  data-testid="thread-tab-close"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onCloseThreadTab(tab.threadKey);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" && event.key !== " ") return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    onCloseThreadTab(tab.threadKey);
+                  }}
+                >
+                  <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                    <path d="M3 3l6 6M9 3L3 9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                  </svg>
+                </span>
+              )}
+            </button>
+          );
+        })}
+        {closedChips.length > 0 && (
+          <>
+            <span className="shrink-0 pl-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-cc-muted/70">
+              Active
+            </span>
+            {closedChips.map((chip) => {
+              const selected = isSelectedThread(currentThreadKey, chip.threadKey);
+              const tone = chip.needsInput
+                ? "border-amber-400/35 bg-amber-400/10 text-amber-100 hover:bg-amber-400/15"
+                : selected
+                  ? "border-cc-primary/45 bg-cc-primary/12 text-cc-fg"
+                  : "border-cc-border/70 bg-cc-hover/35 text-cc-muted hover:bg-cc-hover/65 hover:text-cc-fg";
+              const dot = chip.needsInput ? "bg-amber-400" : selected ? "bg-cc-primary" : "bg-cc-muted/50";
+              return (
+                <button
+                  key={chip.threadKey}
+                  type="button"
+                  onClick={() => openThread(chip.threadKey, chip.route)}
+                  title={chip.questId ? `${chip.questId}: ${chip.title}` : chip.title}
+                  className={`inline-flex max-w-[18rem] shrink-0 items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors ${tone}`}
+                  data-testid="thread-chip"
+                  data-thread-key={chip.threadKey}
+                  data-needs-input={chip.needsInput ? "true" : "false"}
+                  aria-pressed={selected}
+                >
+                  <span className={`h-2 w-2 shrink-0 rounded-full ${dot}`} aria-hidden="true" />
+                  {chip.questId && <span className="shrink-0 font-mono-code">{chip.questId}</span>}
+                  <span className="min-w-0 truncate">{chip.title}</span>
+                  {chip.detail && <span className="shrink-0 text-[10px] text-cc-muted/80">{chip.detail}</span>}
+                </button>
+              );
+            })}
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -375,6 +501,8 @@ export function WorkBoardBar({
   currentThreadLabel = "Main",
   onReturnToMain,
   onSelectThread,
+  openThreadKeys = [],
+  onCloseThreadTab,
   threadRows = [],
   attentionRecords = [],
 }: {
@@ -383,6 +511,8 @@ export function WorkBoardBar({
   currentThreadLabel?: string;
   onReturnToMain?: () => void;
   onSelectThread?: (threadKey: string) => void;
+  openThreadKeys?: string[];
+  onCloseThreadTab?: (threadKey: string) => void;
   threadRows?: WorkBoardThreadNavigationRow[];
   attentionRecords?: ReadonlyArray<AttentionRecord>;
 }) {
@@ -425,6 +555,22 @@ export function WorkBoardBar({
   const activeThreadChips = useMemo(
     () => buildPrimaryThreadChips({ activeBoardRows, threadRows, attentionRecords }),
     [activeBoardRows, attentionRecords, threadRows],
+  );
+  const openThreadTabs = useMemo(
+    () =>
+      buildOpenThreadTabs({
+        openThreadKeys,
+        threadRows,
+        activeThreadChips,
+        activeBoardRows,
+        completedBoardRows,
+      }),
+    [activeBoardRows, activeThreadChips, completedBoardRows, openThreadKeys, threadRows],
+  );
+  const openThreadTabKeys = useMemo(() => new Set(openThreadTabs.map((tab) => tab.threadKey)), [openThreadTabs]);
+  const closedActiveThreadChips = useMemo(
+    () => activeThreadChips.filter((chip) => !openThreadTabKeys.has(chip.threadKey)),
+    [activeThreadChips, openThreadTabKeys],
   );
   const boardThreadKeys = useMemo(() => {
     const keys = new Set<string>();
@@ -536,11 +682,13 @@ export function WorkBoardBar({
         )}
       </div>
 
-      <ThreadChipStrip
-        chips={activeThreadChips}
+      <ThreadTabRail
+        tabs={openThreadTabs}
+        closedChips={closedActiveThreadChips}
         sessionId={sessionId}
         currentThreadKey={currentThreadKey}
         onSelectThread={onSelectThread}
+        onCloseThreadTab={onCloseThreadTab}
       />
 
       {/* Expanded board table -- inline, pushes the feed down */}

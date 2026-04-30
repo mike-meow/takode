@@ -30,6 +30,7 @@ import { parseCommandThreadComment, parseThreadTextPrefix } from "../../shared/t
 import { ALL_THREADS_KEY, MAIN_THREAD_KEY, normalizeThreadKey } from "../utils/thread-projection.js";
 import { requestThreadViewportSnapshot } from "../utils/thread-viewport.js";
 import { buildAttentionRecords } from "../utils/attention-records.js";
+import { scopedGetItem, scopedSetItem } from "../utils/scoped-storage.js";
 import type { BoardRowSessionStatus, ChatMessage, QuestmasterTask, SessionAttentionRecord } from "../types.js";
 
 type LeaderThreadRow = {
@@ -291,6 +292,40 @@ function composeThreadKeyForSelection(threadKey: string): string {
   return normalized;
 }
 
+function openThreadTabsKey(sessionId: string): string {
+  return `cc-leader-open-thread-tabs:${sessionId}`;
+}
+
+function shouldPersistOpenThreadTab(threadKey: string): boolean {
+  const normalized = normalizeThreadKey(threadKey);
+  return normalized !== "" && normalized !== MAIN_THREAD_KEY && normalized !== ALL_THREADS_KEY;
+}
+
+function normalizeOpenThreadTabKeys(threadKeys: ReadonlyArray<unknown>): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of threadKeys) {
+    if (typeof value !== "string") continue;
+    const key = normalizeThreadKey(value);
+    if (!shouldPersistOpenThreadTab(key) || seen.has(key)) continue;
+    seen.add(key);
+    result.push(key);
+  }
+  return result;
+}
+
+function readOpenThreadTabKeys(sessionId: string): string[] {
+  if (typeof window === "undefined") return [];
+  const raw = scopedGetItem(openThreadTabsKey(sessionId));
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? normalizeOpenThreadTabKeys(parsed) : [];
+  } catch {
+    return [];
+  }
+}
+
 function isAvailableLeaderThread(threadKey: string, rows: LeaderThreadRow[]): boolean {
   const normalized = normalizeThreadKey(threadKey);
   if (normalized === MAIN_THREAD_KEY || normalized === ALL_THREADS_KEY) return true;
@@ -397,6 +432,7 @@ export function ChatView({
     })),
   );
   const [selectedThreadKey, setSelectedThreadKey] = useState("main");
+  const [openThreadTabKeys, setOpenThreadTabKeys] = useState(() => readOpenThreadTabKeys(sessionId));
   const { activeBoard, completedBoard, messages: allMessages, rows: threadRows } = useLeaderThreadModel(sessionId);
   const sessionNotifications = useStore((s) => s.sessionNotifications.get(sessionId));
   const persistedAttentionRecords = useStore((s) => s.sessionAttentionRecords.get(sessionId));
@@ -443,9 +479,17 @@ export function ChatView({
     [navigationThreadRows, selectedThreadKey],
   );
   const workBoardThreadRows = useMemo(() => toWorkBoardThreadRows(navigationThreadRows), [navigationThreadRows]);
+  const openThreadTab = useCallback((threadKey: string) => {
+    const normalized = normalizeThreadKey(threadKey);
+    if (!shouldPersistOpenThreadTab(normalized)) return;
+    setOpenThreadTabKeys((existing) =>
+      existing.includes(normalized) ? existing : normalizeOpenThreadTabKeys([...existing, normalized]),
+    );
+  }, []);
   const handleSelectThread = useCallback(
     (threadKey: string) => {
       const nextThreadKey = normalizeThreadKey(threadKey || MAIN_THREAD_KEY);
+      openThreadTab(nextThreadKey);
       if (nextThreadKey === normalizeThreadKey(selectedThreadKey)) return;
       requestThreadViewportSnapshot(sessionId);
       setSelectedThreadKey(nextThreadKey);
@@ -453,13 +497,31 @@ export function ChatView({
         navigateToSessionThread(sessionId, nextThreadKey);
       }
     },
-    [preview, selectedThreadKey, sessionId],
+    [openThreadTab, preview, selectedThreadKey, sessionId],
+  );
+  const handleCloseThreadTab = useCallback(
+    (threadKey: string) => {
+      const normalized = normalizeThreadKey(threadKey);
+      setOpenThreadTabKeys((existing) => existing.filter((key) => key !== normalized));
+      if (normalizeThreadKey(selectedThreadKey) === normalized) {
+        handleSelectThread(MAIN_THREAD_KEY);
+      }
+    },
+    [handleSelectThread, selectedThreadKey],
   );
 
   useEffect(() => {
     if (routeSyncEnabled) return;
     setSelectedThreadKey(MAIN_THREAD_KEY);
   }, [routeSyncEnabled, sessionId]);
+
+  useEffect(() => {
+    setOpenThreadTabKeys(readOpenThreadTabKeys(sessionId));
+  }, [sessionId]);
+
+  useEffect(() => {
+    scopedSetItem(openThreadTabsKey(sessionId), JSON.stringify(openThreadTabKeys));
+  }, [openThreadTabKeys]);
 
   useEffect(() => {
     if (!routeSyncEnabled || preview) return;
@@ -495,6 +557,7 @@ export function ChatView({
 
     const nextThreadKey = normalizeThreadKey(routeThreadKey);
     if (isAvailableLeaderThread(nextThreadKey, navigationThreadRows)) {
+      openThreadTab(nextThreadKey);
       if (selectedThreadKey !== nextThreadKey) {
         setSelectedThreadKey(nextThreadKey);
       }
@@ -521,6 +584,7 @@ export function ChatView({
     selectedThreadKey,
     sessionId,
     navigationThreadRows,
+    openThreadTab,
   ]);
 
   // Within-session search
@@ -679,6 +743,8 @@ export function ChatView({
           currentThreadLabel={isLeaderSession ? selectedThreadLabel : "Main"}
           onReturnToMain={isLeaderSession ? () => handleSelectThread(MAIN_THREAD_KEY) : undefined}
           onSelectThread={isLeaderSession ? handleSelectThread : undefined}
+          openThreadKeys={isLeaderSession ? openThreadTabKeys : undefined}
+          onCloseThreadTab={isLeaderSession ? handleCloseThreadTab : undefined}
           threadRows={isLeaderSession ? workBoardThreadRows : undefined}
           attentionRecords={isLeaderSession ? attentionRecords : undefined}
         />
