@@ -389,6 +389,20 @@ describe("assistant-message-controller", () => {
     expect(content[0].type === "text" ? content[0].text : "").toBe("[thread:side]\nWrong marker");
   });
 
+  it("rejects no-space same-line leader thread prefixes", () => {
+    const session = makeSession();
+    session.state.isOrchestrator = true;
+
+    const msg = routeAssistantMessage(session, [{ type: "text", text: "[thread:q-941]No separator" }]);
+
+    expect(msg).toMatchObject({
+      type: "assistant",
+      threadRoutingError: { reason: "invalid", marker: "[thread:q-941]" },
+    });
+    const content = msg.type === "assistant" ? msg.message.content : [];
+    expect(content[0].type === "text" ? content[0].text : "").toBe("[thread:q-941]No separator");
+  });
+
   it("strips Bash command thread comments and persists command thread metadata", () => {
     const session = makeSession();
     session.state.isOrchestrator = true;

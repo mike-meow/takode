@@ -281,7 +281,7 @@ describe("normalizeHistoryMessageToChatMessages", () => {
     });
   });
 
-  it("repairs persisted assistant thread prefixes in no-space same-line form", () => {
+  it("leaves no-space same-line quest thread prefixes unrepaired", () => {
     const normalized = normalizeHistoryMessageToChatMessages(
       {
         type: "assistant",
@@ -305,13 +305,9 @@ describe("normalizeHistoryMessageToChatMessages", () => {
       14,
     )[0]!;
 
-    expect(normalized.content).toBe("Implementation update");
-    expect(normalized.contentBlocks).toEqual([{ type: "text", text: "Implementation update" }]);
-    expect(normalized.metadata).toMatchObject({
-      threadKey: "q-941",
-      questId: "q-941",
-      threadRefs: [{ threadKey: "q-941", questId: "q-941", source: "explicit" }],
-    });
+    expect(normalized.content).toBe("[thread:q-941]Implementation update");
+    expect(normalized.contentBlocks).toEqual([{ type: "text", text: "[thread:q-941]Implementation update" }]);
+    expect(normalized.metadata).toBeUndefined();
   });
 
   it("hides persisted main thread markers without adding a quest projection", () => {
@@ -343,7 +339,7 @@ describe("normalizeHistoryMessageToChatMessages", () => {
     expect(normalized.metadata).toEqual({ threadKey: "main" });
   });
 
-  it("hides persisted main thread markers in no-space same-line form", () => {
+  it("leaves no-space same-line main thread prefixes unrepaired", () => {
     const normalized = normalizeHistoryMessageToChatMessages(
       {
         type: "assistant",
@@ -367,9 +363,9 @@ describe("normalizeHistoryMessageToChatMessages", () => {
       15,
     )[0]!;
 
-    expect(normalized.content).toBe("Using quest workflow");
-    expect(normalized.contentBlocks).toEqual([{ type: "text", text: "Using quest workflow" }]);
-    expect(normalized.metadata).toEqual({ threadKey: "main" });
+    expect(normalized.content).toBe("[thread:main]Using quest workflow");
+    expect(normalized.contentBlocks).toEqual([{ type: "text", text: "[thread:main]Using quest workflow" }]);
+    expect(normalized.metadata).toBeUndefined();
   });
 
   it("repairs persisted Bash command thread comments as tool routing metadata", () => {

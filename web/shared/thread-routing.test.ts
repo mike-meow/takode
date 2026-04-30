@@ -25,20 +25,43 @@ describe("thread-routing", () => {
       target: { threadKey: "q-941", questId: "q-941" },
       body: "Same-line implementation update",
     });
-    expect(parseThreadTextPrefix("[thread:q-941]Implementation update")).toEqual({
-      ok: true,
-      target: { threadKey: "q-941", questId: "q-941" },
-      body: "Implementation update",
-    });
     expect(parseThreadTextPrefix("[thread:main]\tSame-line main note")).toEqual({
       ok: true,
       target: { threadKey: "main" },
       body: "Same-line main note",
     });
-    expect(parseThreadTextPrefix("[thread:main]Using quest workflow")).toEqual({
+    expect(parseThreadTextPrefix("[thread:main]")).toEqual({
       ok: true,
       target: { threadKey: "main" },
-      body: "Using quest workflow",
+      body: "",
+    });
+  });
+
+  it("strips only one separator after the text prefix", () => {
+    // Preserve intentional leading whitespace in the displayed body after the
+    // single routing separator has been consumed.
+    expect(parseThreadTextPrefix("[thread:q-941]  Implementation update")).toEqual({
+      ok: true,
+      target: { threadKey: "q-941", questId: "q-941" },
+      body: " Implementation update",
+    });
+    expect(parseThreadTextPrefix("[thread:main]\n\nGeneral note")).toEqual({
+      ok: true,
+      target: { threadKey: "main" },
+      body: "\nGeneral note",
+    });
+    expect(parseThreadTextPrefix("[thread:main]\r\nGeneral note")).toEqual({
+      ok: true,
+      target: { threadKey: "main" },
+      body: "General note",
+    });
+  });
+
+  it("preserves established leading-whitespace tolerance before the marker", () => {
+    expect(parseThreadTextPrefix("\n  [thread:q-941] Indented marker")).toEqual({
+      ok: true,
+      target: { threadKey: "q-941", questId: "q-941" },
+      body: "Indented marker",
     });
   });
 
@@ -48,6 +71,15 @@ describe("thread-routing", () => {
       ok: false,
       reason: "invalid",
       marker: "[thread:foo]",
+    });
+    expect(parseThreadTextPrefix("[thread:q-941]No separator")).toMatchObject({
+      ok: false,
+      reason: "invalid",
+      marker: "[thread:q-941]",
+    });
+    expect(parseThreadTextPrefix("Prose before [thread:q-941] No route")).toMatchObject({
+      ok: false,
+      reason: "missing",
     });
   });
 

@@ -7,7 +7,7 @@ export type ThreadRouteParseResult =
   | { ok: true; target: ThreadRouteTarget; body: string }
   | { ok: false; reason: "missing" | "invalid"; marker?: string; body: string };
 
-const TEXT_THREAD_MARKER_RE = /^\[thread:(main|q-\d+)\](.*)$/;
+const TEXT_THREAD_MARKER_RE = /^\[thread:(main|q-\d+)\](?=$|[ \t]|\r?\n)/;
 const COMMAND_THREAD_COMMENT_RE = /^#\s*thread:(main|q-\d+)\s*$/;
 const QUEST_MENTION_RE = /\bq-\d+\b/gi;
 const LEADING_QUEST_TARGET_RE = /^(?:work on|advance|review|reopen)\b/i;
@@ -42,19 +42,20 @@ export function formatThreadMarker(threadKey: string): string {
 }
 
 export function parseThreadTextPrefix(text: string): ThreadRouteParseResult {
-  const lines = text.split(/\r?\n/);
-  const first = firstNonEmptyLine(lines);
-  if (!first) return { ok: false, reason: "missing", body: text };
+  const markerStart = firstNonWhitespaceIndex(text);
+  if (markerStart === null) return { ok: false, reason: "missing", body: text };
 
-  const match = TEXT_THREAD_MARKER_RE.exec(first.text);
+  const candidate = text.slice(markerStart);
+  const match = TEXT_THREAD_MARKER_RE.exec(candidate);
   if (!match) {
-    const markerLike = first.text.toLowerCase().startsWith("[thread:") ? first.text : undefined;
+    const markerLike = candidate.toLowerCase().startsWith("[thread:") ? extractThreadMarkerLike(candidate) : undefined;
     return { ok: false, reason: markerLike ? "invalid" : "missing", marker: markerLike, body: text };
   }
 
   const target = normalizeThreadTarget(match[1]);
-  if (!target) return { ok: false, reason: "invalid", marker: first.text, body: text };
-  return { ok: true, target, body: removeThreadMarker(lines, first.index, match[2] ?? "") };
+  const marker = match[0];
+  if (!target) return { ok: false, reason: "invalid", marker, body: text };
+  return { ok: true, target, body: removeSingleThreadMarkerSeparator(candidate.slice(marker.length)) };
 }
 
 export function parseCommandThreadComment(command: string): ThreadRouteTarget | null {
@@ -78,6 +79,15 @@ function firstNonEmptyLine(lines: string[]): { index: number; text: string } | n
     if (text) return { index, text };
   }
   return null;
+}
+
+function firstNonWhitespaceIndex(text: string): number | null {
+  const match = /\S/.exec(text);
+  return match ? match.index : null;
+}
+
+function extractThreadMarkerLike(text: string): string {
+  return /^\[thread:[^\]]*\]/.exec(text)?.[0] ?? text.split(/\r?\n/, 1)[0] ?? text;
 }
 
 function uniqueQuestMentions(text: string): string[] {
@@ -110,9 +120,10 @@ function removeLineAt(lines: string[], index: number): string {
   return next.join("\n").replace(/^\n+/, "");
 }
 
-function removeThreadMarker(lines: string[], index: number, sameLineBody: string): string {
-  if (!sameLineBody.trim()) return removeLineAt(lines, index);
-  const next = lines.slice();
-  next[index] = sameLineBody.replace(/^[ \t]+/, "");
-  return next.join("\n").replace(/^\n+/, "");
+function removeSingleThreadMarkerSeparator(body: string): string {
+  if (body.startsWith("\r\n")) return body.slice(2);
+  if (body.startsWith("\n") || body.startsWith("\r") || body.startsWith(" ") || body.startsWith("\t")) {
+    return body.slice(1);
+  }
+  return body;
 }

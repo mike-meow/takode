@@ -267,6 +267,19 @@ describe("codex-adapter-browser-message-controller thread routing", () => {
     expect(content[0]).toMatchObject({ type: "text", text: "Unmarked Codex leader text" });
   });
 
+  it("rejects no-space same-line leader thread prefixes", async () => {
+    const session = makeSession();
+
+    const msg = await routeAssistantMessage(session, [{ type: "text", text: "[thread:q-941]No separator" }]);
+
+    expect(msg).toMatchObject({
+      type: "assistant",
+      threadRoutingError: { reason: "invalid", marker: "[thread:q-941]" },
+    });
+    const content = msg.type === "assistant" ? msg.message.content : [];
+    expect(content[0].type === "text" ? content[0].text : "").toBe("[thread:q-941]No separator");
+  });
+
   it("strips Bash command thread comments and persists command thread metadata", async () => {
     const session = makeSession();
 
