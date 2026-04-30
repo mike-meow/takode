@@ -641,13 +641,19 @@ describe("MessageFeed - collapsed turns", () => {
     expect(screen.queryByText("6 activities in q-998")).toBeNull();
   });
 
-  it("recovers legacy Main-routed herd messages from unambiguous quest content", () => {
+  it("recovers legacy Main-routed herd messages from transcript target content", () => {
     const sid = "test-main-legacy-herd-content-route";
-    const content = '#1329 | turn_end after 10s\n[114] leader: "Review [q-1009](quest:q-1009) now."';
+    const content = [
+      "1 event from 1 session",
+      "",
+      "#1323 | turn_end | ✓ 1m 52s | tools: 29 | [350]-[414] | 1 user msg [350]",
+      '[350] leader: "Review [q-1005](quest:q-1005) in the Outcome Review phase.',
+      '[414] "ACCEPT: screenshots show `q-99` inserted after Main for [q-1005](quest:q-1005)."',
+    ].join("\n");
     setStoreMessages(sid, [
       makeMessage({ id: "u1", role: "user", content: "Main-only setup" }),
       makeMessage({
-        id: "herd-q1009",
+        id: "herd-q1005",
         role: "user",
         content,
         agentSource: { sessionId: "herd-events", sessionLabel: "Herd Events" },
@@ -658,16 +664,16 @@ describe("MessageFeed - collapsed turns", () => {
     const mainView = render(<MessageFeed sessionId={sid} />);
 
     expect(screen.getByText("Main-only setup")).toBeTruthy();
-    expect(screen.queryByText(content)).toBeNull();
+    expect(screen.queryByText("Outcome Review phase.")).toBeNull();
     expect(screen.queryByTestId("cross-thread-activity-marker")).toBeNull();
     mainView.unmount();
 
-    const questView = render(<MessageFeed sessionId={sid} threadKey="q-1009" />);
-    expect(screen.getByText("#1329")).toBeTruthy();
+    const questView = render(<MessageFeed sessionId={sid} threadKey="q-1005" />);
+    expect(screen.getByText("#1323")).toBeTruthy();
     questView.unmount();
 
     render(<MessageFeed sessionId={sid} threadKey="all" />);
-    expect(screen.getByText("#1329")).toBeTruthy();
+    expect(screen.getByText("#1323")).toBeTruthy();
   });
 
   it("shows marker-backed attachment summaries in Main and hides the covered backfill messages", () => {

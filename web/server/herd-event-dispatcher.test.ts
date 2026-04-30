@@ -487,6 +487,55 @@ describe("HerdEventDispatcher", () => {
     dispatcher.destroy();
   });
 
+  it("infers turn_end quest routing from a transcript leader target before later quest context", () => {
+    const { bridge, launcher } = createMocks();
+    vi.mocked(bridge.isSessionIdle).mockReturnValue(true);
+    vi.mocked(bridge.getSession).mockImplementation((sessionId) =>
+      sessionId === "worker-1"
+        ? {
+            messageHistory: [
+              {
+                type: "user_message",
+                id: "u-outcome-review",
+                content: [
+                  "1 event from 1 session",
+                  "",
+                  "#1323 | turn_end | ✓ 1m 52s | tools: 29 | [350]-[414] | 1 user msg [350]",
+                  '[350] leader: "Review [q-1005](quest:q-1005) in the Outcome Review phase.',
+                  '[414] "ACCEPT: screenshots show `q-99` inserted after Main for [q-1005](quest:q-1005)."',
+                ].join("\n"),
+                timestamp: 1,
+                agentSource: { sessionId: "leader-1", sessionLabel: "#1286" },
+              },
+            ] as any,
+          }
+        : undefined,
+    );
+    const dispatcher = new HerdEventDispatcher(bridge, launcher);
+    dispatcher.setupForOrchestrator("orch-1");
+
+    triggerEvent(
+      makeEvent({
+        event: "turn_end",
+        data: {
+          duration_ms: 1000,
+          reason: "result",
+          msgRange: { from: 0, to: 0 },
+          userMsgs: { count: 1, ids: [0] },
+        },
+      }),
+    );
+    vi.advanceTimersByTime(600);
+
+    expect(bridge.injectUserMessage).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(bridge.injectUserMessage).mock.calls[0][4]).toMatchObject({
+      threadKey: "q-1005",
+      questId: "q-1005",
+    });
+
+    dispatcher.destroy();
+  });
+
   it("keeps ambiguous multi-quest turn_end prompts in Main", () => {
     const { bridge, launcher } = createMocks();
     vi.mocked(bridge.isSessionIdle).mockReturnValue(true);

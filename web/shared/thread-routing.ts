@@ -29,8 +29,8 @@ export function inferThreadTargetFromTextContent(text: string): ThreadRouteTarge
     return normalizeThreadTarget(uniqueQuestIds[0]);
   }
 
-  const leadingLine = firstNonEmptyLine(text.split(/\r?\n/))?.text ?? "";
-  if (!LEADING_QUEST_TARGET_RE.test(leadingLine)) return null;
+  const leadingLine = firstLeadingQuestTargetLine(text);
+  if (!leadingLine) return null;
 
   const leadingQuestIds = uniqueQuestMentions(leadingLine);
   if (leadingQuestIds.length !== 1) return null;
@@ -86,6 +86,22 @@ function uniqueQuestMentions(text: string): string[] {
     mentions.add(match[0].toLowerCase());
   }
   return [...mentions];
+}
+
+function firstLeadingQuestTargetLine(text: string): string | null {
+  for (const line of text.split(/\r?\n/)) {
+    const candidate = stripTranscriptPrefix(line.trim());
+    if (!candidate) continue;
+    if (LEADING_QUEST_TARGET_RE.test(candidate)) return candidate;
+    if (uniqueQuestMentions(candidate).length > 0) return null;
+  }
+  return null;
+}
+
+function stripTranscriptPrefix(line: string): string {
+  const withoutIndex = line.replace(/^\[\d+\]\s+/, "");
+  const withoutSpeaker = withoutIndex.replace(/^(?:leader|user|human|system|agent(?:\([^)]*\))?)\s*:\s*/i, "");
+  return withoutSpeaker.replace(/^["']+/, "").trimStart();
 }
 
 function removeLineAt(lines: string[], index: number): string {

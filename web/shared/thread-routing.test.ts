@@ -72,6 +72,25 @@ describe("thread-routing", () => {
       threadKey: "q-1009",
       questId: "q-1009",
     });
+    expect(
+      inferThreadTargetFromTextContent(
+        [
+          "1 event from 1 session",
+          "",
+          "#1323 | turn_end | ✓ 1m 52s | tools: 29 | [350]-[414] | 1 user msg [350]",
+          '[350] leader: "Review [q-1005](quest:q-1005) in the Outcome Review phase.',
+          '[414] "ACCEPT: evidence shows `q-99` inserted after Main for [q-1005](quest:q-1005)."',
+        ].join("\n"),
+      ),
+    ).toEqual({
+      threadKey: "q-1005",
+      questId: "q-1005",
+    });
     expect(inferThreadTargetFromTextContent("Compare q-1009 with q-1010 before deciding.")).toBeNull();
+    expect(
+      inferThreadTargetFromTextContent(
+        'Compare q-1008 with q-1009 first.\n[10] leader: "Review [q-1010](quest:q-1010)."',
+      ),
+    ).toBeNull();
   });
 });
