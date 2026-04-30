@@ -357,6 +357,30 @@ describe("WorkBoardBar", () => {
     expect(getAllByTestId("thread-chip").map((chip) => chip.getAttribute("data-thread-key"))).toEqual(["q-2"]);
   });
 
+  it("colors closed thread-chip titles by board phase without rendering a separate phase label", () => {
+    resetStore({
+      sdkSessions: [{ sessionId: "s1", isOrchestrator: true }],
+      sessionBoards: new Map([["s1", BOARD_DATA]]),
+    });
+
+    const { getAllByTestId } = render(<WorkBoardBar sessionId="s1" />);
+
+    const implementingChip = getAllByTestId("thread-chip").find(
+      (chip) => chip.getAttribute("data-thread-key") === "q-1",
+    )!;
+    const implementingTitle = within(implementingChip).getByTestId("thread-tab-title");
+    expect(implementingTitle).toHaveStyle({
+      color: getQuestJourneyPhaseForState("IMPLEMENTING")?.color.accent,
+    });
+    expect(implementingTitle).toHaveTextContent("q-1");
+    expect(implementingTitle).toHaveTextContent("Fix bug");
+    expect(within(implementingChip).queryByText("Implement")).not.toBeInTheDocument();
+
+    const queuedChip = getAllByTestId("thread-chip").find((chip) => chip.getAttribute("data-thread-key") === "q-2")!;
+    expect(within(queuedChip).getByTestId("thread-tab-title")).toHaveAttribute("data-title-color", "");
+    expect(within(queuedChip).queryByText("Queued")).not.toBeInTheDocument();
+  });
+
   it("shrinks open tabs like browser tabs before falling back to horizontal scrolling", () => {
     const onCloseThreadTab = vi.fn();
     resetStore({
