@@ -1,10 +1,10 @@
 /**
  * Persistent work board widget for orchestrator sessions.
  *
- * Positioned above the message feed in ChatView. The tab rail stays visible for
- * leader navigation, while the Work Board summary/table behaves like a compact
- * Main-thread banner. Once opened, it stays open until the user explicitly
- * collapses it.
+ * Positioned above the message feed in ChatView. The tab rail stays visually
+ * anchored for leader navigation, while the Work Board summary/table behaves
+ * like a compact Main-thread banner below the tabs. Once opened, it stays open
+ * until the user explicitly collapses it.
  */
 import type { CSSProperties, ReactNode } from "react";
 import { useMemo, useState, useEffect, useRef } from "react";
@@ -86,7 +86,8 @@ function isSelectedThread(currentThreadKey: string, targetThreadKey: string): bo
 }
 
 function isActiveOutputThread(activeTurnRoute: ActiveTurnRoute | null | undefined, targetThreadKey: string): boolean {
-  return normalizeThreadKey(activeTurnRoute?.threadKey ?? MAIN_THREAD_KEY) === normalizeThreadKey(targetThreadKey);
+  if (!activeTurnRoute?.threadKey) return false;
+  return normalizeThreadKey(activeTurnRoute.threadKey) === normalizeThreadKey(targetThreadKey);
 }
 
 function rowMatchesQuery(row: BoardRowData, query: string): boolean {
@@ -825,6 +826,16 @@ export function WorkBoardBar({
 
   return (
     <div className="shrink-0 flex flex-col min-h-0">
+      <ThreadTabRail
+        mainState={mainThreadState}
+        tabs={unifiedThreadTabs}
+        sessionId={sessionId}
+        currentThreadKey={currentThreadKey}
+        onSelectThread={onSelectThread}
+        onCloseThreadTab={onCloseThreadTab ? handleCloseThreadTab : undefined}
+        newTabKeys={newThreadTabKeys}
+      />
+
       {showMainWorkBoard && (
         <div
           className="flex min-w-0 items-center gap-2 border-b border-cc-border bg-cc-card px-3 py-1.5 sm:px-4"
@@ -873,16 +884,6 @@ export function WorkBoardBar({
           </button>
         </div>
       )}
-
-      <ThreadTabRail
-        mainState={mainThreadState}
-        tabs={unifiedThreadTabs}
-        sessionId={sessionId}
-        currentThreadKey={currentThreadKey}
-        onSelectThread={onSelectThread}
-        onCloseThreadTab={onCloseThreadTab ? handleCloseThreadTab : undefined}
-        newTabKeys={newThreadTabKeys}
-      />
 
       {/* Expanded board table -- inline, pushes the feed down */}
       {showMainWorkBoard && expanded && (

@@ -287,6 +287,10 @@ describe("WorkBoardBar", () => {
     expect(getByText("1 Queued")).toBeInTheDocument();
     // Item count should show total
     expect(getByText("2 items")).toBeInTheDocument();
+    expect(
+      getByTestId("thread-tab-rail").compareDocumentPosition(getByTestId("workboard-main-banner")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("hides the Work Board banner and table on quest threads while keeping the tab rail", () => {
@@ -629,6 +633,21 @@ describe("WorkBoardBar", () => {
     expect(mainTitle).not.toHaveClass("rounded");
   });
 
+  it("does not glow selected Main without explicit active output in Main", () => {
+    resetStore({
+      sdkSessions: [{ sessionId: "s1", isOrchestrator: true }],
+      sessionBoards: new Map([["s1", []]]),
+      sessionStatus: new Map([["s1", "running"]]),
+      activeTurnRoutes: new Map(),
+    });
+
+    const { getByTestId } = render(<WorkBoardBar sessionId="s1" currentThreadKey="main" />);
+
+    const mainTitle = within(getByTestId("thread-main-tab")).getByTestId("thread-tab-title");
+    expect(mainTitle).toHaveAttribute("data-active-output", "false");
+    expect(mainTitle).not.toHaveStyle({ animation: "thread-title-glow 2s ease-in-out infinite" });
+  });
+
   it("marks newly added open tabs with the transient pop animation state", async () => {
     resetStore({
       sdkSessions: [{ sessionId: "s1", isOrchestrator: true }],
@@ -929,6 +948,14 @@ describe("WorkBoardBar", () => {
     expect(getByTestId("board-table")).toBeInTheDocument();
     expect(
       getByTestId("workboard-summary-button").compareDocumentPosition(getByTestId("board-table")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      getByTestId("thread-tab-rail").compareDocumentPosition(getByTestId("workboard-main-banner")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      getByTestId("workboard-main-banner").compareDocumentPosition(getByTestId("board-table")) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });

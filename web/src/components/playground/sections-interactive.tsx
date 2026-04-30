@@ -1043,7 +1043,7 @@ export function PlaygroundInteractiveSections() {
                   ];
                   state.setSessionBoard(boardSessionId, boardData);
                   state.setSessionStatus(boardSessionId, "running");
-                  state.setActiveTurnRoute(boardSessionId, { threadKey: "main" });
+                  state.setActiveTurnRoute(boardSessionId, { threadKey: "q-42", questId: "q-42" });
                   state.setSessionBoardRowStatuses(boardSessionId, {
                     "q-42": {
                       worker: {
@@ -1560,11 +1560,13 @@ export function PlaygroundInteractiveSections() {
                 />
               </div>
               <p className="text-[10px] text-cc-muted">
-                Click "Seed board data" first. Main banner shows the compact board summary and Open Workboard control;
-                quest and All Threads selections keep the tab rail but hide the Work Board banner/table. The constrained
-                width keeps several open tabs visible so their quest-id minimums, phase-colored titles, compact close
-                affordances, horizontal overflow behavior, and newly inserted tab pop state can be inspected. Hover
-                quest tabs to inspect the shared quest hover card with full Journey and participant context.
+                Click "Seed board data" first. Main keeps the tab rail anchored above the compact board banner and Open
+                Workboard control; quest and All Threads selections keep the tab rail but hide the Work Board
+                banner/table. The constrained width keeps several open tabs visible so their quest-id minimums,
+                phase-colored titles, compact close affordances, horizontal overflow behavior, and newly inserted tab
+                pop state can be inspected. Hover quest tabs to inspect the shared quest hover card with full Journey
+                and participant context. The seeded active-output route targets q-42, so Main should not glow just
+                because it is selected.
               </p>
             </div>
           </Card>

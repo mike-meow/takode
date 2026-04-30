@@ -92,6 +92,9 @@ describe("Playground", () => {
     const rail = screen.getByTestId("thread-tab-rail");
     expect(rail).toHaveAttribute("data-overflow", "horizontal-scroll-after-min");
     expect(screen.getByTestId("workboard-main-banner")).toBeTruthy();
+    expect(
+      rail.compareDocumentPosition(screen.getByTestId("workboard-main-banner")) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(screen.getByTestId("workboard-summary-button")).toHaveTextContent("Open Workboard");
     expect(screen.queryByTestId("workboard-current-thread")).toBeNull();
     expect(screen.getByTestId("thread-main-tab")).toHaveTextContent("Main Thread");
@@ -99,8 +102,8 @@ describe("Playground", () => {
     expect(screen.getByTestId("thread-main-tab")).toHaveClass("border-amber-400/60", "bg-cc-bg");
     expect(screen.getByTestId("workboard-phase-summary")).toHaveTextContent("1 Implement");
     const mainTitle = within(screen.getByTestId("thread-main-tab")).getByTestId("thread-tab-title");
-    expect(mainTitle).toHaveAttribute("data-active-output", "true");
-    expect(mainTitle).toHaveStyle({ animation: "thread-title-glow 2s ease-in-out infinite" });
+    expect(mainTitle).toHaveAttribute("data-active-output", "false");
+    expect(mainTitle).not.toHaveStyle({ animation: "thread-title-glow 2s ease-in-out infinite" });
     expect(mainTitle).not.toHaveClass("border");
     expect(mainTitle).not.toHaveClass("bg-sky-400/10");
 
@@ -112,6 +115,8 @@ describe("Playground", () => {
     expect(tabs[0]).toHaveClass("min-w-[6.25rem]", "max-w-[18rem]", "flex-[1_1_11rem]");
     expect(tabs[0]).toHaveAttribute("data-closable", "false");
     expect(within(tabs[0]).queryByTestId("thread-tab-close")).not.toBeInTheDocument();
+    const activeOutputTab = tabs.find((tab) => tab.getAttribute("data-thread-key") === "q-42");
+    expect(within(activeOutputTab!).getByTestId("thread-tab-title")).toHaveAttribute("data-active-output", "true");
     const queuedTab = tabs.find((tab) => tab.getAttribute("data-thread-key") === "q-55");
     expect(within(queuedTab!).getByTestId("thread-tab-title")).toHaveAttribute(
       "data-title-color",
