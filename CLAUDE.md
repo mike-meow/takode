@@ -27,6 +27,7 @@ The Takode server symlinks project skills into global skill directories at start
 | `quest-journey-mental-simulation` | `.claude/skills/quest-journey-mental-simulation/` | Quest Journey phase: scenario-based workflow/design replay |
 | `quest-journey-execute` | `.claude/skills/quest-journey-execute/` | Quest Journey phase: high-stakes or externally consequential execution |
 | `quest-journey-outcome-review` | `.claude/skills/quest-journey-outcome-review/` | Quest Journey phase: external-result review |
+| `quest-journey-user-checkpoint` | `.claude/skills/quest-journey-user-checkpoint/` | Quest Journey phase: user decision checkpoint with findings, options, tradeoffs, recommendation, notification, and Journey revision |
 | `quest-journey-bookkeeping` | `.claude/skills/quest-journey-bookkeeping/` | Quest Journey phase: durable shared-state updates |
 | `quest-journey-port` | `.claude/skills/quest-journey-port/` | Quest Journey phase: sync accepted tracked changes back to main |
 | `quest-design` | `.claude/skills/quest-design/` | Confirmation workflow before creating or refining quests |
