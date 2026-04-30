@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import type { ReactNode } from "react";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { ChatMessage } from "../types.js";
 import {
   THREAD_ROUTING_REMINDER_SOURCE_ID,
@@ -76,23 +77,35 @@ function makeQuestThreadReminderMessage(): ChatMessage {
 }
 
 describe("MessageBubble thread-routing reminder messages", () => {
-  it("renders synthetic thread-routing reminders as distinct reminder notices", () => {
+  it("renders synthetic thread-routing reminders as compact collapsed model-only notices", async () => {
     render(<MessageBubble message={makeThreadRoutingReminderMessage()} sessionId="thread-routing-reminder-session" />);
 
     expect(screen.getByText("Thread routing reminder")).toBeTruthy();
-    expect(
-      screen.getByText("Missing thread marker. Your previous leader response was not assigned to a thread."),
-    ).toBeTruthy();
+    expect(screen.getByText("model-only")).toBeTruthy();
+    expect(screen.queryByText(/Missing thread marker/)).toBeNull();
+    expect(screen.queryByText(/Resend user-visible leader text/)).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: "Expand Thread routing reminder" }));
+
+    expect(screen.getByText(/^\[Thread routing reminder\]/)).toBeTruthy();
+    expect(screen.getAllByText(/Missing thread marker/).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/Resend user-visible leader text/)).toBeTruthy();
     expect(screen.getByText(/For leader shell commands/)).toBeTruthy();
-    expect(screen.queryByText("[Thread routing reminder]")).toBeNull();
   });
 
-  it("renders synthetic quest thread reminders as distinct reminder notices", () => {
+  it("renders synthetic quest thread reminders as compact collapsed model-only notices", async () => {
     render(<MessageBubble message={makeQuestThreadReminderMessage()} sessionId="quest-thread-reminder-session" />);
 
     expect(screen.getByText("Quest thread reminder")).toBeTruthy();
-    expect(screen.getByText(/attach any prior messages that clearly belong to q-1025/)).toBeTruthy();
+    expect(screen.getByText("model-only")).toBeTruthy();
+    expect(screen.queryByText(/attach any prior messages that clearly belong to q-1025/)).toBeNull();
     expect(screen.queryByTestId("markdown")).toBeNull();
+
+    await userEvent.click(screen.getByRole("button", { name: "Expand Quest thread reminder" }));
+
+    expect(screen.getByText(/^Thread reminder:/)).toBeTruthy();
+    expect(
+      screen.getAllByText(/attach any prior messages that clearly belong to q-1025/).length,
+    ).toBeGreaterThanOrEqual(1);
   });
 });

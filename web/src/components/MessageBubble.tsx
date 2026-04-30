@@ -18,15 +18,10 @@ import { QuestClaimBlock } from "./QuestClaimBlock.js";
 import { generateReplyPreview } from "../utils/reply-preview.js";
 import { getDisplayReplyContext } from "../utils/reply-context.js";
 import { getSingleAnchoredNotification } from "../utils/anchored-notifications.js";
-import { buildNeedsInputReminderViewModel, type NeedsInputReminderViewModel } from "../utils/needs-input-reminder.js";
-import {
-  buildThreadRoutingReminderViewModel,
-  type ThreadRoutingReminderViewModel,
-} from "../utils/thread-routing-reminder.js";
-import {
-  buildQuestThreadReminderViewModel,
-  type QuestThreadReminderViewModel,
-} from "../utils/quest-thread-reminder.js";
+import { buildNeedsInputReminderViewModel } from "../utils/needs-input-reminder.js";
+import { buildThreadRoutingReminderViewModel } from "../utils/thread-routing-reminder.js";
+import { buildQuestThreadReminderViewModel } from "../utils/quest-thread-reminder.js";
+import { NeedsInputReminderView, QuestThreadReminderView, ThreadRoutingReminderView } from "./MessageReminderViews.js";
 import { FILE_TOOL_NAMES, isToolHiddenFromChat } from "../hooks/use-feed-model.js";
 import { SessionHoverCard } from "./SessionHoverCard.js";
 import type { SidebarSessionItem as SessionItemType } from "../utils/sidebar-session-item.js";
@@ -1078,142 +1073,6 @@ function UserMessage({
         <UserMessageMenu message={message} sessionId={sessionId} canRevert={canRevert} isCodex={isCodex} />
       )}
       {lightboxSrc && <Lightbox src={lightboxSrc} alt="attachment" onClose={() => setLightboxSrc(null)} />}
-    </div>
-  );
-}
-
-function ThreadRoutingReminderView({ reminder }: { reminder: ThreadRoutingReminderViewModel }) {
-  return (
-    <div className="space-y-2 rounded-md border border-sky-400/25 bg-sky-400/8 p-2.5 text-left">
-      <div className="flex items-start gap-2">
-        <svg viewBox="0 0 16 16" fill="none" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-sky-300">
-          <path d="M3 4.5h5.5M3 8h10M7.5 11.5H13" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-          <path d="M11 2.5l2 2-2 2M5 9.5l-2 2 2 2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-        </svg>
-        <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium text-sky-100">{reminder.title}</div>
-          <div className="mt-0.5 text-xs leading-relaxed text-cc-muted">{reminder.description}</div>
-        </div>
-      </div>
-      {reminder.details.length > 0 && (
-        <div className="space-y-1 pl-5 font-mono-code text-[12px] leading-relaxed text-sky-100/90">
-          {reminder.details.map((detail) => (
-            <div key={detail}>{detail}</div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function QuestThreadReminderView({ reminder }: { reminder: QuestThreadReminderViewModel }) {
-  return (
-    <div className="space-y-1 rounded-md border border-amber-300/25 bg-amber-300/8 p-2.5 text-left">
-      <div className="flex items-start gap-2">
-        <svg viewBox="0 0 16 16" fill="none" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-200">
-          <path d="M3 4.5h7.5M3 8h10M3 11.5h5.5" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" />
-          <path d="M11 3.5l2 2-2 2M9 10.5l2 2 2-2" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" />
-        </svg>
-        <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium text-amber-100">{reminder.title}</div>
-          <div className="mt-0.5 text-xs leading-relaxed text-cc-muted">{reminder.description}</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function NeedsInputReminderView({ reminder }: { reminder: NeedsInputReminderViewModel }) {
-  const hasActive = reminder.activeCount > 0;
-  const isFullyResolved =
-    !hasActive && !reminder.hasPartialState && reminder.resolvedCount > 0 && reminder.unknownCount === 0;
-  const shouldCollapseByDefault = !hasActive && !reminder.hasPartialState;
-  const [collapsed, setCollapsed] = useState(shouldCollapseByDefault);
-
-  useEffect(() => {
-    setCollapsed(shouldCollapseByDefault);
-  }, [shouldCollapseByDefault]);
-
-  const statusLabel = hasActive
-    ? "active"
-    : reminder.hasPartialState
-      ? "partial state"
-      : isFullyResolved
-        ? "resolved"
-        : reminder.unknownCount > 0
-          ? "state unavailable"
-          : "historical";
-  const toneClass = hasActive
-    ? "border-amber-500/25 bg-amber-500/6 text-amber-100"
-    : reminder.hasPartialState
-      ? "border-cc-border/60 bg-cc-hover/40 text-cc-muted"
-      : "border-cc-border/50 bg-cc-hover/30 text-cc-muted";
-
-  return (
-    <div className={collapsed ? "" : "space-y-2"}>
-      <button
-        type="button"
-        className="flex w-full min-w-0 items-start gap-2 rounded-md text-left transition-colors hover:bg-cc-hover/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-cc-primary/60"
-        onClick={() => setCollapsed((value) => !value)}
-        aria-expanded={!collapsed}
-        aria-label={`${collapsed ? "Expand" : "Collapse"} ${reminder.title}`}
-      >
-        <svg
-          viewBox="0 0 16 16"
-          fill="currentColor"
-          className={`mt-1 h-3 w-3 shrink-0 transition-transform ${collapsed ? "" : "rotate-90"} text-cc-muted/60`}
-        >
-          <path d="M6 4l4 4-4 4" />
-        </svg>
-        <svg
-          viewBox="0 0 16 16"
-          fill="currentColor"
-          className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${hasActive ? "text-amber-400" : "text-cc-muted/70"}`}
-        >
-          <path d="M8 1.5A3.5 3.5 0 004.5 5v2.5c0 .78-.26 1.54-.73 2.16L3 10.66V11.5h10v-.84l-.77-1A3.49 3.49 0 0111.5 7.5V5A3.5 3.5 0 008 1.5zM6.5 13a1.5 1.5 0 003 0h-3z" />
-        </svg>
-        <span className="min-w-0 flex-1">
-          <span className="flex flex-wrap items-center gap-1.5">
-            <span className="text-sm font-medium">{reminder.title}</span>
-            <span className={`rounded-full border px-1.5 py-0.5 text-[10px] font-mono-code ${toneClass}`}>
-              {statusLabel}
-            </span>
-          </span>
-          {!collapsed && (
-            <span className="mt-0.5 block text-xs leading-relaxed text-cc-muted">{reminder.description}</span>
-          )}
-        </span>
-      </button>
-
-      {!collapsed && reminder.entries.length > 0 && (
-        <div className="space-y-1 font-mono-code text-[12px] leading-relaxed">
-          {reminder.entries.map((entry) => (
-            <div key={`${entry.notificationId}-${entry.rawId}`} className="flex min-w-0 items-start gap-2">
-              <span className="shrink-0 text-cc-muted/70">{entry.rawId}.</span>
-              <span
-                className={
-                  entry.status === "active"
-                    ? "min-w-0 flex-1 text-cc-fg"
-                    : "min-w-0 flex-1 text-cc-muted line-through decoration-cc-muted/50"
-                }
-              >
-                {entry.summary}
-              </span>
-              <span
-                className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] ${
-                  entry.status === "active"
-                    ? "border-amber-500/25 text-amber-300"
-                    : entry.status === "resolved"
-                      ? "border-emerald-500/20 text-emerald-300/80"
-                      : "border-cc-border/60 text-cc-muted"
-                }`}
-              >
-                {entry.status === "unknown" ? "state unavailable" : entry.status}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

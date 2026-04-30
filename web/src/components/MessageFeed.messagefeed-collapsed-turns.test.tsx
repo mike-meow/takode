@@ -57,6 +57,7 @@ const mockSetComposerDraft = vi.fn();
 const mockRequestScrollToMessage = vi.fn();
 const mockSetExpandAllInTurn = vi.fn();
 const mockSendToSession: any = vi.fn(() => true);
+const mockOpenQuestOverlay = vi.fn();
 
 vi.mock("../ws.js", () => ({
   sendToSession: (sessionId: string, msg: any) => mockSendToSession(sessionId, msg),
@@ -107,6 +108,7 @@ vi.mock("../store.js", () => {
       sessionBoards: mockStoreValues.sessionBoards ?? new Map(),
       sessionCompletedBoards: mockStoreValues.sessionCompletedBoards ?? new Map(),
       sessionSearch: mockStoreValues.sessionSearch ?? new Map(),
+      quests: mockStoreValues.quests ?? [],
     };
     return selector(state);
   };
@@ -124,6 +126,7 @@ vi.mock("../store.js", () => {
     setComposerDraft: mockSetComposerDraft,
     requestScrollToMessage: mockRequestScrollToMessage,
     setExpandAllInTurn: mockSetExpandAllInTurn,
+    openQuestOverlay: mockOpenQuestOverlay,
     sessionNotifications: mockStoreValues.sessionNotifications ?? new Map(),
     sessionAttentionRecords: mockStoreValues.sessionAttentionRecords ?? new Map(),
     removePendingUserUpload: vi.fn(),
@@ -467,6 +470,7 @@ function resetStore() {
   mockSetComposerDraft.mockReset();
   mockRequestScrollToMessage.mockReset();
   mockSetExpandAllInTurn.mockReset();
+  mockOpenQuestOverlay.mockReset();
   mockSendToSession.mockReset();
   mockSendToSession.mockReturnValue(true);
   mockStoreValues.messages = new Map();
@@ -499,6 +503,7 @@ function resetStore() {
   mockStoreValues.pendingCodexInputs = new Map();
   mockStoreValues.activeTaskTurnId = new Map();
   mockStoreValues.sdkSessions = [];
+  mockStoreValues.quests = [];
 }
 
 /** Set explicit overrides for turn activity expansion per session.
@@ -1070,7 +1075,8 @@ describe("MessageFeed - collapsed turns", () => {
     expect(row.getAttribute("data-attention-state")).toBe("resolved");
     expect(screen.getByText("Finished")).toBeTruthy();
     expect(screen.queryByText(/ready for review/i)).toBeNull();
-    expect(screen.getByText("Resolved")).toBeTruthy();
+    expect(row.textContent).not.toContain("Needs attention");
+    expect(row.textContent).not.toContain("Resolved");
     expect(screen.getByRole("button", { name: "Review" })).toBeTruthy();
   });
 
@@ -1094,7 +1100,12 @@ describe("MessageFeed - collapsed turns", () => {
 
     const row = screen.getByTestId("attention-ledger-row");
     expect(row.textContent).toContain("Finished: Compact notification cards");
-    expect(row.textContent).toContain("q-983");
+    const questLink = within(row).getByRole("link", { name: "q-983" });
+    expect(questLink.getAttribute("href")).toBe("#/?quest=q-983");
+    fireEvent.click(questLink);
+    expect(mockOpenQuestOverlay).toHaveBeenCalledWith("q-983");
+    expect(mockRequestScrollToMessage).not.toHaveBeenCalled();
+    expect(row.textContent).not.toContain("Needs attention");
     expect(row.textContent?.match(/Compact notification cards/g)).toHaveLength(1);
     expect(screen.queryByText(/ready for review/i)).toBeNull();
     expect(screen.getByRole("button", { name: "Review" })).toBeTruthy();

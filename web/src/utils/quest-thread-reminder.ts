@@ -8,6 +8,7 @@ import {
 export interface QuestThreadReminderViewModel {
   title: string;
   description: string;
+  rawContent: string;
 }
 
 export function buildQuestThreadReminderViewModel(
@@ -22,5 +23,6 @@ export function buildQuestThreadReminderViewModel(
   return {
     title: "Quest thread reminder",
     description,
+    rawContent: message.content,
   };
 }

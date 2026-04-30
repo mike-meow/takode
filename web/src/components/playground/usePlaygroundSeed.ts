@@ -2,6 +2,10 @@ import { useEffect } from "react";
 import { useStore } from "../../store.js";
 import type { SessionState } from "../../types.js";
 import {
+  THREAD_ROUTING_REMINDER_SOURCE_ID,
+  THREAD_ROUTING_REMINDER_SOURCE_LABEL,
+} from "../../../shared/thread-routing-reminder.js";
+import {
   MOCK_SESSION_ID,
   PLAYGROUND_BROKEN_SESSION_ID,
   PLAYGROUND_CODEX_PENDING_SESSION_ID,
@@ -108,7 +112,27 @@ export function usePlaygroundSeed() {
     store.setConnectionStatus(sessionId, "connected");
     store.setCliConnected(sessionId, true);
     store.setSessionStatus(sessionId, "running");
-    store.setMessages(sessionId, [MSG_USER, MSG_ASSISTANT, MSG_ASSISTANT_TOOLS, MSG_TOOL_ERROR]);
+    store.setMessages(sessionId, [
+      MSG_USER,
+      makePlaygroundMessage({
+        id: "playground-thread-routing-reminder",
+        role: "user",
+        content: [
+          "[Thread routing reminder]",
+          "Missing thread marker. Your previous leader response was not assigned to a thread.",
+          "Resend user-visible leader text with `[thread:main]` or `[thread:q-N]` as the first line.",
+          "For leader shell commands, put `# thread:main` or `# thread:q-N` as the first non-empty command line.",
+        ].join("\n"),
+        timestamp: Date.now() - 55_000,
+        agentSource: {
+          sessionId: THREAD_ROUTING_REMINDER_SOURCE_ID,
+          sessionLabel: THREAD_ROUTING_REMINDER_SOURCE_LABEL,
+        },
+      }),
+      MSG_ASSISTANT,
+      MSG_ASSISTANT_TOOLS,
+      MSG_TOOL_ERROR,
+    ]);
     store.setStreaming(sessionId, "I'm updating tests and then I'll run the full suite.");
     store.setStreamingStats(sessionId, { startedAt: Date.now() - 12000, outputTokens: 1200 });
     store.addPermission(sessionId, PERM_BASH);

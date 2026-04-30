@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { useStore } from "../store.js";
 import type { SessionAttentionRecord } from "../types.js";
 import { ALL_THREADS_KEY, MAIN_THREAD_KEY, normalizeThreadKey } from "../utils/thread-projection.js";
+import { QuestInlineLink } from "./QuestInlineLink.js";
 
 type AttentionRecord = SessionAttentionRecord;
 
@@ -73,10 +74,18 @@ export function AttentionLedgerRow({
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
             <span className="truncate text-sm font-medium text-cc-fg">{record.title}</span>
-            <span className="rounded-md border border-current/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-normal opacity-80">
-              {stateLabel}
-            </span>
-            {record.questId && <span className="font-mono-code text-[11px] text-cc-muted/80">{record.questId}</span>}
+            {!isReview && (
+              <span className="rounded-md border border-current/15 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-normal opacity-80">
+                {stateLabel}
+              </span>
+            )}
+            {record.questId && (
+              <QuestInlineLink
+                questId={record.questId}
+                stopPropagation
+                className="font-mono-code text-[11px] text-blue-300/85 hover:text-blue-200 hover:underline"
+              />
+            )}
           </div>
           {showSummary && <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-cc-muted">{summary}</p>}
         </div>

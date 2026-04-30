@@ -35,6 +35,13 @@ describe("Playground", () => {
 
     // Streaming text from MessageFeed mock state should also be rendered.
     expect(within(realChat).getByText("I'm updating tests and then I'll run the full suite.")).toBeTruthy();
+
+    expect(within(realChat).getByText("Thread routing reminder")).toBeTruthy();
+    expect(within(realChat).getByText("model-only")).toBeTruthy();
+    expect(within(realChat).queryByText(/Missing thread marker/)).toBeNull();
+
+    fireEvent.click(within(realChat).getByRole("button", { name: "Expand Thread routing reminder" }));
+    expect(within(realChat).getByText(/^\[Thread routing reminder\]/)).toBeTruthy();
   });
 
   it("shows the voice mode selector before the recording label in Playground composer states", () => {

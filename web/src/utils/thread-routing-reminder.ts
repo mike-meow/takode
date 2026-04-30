@@ -8,6 +8,7 @@ export interface ThreadRoutingReminderViewModel {
   title: string;
   description: string;
   details: string[];
+  rawContent: string;
 }
 
 export function buildThreadRoutingReminderViewModel(
@@ -25,5 +26,6 @@ export function buildThreadRoutingReminderViewModel(
     title: "Thread routing reminder",
     description: lines[1] || "A leader response needs an explicit thread marker before it can be routed.",
     details,
+    rawContent: message.content,
   };
 }
