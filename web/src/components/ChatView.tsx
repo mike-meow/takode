@@ -44,7 +44,7 @@ import { buildAttentionRecords } from "../utils/attention-records.js";
 import { scopedGetItem, scopedSetItem } from "../utils/scoped-storage.js";
 import type { BoardRowSessionStatus, ChatMessage, QuestmasterTask, SessionAttentionRecord } from "../types.js";
 
-type LeaderThreadRow = {
+export interface QuestThreadBannerRow {
   threadKey: string;
   questId?: string;
   title: string;
@@ -53,9 +53,12 @@ type LeaderThreadRow = {
   journey?: BoardRowData["journey"];
   boardRow?: BoardRowData;
   rowStatus?: BoardRowSessionStatus;
+  section?: "active" | "done";
+}
+
+type LeaderThreadRow = QuestThreadBannerRow & {
   messageCount: number;
   createdAt: number;
-  section: "active" | "done";
 };
 
 const EMPTY_BOARD_ROWS: BoardRowData[] = [];
@@ -193,7 +196,7 @@ function buildLeaderThreadRows({
   return [...rows.values()].sort((a, b) => a.createdAt - b.createdAt || a.threadKey.localeCompare(b.threadKey));
 }
 
-function isDoneThreadRow(row: LeaderThreadRow): boolean {
+function isDoneThreadRow(row: QuestThreadBannerRow): boolean {
   return (
     row.section === "done" ||
     isCompletedJourneyPresentationStatus(row.status) ||
@@ -201,11 +204,11 @@ function isDoneThreadRow(row: LeaderThreadRow): boolean {
   );
 }
 
-function journeyStatusForThread(row: LeaderThreadRow): string | undefined {
+function journeyStatusForThread(row: QuestThreadBannerRow): string | undefined {
   return isDoneThreadRow(row) ? "done" : row.boardStatus;
 }
 
-function QuestJourneyHoverTarget({ row, children }: { row: LeaderThreadRow; children: ReactNode }) {
+function QuestJourneyHoverTarget({ row, children }: { row: QuestThreadBannerRow; children: ReactNode }) {
   const [hoverRect, setHoverRect] = useState<DOMRect | null>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -305,14 +308,17 @@ function QuestThreadParticipant({
   const sessionNum = participant?.sessionNum ?? fallbackSessionNum ?? undefined;
   const dotProps = useParticipantSessionStatusDotProps(sessionId, participant?.status);
   if (!sessionId && sessionNum == null) return null;
+  const label = `${role} #${sessionNum ?? "?"}${participant?.name ? ` ${participant.name}` : ""}`;
 
   return (
     <span
-      className="inline-flex min-w-0 items-center gap-1.5 text-[11px] text-cc-muted"
+      className="inline-flex h-6 max-w-[9.5rem] min-w-0 items-center gap-1 rounded-full border border-cc-border/60 bg-cc-hover/25 px-1.5 text-[10px] leading-none text-cc-muted sm:max-w-[12rem]"
       data-testid="quest-thread-participant"
+      title={label}
+      aria-label={label}
     >
       {dotProps && <SessionStatusDot className="mt-0" {...dotProps} />}
-      <span className="shrink-0 text-cc-muted/75">{role}</span>
+      <span className="hidden shrink-0 text-cc-muted/75 sm:inline">{role}</span>
       {sessionId ? (
         <SessionInlineLink
           sessionId={sessionId}
@@ -324,7 +330,7 @@ function QuestThreadParticipant({
       ) : (
         <span className="shrink-0 font-mono-code text-cc-muted">{`#${sessionNum ?? "?"}`}</span>
       )}
-      {participant?.name && <span className="min-w-0 truncate text-cc-fg/80">{participant.name}</span>}
+      {participant?.name && <span className="hidden min-w-0 truncate text-cc-fg/75 md:inline">{participant.name}</span>}
     </span>
   );
 }
@@ -452,43 +458,51 @@ function isAvailableLeaderThread(threadKey: string, rows: LeaderThreadRow[]): bo
   return rows.some((row) => row.threadKey === normalized);
 }
 
-function QuestThreadBanner({ row, threadKey }: { row?: LeaderThreadRow; threadKey: string }) {
+export function QuestThreadBanner({ row, threadKey }: { row?: QuestThreadBannerRow; threadKey: string }) {
   const questId = row?.questId ?? threadKey.toLowerCase();
   const title = row?.title;
   const hasParticipantContext = !!(row?.rowStatus?.worker || row?.boardRow?.worker || row?.rowStatus?.reviewer);
   return (
-    <div className="shrink-0 border-b border-cc-border bg-cc-bg px-3 py-2" data-testid="quest-thread-banner">
-      <div className="flex min-w-0 items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-            <span className="shrink-0 font-medium text-cc-muted">Viewing quest thread</span>
-            <QuestInlineLink
-              questId={questId}
-              className="shrink-0 font-mono-code font-medium text-blue-300 hover:text-blue-200 hover:underline"
-            >
-              {questId}
-            </QuestInlineLink>
-            {title && <span className="min-w-0 truncate font-medium text-cc-fg">{title}</span>}
-          </div>
-          {row?.journey && (
-            <div className="mt-1">
-              <QuestJourneyHoverTarget row={row}>
-                <QuestJourneyTimeline journey={row.journey} status={journeyStatusForThread(row)} compact />
-              </QuestJourneyHoverTarget>
-            </div>
-          )}
-          {hasParticipantContext && (
-            <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
-              <QuestThreadParticipant
-                role="Worker"
-                participant={row?.rowStatus?.worker}
-                fallbackSessionId={row?.boardRow?.worker}
-                fallbackSessionNum={row?.boardRow?.workerNum}
-              />
-              <QuestThreadParticipant role="Reviewer" participant={row?.rowStatus?.reviewer} />
-            </div>
-          )}
+    <div
+      className="shrink-0 border-b border-cc-border/80 bg-cc-bg/95 px-2.5 py-1.5 sm:px-3"
+      data-testid="quest-thread-banner"
+      data-layout="compact-inline"
+    >
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+        <div className="inline-flex min-w-0 max-w-full flex-[1_1_18rem] items-baseline gap-1.5">
+          <span className="shrink-0 text-[10px] font-medium uppercase tracking-[0.08em] text-cc-muted/65">Thread</span>
+          <QuestInlineLink
+            questId={questId}
+            className="shrink-0 font-mono-code font-medium text-blue-300 hover:text-blue-200 hover:underline"
+          >
+            {questId}
+          </QuestInlineLink>
+          {title && <span className="min-w-0 truncate text-xs font-medium text-cc-fg sm:text-[13px]">{title}</span>}
         </div>
+        {row?.journey && (
+          <QuestJourneyHoverTarget row={row}>
+            <QuestJourneyTimeline
+              journey={row.journey}
+              status={journeyStatusForThread(row)}
+              compact
+              className="rounded-full border border-cc-border/55 bg-cc-hover/20 px-1.5 py-0.5"
+            />
+          </QuestJourneyHoverTarget>
+        )}
+        {hasParticipantContext && (
+          <div
+            className="inline-flex min-w-0 flex-[1_1_100%] items-center gap-1.5 sm:flex-[0_1_auto] sm:justify-end"
+            data-testid="quest-thread-participant-strip"
+          >
+            <QuestThreadParticipant
+              role="Worker"
+              participant={row?.rowStatus?.worker}
+              fallbackSessionId={row?.boardRow?.worker}
+              fallbackSessionNum={row?.boardRow?.workerNum}
+            />
+            <QuestThreadParticipant role="Reviewer" participant={row?.rowStatus?.reviewer} />
+          </div>
+        )}
       </div>
     </div>
   );

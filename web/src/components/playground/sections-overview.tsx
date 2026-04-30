@@ -6,7 +6,7 @@ import {
   PlanCollapsedChip,
 } from "../PermissionBanner.js";
 import { MessageBubble } from "../MessageBubble.js";
-import { ChatView } from "../ChatView.js";
+import { ChatView, QuestThreadBanner, type QuestThreadBannerRow } from "../ChatView.js";
 import { MessageFeed } from "../MessageFeed.js";
 import { AttentionLedgerRow } from "../AttentionLedgerRow.js";
 import { MarkdownContent } from "../MarkdownContent.js";
@@ -182,6 +182,52 @@ const ATTENTION_LEDGER_RECORDS: SessionAttentionRecord[] = [
 ];
 
 export function PlaygroundOverviewSections() {
+  const compactQuestThreadBannerRows: Array<{ label: string; threadKey: string; row: QuestThreadBannerRow }> = [
+    {
+      label: "Active phase",
+      threadKey: "q-961",
+      row: {
+        threadKey: "q-961",
+        questId: "q-961",
+        title: "Finish data-flow cleanup",
+        boardStatus: "IMPLEMENTING",
+        section: "active" as const,
+        journey: {
+          mode: "active" as const,
+          phaseIds: ["alignment", "implement", "outcome-review", "code-review"],
+          currentPhaseId: "implement",
+          phaseNotes: { "2": "Visual outcome review runs before code review." },
+        },
+        rowStatus: {
+          worker: { sessionId: "playground-thread-worker", sessionNum: 1321, name: "Clear Mesa", status: "running" },
+          reviewer: { sessionId: "playground-thread-reviewer", sessionNum: 1306, status: "idle" },
+        },
+      },
+    },
+    {
+      label: "Completed Journey",
+      threadKey: "q-964",
+      row: {
+        threadKey: "q-964",
+        questId: "q-964",
+        title: "Finish completed Journey display",
+        boardStatus: "DONE",
+        section: "done" as const,
+        journey: {
+          mode: "active" as const,
+          phaseIds: ["alignment", "implement", "outcome-review", "code-review", "port"],
+          currentPhaseId: "port",
+          phaseNotes: { "2": "Visual outcome review before code review." },
+        },
+        boardRow: { questId: "q-964", title: "Finish completed Journey display", worker: "worker-964", updatedAt: 1 },
+        rowStatus: {
+          worker: { sessionId: "playground-thread-worker-done", sessionNum: 1321, status: "idle" },
+          reviewer: { sessionId: "playground-thread-reviewer-done", sessionNum: 1323, status: "idle" },
+        },
+      },
+    },
+  ];
+
   return (
     <PlaygroundSectionGroup groupId="overview">
       {/* ─── Permission Banners ──────────────────────────────── */}
@@ -259,6 +305,16 @@ export function PlaygroundOverviewSections() {
         title="Leader Workboard Thread Navigation"
         description="Leader ChatView with top workboard-owned Main / All Threads / quest navigation, quest-thread banner context, and composer access below the feed."
       >
+        <div className="grid max-w-5xl gap-3 lg:grid-cols-2">
+          {compactQuestThreadBannerRows.map(({ label, row, threadKey }) => (
+            <div key={threadKey} className="overflow-hidden rounded-lg border border-cc-border bg-cc-card">
+              <div className="border-b border-cc-border/70 px-3 py-1.5 text-[10px] font-medium uppercase tracking-[0.08em] text-cc-muted/70">
+                {label}
+              </div>
+              <QuestThreadBanner row={row} threadKey={threadKey} />
+            </div>
+          ))}
+        </div>
         <div className="grid max-w-5xl gap-4 lg:grid-cols-2">
           <div className="overflow-hidden rounded-xl border border-cc-border bg-cc-card h-[460px]">
             <ChatView sessionId={PLAYGROUND_THREAD_PANEL_SESSION_ID} />

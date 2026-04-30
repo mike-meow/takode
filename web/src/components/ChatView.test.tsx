@@ -292,9 +292,33 @@ vi.mock("./QuestJourneyTimeline.js", () => ({
       {quest?.questId} {quest?.title} {journey?.currentPhaseId ?? "journey"}
     </div>
   ),
-  QuestJourneyTimeline: ({ journey }: { journey?: { currentPhaseId?: string } }) => (
-    <div data-testid="quest-journey-timeline">{journey?.currentPhaseId ?? "journey"}</div>
-  ),
+  QuestJourneyTimeline: ({
+    journey,
+    status,
+    compact,
+    className,
+  }: {
+    journey?: { currentPhaseId?: string; phaseIds?: string[]; phaseNotes?: Record<string, string> };
+    status?: string | null;
+    compact?: boolean;
+    className?: string;
+  }) => {
+    const normalized = (status ?? "").trim().toLowerCase();
+    const completed = normalized === "done" || normalized === "completed" || normalized === "needs_verification";
+    const notes = Object.values(journey?.phaseNotes ?? {}).filter((note) => note.trim()).length;
+    const phaseCount = journey?.phaseIds?.length ?? 0;
+    return (
+      <div
+        data-testid={compact ? "quest-journey-compact-summary" : "quest-journey-timeline"}
+        data-journey-mode={completed ? "completed" : "active"}
+        className={className}
+      >
+        {completed
+          ? `Completed ${phaseCount} phases${notes > 0 ? ` ${notes} note${notes === 1 ? "" : "s"}` : ""}`
+          : (journey?.currentPhaseId ?? "journey")}
+      </div>
+    );
+  },
 }));
 
 import { ChatView } from "./ChatView.js";
@@ -447,7 +471,8 @@ describe("ChatView backend banners", () => {
     expect(window.location.hash).toBe("#/session/s1?thread=q-941");
     expect(scope.getByTestId("composer")).toHaveAttribute("data-thread-key", "q-941");
     expect(scope.getByTestId("composer")).toHaveAttribute("data-quest-id", "q-941");
-    expect(scope.getByTestId("quest-thread-banner")).toHaveTextContent("Viewing quest thread");
+    expect(scope.getByTestId("quest-thread-banner")).toHaveAttribute("data-layout", "compact-inline");
+    expect(scope.getByTestId("quest-thread-banner")).toHaveTextContent("Thread");
     expect(scope.getByTestId("quest-thread-banner")).toHaveTextContent("q-941");
     expect(scope.getByTestId("work-board-bar")).toHaveAttribute("data-open-thread-keys", "q-941");
   });
@@ -921,10 +946,13 @@ describe("ChatView backend banners", () => {
     const scope = within(view.container);
 
     fireEvent.click(scope.getByRole("button", { name: /q-968 thread navigation rework/i }));
-    expect(scope.getByTestId("quest-thread-banner")).toHaveTextContent("Viewing quest thread");
+    expect(scope.getByTestId("quest-thread-banner")).toHaveAttribute("data-layout", "compact-inline");
+    expect(scope.getByTestId("quest-thread-banner")).toHaveClass("py-1.5");
     expect(scope.getByTestId("quest-thread-banner")).toHaveTextContent("q-968");
     expect(scope.getByTestId("quest-thread-banner")).toHaveTextContent("Thread navigation rework");
-    expect(scope.getByTestId("quest-journey-timeline")).toHaveTextContent("implement");
+    expect(scope.getByTestId("quest-journey-compact-summary")).toHaveTextContent("implement");
+    expect(scope.getByTestId("quest-journey-compact-summary")).toHaveAttribute("data-journey-mode", "active");
+    expect(scope.getByTestId("quest-thread-participant-strip")).toHaveClass("flex-[1_1_100%]");
     expect(scope.getByTestId("quest-thread-banner")).toHaveTextContent("Worker");
     expect(scope.getByTestId("quest-thread-banner")).toHaveTextContent("#1321");
     expect(scope.getByTestId("quest-thread-banner")).toHaveTextContent("Clear Mesa");
@@ -936,5 +964,64 @@ describe("ChatView backend banners", () => {
     expect(document.body.querySelector('[data-testid="quest-thread-journey-hover-card"]')).toBeInTheDocument();
 
     expect(scope.getAllByText("implement")).toHaveLength(1);
+  });
+
+  it("keeps completed quest-thread context compact while preserving Journey and participant metadata", () => {
+    resetStore({
+      sessions: new Map([["s1", { backend_state: "connected", backend_error: null, isOrchestrator: true }]]),
+      sdkSessions: [
+        { sessionId: "s1", archived: false, isOrchestrator: true },
+        { sessionId: "worker-970", sessionNum: 1321, state: "connected", cliConnected: true },
+        { sessionId: "reviewer-970", sessionNum: 1323, state: "connected", cliConnected: true },
+      ],
+      sessionCompletedBoards: new Map([
+        [
+          "s1",
+          [
+            {
+              questId: "q-970",
+              title: "Completed banner polish",
+              worker: "worker-970",
+              workerNum: 1321,
+              status: "DONE",
+              updatedAt: 5,
+              completedAt: 5,
+              createdAt: 2,
+              journey: {
+                mode: "active",
+                phaseIds: ["alignment", "implement", "outcome-review", "code-review", "port"],
+                currentPhaseId: "port",
+                phaseNotes: { "2": "Visual outcome review before code review." },
+              },
+            },
+          ],
+        ],
+      ]),
+      sessionBoardRowStatuses: new Map([
+        [
+          "s1",
+          {
+            "q-970": {
+              worker: { sessionId: "worker-970", sessionNum: 1321, name: "Clear Mesa", status: "idle" },
+              reviewer: { sessionId: "reviewer-970", sessionNum: 1323, status: "idle" },
+            },
+          },
+        ],
+      ]),
+      quests: [{ questId: "q-970", title: "Completed banner polish", status: "done" }],
+    });
+
+    const view = render(<ChatView sessionId="s1" />);
+    const scope = within(view.container);
+
+    fireEvent.click(scope.getByRole("button", { name: /q-970 completed banner polish/i }));
+    expect(scope.getByTestId("quest-thread-banner")).toHaveTextContent("q-970");
+    expect(scope.getByTestId("quest-thread-banner")).toHaveTextContent("Completed banner polish");
+    expect(scope.getByTestId("quest-journey-compact-summary")).toHaveAttribute("data-journey-mode", "completed");
+    expect(scope.getByTestId("quest-journey-compact-summary")).toHaveTextContent("Completed");
+    expect(scope.getByTestId("quest-journey-compact-summary")).toHaveTextContent("5 phases");
+    expect(scope.getByTestId("quest-journey-compact-summary")).toHaveTextContent("1 note");
+    expect(scope.getByLabelText("Worker #1321 Clear Mesa")).toBeInTheDocument();
+    expect(scope.getByLabelText("Reviewer #1323")).toBeInTheDocument();
   });
 });
