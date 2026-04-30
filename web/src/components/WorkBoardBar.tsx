@@ -428,8 +428,8 @@ function ThreadTabRail({
         ? {
             ...(activeOutput
               ? {
-                  ["--glow-color" as string]: "rgba(56, 189, 248, 0.35)",
-                  animation: "reviewer-badge-glow 2s ease-in-out infinite",
+                  ["--glow-color" as string]: "rgba(56, 189, 248, 0.55)",
+                  animation: "thread-title-glow 2s ease-in-out infinite",
                 }
               : {}),
             ...(titleColor ? { color: titleColor } : {}),
@@ -437,9 +437,7 @@ function ThreadTabRail({
         : undefined;
     return (
       <span
-        className={`inline-flex min-w-0 items-center gap-1.5 rounded px-1 ${
-          activeOutput ? "border border-sky-400/35 bg-sky-400/10 text-sky-100" : ""
-        }`.trim()}
+        className={`inline-flex min-w-0 items-center gap-1.5 px-1 ${activeOutput ? "text-sky-100" : ""}`.trim()}
         style={style}
         data-testid="thread-tab-title"
         data-active-output={activeOutput ? "true" : "false"}
@@ -506,7 +504,7 @@ function ThreadTabRail({
           title={
             mainNeedsInput ? `${mainState?.title ?? "Main Thread"} needs input` : (mainState?.title ?? "Main Thread")
           }
-          className={`inline-flex min-w-[7.75rem] max-w-[14rem] flex-[0_1_9.5rem] items-center gap-1.5 rounded-t-md border px-2 py-1 text-[11px] font-medium transition-colors ${mainTone}`}
+          className={`inline-flex min-w-[7.75rem] max-w-[14rem] flex-[0_1_9.5rem] items-center gap-1.5 rounded-t-md border px-2 py-1 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cc-primary/70 focus-visible:ring-inset ${mainTone}`}
           data-testid="thread-main-tab"
           data-thread-key={MAIN_THREAD_KEY}
           data-needs-input={mainNeedsInput ? "true" : "false"}
@@ -538,7 +536,7 @@ function ThreadTabRail({
               <button
                 type="button"
                 onClick={() => openThread(tab.threadKey, tab.route)}
-                className="inline-flex min-w-0 flex-1 items-center gap-1.5 px-1.5 py-1 text-left"
+                className="inline-flex min-w-0 flex-1 items-center gap-1.5 rounded-t-[inherit] px-1.5 py-1 text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cc-primary/70 focus-visible:ring-inset"
                 data-testid="thread-tab-select"
                 aria-pressed={selected}
               >
@@ -590,7 +588,7 @@ function ThreadTabRail({
                   type="button"
                   onClick={() => openThread(chip.threadKey, chip.route)}
                   title={`${chip.questId ? `${chip.questId}: ${chip.title}` : chip.title}${chip.needsInput ? " needs input" : ""}`}
-                  className={`inline-flex min-w-[6.25rem] max-w-[18rem] flex-[0_1_11rem] items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors ${tone}`}
+                  className={`inline-flex min-w-[6.25rem] max-w-[18rem] flex-[0_1_11rem] items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cc-primary/70 focus-visible:ring-inset ${tone}`}
                   data-testid="thread-chip"
                   data-thread-key={chip.threadKey}
                   data-needs-input={chip.needsInput ? "true" : "false"}

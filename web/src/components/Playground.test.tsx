@@ -83,7 +83,13 @@ describe("Playground", () => {
     const rail = screen.getByTestId("thread-tab-rail");
     expect(rail).toHaveAttribute("data-overflow", "horizontal-scroll-after-min");
     expect(screen.getByTestId("thread-main-tab")).toHaveTextContent("Main Thread");
+    expect(screen.getByTestId("thread-main-tab")).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByTestId("workboard-phase-summary")).toHaveTextContent("1 Implement");
+    const mainTitle = within(screen.getByTestId("thread-main-tab")).getByTestId("thread-tab-title");
+    expect(mainTitle).toHaveAttribute("data-active-output", "true");
+    expect(mainTitle).toHaveStyle({ animation: "thread-title-glow 2s ease-in-out infinite" });
+    expect(mainTitle).not.toHaveClass("border");
+    expect(mainTitle).not.toHaveClass("bg-sky-400/10");
 
     const tabs = screen.getAllByTestId("thread-tab");
     expect(tabs.map((tab) => tab.getAttribute("data-min-label"))).toEqual(

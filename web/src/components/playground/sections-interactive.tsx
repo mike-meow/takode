@@ -1192,7 +1192,7 @@ export function PlaygroundInteractiveSections() {
                   ];
                   state.setSessionBoard(boardSessionId, boardData);
                   state.setSessionStatus(boardSessionId, "running");
-                  state.setActiveTurnRoute(boardSessionId, { threadKey: "q-42", questId: "q-42" });
+                  state.setActiveTurnRoute(boardSessionId, { threadKey: "main" });
                   state.setSessionBoardRowStatuses(boardSessionId, {
                     "q-42": {
                       worker: {
@@ -1352,8 +1352,8 @@ export function PlaygroundInteractiveSections() {
               <div className="max-w-[28rem] border border-cc-border rounded-lg overflow-hidden">
                 <WorkBoardBar
                   sessionId="playground-board-bar"
-                  currentThreadKey="q-42"
-                  currentThreadLabel="q-42"
+                  currentThreadKey="main"
+                  currentThreadLabel="Main Thread"
                   onSelectThread={() => {}}
                   openThreadKeys={boardOpenThreadKeys}
                   onCloseThreadTab={(threadKey) =>

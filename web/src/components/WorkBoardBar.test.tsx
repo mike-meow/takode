@@ -400,6 +400,7 @@ describe("WorkBoardBar", () => {
     expect(getByTestId("thread-tab-rail")).toHaveAttribute("data-overflow", "horizontal-scroll-after-min");
     expect(getByTestId("thread-main-tab")).toHaveAttribute("data-min-label", "Main Thread");
     expect(getByTestId("thread-main-tab")).toHaveClass("min-w-[7.75rem]", "max-w-[14rem]", "flex-[0_1_9.5rem]");
+    expect(getByTestId("thread-main-tab")).toHaveClass("focus-visible:ring-cc-primary/70", "focus-visible:ring-inset");
 
     const tabs = getAllByTestId("thread-tab");
     expect(tabs.map((tab) => tab.getAttribute("data-min-label"))).toEqual(["q-1", "q-2"]);
@@ -407,6 +408,10 @@ describe("WorkBoardBar", () => {
       // The fixed minimum protects the quest id; flex shrink keeps tabs browser-like until that minimum is reached.
       expect(tab).toHaveClass("min-w-[6.25rem]", "max-w-[18rem]", "flex-[1_1_11rem]");
     }
+    expect(within(tabs[0]).getByTestId("thread-tab-select")).toHaveClass(
+      "focus-visible:ring-cc-primary/70",
+      "focus-visible:ring-inset",
+    );
 
     const selectedClose = within(tabs[0]).getByTestId("thread-tab-close");
     expect(selectedClose).toHaveAttribute("data-compact-close", "true");
@@ -417,6 +422,43 @@ describe("WorkBoardBar", () => {
     expect(inactiveClose).toHaveAttribute("data-compact-close", "true");
     expect(inactiveClose).toHaveAttribute("data-selected", "false");
     expect(inactiveClose).toHaveClass("w-5", "sm:opacity-0", "sm:group-hover:opacity-100", "focus-visible:opacity-100");
+  });
+
+  it("keeps selected Main as one tab surface while active output glows the title text", () => {
+    resetStore({
+      sdkSessions: [{ sessionId: "s1", isOrchestrator: true }],
+      sessionBoards: new Map([["s1", []]]),
+      sessionStatus: new Map([["s1", "running"]]),
+      activeTurnRoutes: new Map([["s1", { threadKey: "main" }]]),
+    });
+
+    const { getByTestId } = render(
+      <WorkBoardBar
+        sessionId="s1"
+        currentThreadKey="main"
+        attentionRecords={[
+          attentionRecord({
+            id: "main-needs-input",
+            threadKey: "main",
+            questId: undefined,
+            route: { threadKey: "main" },
+            title: "Main needs input",
+            dedupeKey: "main-needs-input",
+          }),
+        ]}
+      />,
+    );
+
+    const mainTab = getByTestId("thread-main-tab");
+    expect(mainTab).toHaveAttribute("aria-pressed", "true");
+    // The selected tab keeps the outer selected surface; the active title no longer creates a second rounded border.
+    expect(mainTab).toHaveClass("border-amber-400/45", "bg-cc-bg", "focus-visible:ring-cc-primary/70");
+    const mainTitle = within(mainTab).getByTestId("thread-tab-title");
+    expect(mainTitle).toHaveAttribute("data-active-output", "true");
+    expect(mainTitle).toHaveStyle({ animation: "thread-title-glow 2s ease-in-out infinite" });
+    expect(mainTitle).not.toHaveClass("border");
+    expect(mainTitle).not.toHaveClass("bg-sky-400/10");
+    expect(mainTitle).not.toHaveClass("rounded");
   });
 
   it("marks newly added open tabs with the transient pop animation state", async () => {
@@ -558,15 +600,17 @@ describe("WorkBoardBar", () => {
     expect(within(needsInputTab).getByTestId("thread-tab-needs-input-bell")).not.toHaveClass("animate-pulse");
     expect(within(needsInputTab).getByTestId("thread-tab-title")).toHaveAttribute("data-active-output", "true");
     expect(within(needsInputTab).getByTestId("thread-tab-title")).toHaveStyle({
-      animation: "reviewer-badge-glow 2s ease-in-out infinite",
+      animation: "thread-title-glow 2s ease-in-out infinite",
     });
+    expect(within(needsInputTab).getByTestId("thread-tab-title")).not.toHaveClass("border");
+    expect(within(needsInputTab).getByTestId("thread-tab-title")).not.toHaveClass("bg-sky-400/10");
 
     const inactiveTitle = getAllByTestId("thread-tab-title").find(
       (title) => title.closest("[data-thread-key]")?.getAttribute("data-thread-key") === "q-2",
     );
     expect(inactiveTitle).toBeTruthy();
     expect(inactiveTitle).toHaveAttribute("data-active-output", "false");
-    expect(inactiveTitle).not.toHaveStyle({ animation: "reviewer-badge-glow 2s ease-in-out infinite" });
+    expect(inactiveTitle).not.toHaveStyle({ animation: "thread-title-glow 2s ease-in-out infinite" });
   });
 
   it("embeds Main-owned needs-input state into the pinned Main tab without a duplicate chip", () => {
