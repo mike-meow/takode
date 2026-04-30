@@ -1365,7 +1365,8 @@ export class WsBridge {
       broadcastToBrowsers: (targetSession: unknown, browserMsg: BrowserIncomingMessage) =>
         this.broadcastToBrowsers(targetSession as Session, browserMsg),
       persistSession: (targetSession: unknown) => this.persistSession(targetSession as Session),
-      touchUserMessage: (sessionId: string) => this.launcher?.touchUserMessage(sessionId),
+      touchUserMessage: (sessionId: string, timestamp?: number) =>
+        this.launcher?.touchUserMessage(sessionId, timestamp),
       onUserMessage: this.onUserMessage
         ? (sessionId: string, history: Session["messageHistory"], cwd: string, wasGenerating: boolean) =>
             this.onUserMessage?.(sessionId, history, cwd, wasGenerating)
@@ -2446,7 +2447,8 @@ export class WsBridge {
           this.persistSession(session);
         }
       },
-      touchUserMessage: (sessionId: string) => this.launcher?.touchUserMessage(sessionId),
+      touchUserMessage: (sessionId: string, timestamp?: number) =>
+        this.launcher?.touchUserMessage(sessionId, timestamp),
       formatVsCodeSelectionPrompt: (selection: import("./session-types.js").VsCodeSelectionMetadata) =>
         this.formatVsCodeSelectionPrompt(selection),
       getCliSessionId: (targetSession: unknown) => {

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  addPendingCodexInput,
   commitPendingCodexInputs,
   handleCodexAdapterInitError,
   hydrateCodexResumedHistory,
@@ -107,6 +108,41 @@ function makePendingTurn(): CodexOutboundTurn {
 }
 
 describe("commitPendingCodexInputs", () => {
+  it("touches lastUserMessageAt with the pending timestamp for direct human input", () => {
+    // Direct Codex inputs can sit in the pending queue before they are sent.
+    // The sidebar timestamp should still reflect when the human submitted it.
+    const input: PendingCodexInput = {
+      id: "user-msg-human",
+      content: "Human request",
+      timestamp: 12345,
+      cancelable: false,
+    };
+    const session = makeSession([input]);
+    const deps = makeDeps();
+
+    commitPendingCodexInputs(session, ["user-msg-human"], deps);
+
+    expect(deps.touchUserMessage).toHaveBeenCalledWith("test-session", 12345);
+  });
+
+  it("does not touch lastUserMessageAt when committing agentSource pending input", () => {
+    // Agent/herd/timer inputs are user-shaped for adapter transport, but they
+    // must not reorder the session sidebar as human activity.
+    const input: PendingCodexInput = {
+      id: "user-msg-agent",
+      content: "Herd event summary",
+      timestamp: 12345,
+      cancelable: false,
+      agentSource: { sessionId: "herd-events", sessionLabel: "Herd Events" },
+    };
+    const session = makeSession([input]);
+    const deps = makeDeps();
+
+    commitPendingCodexInputs(session, ["user-msg-agent"], deps);
+
+    expect(deps.touchUserMessage).not.toHaveBeenCalled();
+  });
+
   it("includes client_msg_id in the broadcast when pending input has clientMsgId", () => {
     // This test verifies the fix for q-578: ghost pending-upload messages.
     // When a Codex pending input carries a clientMsgId (set during the
@@ -149,6 +185,45 @@ describe("commitPendingCodexInputs", () => {
     const broadcastedMsg = (deps.broadcastToBrowsers as ReturnType<typeof vi.fn>).mock.calls[0][1];
     expect(broadcastedMsg.type).toBe("user_message");
     expect(broadcastedMsg.client_msg_id).toBeUndefined();
+  });
+});
+
+describe("addPendingCodexInput", () => {
+  it("touches lastUserMessageAt for direct human pending input", () => {
+    const deps = makeDeps();
+    const session = makeSession([]);
+
+    addPendingCodexInput(
+      session,
+      {
+        id: "pending-human",
+        content: "Human request",
+        timestamp: 23456,
+        cancelable: true,
+      },
+      deps,
+    );
+
+    expect(deps.touchUserMessage).toHaveBeenCalledWith("test-session", 23456);
+  });
+
+  it("does not touch lastUserMessageAt for agentSource pending input", () => {
+    const deps = makeDeps();
+    const session = makeSession([]);
+
+    addPendingCodexInput(
+      session,
+      {
+        id: "pending-agent",
+        content: "Leader instruction",
+        timestamp: 23456,
+        cancelable: true,
+        agentSource: { sessionId: "leader-1", sessionLabel: "#1 Leader" },
+      },
+      deps,
+    );
+
+    expect(deps.touchUserMessage).not.toHaveBeenCalled();
   });
 });
 

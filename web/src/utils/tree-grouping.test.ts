@@ -196,6 +196,18 @@ describe("buildTreeViewGroups", () => {
     expect(result[0].nodes[1].leader.id).toBe("old");
   });
 
+  it("falls back to creation time in activity mode when sessions have no user message timestamp", () => {
+    const now = Date.now();
+    const sessions = [
+      makeSession({ id: "older-empty", sessionNum: 1, createdAt: now - 2000 }),
+      makeSession({ id: "newer-empty", sessionNum: 2, createdAt: now - 1000 }),
+    ];
+
+    const result = buildTreeViewGroups(sessions, defaultGroups, emptyAssignments, undefined, "activity");
+    expect(result[0].nodes[0].leader.id).toBe("newer-empty");
+    expect(result[0].nodes[1].leader.id).toBe("older-empty");
+  });
+
   it("sorts by creation time by default", () => {
     const now = Date.now();
     const sessions = [
@@ -290,7 +302,7 @@ describe("buildTreeViewGroups", () => {
 
     // In activity mode, nodeOrder should be ignored
     const result = buildTreeViewGroups(sessions, defaultGroups, emptyAssignments, undefined, "activity", nodeOrder);
-    expect(result[0].nodes[0].leader.id).toBe("old-active"); // more recent activity wins
+    expect(result[0].nodes[0].leader.id).toBe("old-active"); // more recent user message wins
   });
 
   it("accepts reviewerSessions as a separate parameter (Sidebar pre-filters reviewers)", () => {

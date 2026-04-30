@@ -10,6 +10,7 @@ import { getSettings } from "../settings-manager.js";
 import type { TimerManager } from "../timer-manager.js";
 import type { WsBridge } from "../ws-bridge.js";
 import * as sessionNames from "../session-names.js";
+import { getLastActualHumanUserMessageTimestamp } from "../user-message-classification.js";
 
 type SessionListEntry = ReturnType<CliLauncher["listSessions"]>[number];
 
@@ -64,6 +65,9 @@ export async function buildEnrichedSessionsSnapshot(
         }
         const currentBridgeSession = wsBridge.getSession(s.sessionId) ?? bridgeSession;
         const bridge = currentBridgeSession?.state;
+        const lastUserMessageAt = currentBridgeSession
+          ? getLastActualHumanUserMessageTimestamp(currentBridgeSession.messageHistory)
+          : safeSession.lastUserMessageAt;
         const attention = currentBridgeSession
           ? {
               lastReadAt: currentBridgeSession.lastReadAt,
@@ -78,6 +82,7 @@ export async function buildEnrichedSessionsSnapshot(
         const gitBehind = bridge?.git_behind || 0;
         return {
           ...safeSession,
+          lastUserMessageAt,
           // Bridge model (from system.init) is more accurate than launcher model
           // (creation-time value, often empty for "default").
           model: bridge?.model || safeSession.model,

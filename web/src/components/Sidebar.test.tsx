@@ -100,6 +100,8 @@ interface MockStoreState {
   sessionInfoOpenSessionId: string | null;
   reorderMode: boolean;
   setReorderMode: ReturnType<typeof vi.fn>;
+  sessionSortMode: "created" | "activity";
+  setSessionSortMode: ReturnType<typeof vi.fn>;
   pendingSessions: Map<string, unknown>;
   serverName: string;
   treeGroups: Array<{ id: string; name: string }>;
@@ -201,6 +203,8 @@ function createMockState(overrides: Partial<MockStoreState> = {}): MockStoreStat
     sessionInfoOpenSessionId: null,
     reorderMode: false,
     setReorderMode: vi.fn(),
+    sessionSortMode: "created",
+    setSessionSortMode: vi.fn(),
     pendingSessions: new Map(),
     serverName: "",
     treeGroups: [],
@@ -1200,6 +1204,26 @@ describe("Sidebar", { timeout: 10000 }, () => {
 
     render(<Sidebar />);
     expect(screen.getByRole("button", { name: "Done" })).toBeInTheDocument();
+  });
+
+  it("labels activity sort as sorting by last user message", () => {
+    const session1 = makeSession("s1");
+    const session2 = makeSession("s2");
+    const sdk1 = makeSdkSession("s1");
+    const sdk2 = makeSdkSession("s2");
+    mockState = createMockState({
+      sessions: new Map([
+        ["s1", session1],
+        ["s2", session2],
+      ]),
+      sdkSessions: [sdk1, sdk2],
+      sessionSortMode: "activity",
+    });
+
+    render(<Sidebar />);
+
+    expect(screen.getByTitle("Sorted by last user message")).toBeInTheDocument();
+    expect(screen.queryByTitle("Sorted by recent activity")).not.toBeInTheDocument();
   });
 
   it("renders a mobile dismiss button that closes the sidebar explicitly", () => {

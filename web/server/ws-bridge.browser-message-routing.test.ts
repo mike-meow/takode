@@ -589,6 +589,13 @@ describe("Browser message routing", () => {
   });
 
   it("user_message: sends NDJSON to CLI and stores in history", () => {
+    const touchUserMessage = vi.fn();
+    bridge.setLauncher({
+      touchActivity: vi.fn(),
+      touchUserMessage,
+      getSession: vi.fn(() => ({})),
+    } as any);
+
     bridge.handleBrowserMessage(
       browser,
       JSON.stringify({
@@ -612,7 +619,32 @@ describe("Browser message routing", () => {
     expect(session.messageHistory[0].type).toBe("user_message");
     if (session.messageHistory[0].type === "user_message") {
       expect(session.messageHistory[0].content).toBe("What is 2+2?");
+      expect(touchUserMessage).toHaveBeenCalledWith("s1", session.messageHistory[0].timestamp);
     }
+  });
+
+  it("user_message: does not touch lastUserMessageAt for agentSource messages", () => {
+    // Programmatic user-shaped messages are rendered as user messages, but they
+    // must not affect sidebar last-user-message ordering.
+    const touchUserMessage = vi.fn();
+    bridge.setLauncher({
+      touchActivity: vi.fn(),
+      touchUserMessage,
+      getSession: vi.fn(() => ({ isOrchestrator: true })),
+    } as any);
+
+    bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "worker progress",
+        agentSource: { sessionId: "worker-1", sessionLabel: "#22 Worker" },
+      }),
+    );
+
+    const session = bridge.getSession("s1")!;
+    expect(session.messageHistory.filter((m) => m.type === "user_message")).toHaveLength(1);
+    expect(touchUserMessage).not.toHaveBeenCalled();
   });
 
   it("user_message: queues when CLI not connected", () => {

@@ -1686,13 +1686,16 @@ export class CliLauncher {
   }
 
   /**
-   * Update the last user message timestamp for a session.
-   * Only called when a real user message is committed, not on assistant/tool activity.
+   * Update the last human user message timestamp for a session.
+   * Only called for direct human input, not programmatic agent/system/herd messages.
    */
-  touchUserMessage(sessionId: string): void {
+  touchUserMessage(sessionId: string, timestamp = Date.now()): void {
     const info = this.sessions.get(sessionId);
     if (info) {
-      info.lastUserMessageAt = Date.now();
+      const normalizedTimestamp = Number.isFinite(timestamp) ? timestamp : Date.now();
+      const nextTimestamp = Math.max(info.lastUserMessageAt ?? 0, normalizedTimestamp);
+      if (info.lastUserMessageAt === nextTimestamp) return;
+      info.lastUserMessageAt = nextTimestamp;
       this.persistState();
     }
   }

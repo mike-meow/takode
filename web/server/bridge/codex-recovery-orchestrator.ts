@@ -18,6 +18,7 @@ import {
   shouldCommitNeedsInputReminderHistoryEntry,
 } from "./adapter-browser-routing-needs-input-reminder.js";
 import { isRecoverableCodexInitError } from "../codex-adapter-utils.js";
+import { isActualHumanUserInput, isActualHumanUserMessage } from "../user-message-classification.js";
 import { LEADER_COMPACTION_RECOVERY_PROMPT } from "./compaction-recovery.js";
 import {
   armCodexFreshTurnRequirement as armCodexFreshTurnRequirementState,
@@ -63,7 +64,7 @@ export interface CodexRecoveryOrchestratorDeps {
   broadcastPendingCodexInputs: (session: CodexRecoveryOrchestratorSessionLike) => void;
   broadcastToBrowsers: (session: CodexRecoveryOrchestratorSessionLike, msg: BrowserIncomingMessage) => void;
   persistSession: (session: CodexRecoveryOrchestratorSessionLike) => void;
-  touchUserMessage: (sessionId: string) => void;
+  touchUserMessage: (sessionId: string, timestamp?: number) => void;
   emitTakodeEvent: (sessionId: string, type: string, data: Record<string, unknown>) => void;
   injectCompactionRecovery: (session: CodexRecoveryOrchestratorSessionLike) => void;
   onUserMessage?: (
@@ -234,7 +235,9 @@ export function addPendingCodexInput(
 ): void {
   session.pendingCodexInputs.push(input);
   session.lastUserMessage = formatReplyContentForPreview(input.content || "", input.replyContext).slice(0, 80);
-  deps.touchUserMessage(session.id);
+  if (isActualHumanUserInput(input)) {
+    deps.touchUserMessage(session.id, input.timestamp);
+  }
   deps.broadcastPendingCodexInputs(session);
 }
 
@@ -1072,7 +1075,9 @@ function commitPendingCodexInput(
   session.messageHistory.push(userHistoryEntry);
   const userMsgHistoryIdx = session.messageHistory.length - 1;
   session.lastUserMessage = formatReplyContentForPreview(pending.content || "", pending.replyContext).slice(0, 80);
-  deps.touchUserMessage(session.id);
+  if (isActualHumanUserMessage(userHistoryEntry)) {
+    deps.touchUserMessage(session.id, pending.timestamp);
+  }
   deps.broadcastToBrowsers(session, userHistoryEntry);
   deps.broadcastPendingCodexInputs(session);
   deps.onUserMessage?.(session.id, [...session.messageHistory], session.state.cwd, session.isGenerating);

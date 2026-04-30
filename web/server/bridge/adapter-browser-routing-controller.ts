@@ -44,6 +44,7 @@ import {
   sameThreadRoute,
   type ThreadRouteMetadata,
 } from "../thread-routing-metadata.js";
+import { isActualHumanUserMessage } from "../user-message-classification.js";
 export {
   hasPendingForceCompact,
   isCliSlashCommand,
@@ -157,7 +158,7 @@ export interface AdapterBrowserRoutingDeps {
   getCurrentTurnTriggerSource: (session: AdapterBrowserRoutingSessionLike) => "user" | "leader" | "system" | "unknown";
   abortAutoApproval: (session: AdapterBrowserRoutingSessionLike, requestId: string) => void;
   preInterrupt: (session: AdapterBrowserRoutingSessionLike, source: InterruptSource) => void;
-  touchUserMessage: (sessionId: string) => void;
+  touchUserMessage: (sessionId: string, timestamp?: number) => void;
   formatVsCodeSelectionPrompt: (selection: NonNullable<BrowserUserMessage["vscodeSelection"]>) => string;
   getCliSessionId: (session: AdapterBrowserRoutingSessionLike) => string;
   nextUserMessageId: (ts: number) => string;
@@ -1572,7 +1573,9 @@ export function ingestUserMessage(
       session.messageHistory.push(userHistoryEntry);
       userMsgHistoryIdx = session.messageHistory.length - 1;
       session.lastUserMessage = formatReplyContentForPreview(msg.content || "", msg.replyContext).slice(0, 80);
-      deps.touchUserMessage(session.id);
+      if (isActualHumanUserMessage(userHistoryEntry)) {
+        deps.touchUserMessage(session.id, ts);
+      }
       deps.broadcastToBrowsers(session, userHistoryEntry);
       emitStoredUserMessageTakodeEvent(deps, session.id, userHistoryEntry, {
         historyIndex: userMsgHistoryIdx,

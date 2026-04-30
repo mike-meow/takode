@@ -1188,11 +1188,11 @@ export function Sidebar() {
                 {reorderMode ? "Done" : "Edit"}
               </button>
             )}
-            {/* Sort mode toggle — switches between creation time and last activity */}
+            {/* Sort mode toggle -- switches between creation time and last user message */}
             {showSortControls && (
               <button
                 onClick={() => setSessionSortMode(sessionSortMode === "created" ? "activity" : "created")}
-                title={sessionSortMode === "activity" ? "Sorted by recent activity" : "Sorted by creation time"}
+                title={sessionSortMode === "activity" ? "Sorted by last user message" : "Sorted by creation time"}
                 className={`text-[10px] font-medium px-1.5 py-1 rounded-md transition-colors cursor-pointer shrink-0 ${
                   sessionSortMode === "activity"
                     ? "bg-cc-primary/10 text-cc-primary"
