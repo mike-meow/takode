@@ -8,6 +8,7 @@ import type {
 import { sessionTag } from "../session-tag.js";
 import { normalizeLeaderAssistantRouting } from "./thread-routing-reminder.js";
 import { recordCompactionFinished, recordCompactionStarted } from "./session-lifecycle-events.js";
+import { shouldTrackCodexToolResultRecovery } from "./tool-result-recovery-controller.js";
 
 const TOOL_PROGRESS_OUTPUT_LIMIT = 12_000;
 
@@ -230,7 +231,12 @@ export async function handleCodexAdapterBrowserMessage(
     const content: ContentBlock[] = routedMsg.message.content || [];
     const now = Date.now();
     for (const block of content) {
-      if (block.type === "tool_use" && block.id && !session.toolStartTimes.has(block.id)) {
+      if (
+        block.type === "tool_use" &&
+        block.id &&
+        shouldTrackCodexToolResultRecovery(block) &&
+        !session.toolStartTimes.has(block.id)
+      ) {
         session.toolStartTimes.set(block.id, now);
         session.toolProgressOutput.delete(block.id);
       }

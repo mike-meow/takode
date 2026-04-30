@@ -231,4 +231,23 @@ describe("codex-adapter-browser-message-controller thread routing", () => {
     const block = msg.type === "assistant" ? msg.message.content[0] : null;
     expect(block).toMatchObject({ type: "tool_use", input: { command: "pwd" } });
   });
+
+  it("does not track Codex plan TodoWrite tool uses for result recovery", async () => {
+    const session = makeSession();
+
+    await routeAssistantMessage(session, [
+      {
+        type: "tool_use",
+        id: "codex-plan-live-1",
+        name: "TodoWrite",
+        input: { todos: [{ content: "Inspect", status: "in_progress" }] },
+      },
+      { type: "tool_use", id: "cmd-live-1", name: "Bash", input: { command: "pwd" } },
+    ]);
+
+    // Codex plan updates are rendered through TodoWrite for UI state, but they
+    // never produce tool_result messages. Real terminal tools still need timers.
+    expect(session.toolStartTimes.has("codex-plan-live-1")).toBe(false);
+    expect(session.toolStartTimes.has("cmd-live-1")).toBe(true);
+  });
 });

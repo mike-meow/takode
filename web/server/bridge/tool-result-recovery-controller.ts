@@ -64,6 +64,9 @@ export function findToolUseBlockInHistory(
 export function getToolUseNameInHistory(session: ToolResultRecoverySessionLike, toolUseId: string): string | null {
   return findToolUseBlockInHistory(session, toolUseId)?.name ?? null;
 }
+export function shouldTrackCodexToolResultRecovery(block: Extract<ContentBlock, { type: "tool_use" }>): boolean {
+  return !isCodexPlanningStateToolUse(block);
+}
 export function collectCompletedToolStartTimes(
   session: ToolResultRecoverySessionLike,
   toolResults: Array<Extract<ContentBlock, { type: "tool_result" }>>,
@@ -194,10 +197,23 @@ export function collectUnresolvedToolStartTimesFromHistory(
   const resolved = new Set<string>();
   for (const msg of session.messageHistory) {
     if (msg.type === "assistant") {
+      const toolUsesById = new Map<string, Extract<ContentBlock, { type: "tool_use" }>>();
+      const content = (msg as { message?: { content?: ContentBlock[] } }).message?.content;
+      if (Array.isArray(content)) {
+        for (const block of content) {
+          if (block.type === "tool_use" && block.id) toolUsesById.set(block.id, block);
+        }
+      }
+
       const raw = (msg as Record<string, unknown>).tool_start_times;
       if (raw && typeof raw === "object") {
         for (const [toolUseId, ts] of Object.entries(raw as Record<string, unknown>)) {
           if (typeof ts !== "number" || !Number.isFinite(ts)) continue;
+          const toolUse = toolUsesById.get(toolUseId);
+          if (toolUse && !shouldTrackCodexToolResultRecovery(toolUse)) {
+            starts.delete(toolUseId);
+            continue;
+          }
           const prev = starts.get(toolUseId);
           if (prev == null || ts < prev) starts.set(toolUseId, ts);
         }
@@ -271,7 +287,13 @@ export function scheduleCodexToolResultWatchdogs(
   deps: ToolResultRecoveryDeps,
 ): void {
   if (session.backendType !== "codex") return;
-  for (const toolUseId of session.toolStartTimes.keys()) {
+  for (const toolUseId of [...session.toolStartTimes.keys()]) {
+    const toolUse = deps.getToolUseBlockInHistory(session, toolUseId);
+    if (toolUse && !shouldTrackCodexToolResultRecovery(toolUse)) {
+      session.toolStartTimes.delete(toolUseId);
+      session.toolProgressOutput.delete(toolUseId);
+      continue;
+    }
     if (session.codexToolResultWatchdogs.has(toolUseId)) continue;
     const timer = setTimeout(() => {
       session.codexToolResultWatchdogs.delete(toolUseId);
@@ -291,6 +313,9 @@ export function scheduleCodexToolResultWatchdogs(
     }, deps.codexToolResultWatchdogMs);
     session.codexToolResultWatchdogs.set(toolUseId, timer);
   }
+}
+function isCodexPlanningStateToolUse(block: Extract<ContentBlock, { type: "tool_use" }>): boolean {
+  return block.id.startsWith("codex-plan-") || block.name === "TodoWrite" || block.name === "TaskUpdate";
 }
 export function shouldDeferCodexToolResultWatchdog(
   session: ToolResultRecoverySessionLike,
