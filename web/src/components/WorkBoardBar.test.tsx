@@ -361,6 +361,56 @@ describe("WorkBoardBar", () => {
     expect(queryByText("Active")).not.toBeInTheDocument();
   });
 
+  it("lets off-board auto-surfaced attention tabs be dismissed from the unified track", () => {
+    const onCloseThreadTab = vi.fn();
+    const onSelectThread = vi.fn();
+    resetStore({
+      sdkSessions: [{ sessionId: "s1", isOrchestrator: true }],
+      sessionBoards: new Map([["s1", BOARD_DATA]]),
+    });
+
+    const { getAllByTestId, getByLabelText, queryByText } = render(
+      <WorkBoardBar
+        sessionId="s1"
+        currentThreadKey="q-5"
+        onCloseThreadTab={onCloseThreadTab}
+        onSelectThread={onSelectThread}
+        attentionRecords={[
+          attentionRecord({
+            id: "reopened",
+            type: "quest_reopened_or_rework",
+            priority: "milestone",
+            actionLabel: "Open",
+            state: "reopened",
+            route: { threadKey: "q-5", questId: "q-5" },
+            threadKey: "q-5",
+            questId: "q-5",
+            dedupeKey: "reopened",
+            title: "q-5 rework requested",
+            updatedAt: 300,
+          }),
+        ]}
+      />,
+    );
+
+    const tabs = getAllByTestId("thread-tab");
+    const offBoardTab = tabs.find((tab) => tab.getAttribute("data-thread-key") === "q-5")!;
+    const boardActiveTab = tabs.find((tab) => tab.getAttribute("data-thread-key") === "q-1")!;
+    expect(offBoardTab).toHaveAttribute("data-closable", "true");
+    expect(boardActiveTab).toHaveAttribute("data-closable", "false");
+    expect(within(boardActiveTab).queryByTestId("thread-tab-close")).not.toBeInTheDocument();
+
+    fireEvent.click(getByLabelText("Close q-5"));
+
+    expect(onCloseThreadTab).toHaveBeenCalledWith("q-5");
+    expect(onSelectThread).toHaveBeenCalledWith("main");
+    expect(queryByText("q-5 rework requested")).not.toBeInTheDocument();
+    expect(getAllByTestId("thread-tab").map((tab) => tab.getAttribute("data-thread-key"))).toEqual(
+      expect.arrayContaining(["q-1", "q-2"]),
+    );
+    expect(getAllByTestId("thread-tab").map((tab) => tab.getAttribute("data-thread-key"))).not.toContain("q-5");
+  });
+
   it("colors unified board-active tab titles without rendering a separate phase label", () => {
     resetStore({
       sdkSessions: [{ sessionId: "s1", isOrchestrator: true }],

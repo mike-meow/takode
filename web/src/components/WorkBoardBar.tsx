@@ -308,7 +308,7 @@ function buildPrimaryThreadChips({
       detail: threadRowDetail(row),
       messageCount: row.messageCount,
       needsInput: attention.some(isNeedsInputAttention),
-      canClose: false,
+      canClose: true,
       route: attention[0]?.route,
       updatedAt: Math.max(...attention.map((record) => record.updatedAt), 0),
     });
@@ -324,7 +324,7 @@ function buildPrimaryThreadChips({
       title: record.title,
       detail: record.actionLabel,
       needsInput: records.some(isNeedsInputAttention),
-      canClose: false,
+      canClose: true,
       route: record.route,
       updatedAt: Math.max(...records.map((candidate) => candidate.updatedAt), 0),
     });
@@ -654,6 +654,10 @@ export function WorkBoardBar({
   const previousOpenThreadTabKeysRef = useRef<string[] | null>(null);
   const newThreadTabTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const [newThreadTabKeys, setNewThreadTabKeys] = useState<Set<string>>(() => new Set());
+  const [dismissedAutoThreadTabKeys, setDismissedAutoThreadTabKeys] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    setDismissedAutoThreadTabKeys(new Set());
+  }, [sessionId]);
   useEffect(() => {
     const currentKeys = openThreadTabs.map((tab) => tab.threadKey);
     const previousKeys = previousOpenThreadTabKeysRef.current;
@@ -691,20 +695,36 @@ export function WorkBoardBar({
     [activeThreadChips],
   );
   const openThreadTabKeys = useMemo(() => new Set(openThreadTabs.map((tab) => tab.threadKey)), [openThreadTabs]);
+  const activeBoardThreadKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const row of activeBoardRows) keys.add(normalizeThreadKey(row.questId));
+    return keys;
+  }, [activeBoardRows]);
   const closedActiveThreadChips = useMemo(
     () =>
       activeThreadChips.filter(
         (chip) =>
           chip.threadKey !== MAIN_THREAD_KEY &&
           chip.threadKey !== ALL_THREADS_KEY &&
-          !openThreadTabKeys.has(chip.threadKey),
+          !openThreadTabKeys.has(chip.threadKey) &&
+          (activeBoardThreadKeys.has(chip.threadKey) || !dismissedAutoThreadTabKeys.has(chip.threadKey)),
       ),
-    [activeThreadChips, openThreadTabKeys],
+    [activeBoardThreadKeys, activeThreadChips, dismissedAutoThreadTabKeys, openThreadTabKeys],
   );
   const unifiedThreadTabs = useMemo(
     () => [...openThreadTabs, ...closedActiveThreadChips],
     [closedActiveThreadChips, openThreadTabs],
   );
+  const handleCloseThreadTab = (threadKey: string) => {
+    const normalized = normalizeThreadKey(threadKey);
+    onCloseThreadTab?.(normalized);
+    if (openThreadTabKeys.has(normalized)) return;
+
+    setDismissedAutoThreadTabKeys((existing) => new Set([...existing, normalized]));
+    if (isSelectedThread(currentThreadKey, normalized)) {
+      onSelectThread?.(MAIN_THREAD_KEY);
+    }
+  };
   const boardThreadKeys = useMemo(() => {
     const keys = new Set<string>();
     for (const row of activeBoardRows) keys.add(normalizeThreadKey(row.questId));
@@ -807,7 +827,7 @@ export function WorkBoardBar({
         sessionId={sessionId}
         currentThreadKey={currentThreadKey}
         onSelectThread={onSelectThread}
-        onCloseThreadTab={onCloseThreadTab}
+        onCloseThreadTab={onCloseThreadTab ? handleCloseThreadTab : undefined}
         newTabKeys={newThreadTabKeys}
       />
 
