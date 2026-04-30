@@ -118,4 +118,84 @@ describe("Quest Journey board phase timing", () => {
       "2": { startedAt: 21_000 },
     });
   });
+
+  it("rebases the current open timing when a revision inserts a phase before the current phase", () => {
+    // The old Implement timing must move to the revised Implement position;
+    // otherwise the inserted Explore phase would display time the board never spent there.
+    const session = createSession();
+    const deps = createDeps();
+
+    vi.setSystemTime(new Date(1_000));
+    upsertBoardRow(
+      session,
+      {
+        questId: "q-1018",
+        status: "PLANNING",
+        journey: { phaseIds: ["alignment", "implement", "code-review"] },
+      },
+      deps,
+    );
+    vi.setSystemTime(new Date(61_000));
+    advanceBoardRow(session, "q-1018", QUEST_JOURNEY_STATES, deps);
+
+    vi.setSystemTime(new Date(181_000));
+    upsertBoardRow(
+      session,
+      {
+        questId: "q-1018",
+        status: "IMPLEMENTING",
+        journey: {
+          phaseIds: ["alignment", "explore", "implement", "code-review"],
+          activePhaseIndex: 2,
+          revisionReason: "Add Explore before review",
+        },
+      },
+      deps,
+    );
+
+    expect(getBoard(session)[0]?.journey?.phaseTimings).toEqual({
+      "0": { startedAt: 1_000, endedAt: 61_000 },
+      "2": { startedAt: 61_000 },
+    });
+  });
+
+  it("drops ambiguous repeated-phase current timing on phase-plan revision", () => {
+    // If repeated phases make the current occurrence identity ambiguous, start
+    // timing from the revision boundary instead of reusing stale precise history.
+    const session = createSession();
+    const deps = createDeps();
+
+    vi.setSystemTime(new Date(1_000));
+    upsertBoardRow(
+      session,
+      {
+        questId: "q-1019",
+        status: "IMPLEMENTING",
+        journey: {
+          phaseIds: ["alignment", "implement", "code-review", "implement"],
+          activePhaseIndex: 3,
+        },
+      },
+      deps,
+    );
+
+    vi.setSystemTime(new Date(11_000));
+    upsertBoardRow(
+      session,
+      {
+        questId: "q-1019",
+        status: "IMPLEMENTING",
+        journey: {
+          phaseIds: ["alignment", "implement", "code-review", "explore", "implement"],
+          activePhaseIndex: 4,
+          revisionReason: "Add Explore before the repeated Implement",
+        },
+      },
+      deps,
+    );
+
+    expect(getBoard(session)[0]?.journey?.phaseTimings).toEqual({
+      "4": { startedAt: 11_000 },
+    });
+  });
 });

@@ -264,12 +264,32 @@ function hasBoardJourneyRevision(
   return false;
 }
 
+function hasBoardJourneyPhasePlanRevision(
+  existing: BoardRow["journey"] | undefined,
+  incoming: BoardRow["journey"] | undefined,
+): boolean {
+  if (!existing || !incoming?.phaseIds) return false;
+  return normalizeQuestJourneyPhaseIds(incoming.phaseIds).join("\0") !== (existing.phaseIds ?? []).join("\0");
+}
+
 function getTimedBoardJourneyPhaseIndex(
   row: Pick<BoardRow, "journey" | "status"> | null | undefined,
 ): number | undefined {
   if (!row?.journey || isQueuedBoardRowStatus(row.status) || isProposedBoardRowStatus(row.status)) return undefined;
   const index = row.journey.activePhaseIndex;
   return typeof index === "number" && Number.isInteger(index) && index >= 0 ? index : undefined;
+}
+
+function isClosedQuestJourneyPhaseTiming(
+  timing: QuestJourneyPhaseTiming | undefined,
+): timing is Required<QuestJourneyPhaseTiming> {
+  return !!timing?.startedAt && !!timing.endedAt && timing.endedAt >= timing.startedAt;
+}
+
+function isOpenQuestJourneyPhaseTiming(
+  timing: QuestJourneyPhaseTiming | undefined,
+): timing is QuestJourneyPhaseTiming & { startedAt: number } {
+  return !!timing?.startedAt && !timing.endedAt;
 }
 
 function closeQuestJourneyPhaseTiming(
@@ -325,6 +345,74 @@ function applyQuestJourneyPhaseTiming(row: BoardRow, previousRow: BoardRow | nul
     },
     row.status,
   );
+}
+
+function phasePrefixMatches(
+  previousPhaseIds: readonly QuestJourneyPhaseId[],
+  nextPhaseIds: readonly QuestJourneyPhaseId[],
+  index: number,
+): boolean {
+  if (index >= previousPhaseIds.length || index >= nextPhaseIds.length) return false;
+  return previousPhaseIds.slice(0, index + 1).every((phaseId, phaseIndex) => nextPhaseIds[phaseIndex] === phaseId);
+}
+
+function isCurrentPhaseTimingRebaseSafe(
+  previousPhaseIds: readonly QuestJourneyPhaseId[],
+  nextPhaseIds: readonly QuestJourneyPhaseId[],
+  previousIndex: number,
+  nextIndex: number,
+): boolean {
+  const phaseId = previousPhaseIds[previousIndex];
+  if (!phaseId || nextPhaseIds[nextIndex] !== phaseId) return false;
+  if (previousIndex === nextIndex && phasePrefixMatches(previousPhaseIds, nextPhaseIds, previousIndex)) return true;
+  const previousMatches = previousPhaseIds.filter((candidate) => candidate === phaseId).length;
+  const nextMatches = nextPhaseIds.filter((candidate) => candidate === phaseId).length;
+  return previousMatches === 1 && nextMatches === 1;
+}
+
+function rebaseQuestJourneyPhaseTimingsForRevision(
+  previousRow: BoardRow | undefined,
+  nextRow: Pick<BoardRow, "journey" | "status" | "noCode">,
+): Record<string, QuestJourneyPhaseTiming> | undefined {
+  if (
+    !previousRow?.journey ||
+    isQueuedBoardRowStatus(previousRow.status) ||
+    isProposedBoardRowStatus(previousRow.status)
+  ) {
+    return undefined;
+  }
+
+  const previousJourney = normalizeBoardRowJourneyPlan(previousRow, previousRow.status);
+  const nextJourney = normalizeBoardRowJourneyPlan(nextRow, nextRow.status);
+  const previousPhaseTimings = previousJourney.phaseTimings ?? {};
+  const previousActiveIndex = getTimedBoardJourneyPhaseIndex({ journey: previousJourney, status: previousRow.status });
+  const nextActiveIndex = getTimedBoardJourneyPhaseIndex({ journey: nextJourney, status: nextRow.status });
+  const rebased: Record<string, QuestJourneyPhaseTiming> = {};
+
+  if (previousActiveIndex !== undefined && nextActiveIndex !== undefined) {
+    const completedPrefixLength = Math.min(previousActiveIndex, nextActiveIndex);
+    for (let index = 0; index < completedPrefixLength; index += 1) {
+      const timing = previousPhaseTimings[String(index)];
+      if (previousJourney.phaseIds[index] === nextJourney.phaseIds[index] && isClosedQuestJourneyPhaseTiming(timing)) {
+        rebased[String(index)] = timing;
+      }
+    }
+
+    const currentTiming = previousPhaseTimings[String(previousActiveIndex)];
+    if (
+      isOpenQuestJourneyPhaseTiming(currentTiming) &&
+      isCurrentPhaseTimingRebaseSafe(
+        previousJourney.phaseIds,
+        nextJourney.phaseIds,
+        previousActiveIndex,
+        nextActiveIndex,
+      )
+    ) {
+      rebased[String(nextActiveIndex)] = currentTiming;
+    }
+  }
+
+  return Object.keys(rebased).length > 0 ? rebased : undefined;
 }
 
 function cloneBoardRowForTiming(row: BoardRow): BoardRow {
@@ -434,7 +522,7 @@ export function upsertBoardRow(
   const status = mergeStr(row.status, existing?.status);
   const noCode = row.noCode !== undefined ? row.noCode : existing?.noCode;
   const journeyRevised = hasBoardJourneyRevision(existing?.journey, row.journey);
-  const baseJourney =
+  let baseJourney =
     row.journey || existing?.journey
       ? {
           ...existing?.journey,
@@ -447,6 +535,16 @@ export function upsertBoardRow(
             : {}),
         }
       : undefined;
+  if (hasBoardJourneyPhasePlanRevision(existing?.journey, row.journey) && baseJourney) {
+    baseJourney = {
+      ...baseJourney,
+      phaseTimings: rebaseQuestJourneyPhaseTimingsForRevision(existing, {
+        noCode,
+        journey: baseJourney,
+        status,
+      }),
+    };
+  }
   const merged: BoardRow = {
     questId: row.questId,
     title: mergeStr(row.title, existing?.title),
