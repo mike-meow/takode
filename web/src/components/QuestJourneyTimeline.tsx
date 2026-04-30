@@ -1,6 +1,9 @@
 import type { CSSProperties } from "react";
 import {
+  formatQuestJourneyDuration,
   getQuestJourneyCurrentPhaseIndex,
+  getQuestJourneyPhaseDurationMs,
+  getQuestJourneyTotalElapsedMs,
   getQuestJourneyPhase,
   type QuestJourneyPhase,
   type QuestJourneyPlanState,
@@ -15,6 +18,7 @@ interface PhaseItem {
   index: number;
   state: PhaseState;
   note?: string;
+  durationLabel?: string;
 }
 
 const MUTED_DOT_CLASS = "border-cc-muted/35 bg-cc-muted/15";
@@ -59,7 +63,7 @@ function getJourneyPresentationMode(journey: QuestJourneyPlanState, status?: str
   return "active";
 }
 
-function getPhaseItems(journey: QuestJourneyPlanState, status?: string | null): PhaseItem[] {
+function getPhaseItems(journey: QuestJourneyPlanState, status?: string | null, now = Date.now()): PhaseItem[] {
   const phaseIds = journey.phaseIds ?? [];
   const mode = getJourneyPresentationMode(journey, status);
   const currentIndex = mode === "active" ? (getQuestJourneyCurrentPhaseIndex(journey, status) ?? -1) : -1;
@@ -69,6 +73,7 @@ function getPhaseItems(journey: QuestJourneyPlanState, status?: string | null): 
     if (!phase) return [];
 
     const note = journey.phaseNotes?.[String(index)]?.trim() || undefined;
+    const durationMs = getQuestJourneyPhaseDurationMs(journey, index, now);
     const state: PhaseState =
       mode === "proposed"
         ? "proposed"
@@ -81,7 +86,15 @@ function getPhaseItems(journey: QuestJourneyPlanState, status?: string | null): 
               : index === currentIndex
                 ? "current"
                 : "upcoming";
-    return [{ phase, index, state, note }];
+    return [
+      {
+        phase,
+        index,
+        state,
+        note,
+        ...(durationMs !== undefined ? { durationLabel: formatQuestJourneyDuration(durationMs) } : {}),
+      },
+    ];
   });
 }
 
@@ -238,13 +251,17 @@ function VerticalJourney({
   journey,
   status,
   className,
+  now,
 }: {
   items: PhaseItem[];
   journey: QuestJourneyPlanState;
   status?: string | null;
   className?: string;
+  now: number;
 }) {
   const mode = getJourneyPresentationMode(journey, status);
+  const totalElapsedMs = getQuestJourneyTotalElapsedMs(journey, now);
+  const totalElapsedLabel = totalElapsedMs !== undefined ? formatQuestJourneyDuration(totalElapsedMs) : undefined;
   return (
     <div
       className={`rounded-md border border-cc-border bg-cc-hover/20 p-2 ${className ?? ""}`.trim()}
@@ -257,7 +274,9 @@ function VerticalJourney({
             {journeyTimelineLabel(mode)}
           </div>
         </div>
-        <div className="shrink-0 text-[10px] text-cc-muted">{`${items.length} phase${items.length === 1 ? "" : "s"}`}</div>
+        <div className="shrink-0 text-[10px] text-cc-muted">
+          {`${items.length} phase${items.length === 1 ? "" : "s"}${totalElapsedLabel ? ` · Total ${totalElapsedLabel}` : ""}`}
+        </div>
       </div>
       <ol className="space-y-0" data-testid="quest-journey-detail-list">
         {items.map((item, index) => {
@@ -304,6 +323,11 @@ function VerticalJourney({
                       current
                     </span>
                   )}
+                  {item.durationLabel && (
+                    <span className="shrink-0 text-[10px] text-cc-muted" data-testid="quest-journey-phase-duration">
+                      {item.durationLabel}
+                    </span>
+                  )}
                 </div>
                 {purpose && (
                   <div
@@ -336,7 +360,8 @@ export function QuestJourneyTimeline({
   compact?: boolean;
   variant?: JourneyVariant;
 }) {
-  const items = getPhaseItems(journey, status);
+  const now = Date.now();
+  const items = getPhaseItems(journey, status, now);
   if (items.length === 0) return null;
 
   const resolvedVariant: JourneyVariant = variant ?? (compact ? "compact" : "horizontal");
@@ -344,7 +369,7 @@ export function QuestJourneyTimeline({
     return <QuestJourneyCompactSummary journey={journey} status={status} className={className} />;
   }
   if (resolvedVariant === "vertical") {
-    return <VerticalJourney items={items} journey={journey} status={status} className={className} />;
+    return <VerticalJourney items={items} journey={journey} status={status} className={className} now={now} />;
   }
   return <HorizontalJourney items={items} journey={journey} status={status} compact={compact} className={className} />;
 }

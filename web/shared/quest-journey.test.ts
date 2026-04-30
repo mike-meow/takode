@@ -4,13 +4,16 @@ import {
   canonicalizeQuestJourneyPhaseId,
   canonicalizeQuestJourneyLifecycleMode,
   canonicalizeQuestJourneyState,
+  formatQuestJourneyDuration,
   formatQuestJourneyText,
   formatWaitForRefLabel,
   getQuestJourneyCurrentPhaseId,
   getQuestJourneyCurrentPhaseIndex,
+  getQuestJourneyPhaseDurationMs,
   getQuestJourneyPhase,
   getQuestJourneyPhaseForState,
   getQuestJourneyProposalSignature,
+  getQuestJourneyTotalElapsedMs,
   getWaitForRefKind,
   isValidQuestId,
   isValidWaitForRef,
@@ -450,6 +453,54 @@ describe("Quest Journey phases", () => {
         },
       }),
     );
+  });
+
+  it("keeps only valid in-range phase timings", () => {
+    expect(
+      normalizeQuestJourneyPlan(
+        {
+          phaseIds: ["alignment", "implement", "code-review"],
+          phaseTimings: {
+            "0": { startedAt: 1000, endedAt: 61000 },
+            "1": { startedAt: 61000 },
+            "2": { startedAt: -1, endedAt: 90000 },
+            "3": { endedAt: 91000 },
+            "4": { startedAt: 1000, endedAt: 2000 },
+          },
+        },
+        "IMPLEMENTING",
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        phaseTimings: {
+          "0": { startedAt: 1000, endedAt: 61000 },
+          "1": { startedAt: 61000 },
+        },
+      }),
+    );
+  });
+
+  it("formats phase durations and sums known Journey timing", () => {
+    const plan = normalizeQuestJourneyPlan(
+      {
+        phaseIds: ["alignment", "implement", "code-review"],
+        activePhaseIndex: 1,
+        phaseTimings: {
+          "0": { startedAt: 1000, endedAt: 61000 },
+          "1": { startedAt: 61000 },
+        },
+      },
+      "IMPLEMENTING",
+    );
+
+    expect(getQuestJourneyPhaseDurationMs(plan, 0, 181000)).toBe(60000);
+    expect(getQuestJourneyPhaseDurationMs(plan, 1, 181000)).toBe(120000);
+    expect(getQuestJourneyPhaseDurationMs(plan, 2, 181000)).toBeUndefined();
+    expect(getQuestJourneyTotalElapsedMs(plan, 181000)).toBe(180000);
+    expect(formatQuestJourneyDuration(45_000)).toBe("45s");
+    expect(formatQuestJourneyDuration(180_000)).toBe("3m");
+    expect(formatQuestJourneyDuration(5_400_000)).toBe("1h 30m");
+    expect(formatQuestJourneyDuration(176_400_000)).toBe("2d 1h");
   });
 
   it("rebases phase notes by phase occurrence instead of raw index", () => {

@@ -309,6 +309,48 @@ describe("BoardTable", () => {
     expect(openQuestOverlay).toHaveBeenCalledWith("q-924");
   });
 
+  it("shows compact Journey durations in the hover preview", () => {
+    mockState.quests = [
+      {
+        id: "q-1016-v1",
+        questId: "q-1016",
+        version: 1,
+        title: "Track phase durations",
+        status: "in_progress",
+        createdAt: 1,
+      },
+    ];
+    const board: BoardRowData[] = [
+      {
+        questId: "q-1016",
+        title: "Fallback title",
+        status: "IMPLEMENTING",
+        journey: {
+          mode: "active",
+          phaseIds: ["alignment", "implement", "code-review"],
+          activePhaseIndex: 1,
+          currentPhaseId: "implement",
+          phaseTimings: {
+            "0": { startedAt: 1_000, endedAt: 61_000 },
+            "1": { startedAt: 61_000, endedAt: 181_000 },
+          },
+        },
+        updatedAt: 1,
+      },
+    ];
+
+    render(<BoardTable board={board} />);
+    fireEvent.mouseEnter(screen.getByTestId("board-journey-hover-target"));
+
+    const card = screen.getByTestId("board-journey-hover-card");
+    expect(within(card).getByText(/3 phases · Total 3m/)).toBeInTheDocument();
+    expect(
+      within(card)
+        .getAllByTestId("quest-journey-phase-duration")
+        .map((node) => node.textContent),
+    ).toEqual(["1m", "2m"]);
+  });
+
   it("renders completed board Journey rows without active current-phase cues", async () => {
     mockState.quests = [
       {

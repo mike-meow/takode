@@ -206,6 +206,8 @@ export interface QuestJourneyPlanState {
   currentPhaseId?: QuestJourneyPhaseId;
   /** Lightweight reminder text keyed by zero-based phase position. */
   phaseNotes?: Record<string, string>;
+  /** Wall-clock timing keyed by zero-based phase position. */
+  phaseTimings?: Record<string, QuestJourneyPhaseTiming>;
   /** Presentation metadata for proposed Journey approval reviews. */
   presentation?: QuestJourneyProposalPresentation;
   /** Cached next leader action for board/reminder display. */
@@ -216,6 +218,13 @@ export interface QuestJourneyPlanState {
   revisedAt?: number;
   /** Number of explicit Journey revisions recorded on this row. */
   revisionCount?: number;
+}
+
+export interface QuestJourneyPhaseTiming {
+  /** Epoch ms when the board entered this phase occurrence. */
+  startedAt?: number;
+  /** Epoch ms when the board advanced away from this phase occurrence. */
+  endedAt?: number;
 }
 
 export interface QuestJourneyProposalPresentation {
@@ -469,6 +478,81 @@ function normalizeQuestJourneyPhaseNotes(
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
+function normalizeQuestJourneyTimestamp(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+function normalizeQuestJourneyPhaseTimings(
+  phaseTimings: Record<string, unknown> | undefined,
+  phaseCount: number,
+): Record<string, QuestJourneyPhaseTiming> | undefined {
+  if (!phaseTimings || typeof phaseTimings !== "object") return undefined;
+  const entries = Object.entries(phaseTimings)
+    .map(([rawIndex, rawTiming]): readonly [string, QuestJourneyPhaseTiming] | null => {
+      const index = Number.parseInt(rawIndex, 10);
+      if (!Number.isInteger(index) || index < 0 || index >= phaseCount) return null;
+      if (!rawTiming || typeof rawTiming !== "object" || Array.isArray(rawTiming)) return null;
+      const timing = rawTiming as Record<string, unknown>;
+      const startedAt = normalizeQuestJourneyTimestamp(timing.startedAt);
+      const endedAt = normalizeQuestJourneyTimestamp(timing.endedAt);
+      if (startedAt === undefined) return null;
+      const normalizedTiming: QuestJourneyPhaseTiming = {
+        startedAt,
+        ...(endedAt !== undefined && endedAt >= startedAt ? { endedAt } : {}),
+      };
+      return [String(index), normalizedTiming] as const;
+    })
+    .filter((entry): entry is readonly [string, QuestJourneyPhaseTiming] => entry !== null)
+    .sort((a, b) => Number.parseInt(a[0], 10) - Number.parseInt(b[0], 10));
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
+export function getQuestJourneyPhaseDurationMs(
+  plan: Partial<QuestJourneyPlanState> | undefined,
+  phaseIndex: number,
+  now = Date.now(),
+): number | undefined {
+  if (!Number.isInteger(phaseIndex) || phaseIndex < 0) return undefined;
+  const timing = plan?.phaseTimings?.[String(phaseIndex)];
+  if (!timing?.startedAt) return undefined;
+  const endedAt = timing.endedAt ?? now;
+  if (!Number.isFinite(endedAt) || endedAt < timing.startedAt) return undefined;
+  return endedAt - timing.startedAt;
+}
+
+export function getQuestJourneyTotalElapsedMs(
+  plan: Partial<QuestJourneyPlanState> | undefined,
+  now = Date.now(),
+): number | undefined {
+  const phaseIds = normalizeQuestJourneyPhaseIds(plan?.phaseIds);
+  if (phaseIds.length === 0) return undefined;
+  let total = 0;
+  let hasTiming = false;
+  for (let index = 0; index < phaseIds.length; index += 1) {
+    const durationMs = getQuestJourneyPhaseDurationMs(plan, index, now);
+    if (durationMs === undefined) continue;
+    total += durationMs;
+    hasTiming = true;
+  }
+  return hasTiming ? total : undefined;
+}
+
+export function formatQuestJourneyDuration(ms: number): string {
+  const totalSeconds = Math.max(0, Math.round(ms / 1000));
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+
+  const totalMinutes = Math.round(totalSeconds / 60);
+  if (totalMinutes < 60) return `${totalMinutes}m`;
+
+  const totalHours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (totalHours < 24) return minutes > 0 ? `${totalHours}h ${minutes}m` : `${totalHours}h`;
+
+  const days = Math.floor(totalHours / 24);
+  const hours = totalHours % 24;
+  return hours > 0 ? `${days}d ${hours}h` : `${days}d`;
+}
+
 function normalizeQuestJourneyProposalPresentation(
   presentation: QuestJourneyPlanState["presentation"] | undefined,
 ): QuestJourneyPlanState["presentation"] | undefined {
@@ -560,6 +644,10 @@ export function normalizeQuestJourneyPlan(
   const mode = canonicalizeQuestJourneyLifecycleMode(plan?.mode) ?? "active";
   const normalizedStatus = typeof status === "string" ? status.trim().toUpperCase() : "";
   const phaseNotes = normalizeQuestJourneyPhaseNotes(plan?.phaseNotes, nonEmptyPhaseIds.length);
+  const phaseTimings = normalizeQuestJourneyPhaseTimings(
+    plan?.phaseTimings as Record<string, unknown> | undefined,
+    nonEmptyPhaseIds.length,
+  );
   const presentation = normalizeQuestJourneyProposalPresentation(plan?.presentation);
   const activePhaseIndex =
     mode === "proposed" ? undefined : normalizeQuestJourneyActivePhaseIndex(plan, nonEmptyPhaseIds, status);
@@ -579,6 +667,7 @@ export function normalizeQuestJourneyPlan(
     ...(activePhaseIndex !== undefined ? { activePhaseIndex } : {}),
     ...(currentPhaseId ? { currentPhaseId } : {}),
     ...(phaseNotes ? { phaseNotes } : {}),
+    ...(phaseTimings ? { phaseTimings } : {}),
     ...(presentation ? { presentation } : {}),
     ...(nextLeaderAction ? { nextLeaderAction } : {}),
     ...(plan?.revisionReason ? { revisionReason: plan.revisionReason } : {}),

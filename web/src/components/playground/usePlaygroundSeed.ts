@@ -274,7 +274,16 @@ export function usePlaygroundSeed() {
         status: "IMPLEMENTING",
         updatedAt: Date.now() - 120_000,
         createdAt: Date.now() - 240_000,
-        journey: { mode: "active", phaseIds: ["alignment", "implement", "code-review"], currentPhaseId: "implement" },
+        journey: {
+          mode: "active",
+          phaseIds: ["alignment", "implement", "code-review"],
+          activePhaseIndex: 1,
+          currentPhaseId: "implement",
+          phaseTimings: {
+            "0": { startedAt: Date.now() - 240_000, endedAt: Date.now() - 180_000 },
+            "1": { startedAt: Date.now() - 180_000 },
+          },
+        },
       },
       {
         questId: "q-962",
@@ -321,6 +330,12 @@ export function usePlaygroundSeed() {
           mode: "active",
           phaseIds: ["alignment", "implement", "code-review", "port"],
           currentPhaseId: "port",
+          phaseTimings: {
+            "0": { startedAt: Date.now() - 150_000, endedAt: Date.now() - 120_000 },
+            "1": { startedAt: Date.now() - 120_000, endedAt: Date.now() - 80_000 },
+            "2": { startedAt: Date.now() - 80_000, endedAt: Date.now() - 40_000 },
+            "3": { startedAt: Date.now() - 40_000, endedAt: Date.now() - 20_000 },
+          },
         },
       },
     ]);

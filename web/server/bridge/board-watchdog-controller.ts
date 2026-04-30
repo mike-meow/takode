@@ -10,6 +10,7 @@ import {
   normalizeQuestJourneyPhaseIds,
   type BoardQueueWarning,
   type QuestJourneyPhaseId,
+  type QuestJourneyPhaseTiming,
 } from "../../shared/quest-journey.js";
 import { HERD_WORKER_SLOT_LIMIT } from "../../shared/takode-constants.js";
 import type { BoardRow, TakodeEvent, TakodeHerdBatchSnapshot } from "../session-types.js";
@@ -263,6 +264,82 @@ function hasBoardJourneyRevision(
   return false;
 }
 
+function getTimedBoardJourneyPhaseIndex(
+  row: Pick<BoardRow, "journey" | "status"> | null | undefined,
+): number | undefined {
+  if (!row?.journey || isQueuedBoardRowStatus(row.status) || isProposedBoardRowStatus(row.status)) return undefined;
+  const index = row.journey.activePhaseIndex;
+  return typeof index === "number" && Number.isInteger(index) && index >= 0 ? index : undefined;
+}
+
+function closeQuestJourneyPhaseTiming(
+  timings: Record<string, QuestJourneyPhaseTiming>,
+  phaseIndex: number,
+  now: number,
+): void {
+  const key = String(phaseIndex);
+  const timing = timings[key];
+  if (!timing?.startedAt || timing.endedAt) return;
+  timings[key] = { ...timing, endedAt: now };
+}
+
+function openQuestJourneyPhaseTiming(
+  timings: Record<string, QuestJourneyPhaseTiming>,
+  phaseIndex: number,
+  now: number,
+): void {
+  const key = String(phaseIndex);
+  const timing = timings[key] ?? {};
+  const openTiming = { ...timing };
+  delete openTiming.endedAt;
+  timings[key] = { ...openTiming, startedAt: timing.startedAt ?? now };
+}
+
+function applyQuestJourneyPhaseTiming(row: BoardRow, previousRow: BoardRow | null | undefined, now: number): void {
+  if (!row.journey) return;
+
+  const previousJourney = previousRow?.journey
+    ? normalizeBoardRowJourneyPlan(previousRow, previousRow.status)
+    : undefined;
+  const currentPhaseIndex = getTimedBoardJourneyPhaseIndex(row);
+  const previousPhaseIndex =
+    previousJourney && previousRow
+      ? getTimedBoardJourneyPhaseIndex({ journey: previousJourney, status: previousRow.status })
+      : undefined;
+  const phaseTimings: Record<string, QuestJourneyPhaseTiming> = { ...(row.journey.phaseTimings ?? {}) };
+
+  if (previousPhaseIndex !== undefined && previousPhaseIndex !== currentPhaseIndex) {
+    closeQuestJourneyPhaseTiming(phaseTimings, previousPhaseIndex, now);
+  }
+  if (currentPhaseIndex !== undefined) {
+    openQuestJourneyPhaseTiming(phaseTimings, currentPhaseIndex, now);
+  }
+
+  row.journey = normalizeBoardRowJourneyPlan(
+    {
+      noCode: row.noCode,
+      journey: {
+        ...row.journey,
+        phaseTimings,
+      },
+    },
+    row.status,
+  );
+}
+
+function cloneBoardRowForTiming(row: BoardRow): BoardRow {
+  const clone: BoardRow = { ...row };
+  if (row.journey) {
+    clone.journey = {
+      ...row.journey,
+      phaseIds: [...row.journey.phaseIds],
+      ...(row.journey.phaseNotes ? { phaseNotes: { ...row.journey.phaseNotes } } : {}),
+      ...(row.journey.phaseTimings ? { phaseTimings: { ...row.journey.phaseTimings } } : {}),
+    };
+  }
+  return clone;
+}
+
 function completeBoardRow(
   session: SessionLike,
   questId: string,
@@ -284,8 +361,26 @@ function completeBoardRow(
 export function moveBoardRowToCompleted(session: SessionLike, questId: string): BoardRow | null {
   const row = session.board.get(questId);
   if (!row) return null;
+  const now = Date.now();
+  if (row.journey) {
+    const phaseTimings: Record<string, QuestJourneyPhaseTiming> = { ...(row.journey.phaseTimings ?? {}) };
+    const currentPhaseIndex = getTimedBoardJourneyPhaseIndex(row);
+    if (currentPhaseIndex !== undefined) {
+      closeQuestJourneyPhaseTiming(phaseTimings, currentPhaseIndex, now);
+      row.journey = normalizeBoardRowJourneyPlan(
+        {
+          noCode: row.noCode,
+          journey: {
+            ...row.journey,
+            phaseTimings,
+          },
+        },
+        row.status,
+      );
+    }
+  }
   session.board.delete(questId);
-  row.completedAt = Date.now();
+  row.completedAt = now;
   session.completedBoard.set(questId, row);
   return row;
 }
@@ -367,6 +462,7 @@ export function upsertBoardRow(
     updatedAt: row.updatedAt ?? now,
   };
   applyBoardWaitStateInvariant(merged);
+  applyQuestJourneyPhaseTiming(merged, existing, now);
   session.board.set(row.questId, merged);
   resolveRemovedBoardWaitForInputIds(
     session,
@@ -525,9 +621,11 @@ export function advanceBoardRow(
   }
 
   if (row.status === "QUEUED" || currentPhaseIdx >= 0) {
+    const previousRowForTiming = cloneBoardRowForTiming(row);
     const nextPhaseId = plannedPhaseIds[currentPhaseIdx + 1] ?? plannedPhaseIds[0];
     const nextPhase = getQuestJourneyPhase(nextPhaseId);
     if (nextPhase) {
+      const now = Date.now();
       row.status = nextPhase.boardState;
       row.journey = normalizeBoardRowJourneyPlan(
         {
@@ -539,6 +637,7 @@ export function advanceBoardRow(
             activePhaseIndex: currentPhaseIdx >= 0 ? currentPhaseIdx + 1 : 0,
             currentPhaseId: nextPhase.id,
             phaseNotes: row.journey?.phaseNotes,
+            phaseTimings: row.journey?.phaseTimings,
             revisionReason: row.journey?.revisionReason,
             revisedAt: row.journey?.revisedAt,
             revisionCount: row.journey?.revisionCount,
@@ -547,7 +646,8 @@ export function advanceBoardRow(
         nextPhase.boardState,
       );
       applyBoardWaitStateInvariant(row);
-      row.updatedAt = Date.now();
+      applyQuestJourneyPhaseTiming(row, previousRowForTiming, now);
+      row.updatedAt = now;
       session.board.set(questId, row);
       const board = commitBoard(session, deps);
       return { board, removed: false, previousState, newState: row.status };
@@ -559,10 +659,13 @@ export function advanceBoardRow(
     return { board, removed: true, previousState, newState: undefined };
   }
 
+  const previousRowForTiming = cloneBoardRowForTiming(row);
+  const now = Date.now();
   row.status = currentIdx === -1 ? states[0] : states[currentIdx + 1];
   row.journey = normalizeBoardRowJourneyPlan(row, row.status);
   applyBoardWaitStateInvariant(row);
-  row.updatedAt = Date.now();
+  applyQuestJourneyPhaseTiming(row, previousRowForTiming, now);
+  row.updatedAt = now;
   session.board.set(questId, row);
   const board = commitBoard(session, deps);
   return { board, removed: false, previousState, newState: row.status };
