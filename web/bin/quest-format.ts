@@ -2,6 +2,11 @@ import type { QuestmasterTask } from "../server/quest-types.js";
 import { hasQuestReviewMetadata, isQuestReviewInboxUnread } from "../server/quest-types.js";
 import type { SessionMetadata } from "./quest-session-metadata.js";
 import { normalizeTldr } from "../server/quest-tldr.js";
+import {
+  phaseDocumentationPreview,
+  summarizeQuestPhaseDocumentation,
+  type IndexedQuestFeedbackEntry,
+} from "../shared/quest-phase-documentation-summary.js";
 export type { SessionMetadata } from "./quest-session-metadata.js";
 
 type FormatSessionOptions = {
@@ -43,6 +48,12 @@ function isVerificationInboxUnreadQuest(q: QuestmasterTask): boolean {
 
 function questRecencyTs(q: QuestmasterTask): number {
   return Math.max(q.createdAt, (q as { updatedAt?: number }).updatedAt ?? 0, q.statusChangedAt ?? 0);
+}
+
+function compactPreview(text: string, maxLen = 180): string {
+  const singleLine = text.trim().replace(/\s+/g, " ");
+  if (singleLine.length <= maxLen) return singleLine;
+  return `${singleLine.slice(0, Math.max(0, maxLen - 3)).trimEnd()}...`;
 }
 
 export function formatSessionLabel(
@@ -154,26 +165,38 @@ export function formatQuestDetail(
       lines.push(`  ${sha}`);
     }
   }
-  if ("feedback" in q) {
-    const entries = (
-      q as {
-        feedback?: {
-          author: string;
-          text: string;
-          ts: number;
-          addressed?: boolean;
-          authorSessionId?: string;
-          images?: { filename: string; path: string }[];
-          tldr?: string;
-          phaseId?: string;
-          phasePosition?: number;
-        }[];
+  const phaseDocumentation = summarizeQuestPhaseDocumentation(q);
+  const documentedGroups = phaseDocumentation.groups.filter((group) => group.entries.length > 0);
+  if (documentedGroups.length > 0) {
+    lines.push(`Phase Documentation:`);
+    for (const group of documentedGroups) {
+      const meta = group.metaLabel ? ` [${group.metaLabel}]` : "";
+      lines.push(`  ${group.displayLabel}${meta}`);
+      for (const entry of group.entries) {
+        const authorLabel = entry.authorSessionId
+          ? `${entry.author}:${formatSessionLabel(entry.authorSessionId, sessionMetadata, {
+              ...options,
+              preferSessionNum: true,
+            })}`
+          : entry.author;
+        const kind = entry.kind ? `, ${entry.kind}` : "";
+        const preview = normalizeTldr(entry.tldr)
+          ? `TLDR: ${normalizeTldr(entry.tldr)}`
+          : compactPreview(phaseDocumentationPreview(entry));
+        lines.push(`    #${entry.index} [${authorLabel}${kind}, ${timeAgo(entry.ts)}] ${preview}`);
+        lines.push(`      Full: quest feedback show ${q.questId} ${entry.index}`);
       }
-    ).feedback;
+    }
+  }
+  if ("feedback" in q) {
+    const rawEntries = ((q as { feedback?: IndexedQuestFeedbackEntry[] }).feedback ?? []).map((entry, index) => ({
+      ...entry,
+      index,
+    }));
+    const entries = phaseDocumentation.hasPhaseDocumentation ? phaseDocumentation.unscopedFeedback : rawEntries;
     if (entries?.length) {
-      lines.push(`Feedback:`);
-      for (let index = 0; index < entries.length; index++) {
-        const entry = entries[index]!;
+      lines.push(phaseDocumentation.hasPhaseDocumentation ? `Unscoped Feedback:` : `Feedback:`);
+      for (const entry of entries) {
         const authorLabel = entry.authorSessionId
           ? `${entry.author}:${formatSessionLabel(entry.authorSessionId, sessionMetadata, {
               ...options,
@@ -187,7 +210,7 @@ export function formatQuestDetail(
           ? ` (${entry.phaseId}${entry.phasePosition ? `@${entry.phasePosition}` : ""})`
           : "";
         const entryTldr = normalizeTldr(entry.tldr);
-        lines.push(`  #${index} [${tag}]${phaseLabel} ${entryTldr ? `TLDR: ${entryTldr}` : entry.text}`);
+        lines.push(`  #${entry.index} [${tag}]${phaseLabel} ${entryTldr ? `TLDR: ${entryTldr}` : entry.text}`);
         if (entryTldr) {
           lines.push(`    Full: ${entry.text}`);
         }

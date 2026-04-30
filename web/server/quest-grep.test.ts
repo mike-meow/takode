@@ -120,9 +120,15 @@ describe("grepQuests", () => {
         feedback: [
           {
             author: "agent",
+            kind: "phase_summary",
             text: "The detailed feedback also mentions beta in a much longer agent-dense note.",
             tldr: "Beta feedback summary.",
             ts: 1,
+            journeyRunId: "run-1",
+            phaseOccurrenceId: "run-1:p2",
+            phaseId: "implement",
+            phasePosition: 2,
+            phaseOccurrence: 1,
           },
         ],
       },
@@ -133,5 +139,13 @@ describe("grepQuests", () => {
     expect(result.matches.map((match) => match.matchedField)).toEqual(["description.tldr", "feedback[0].tldr"]);
     expect(result.matches[0].snippet).toBe("Alpha summary for humans.");
     expect(result.matches[1].snippet).toBe("Beta feedback summary.");
+    expect(result.matches[1]).toMatchObject({
+      feedbackKind: "phase_summary",
+      journeyRunId: "run-1",
+      phaseOccurrenceId: "run-1:p2",
+      phaseId: "implement",
+      phasePosition: 2,
+      phaseOccurrence: 1,
+    });
   });
 });

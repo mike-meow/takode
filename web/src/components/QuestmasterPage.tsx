@@ -30,6 +30,7 @@ import {
 } from "../utils/quest-editor-helpers.js";
 import { Lightbox } from "./Lightbox.js";
 import { QuestImageThumbnail } from "./QuestImageThumbnail.js";
+import { QuestPhaseScanLines } from "./QuestPhaseScanLines.js";
 import type {
   QuestmasterCompactSort,
   QuestmasterCompactSortColumn,
@@ -1636,6 +1637,7 @@ const QuestCard = memo(function QuestCard({
                 {renderSearchHighlightText(quest.tldr, searchText)}
               </div>
             )}
+            <QuestPhaseScanLines quest={quest} searchText={searchText} className="mt-0.5" />
             <div className="flex items-center gap-2 mt-0.5">
               <CopyableQuestId questId={quest.questId} className="text-[10px] text-cc-muted/50 shrink-0">
                 {renderSearchHighlightText(quest.questId, searchText)}
@@ -1900,6 +1902,7 @@ const CompactQuestRow = memo(function CompactQuestRow({
             {renderSearchHighlightText(quest.tldr, searchText)}
           </div>
         )}
+        <QuestPhaseScanLines quest={quest} searchText={searchText} max={1} className="mt-0.5 max-w-[360px]" />
       </td>
       <td className="px-3 py-1.5 whitespace-nowrap align-middle">
         {questSessionId ? (

@@ -9,6 +9,12 @@ export interface QuestGrepMatch {
   snippet: string;
   feedbackIndex?: number;
   feedbackAuthor?: QuestFeedbackEntry["author"];
+  feedbackKind?: QuestFeedbackEntry["kind"];
+  journeyRunId?: string;
+  phaseOccurrenceId?: string;
+  phaseId?: string;
+  phasePosition?: number;
+  phaseOccurrence?: number;
 }
 
 export interface QuestGrepResponse {
@@ -132,6 +138,12 @@ export function grepQuests(
           matchedField: `feedback[${index}]`,
           feedbackIndex: index,
           feedbackAuthor: entry.author,
+          ...(entry.kind ? { feedbackKind: entry.kind } : {}),
+          ...(entry.journeyRunId ? { journeyRunId: entry.journeyRunId } : {}),
+          ...(entry.phaseOccurrenceId ? { phaseOccurrenceId: entry.phaseOccurrenceId } : {}),
+          ...(entry.phaseId ? { phaseId: entry.phaseId } : {}),
+          ...(entry.phasePosition !== undefined ? { phasePosition: entry.phasePosition } : {}),
+          ...(entry.phaseOccurrence !== undefined ? { phaseOccurrence: entry.phaseOccurrence } : {}),
         },
         text: entry.text,
         tldr: entry.tldr,

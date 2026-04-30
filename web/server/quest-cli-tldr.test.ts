@@ -130,6 +130,162 @@ describe("quest CLI TLDR metadata", () => {
     }
   });
 
+  it("shows capped phase TLDR scan lines in plain quest list output", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "quest-list-phase-tldr-"));
+    const liveDir = join(tmp, ".companion", "questmaster-live");
+    mkdirSync(liveDir, { recursive: true });
+    writeFileSync(
+      join(liveDir, "store.json"),
+      JSON.stringify(
+        {
+          format: "mutable_current_record",
+          version: 1,
+          nextQuestNumber: 2,
+          updatedAt: 0,
+          quests: [
+            {
+              id: "q-1",
+              questId: "q-1",
+              version: 1,
+              title: "Journey quest",
+              status: "refined",
+              description: "Detailed quest body.",
+              createdAt: 1,
+              statusChangedAt: 1,
+              journeyRuns: [
+                {
+                  runId: "run-1",
+                  source: "board",
+                  phaseIds: ["alignment", "implement"],
+                  status: "completed",
+                  createdAt: 1,
+                  updatedAt: 2,
+                  phaseOccurrences: [
+                    {
+                      occurrenceId: "run-1:p1",
+                      phaseId: "alignment",
+                      phaseIndex: 0,
+                      phasePosition: 1,
+                      phaseOccurrence: 1,
+                      status: "completed",
+                    },
+                    {
+                      occurrenceId: "run-1:p2",
+                      phaseId: "implement",
+                      phaseIndex: 1,
+                      phasePosition: 2,
+                      phaseOccurrence: 1,
+                      status: "completed",
+                    },
+                  ],
+                },
+              ],
+              feedback: [
+                {
+                  author: "agent",
+                  text: "Full implementation phase details should not appear in list output.",
+                  tldr: "Implementation scan TLDR.",
+                  ts: 3,
+                  phaseOccurrenceId: "run-1:p2",
+                  journeyRunId: "run-1",
+                  phaseId: "implement",
+                  phasePosition: 2,
+                },
+              ],
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+      "utf-8",
+    );
+
+    try {
+      const result = await runQuest(
+        ["list"],
+        {
+          ...process.env,
+          COMPANION_PORT: undefined,
+          COMPANION_SESSION_ID: undefined,
+          COMPANION_AUTH_TOKEN: undefined,
+          HOME: tmp,
+        },
+        tmp,
+      );
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("       Phase: Implement [phase 2]: Implementation scan TLDR.");
+      expect(result.stdout).not.toContain("Full implementation phase details");
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it("prints phase metadata on quest grep feedback matches", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "quest-grep-phase-tldr-"));
+    const liveDir = join(tmp, ".companion", "questmaster-live");
+    mkdirSync(liveDir, { recursive: true });
+    writeFileSync(
+      join(liveDir, "store.json"),
+      JSON.stringify(
+        {
+          format: "mutable_current_record",
+          version: 1,
+          nextQuestNumber: 2,
+          updatedAt: 0,
+          quests: [
+            {
+              id: "q-1",
+              questId: "q-1",
+              version: 1,
+              title: "Journey quest",
+              status: "refined",
+              description: "Detailed quest body.",
+              createdAt: 1,
+              statusChangedAt: 1,
+              feedback: [
+                {
+                  author: "agent",
+                  text: "Full implementation phase details.",
+                  tldr: "Implementation grep TLDR.",
+                  ts: 3,
+                  phaseOccurrenceId: "run-1:p2",
+                  journeyRunId: "run-1",
+                  phaseId: "implement",
+                  phasePosition: 2,
+                },
+              ],
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+      "utf-8",
+    );
+
+    try {
+      const result = await runQuest(
+        ["grep", "grep TLDR"],
+        {
+          ...process.env,
+          COMPANION_PORT: undefined,
+          COMPANION_SESSION_ID: undefined,
+          COMPANION_AUTH_TOKEN: undefined,
+          HOME: tmp,
+        },
+        tmp,
+      );
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("feedback[0].tldr | agent | phase: implement@2");
+      expect(result.stdout).toContain("Implementation grep TLDR.");
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   it("sends feedback TLDR metadata and warns when long agent feedback omits it", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "quest-feedback-tldr-"));
     const authDir = getSessionAuthDir(tmp);

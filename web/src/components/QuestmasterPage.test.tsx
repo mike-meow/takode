@@ -729,6 +729,60 @@ describe("QuestmasterPage review inbox", () => {
     expect(document.querySelector('[data-quest-id="q-31"]')).toBeNull();
   });
 
+  it("shows phase TLDR scan lines in quest list results", () => {
+    mockState.quests = [
+      {
+        ...buildVerificationQuest({ id: "q-40-v1", questId: "q-40", title: "Phase documented quest" }),
+        journeyRuns: [
+          {
+            runId: "run-1",
+            source: "board",
+            phaseIds: ["alignment", "implement"],
+            status: "completed",
+            createdAt: 1,
+            updatedAt: 2,
+            phaseOccurrences: [
+              {
+                occurrenceId: "run-1:p1",
+                phaseId: "alignment",
+                phaseIndex: 0,
+                phasePosition: 1,
+                phaseOccurrence: 1,
+                status: "completed",
+              },
+              {
+                occurrenceId: "run-1:p2",
+                phaseId: "implement",
+                phaseIndex: 1,
+                phasePosition: 2,
+                phaseOccurrence: 1,
+                status: "completed",
+              },
+            ],
+          },
+        ],
+        feedback: [
+          {
+            author: "agent",
+            text: "Full implementation detail should stay out of the compact list.",
+            tldr: "Implementation phase scanline.",
+            ts: Date.now(),
+            journeyRunId: "run-1",
+            phaseOccurrenceId: "run-1:p2",
+            phaseId: "implement",
+            phasePosition: 2,
+          },
+        ],
+      } as QuestmasterTask,
+    ];
+
+    renderQuestmaster();
+
+    expect(screen.getByText(/Implement phase 2:/)).toBeInTheDocument();
+    expect(screen.getByText(/Implementation phase scanline/)).toBeInTheDocument();
+    expect(screen.queryByText(/Full implementation detail should stay out/)).toBeNull();
+  });
+
   it("preserves plain-text title search while ignoring negated-tag syntax", () => {
     // q-331: plain-text matching should remain intact after introducing
     // explicit `-#tag` exclusion parsing.

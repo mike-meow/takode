@@ -491,6 +491,85 @@ describe("QuestDetailPanel", () => {
     expect(screen.getByText("Full agent-dense feedback body.")).toBeVisible();
   });
 
+  it("shows phase TLDRs on the quest documentation timeline with full detail collapsed", async () => {
+    const quest = makeVerificationQuest({
+      tldr: "Short quest summary.",
+      journeyRuns: [
+        {
+          runId: "run-1",
+          source: "board",
+          phaseIds: ["alignment", "implement", "code-review", "implement"],
+          status: "completed",
+          createdAt: Date.now() - 5000,
+          updatedAt: Date.now() - 1000,
+          phaseOccurrences: [
+            {
+              occurrenceId: "run-1:p1",
+              phaseId: "alignment",
+              phaseIndex: 0,
+              phasePosition: 1,
+              phaseOccurrence: 1,
+              status: "completed",
+            },
+            {
+              occurrenceId: "run-1:p2",
+              phaseId: "implement",
+              phaseIndex: 1,
+              phasePosition: 2,
+              phaseOccurrence: 1,
+              status: "completed",
+            },
+            {
+              occurrenceId: "run-1:p3",
+              phaseId: "code-review",
+              phaseIndex: 2,
+              phasePosition: 3,
+              phaseOccurrence: 1,
+              status: "completed",
+            },
+            {
+              occurrenceId: "run-1:p4",
+              phaseId: "implement",
+              phaseIndex: 3,
+              phasePosition: 4,
+              phaseOccurrence: 2,
+              status: "completed",
+            },
+          ],
+        },
+      ],
+      feedback: [
+        {
+          author: "agent",
+          kind: "phase_summary",
+          text: "Full second implementation detail.",
+          tldr: "Second implementation TLDR.",
+          ts: Date.now(),
+          authorSessionId: "session-abc",
+          journeyRunId: "run-1",
+          phaseOccurrenceId: "run-1:p4",
+          phaseId: "implement",
+          phasePosition: 4,
+          phaseOccurrence: 2,
+        },
+        { author: "human", text: "Flat feedback remains visible.", ts: Date.now() },
+      ],
+    });
+    useStore.setState({ quests: [quest], questOverlayId: "q-42" });
+
+    render(<QuestDetailPanel />);
+
+    const timeline = screen.getByTestId("quest-phase-documentation-timeline");
+    expect(within(timeline).getByText("Implement #2")).toBeTruthy();
+    expect(within(timeline).getByText("Second implementation TLDR.")).toBeTruthy();
+    expect(screen.getByText("Full second implementation detail.")).not.toBeVisible();
+    expect(screen.getByText("Unscoped Feedback")).toBeTruthy();
+    expect(screen.getByText("Flat feedback remains visible.")).toBeTruthy();
+
+    fireEvent.click(within(timeline).getByText("Full phase detail"));
+    expect(await screen.findByText("Full second implementation detail.")).toBeVisible();
+  });
+
   it("renders verification items with correct checked state", () => {
     const quest = makeVerificationQuest();
     useStore.setState({ quests: [quest], questOverlayId: "q-42" });
