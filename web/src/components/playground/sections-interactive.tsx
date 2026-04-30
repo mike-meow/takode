@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { NotificationMarker } from "../MessageBubble.js";
 import { BoardBlock } from "../BoardBlock.js";
 import { CatPawAvatar } from "../CatIcons.js";
@@ -190,6 +190,8 @@ function PlaygroundQuestStatusPanelDemo({ variant }: { variant: "claimed" | "boa
 }
 
 export function PlaygroundInteractiveSections() {
+  const [boardOpenThreadKeys, setBoardOpenThreadKeys] = useState(["q-42", "q-55", "q-61", "q-77", "q-88"]);
+
   return (
     <PlaygroundSectionGroup groupId="interactive">
       {/* ─── Composer ──────────────────────────────── */}
@@ -1338,15 +1340,33 @@ export function PlaygroundInteractiveSections() {
               >
                 Seed board data
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setBoardOpenThreadKeys((keys) => ["q-99", ...keys.filter((key) => key !== "q-99")]);
+                }}
+                className="ml-2 text-xs font-medium px-3 py-1.5 rounded-md bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 transition-colors cursor-pointer"
+              >
+                Simulate moved-message tab
+              </button>
               <div className="max-w-[28rem] border border-cc-border rounded-lg overflow-hidden">
                 <WorkBoardBar
                   sessionId="playground-board-bar"
                   currentThreadKey="q-42"
                   currentThreadLabel="q-42"
                   onSelectThread={() => {}}
-                  openThreadKeys={["q-42", "q-55", "q-61", "q-77", "q-88"]}
-                  onCloseThreadTab={() => {}}
+                  openThreadKeys={boardOpenThreadKeys}
+                  onCloseThreadTab={(threadKey) =>
+                    setBoardOpenThreadKeys((keys) => keys.filter((key) => key !== threadKey))
+                  }
                   threadRows={[
+                    {
+                      threadKey: "q-99",
+                      questId: "q-99",
+                      title: "Newly moved user request",
+                      messageCount: 1,
+                      section: "active",
+                    },
                     {
                       threadKey: "q-42",
                       questId: "q-42",
@@ -1484,7 +1504,8 @@ export function PlaygroundInteractiveSections() {
               <p className="text-[10px] text-cc-muted">
                 Click "Seed board data" first, then click the bar to toggle between collapsed summary and expanded table
                 view. The constrained width keeps several open tabs visible so their quest-id minimums, phase-colored
-                titles, compact close affordances, and horizontal overflow behavior can be inspected.
+                titles, compact close affordances, horizontal overflow behavior, and newly inserted tab pop state can be
+                inspected.
               </p>
             </div>
           </Card>

@@ -8,7 +8,7 @@
  * because it is also the primary Main / All Threads / quest navigator.
  */
 import type { CSSProperties, ReactNode } from "react";
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { useStore } from "../store.js";
 import {
   getQuestJourneyCurrentPhaseId,
@@ -363,6 +363,7 @@ function ThreadTabRail({
   currentThreadKey,
   onSelectThread,
   onCloseThreadTab,
+  newTabKeys,
 }: {
   mainState?: PrimaryThreadChip;
   tabs: PrimaryThreadChip[];
@@ -371,6 +372,7 @@ function ThreadTabRail({
   currentThreadKey: string;
   onSelectThread?: (threadKey: string) => void;
   onCloseThreadTab?: (threadKey: string) => void;
+  newTabKeys?: ReadonlySet<string>;
 }) {
   function NeedsInputBell({ activeOutput }: { activeOutput: boolean }) {
     return (
@@ -501,14 +503,16 @@ function ThreadTabRail({
           const selected = isSelectedThread(currentThreadKey, tab.threadKey);
           const activeOutput = isActiveOutputThread(runningActiveTurnRoute, tab.threadKey);
           const tone = tabTone({ selected, needsInput: tab.needsInput });
+          const newTab = newTabKeys?.has(tab.threadKey) ?? false;
           return (
             <div
               key={tab.threadKey}
               title={`${tab.questId ? `${tab.questId}: ${tab.title}` : tab.title}${tab.needsInput ? " needs input" : ""}`}
-              className={`group inline-flex min-w-[6.25rem] max-w-[18rem] flex-[1_1_11rem] items-stretch rounded-t-md border text-[11px] font-medium transition-colors ${tone}`}
+              className={`group inline-flex min-w-[6.25rem] max-w-[18rem] flex-[1_1_11rem] items-stretch rounded-t-md border text-[11px] font-medium transition-colors ${newTab ? "thread-tab-pop" : ""} ${tone}`}
               data-testid="thread-tab"
               data-thread-key={tab.threadKey}
               data-needs-input={tab.needsInput ? "true" : "false"}
+              data-new-tab={newTab ? "true" : "false"}
               data-min-label={tab.questId ?? tab.threadKey}
             >
               <button
@@ -657,6 +661,41 @@ export function WorkBoardBar({
       }),
     [activeBoardRows, activeThreadChips, completedBoardRows, openThreadKeys, threadRows],
   );
+  const previousOpenThreadTabKeysRef = useRef<string[] | null>(null);
+  const newThreadTabTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const [newThreadTabKeys, setNewThreadTabKeys] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    const currentKeys = openThreadTabs.map((tab) => tab.threadKey);
+    const previousKeys = previousOpenThreadTabKeysRef.current;
+    previousOpenThreadTabKeysRef.current = currentKeys;
+    if (previousKeys === null) return;
+
+    const previous = new Set(previousKeys);
+    const addedKeys = currentKeys.filter((key) => !previous.has(key));
+    if (addedKeys.length === 0) return;
+
+    setNewThreadTabKeys((existing) => new Set([...existing, ...addedKeys]));
+    for (const key of addedKeys) {
+      const existingTimeout = newThreadTabTimeoutsRef.current.get(key);
+      if (existingTimeout) clearTimeout(existingTimeout);
+      const timeout = setTimeout(() => {
+        newThreadTabTimeoutsRef.current.delete(key);
+        setNewThreadTabKeys((existing) => {
+          const next = new Set(existing);
+          next.delete(key);
+          return next;
+        });
+      }, 900);
+      newThreadTabTimeoutsRef.current.set(key, timeout);
+    }
+  }, [openThreadTabs]);
+  useEffect(
+    () => () => {
+      for (const timeout of newThreadTabTimeoutsRef.current.values()) clearTimeout(timeout);
+      newThreadTabTimeoutsRef.current.clear();
+    },
+    [],
+  );
   const mainThreadState = useMemo(
     () => activeThreadChips.find((chip) => chip.threadKey === MAIN_THREAD_KEY),
     [activeThreadChips],
@@ -776,6 +815,7 @@ export function WorkBoardBar({
         currentThreadKey={currentThreadKey}
         onSelectThread={onSelectThread}
         onCloseThreadTab={onCloseThreadTab}
+        newTabKeys={newThreadTabKeys}
       />
 
       {/* Expanded board table -- inline, pushes the feed down */}

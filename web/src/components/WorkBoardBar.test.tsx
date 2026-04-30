@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, fireEvent, within } from "@testing-library/react";
+import { render, fireEvent, within, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { boardSummary } from "./WorkBoardBar.js";
 import type { BoardRowData } from "./BoardTable.js";
@@ -417,6 +417,25 @@ describe("WorkBoardBar", () => {
     expect(inactiveClose).toHaveAttribute("data-compact-close", "true");
     expect(inactiveClose).toHaveAttribute("data-selected", "false");
     expect(inactiveClose).toHaveClass("w-5", "sm:opacity-0", "sm:group-hover:opacity-100", "focus-visible:opacity-100");
+  });
+
+  it("marks newly added open tabs with the transient pop animation state", async () => {
+    resetStore({
+      sdkSessions: [{ sessionId: "s1", isOrchestrator: true }],
+      sessionBoards: new Map([["s1", BOARD_DATA]]),
+    });
+
+    const view = render(<WorkBoardBar sessionId="s1" openThreadKeys={["q-1"]} />);
+    expect(view.getByTestId("thread-tab")).toHaveAttribute("data-new-tab", "false");
+
+    view.rerender(<WorkBoardBar sessionId="s1" openThreadKeys={["q-2", "q-1"]} />);
+
+    await waitFor(() => {
+      const newTab = view.getAllByTestId("thread-tab").find((tab) => tab.getAttribute("data-thread-key") === "q-2")!;
+      expect(newTab).toHaveAttribute("data-new-tab", "true");
+      expect(newTab).toHaveClass("thread-tab-pop");
+    });
+    expect(view.getAllByTestId("thread-tab").map((tab) => tab.getAttribute("data-thread-key"))).toEqual(["q-2", "q-1"]);
   });
 
   it("colors the whole visible quest tab title by phase without rendering a separate phase label", () => {

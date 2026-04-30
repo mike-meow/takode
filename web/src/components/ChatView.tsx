@@ -38,7 +38,12 @@ import { SessionInlineLink } from "./SessionInlineLink.js";
 import { SessionStatusDot } from "./SessionStatusDot.js";
 import { useParticipantSessionStatusDotProps } from "./session-participant-status.js";
 import { parseCommandThreadComment, parseThreadTextPrefix } from "../../shared/thread-routing.js";
-import { ALL_THREADS_KEY, MAIN_THREAD_KEY, normalizeThreadKey } from "../utils/thread-projection.js";
+import {
+  ALL_THREADS_KEY,
+  MAIN_THREAD_KEY,
+  normalizeThreadKey,
+  isThreadAttachmentMarkerMessage,
+} from "../utils/thread-projection.js";
 import { requestThreadViewportSnapshot } from "../utils/thread-viewport.js";
 import { buildAttentionRecords } from "../utils/attention-records.js";
 import { scopedGetItem, scopedSetItem } from "../utils/scoped-storage.js";
@@ -76,6 +81,8 @@ function messageThreadKeys(message: ChatMessage): string[] {
   addThreadKey(metadata?.threadKey);
   addThreadKey(metadata?.questId);
   addThreadKey(metadata?.quest?.questId);
+  addThreadKey(metadata?.threadAttachmentMarker?.threadKey);
+  addThreadKey(metadata?.threadAttachmentMarker?.questId);
   for (const ref of metadata?.threadRefs ?? []) {
     addThreadKey(ref.threadKey);
   }
@@ -418,6 +425,37 @@ function composeThreadKeyForSelection(threadKey: string): string {
   return normalized;
 }
 
+function threadAttachmentMarkerKey(message: ChatMessage): string | null {
+  const marker = message.metadata?.threadAttachmentMarker;
+  if (!marker) return null;
+  return marker.markerKey || marker.id || message.id;
+}
+
+function markerIncludesMessage(
+  marker: NonNullable<ChatMessage["metadata"]>["threadAttachmentMarker"],
+  message: ChatMessage,
+): boolean {
+  if (!marker) return false;
+  if (marker.messageIds.includes(message.id)) return true;
+  return typeof message.historyIndex === "number" && marker.messageIndices.includes(message.historyIndex);
+}
+
+function newestUserAuthoredMessage(messages: ChatMessage[]): ChatMessage | null {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index];
+    if (message?.role === "user") return message;
+  }
+  return null;
+}
+
+function markerMovesNewestUserMessage(
+  marker: NonNullable<ChatMessage["metadata"]>["threadAttachmentMarker"],
+  messages: ChatMessage[],
+): boolean {
+  const newestUserMessage = newestUserAuthoredMessage(messages);
+  return !!newestUserMessage && markerIncludesMessage(marker, newestUserMessage);
+}
+
 function openThreadTabsKey(sessionId: string): string {
   return `cc-leader-open-thread-tabs:${sessionId}`;
 }
@@ -438,6 +476,17 @@ function normalizeOpenThreadTabKeys(threadKeys: ReadonlyArray<unknown>): string[
     result.push(key);
   }
   return result;
+}
+
+function placeOpenThreadTabKey(
+  existingThreadKeys: ReadonlyArray<string>,
+  threadKey: string,
+  placement: "first" | "last",
+): string[] {
+  const normalized = normalizeThreadKey(threadKey);
+  if (!shouldPersistOpenThreadTab(normalized)) return normalizeOpenThreadTabKeys(existingThreadKeys);
+  const withoutTarget = normalizeOpenThreadTabKeys(existingThreadKeys).filter((key) => key !== normalized);
+  return placement === "first" ? [normalized, ...withoutTarget] : [...withoutTarget, normalized];
 }
 
 function readOpenThreadTabKeys(sessionId: string): string[] {
@@ -601,12 +650,16 @@ export function ChatView({
     const normalized = normalizeThreadKey(threadKey);
     if (!shouldPersistOpenThreadTab(normalized)) return;
     setOpenThreadTabKeys((existing) =>
-      existing.includes(normalized) ? existing : normalizeOpenThreadTabKeys([...existing, normalized]),
+      existing.includes(normalized) ? existing : placeOpenThreadTabKey(existing, normalized, "last"),
     );
   }, []);
+  const lastManualThreadSelectionAtRef = useRef(0);
+  const initializedAttachmentMarkerKeysRef = useRef(false);
+  const observedAttachmentMarkerKeysRef = useRef<Set<string>>(new Set());
   const handleSelectThread = useCallback(
     (threadKey: string) => {
       const nextThreadKey = normalizeThreadKey(threadKey || MAIN_THREAD_KEY);
+      lastManualThreadSelectionAtRef.current = Date.now();
       openThreadTab(nextThreadKey);
       if (nextThreadKey === normalizeThreadKey(selectedThreadKey)) return;
       requestThreadViewportSnapshot(sessionId);
@@ -627,6 +680,12 @@ export function ChatView({
     },
     [handleSelectThread, selectedThreadKey],
   );
+
+  useEffect(() => {
+    initializedAttachmentMarkerKeysRef.current = false;
+    observedAttachmentMarkerKeysRef.current = new Set();
+    lastManualThreadSelectionAtRef.current = 0;
+  }, [sessionId]);
 
   useEffect(() => {
     if (routeSyncEnabled) return;
@@ -703,6 +762,84 @@ export function ChatView({
     sessionId,
     navigationThreadRows,
     openThreadTab,
+  ]);
+
+  useEffect(() => {
+    if (!isLeaderSession || preview) return;
+
+    const currentMarkerKeys = new Set<string>();
+    const unseenMarkers: ChatMessage[] = [];
+    for (const message of allMessages) {
+      if (!isThreadAttachmentMarkerMessage(message)) continue;
+      const markerKey = threadAttachmentMarkerKey(message);
+      if (!markerKey) continue;
+      currentMarkerKeys.add(markerKey);
+      if (initializedAttachmentMarkerKeysRef.current && !observedAttachmentMarkerKeysRef.current.has(markerKey)) {
+        unseenMarkers.push(message);
+      }
+    }
+
+    if (!initializedAttachmentMarkerKeysRef.current) {
+      initializedAttachmentMarkerKeysRef.current = true;
+      observedAttachmentMarkerKeysRef.current = currentMarkerKeys;
+      return;
+    }
+
+    if (unseenMarkers.length === 0) {
+      observedAttachmentMarkerKeysRef.current = currentMarkerKeys;
+      return;
+    }
+
+    let nextSelectedThreadKey: string | null = null;
+    const selectedThread = normalizeThreadKey(selectedThreadKey || MAIN_THREAD_KEY);
+    const hasSpecificRouteThread =
+      hasThreadRoute === true && routeThreadKey !== null && routeThreadKey !== undefined && routeThreadKey !== "";
+
+    for (const message of unseenMarkers) {
+      const marker = message.metadata?.threadAttachmentMarker;
+      if (!marker) continue;
+      const targetThreadKey = normalizeThreadKey(marker.threadKey || marker.questId || "");
+      if (!shouldPersistOpenThreadTab(targetThreadKey)) continue;
+
+      const wasOpen = openThreadTabKeys.includes(targetThreadKey);
+      if (!wasOpen) {
+        setOpenThreadTabKeys((existing) => placeOpenThreadTabKey(existing, targetThreadKey, "first"));
+      }
+
+      const manualNavigationAfterAttachment = lastManualThreadSelectionAtRef.current > marker.attachedAt;
+      const sourceStillSelected = selectedThread === MAIN_THREAD_KEY;
+      const routeAllowsAutoSelect =
+        !hasSpecificRouteThread || normalizeThreadKey(routeThreadKey ?? "") === MAIN_THREAD_KEY;
+      if (
+        !wasOpen &&
+        !nextSelectedThreadKey &&
+        sourceStillSelected &&
+        routeAllowsAutoSelect &&
+        !manualNavigationAfterAttachment &&
+        markerMovesNewestUserMessage(marker, allMessages)
+      ) {
+        nextSelectedThreadKey = targetThreadKey;
+      }
+    }
+
+    observedAttachmentMarkerKeysRef.current = currentMarkerKeys;
+
+    if (nextSelectedThreadKey && nextSelectedThreadKey !== selectedThread) {
+      requestThreadViewportSnapshot(sessionId);
+      setSelectedThreadKey(nextSelectedThreadKey);
+      if (!preview) {
+        navigateToSessionThread(sessionId, nextSelectedThreadKey);
+      }
+    }
+  }, [
+    allMessages,
+    hasThreadRoute,
+    isLeaderSession,
+    openThreadTabKeys,
+    preview,
+    routeThreadKey,
+    selectedThreadKey,
+    sessionId,
   ]);
 
   // Within-session search

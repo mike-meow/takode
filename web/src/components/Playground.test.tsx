@@ -92,5 +92,10 @@ describe("Playground", () => {
     );
     expect(tabs[0]).toHaveClass("min-w-[6.25rem]", "max-w-[18rem]", "flex-[1_1_11rem]");
     expect(within(tabs[0]).getByTestId("thread-tab-close")).toHaveAttribute("data-compact-close", "true");
+
+    fireEvent.click(screen.getByText("Simulate moved-message tab"));
+    const movedTabs = screen.getAllByTestId("thread-tab");
+    expect(movedTabs[0]).toHaveAttribute("data-thread-key", "q-99");
+    expect(movedTabs[0]).toHaveAttribute("data-new-tab", "true");
   });
 });

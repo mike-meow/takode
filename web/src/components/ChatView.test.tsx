@@ -580,6 +580,169 @@ describe("ChatView backend banners", () => {
     expect(scope.getByTestId("work-board-bar")).toHaveAttribute("data-open-thread-keys", "q-941");
   });
 
+  it("opens a newly observed moved-message quest tab immediately after Main and auto-selects when the newest user message moved", async () => {
+    localStorage.setItem("test-server:cc-leader-open-thread-tabs:s1", '["q-941"]');
+    resetStore({
+      sessions: new Map([["s1", { backend_state: "connected", backend_error: null, isOrchestrator: true }]]),
+      sdkSessions: [{ sessionId: "s1", archived: false, isOrchestrator: true }],
+      messages: new Map([["s1", []]]),
+      quests: [
+        { questId: "q-941", title: "Existing thread", status: "in_progress" },
+        { questId: "q-1005", title: "Position newly created quest tabs", status: "in_progress" },
+      ],
+    });
+
+    const view = render(<ChatView sessionId="s1" />);
+    const scope = within(view.container);
+    expect(scope.getByTestId("work-board-bar")).toHaveAttribute("data-open-thread-keys", "q-941");
+
+    const attachedAt = Date.now();
+    mockState.messages = new Map([
+      [
+        "s1",
+        [
+          {
+            id: "u-newest",
+            role: "user",
+            content: "Please make this a quest.",
+            timestamp: attachedAt - 2,
+            historyIndex: 1,
+            metadata: { threadRefs: [{ threadKey: "q-1005", questId: "q-1005", source: "backfill" }] },
+          },
+          {
+            id: "marker-q-1005",
+            role: "system",
+            content: "1 message moved to q-1005",
+            timestamp: attachedAt,
+            historyIndex: 2,
+            metadata: {
+              threadAttachmentMarker: {
+                type: "thread_attachment_marker",
+                id: "marker-q-1005",
+                timestamp: attachedAt,
+                markerKey: "thread-attachment:q-1005:u-newest",
+                threadKey: "q-1005",
+                questId: "q-1005",
+                attachedAt,
+                attachedBy: "leader",
+                messageIds: ["u-newest"],
+                messageIndices: [1],
+                ranges: ["1"],
+                count: 1,
+                firstMessageId: "u-newest",
+                firstMessageIndex: 1,
+              },
+            },
+          },
+          {
+            id: "a-existing",
+            role: "assistant",
+            content: "Existing thread update",
+            timestamp: attachedAt + 1,
+            historyIndex: 3,
+            metadata: { threadRefs: [{ threadKey: "q-941", questId: "q-941", source: "explicit" }] },
+          },
+        ],
+      ],
+    ]);
+
+    view.rerender(<ChatView sessionId="s1" />);
+
+    await waitFor(() => {
+      expect(scope.getByTestId("message-feed")).toHaveAttribute("data-thread-key", "q-1005");
+    });
+    expect(scope.getByTestId("composer")).toHaveAttribute("data-thread-key", "q-1005");
+    expect(scope.getByTestId("work-board-bar")).toHaveAttribute("data-open-thread-keys", "q-1005,q-941");
+    expect(window.location.hash).toBe("#/session/s1?thread=q-1005");
+  });
+
+  it("does not auto-select a moved-message quest tab after the user manually navigates away from Main", async () => {
+    resetStore({
+      sessions: new Map([["s1", { backend_state: "connected", backend_error: null, isOrchestrator: true }]]),
+      sdkSessions: [{ sessionId: "s1", archived: false, isOrchestrator: true }],
+      messages: new Map([
+        [
+          "s1",
+          [
+            {
+              id: "a-existing",
+              role: "assistant",
+              content: "Existing thread update",
+              timestamp: 1,
+              metadata: { threadRefs: [{ threadKey: "q-941", questId: "q-941", source: "explicit" }] },
+            },
+          ],
+        ],
+      ]),
+      quests: [
+        { questId: "q-941", title: "Existing thread", status: "in_progress" },
+        { questId: "q-1005", title: "Position newly created quest tabs", status: "in_progress" },
+      ],
+    });
+
+    const view = render(<ChatView sessionId="s1" />);
+    const scope = within(view.container);
+    fireEvent.click(scope.getByRole("button", { name: /q-941 existing thread/i }));
+    expect(scope.getByTestId("message-feed")).toHaveAttribute("data-thread-key", "q-941");
+
+    const attachedAt = Date.now() - 1000;
+    mockState.messages = new Map([
+      [
+        "s1",
+        [
+          {
+            id: "a-existing",
+            role: "assistant",
+            content: "Existing thread update",
+            timestamp: 1,
+            metadata: { threadRefs: [{ threadKey: "q-941", questId: "q-941", source: "explicit" }] },
+          },
+          {
+            id: "u-newest",
+            role: "user",
+            content: "Please make this a quest.",
+            timestamp: attachedAt - 2,
+            historyIndex: 2,
+            metadata: { threadRefs: [{ threadKey: "q-1005", questId: "q-1005", source: "backfill" }] },
+          },
+          {
+            id: "marker-q-1005",
+            role: "system",
+            content: "1 message moved to q-1005",
+            timestamp: attachedAt,
+            historyIndex: 3,
+            metadata: {
+              threadAttachmentMarker: {
+                type: "thread_attachment_marker",
+                id: "marker-q-1005",
+                timestamp: attachedAt,
+                markerKey: "thread-attachment:q-1005:u-newest",
+                threadKey: "q-1005",
+                questId: "q-1005",
+                attachedAt,
+                attachedBy: "leader",
+                messageIds: ["u-newest"],
+                messageIndices: [2],
+                ranges: ["2"],
+                count: 1,
+                firstMessageId: "u-newest",
+                firstMessageIndex: 2,
+              },
+            },
+          },
+        ],
+      ],
+    ]);
+
+    view.rerender(<ChatView sessionId="s1" />);
+
+    await waitFor(() => {
+      expect(scope.getByTestId("work-board-bar")).toHaveAttribute("data-open-thread-keys", "q-1005,q-941");
+    });
+    expect(scope.getByTestId("message-feed")).toHaveAttribute("data-thread-key", "q-941");
+    expect(window.location.hash).toBe("#/session/s1?thread=q-941");
+  });
+
   it("snapshots the current feed before switching leader threads", () => {
     // Thread navigation must save the outgoing thread viewport first so Main
     // can restore its prior reading position after visiting a quest thread.
