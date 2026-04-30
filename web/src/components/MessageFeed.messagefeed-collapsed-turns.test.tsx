@@ -1077,7 +1077,8 @@ describe("MessageFeed - collapsed turns", () => {
     expect(screen.queryByText(/ready for review/i)).toBeNull();
     expect(row.textContent).not.toContain("Needs attention");
     expect(row.textContent).not.toContain("Resolved");
-    expect(screen.getByRole("button", { name: "Review" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Open thread:q-983" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Review" })).toBeNull();
   });
 
   it("renders review ledger rows with compact finished copy and no duplicate summary", () => {
@@ -1096,19 +1097,61 @@ describe("MessageFeed - collapsed turns", () => {
       },
     ]);
 
-    render(<MessageFeed sessionId={sid} />);
+    const onSelectThread = vi.fn();
+    render(<MessageFeed sessionId={sid} onSelectThread={onSelectThread} />);
 
     const row = screen.getByTestId("attention-ledger-row");
-    expect(row.textContent).toContain("Finished: Compact notification cards");
+    expect(row.textContent).toContain("Finished");
+    expect(row.textContent).toContain("Compact notification cards");
     const questLink = within(row).getByRole("link", { name: "q-983" });
     expect(questLink.getAttribute("href")).toBe("#/?quest=q-983");
     fireEvent.click(questLink);
     expect(mockOpenQuestOverlay).toHaveBeenCalledWith("q-983");
     expect(mockRequestScrollToMessage).not.toHaveBeenCalled();
+    fireEvent.click(within(row).getByRole("button", { name: "Open thread:q-983" }));
+    expect(onSelectThread).toHaveBeenCalledWith("q-983");
     expect(row.textContent).not.toContain("Needs attention");
     expect(row.textContent?.match(/Compact notification cards/g)).toHaveLength(1);
     expect(screen.queryByText(/ready for review/i)).toBeNull();
-    expect(screen.getByRole("button", { name: "Review" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Review" })).toBeNull();
+  });
+
+  it("renders Journey start ledger rows with inline quest and thread navigation", () => {
+    const sid = "test-main-attention-ledger-journey-start";
+    const onSelectThread = vi.fn();
+    setStoreMessages(sid, [makeMessage({ id: "u-main", role: "user", content: "Coordinate active quests" })]);
+    setStoreAttentionRecords(sid, [
+      {
+        id: "board-journey-start:q-1033:120",
+        leaderSessionId: sid,
+        type: "quest_journey_started",
+        source: { kind: "board", id: "q-1033", questId: "q-1033", signature: "started:120" },
+        questId: "q-1033",
+        threadKey: "q-1033",
+        title: "Journey started",
+        summary: "Show lifecycle chips",
+        actionLabel: "Open",
+        priority: "created",
+        state: "resolved",
+        createdAt: 120,
+        updatedAt: 120,
+        resolvedAt: 120,
+        route: { threadKey: "q-1033", questId: "q-1033" },
+        chipEligible: false,
+        ledgerEligible: true,
+        dedupeKey: "board-journey-start:q-1033:120",
+      },
+    ]);
+
+    render(<MessageFeed sessionId={sid} onSelectThread={onSelectThread} />);
+
+    const row = screen.getByTestId("attention-ledger-row");
+    expect(row.getAttribute("data-attention-type")).toBe("quest_journey_started");
+    expect(row.textContent).toContain("Journey started");
+    expect(within(row).getByRole("link", { name: "q-1033" })).toBeTruthy();
+    fireEvent.click(within(row).getByRole("button", { name: "Open thread:q-1033" }));
+    expect(onSelectThread).toHaveBeenCalledWith("q-1033");
+    expect(screen.queryByRole("button", { name: "Open" })).toBeNull();
   });
 
   it("renders server-authoritative attention lifecycle records from the live store", () => {

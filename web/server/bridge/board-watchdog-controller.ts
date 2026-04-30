@@ -13,7 +13,7 @@ import {
   type QuestJourneyPhaseTiming,
 } from "../../shared/quest-journey.js";
 import { HERD_WORKER_SLOT_LIMIT } from "../../shared/takode-constants.js";
-import type { BoardRow, TakodeEvent, TakodeHerdBatchSnapshot } from "../session-types.js";
+import type { BoardRow, SessionAttentionRecord, TakodeEvent, TakodeHerdBatchSnapshot } from "../session-types.js";
 import { formatRenderedHerdEventBatch } from "../herd-event-dispatcher.js";
 
 type SessionLike = any;
@@ -71,6 +71,7 @@ export interface WorkBoardStateDeps {
   getBoardDispatchableSignature: (session: SessionLike, questId: string) => string | null;
   markNotificationDone: (sessionId: string, notifId: string, done: boolean) => boolean;
   broadcastBoard: (session: SessionLike, board: BoardRow[], completedBoard: BoardRow[]) => void;
+  broadcastAttentionRecords?: (session: SessionLike, attentionRecords: SessionAttentionRecord[]) => void;
   persistSession: (session: SessionLike) => void;
   notifyReview: (sessionId: string, summary: string) => void;
 }
@@ -428,6 +429,66 @@ function cloneBoardRowForTiming(row: BoardRow): BoardRow {
   return clone;
 }
 
+function isActiveJourneyBoardRow(row: Pick<BoardRow, "journey" | "status">): boolean {
+  return !!row.journey && !isProposedBoardRowStatus(row.status);
+}
+
+function upsertJourneyLifecycleAttentionRecord(
+  session: SessionLike,
+  row: BoardRow,
+  kind: "started" | "finished",
+  deps: Pick<WorkBoardStateDeps, "broadcastAttentionRecords">,
+  timestampOverride?: number,
+): void {
+  if (!isActiveJourneyBoardRow(row)) return;
+
+  const threadKey = row.questId.toLowerCase();
+  const timestamp = timestampOverride ?? (kind === "finished" ? (row.completedAt ?? row.updatedAt) : row.createdAt);
+  const dedupeKey = `board-journey-${kind}:${row.questId}:${timestamp}`;
+  const record: SessionAttentionRecord = {
+    id: dedupeKey,
+    leaderSessionId: session.id,
+    type: kind === "started" ? "quest_journey_started" : "quest_completed_recent",
+    source: {
+      kind: "board",
+      id: row.questId,
+      questId: row.questId,
+      signature: `${kind}:${timestamp}`,
+    },
+    questId: row.questId,
+    threadKey,
+    title: kind === "started" ? "Journey started" : "Finished",
+    summary: row.title ?? "",
+    actionLabel: "Open",
+    priority: kind === "started" ? "created" : "review",
+    state: kind === "started" ? "resolved" : "unresolved",
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    ...(kind === "started" ? { resolvedAt: timestamp } : {}),
+    route: { threadKey, questId: row.questId },
+    chipEligible: false,
+    ledgerEligible: true,
+    dedupeKey,
+  };
+  const existingRecords: SessionAttentionRecord[] = Array.isArray(session.attentionRecords)
+    ? session.attentionRecords
+    : [];
+  const nextRecords = existingRecords.filter((existing) => existing.dedupeKey !== dedupeKey);
+  nextRecords.push(record);
+  session.attentionRecords = nextRecords.sort((a, b) => {
+    const timeDelta = a.createdAt - b.createdAt;
+    if (timeDelta !== 0) return timeDelta;
+    return a.id.localeCompare(b.id);
+  });
+  deps.broadcastAttentionRecords?.(session, session.attentionRecords);
+}
+
+function shouldRecordJourneyStart(existing: BoardRow | undefined, next: BoardRow): boolean {
+  if (!isActiveJourneyBoardRow(next)) return false;
+  if (!existing) return true;
+  return isProposedBoardRowStatus(existing.status);
+}
+
 function completeBoardRow(
   session: SessionLike,
   questId: string,
@@ -436,6 +497,7 @@ function completeBoardRow(
   const row = session.board.get(questId) ?? null;
   const removedWaitForInput = clearBoardRowWaitForInputIds(row);
   const completed = moveBoardRowToCompleted(session, questId);
+  if (completed) upsertJourneyLifecycleAttentionRecord(session, completed, "finished", deps);
   for (const notificationId of removedWaitForInput) {
     deps.markNotificationDone(session.id, notificationId, true);
   }
@@ -562,6 +624,10 @@ export function upsertBoardRow(
   applyBoardWaitStateInvariant(merged);
   applyQuestJourneyPhaseTiming(merged, existing, now);
   session.board.set(row.questId, merged);
+  if (shouldRecordJourneyStart(existing, merged)) {
+    const startedAt = existing && isProposedBoardRowStatus(existing.status) ? merged.updatedAt : merged.createdAt;
+    upsertJourneyLifecycleAttentionRecord(session, merged, "started", deps, startedAt);
+  }
   resolveRemovedBoardWaitForInputIds(
     session,
     getBoardRowWaitForInputIds(existing),
@@ -590,7 +656,10 @@ export function removeBoardRows(session: SessionLike, questIds: string[], deps: 
       removedWaitForInput.add(notificationId);
     }
     const completed = moveBoardRowToCompleted(session, questId);
-    if (completed) completedRows.push(completed);
+    if (completed) {
+      upsertJourneyLifecycleAttentionRecord(session, completed, "finished", deps);
+      completedRows.push(completed);
+    }
   }
   if (completedRows.length > 0) {
     clearResolvedQuestWaitFor(

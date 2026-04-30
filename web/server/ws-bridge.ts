@@ -2416,6 +2416,11 @@ export class WsBridge {
           completedBoard,
           rowSessionStatuses: this.getBoardRowSessionStatuses((targetSession as Session).id, board, completedBoard),
         }),
+      broadcastAttentionRecords: (targetSession: unknown, attentionRecords: SessionAttentionRecord[]) =>
+        this.broadcastToBrowsers(targetSession as Session, {
+          type: "attention_records_update",
+          attentionRecords,
+        }),
       persistSession: (targetSession: unknown) => this.persistSession(targetSession as Session),
       notifyReview: (sessionId: string, summary: string) =>
         void notifyUserBySessionIdController(this.sessions, sessionId, "review", summary, notificationDeps),

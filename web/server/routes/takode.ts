@@ -318,6 +318,14 @@ export function createTakodeRoutes(ctx: RouteContext) {
       board: import("../session-types.js").BoardRow[],
       completedBoard: import("../session-types.js").BoardRow[],
     ) => broadcastBoardUpdate(session, board, completedBoard),
+    broadcastAttentionRecords: (
+      session: BridgeSession,
+      attentionRecords: import("../session-types.js").SessionAttentionRecord[],
+    ) =>
+      wsBridge.broadcastToSession(session.id, {
+        type: "attention_records_update",
+        attentionRecords,
+      } as any),
     persistSession: (session: BridgeSession) => wsBridge.persistSessionById(session.id),
     notifyReview: (sessionId: string, summary: string) => {
       const session = wsBridge.getSession(sessionId);

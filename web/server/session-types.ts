@@ -968,6 +968,7 @@ export type SessionAttentionRecordType =
   | "needs_input"
   | "review_ready"
   | "blocked_user_resolvable"
+  | "quest_journey_started"
   | "quest_thread_created"
   | "quest_completed_recent"
   | "quest_reopened_or_rework"

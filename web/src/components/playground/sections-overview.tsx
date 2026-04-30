@@ -121,24 +121,43 @@ const ATTENTION_LEDGER_RECORDS: SessionAttentionRecord[] = [
     dedupeKey: "playground-attention-unresolved",
   },
   {
-    id: "playground-attention-resolved",
+    id: "playground-attention-started",
     leaderSessionId: MOCK_SESSION_ID,
-    type: "review_ready",
-    source: { kind: "notification", id: "playground-attention-resolved" },
+    type: "quest_journey_started",
+    source: { kind: "board", id: "q-962", questId: "q-962", signature: "started:180" },
     questId: "q-962",
     threadKey: "q-962",
-    title: "Finished: compact notification cards",
-    summary: "",
-    actionLabel: "Review",
-    priority: "review",
+    title: "Journey started",
+    summary: "Show compact start and finish chips",
+    actionLabel: "Open",
+    priority: "created",
     state: "resolved",
-    createdAt: 200,
-    updatedAt: 220,
-    resolvedAt: 220,
+    createdAt: 180,
+    updatedAt: 180,
+    resolvedAt: 180,
     route: { threadKey: "q-962", questId: "q-962" },
-    chipEligible: true,
+    chipEligible: false,
     ledgerEligible: true,
-    dedupeKey: "playground-attention-resolved",
+    dedupeKey: "playground-attention-started",
+  },
+  {
+    id: "playground-attention-finished",
+    leaderSessionId: MOCK_SESSION_ID,
+    type: "quest_completed_recent",
+    source: { kind: "board", id: "q-965", questId: "q-965", signature: "finished:220" },
+    questId: "q-965",
+    threadKey: "q-965",
+    title: "Finished",
+    summary: "Compact notification cards",
+    actionLabel: "Open",
+    priority: "review",
+    state: "unresolved",
+    createdAt: 220,
+    updatedAt: 220,
+    route: { threadKey: "q-965", questId: "q-965" },
+    chipEligible: false,
+    ledgerEligible: true,
+    dedupeKey: "playground-attention-finished",
   },
   {
     id: "playground-attention-dismissed",
@@ -439,7 +458,12 @@ export function PlaygroundOverviewSections() {
         <Card label="Main ledger states">
           <div className="space-y-2">
             {ATTENTION_LEDGER_RECORDS.map((record) => (
-              <AttentionLedgerRow key={record.id} record={record} sessionId={PLAYGROUND_THREAD_PANEL_SESSION_ID} />
+              <AttentionLedgerRow
+                key={record.id}
+                record={record}
+                sessionId={PLAYGROUND_THREAD_PANEL_SESSION_ID}
+                onSelectThread={() => {}}
+              />
             ))}
           </div>
         </Card>

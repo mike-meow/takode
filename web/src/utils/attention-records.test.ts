@@ -69,10 +69,10 @@ describe("attention records", () => {
     });
     expect(records[1]).toMatchObject({
       id: "notification:n-2",
-      type: "review_ready",
+      type: "quest_completed_recent",
       title: "Finished",
       summary: "",
-      actionLabel: "Review",
+      actionLabel: "Open",
       priority: "review",
       route: { threadKey: "q-984", questId: "q-984", messageId: "m-2" },
     });
@@ -101,13 +101,24 @@ describe("attention records", () => {
     });
 
     expect(records[0]).toMatchObject({
-      title: "Finished: Compact notification inbox copy",
-      summary: "",
+      type: "quest_completed_recent",
+      title: "Finished",
+      summary: "Compact notification inbox copy",
       questId: "q-984",
     });
     expect(records[1]).toMatchObject({
-      title: "2 quests finished",
-      summary: "q-1, q-2",
+      id: "notification:n-batch:q-1",
+      type: "quest_completed_recent",
+      title: "Finished",
+      summary: "2 quests finished",
+      questId: "q-1",
+      route: { threadKey: "q-1", questId: "q-1" },
+    });
+    expect(records[2]).toMatchObject({
+      id: "notification:n-batch:q-2",
+      type: "quest_completed_recent",
+      questId: "q-2",
+      route: { threadKey: "q-2", questId: "q-2" },
     });
   });
 
@@ -302,6 +313,48 @@ describe("attention records", () => {
     });
 
     expect(records).toHaveLength(0);
+  });
+
+  it("uses server-authoritative Journey finish records instead of duplicating matching review notifications", () => {
+    const records = buildAttentionRecords({
+      leaderSessionId: "leader-1",
+      records: [
+        explicitRecord({
+          id: "board-journey-finished:q-984:200",
+          type: "quest_completed_recent",
+          source: { kind: "board", id: "q-984", questId: "q-984", signature: "finished:200" },
+          questId: "q-984",
+          threadKey: "q-984",
+          title: "Finished",
+          summary: "Compact notification inbox copy",
+          actionLabel: "Open",
+          priority: "review",
+          state: "unresolved",
+          createdAt: 200,
+          updatedAt: 200,
+          route: { threadKey: "q-984", questId: "q-984" },
+          chipEligible: false,
+          ledgerEligible: true,
+          dedupeKey: "board-journey-finished:q-984:200",
+        }),
+      ],
+      notifications: [
+        notification({
+          id: "n-review",
+          category: "review",
+          summary: "q-984 ready for review: Compact notification inbox copy",
+          threadKey: "q-984",
+          questId: "q-984",
+        }),
+      ],
+    });
+
+    expect(selectMainLedgerRecords(records)).toHaveLength(1);
+    expect(records.find((record) => record.id === "notification:n-review")).toMatchObject({
+      type: "quest_completed_recent",
+      ledgerEligible: false,
+      chipEligible: false,
+    });
   });
 
   it("does not turn hidden cross-thread activity markers into attention", () => {

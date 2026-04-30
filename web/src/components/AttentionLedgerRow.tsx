@@ -28,6 +28,7 @@ export function AttentionLedgerRow({
 }) {
   const isActive = record.state === "unresolved" || record.state === "seen" || record.state === "reopened";
   const isReview = record.priority === "review";
+  const isJourneyLifecycle = record.type === "quest_journey_started" || record.type === "quest_completed_recent";
   const targetThread = normalizeThreadKey(record.route.threadKey || record.threadKey || MAIN_THREAD_KEY);
 
   const openRoute = useCallback(() => {
@@ -59,6 +60,7 @@ export function AttentionLedgerRow({
   const summary = record.summary.trim();
   const showSummary = summary.length > 0 && summary !== record.title.trim();
   const shellClasses = isReview ? "rounded-md px-3 py-2" : "rounded-lg px-3 py-2.5";
+  const showThreadLink = targetThread !== MAIN_THREAD_KEY;
 
   return (
     <div
@@ -86,20 +88,32 @@ export function AttentionLedgerRow({
                 className="font-mono-code text-[11px] text-blue-300/85 hover:text-blue-200 hover:underline"
               />
             )}
+            {showThreadLink && (
+              <button
+                type="button"
+                onClick={openRoute}
+                className="font-mono-code text-[11px] text-sky-300/80 transition-colors cursor-pointer hover:text-sky-200 hover:underline"
+                aria-label={`Open thread:${targetThread}`}
+              >
+                thread:{targetThread}
+              </button>
+            )}
           </div>
           {showSummary && <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-cc-muted">{summary}</p>}
         </div>
-        <button
-          type="button"
-          onClick={openRoute}
-          className={`shrink-0 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer ${
-            isActive
-              ? "border-current/25 bg-cc-card/70 text-cc-fg hover:bg-cc-hover"
-              : "border-cc-border bg-cc-hover/40 text-cc-muted hover:text-cc-fg"
-          }`}
-        >
-          {record.actionLabel}
-        </button>
+        {!isJourneyLifecycle && (
+          <button
+            type="button"
+            onClick={openRoute}
+            className={`shrink-0 rounded-md border px-2.5 py-1 text-xs font-medium transition-colors cursor-pointer ${
+              isActive
+                ? "border-current/25 bg-cc-card/70 text-cc-fg hover:bg-cc-hover"
+                : "border-cc-border bg-cc-hover/40 text-cc-muted hover:text-cc-fg"
+            }`}
+          >
+            {record.actionLabel}
+          </button>
+        )}
       </div>
     </div>
   );

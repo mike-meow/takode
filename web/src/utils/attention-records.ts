@@ -24,6 +24,14 @@ export interface BuildAttentionRecordsInput {
   messages?: ReadonlyArray<ChatMessage>;
 }
 
+interface ReviewNotificationDisplay {
+  title: string;
+  summary: string;
+  kind?: "journey_finished";
+  questId?: string;
+  questIds: string[];
+}
+
 const ACTIVE_ATTENTION_STATES = new Set<AttentionRecord["state"]>(["unresolved", "seen", "reopened"]);
 const PRIORITY_ORDER = new Map<AttentionRecord["priority"], number>([
   ["needs_input", 0],
@@ -37,13 +45,24 @@ const PRIORITY_ORDER = new Map<AttentionRecord["priority"], number>([
 export function buildAttentionRecords(input: BuildAttentionRecordsInput): AttentionRecord[] {
   const records = new Map<string, AttentionRecord>();
   const notifications = input.notifications ?? [];
+  const explicitFinishedQuestIds = new Set<string>();
 
   for (const record of input.records ?? []) {
-    upsertAttentionRecord(records, normalizeAttentionRecord(record, input.leaderSessionId));
+    const normalized = normalizeAttentionRecord(record, input.leaderSessionId);
+    if (normalized.type === "quest_completed_recent" && normalized.questId) {
+      explicitFinishedQuestIds.add(normalized.questId.toLowerCase());
+    }
+    upsertAttentionRecord(records, normalized);
   }
 
   for (const notification of notifications) {
-    upsertAttentionRecord(records, attentionRecordFromNotification(input.leaderSessionId, notification));
+    for (const record of attentionRecordsFromNotification(
+      input.leaderSessionId,
+      notification,
+      explicitFinishedQuestIds,
+    )) {
+      upsertAttentionRecord(records, record);
+    }
   }
 
   for (const row of input.boardRows ?? []) {
@@ -106,65 +125,136 @@ export function mergeChronologicalMessages(messages: ChatMessage[], insertedMess
   });
 }
 
-function attentionRecordFromNotification(leaderSessionId: string, notification: SessionNotification): AttentionRecord {
+function attentionRecordsFromNotification(
+  leaderSessionId: string,
+  notification: SessionNotification,
+  explicitFinishedQuestIds: ReadonlySet<string>,
+): AttentionRecord[] {
+  const baseRecord = attentionRecordFromNotification(leaderSessionId, notification, explicitFinishedQuestIds);
+  if (baseRecord.type !== "quest_completed_recent") return [baseRecord];
+
+  const questIds = parseQuestIdsFromReviewSummary(notification.summary);
+  if (questIds.length <= 1) return [baseRecord];
+
+  const missingQuestIds = questIds.filter((questId) => !explicitFinishedQuestIds.has(questId.toLowerCase()));
+  if (missingQuestIds.length === 0) return [baseRecord];
+
+  return missingQuestIds.map((questId) => {
+    const threadKey = questId.toLowerCase();
+    return {
+      ...baseRecord,
+      id: `notification:${notification.id}:${threadKey}`,
+      source: {
+        ...baseRecord.source,
+        questId,
+        signature: `${notification.id}:${threadKey}`,
+      },
+      questId,
+      threadKey,
+      title: "Finished",
+      summary: `${questIds.length} quests finished`,
+      actionLabel: "Open",
+      chipEligible: false,
+      ledgerEligible: true,
+      route: {
+        ...baseRecord.route,
+        threadKey,
+        questId,
+      },
+      dedupeKey: `notification:${notification.id}:${threadKey}`,
+    };
+  });
+}
+
+function attentionRecordFromNotification(
+  leaderSessionId: string,
+  notification: SessionNotification,
+  explicitFinishedQuestIds: ReadonlySet<string>,
+): AttentionRecord {
   const isReview = notification.category === "review";
-  const route = routeForNotification(notification);
-  const state: AttentionRecord["state"] = notification.done ? "resolved" : "unresolved";
-  const display = isReview
+  const display: ReviewNotificationDisplay = isReview
     ? reviewDisplayFromNotification(notification)
-    : { title: notification.summary ?? "Needs input", summary: notification.summary ?? "Needs input" };
+    : {
+        title: notification.summary ?? "Needs input",
+        summary: notification.summary ?? "Needs input",
+        questIds: [],
+      };
+  const route = routeForNotification(notification, display.questId);
+  const state: AttentionRecord["state"] = notification.done ? "resolved" : "unresolved";
+  const isJourneyFinished = display.kind === "journey_finished";
+  const hasExplicitFinishedRecords =
+    isJourneyFinished &&
+    display.questIds.length > 0 &&
+    display.questIds.every((questId) => explicitFinishedQuestIds.has(questId.toLowerCase()));
 
   return {
     id: `notification:${notification.id}`,
     leaderSessionId,
-    type: isReview ? "review_ready" : "needs_input",
+    type: isJourneyFinished ? "quest_completed_recent" : isReview ? "review_ready" : "needs_input",
     source: {
       kind: "notification",
       id: notification.id,
-      ...(notification.questId ? { questId: notification.questId } : {}),
+      ...(route.questId ? { questId: route.questId } : notification.questId ? { questId: notification.questId } : {}),
       messageId: notification.messageId,
     },
     ...(route.questId ? { questId: route.questId } : {}),
     threadKey: route.threadKey,
     title: display.title,
     summary: display.summary,
-    actionLabel: isReview ? "Review" : "Answer",
+    actionLabel: isJourneyFinished ? "Open" : isReview ? "Review" : "Answer",
     priority: isReview ? "review" : "needs_input",
     state,
     createdAt: notification.timestamp,
     updatedAt: notification.timestamp,
     ...(state === "resolved" ? { resolvedAt: notification.timestamp } : {}),
     route,
-    chipEligible: true,
-    ledgerEligible: true,
+    chipEligible: !isJourneyFinished,
+    ledgerEligible: !hasExplicitFinishedRecords,
     dedupeKey: `notification:${notification.id}`,
   };
 }
 
-function reviewDisplayFromNotification(notification: SessionNotification): { title: string; summary: string } {
+function reviewDisplayFromNotification(notification: SessionNotification): ReviewNotificationDisplay {
   const summary = notification.summary?.trim();
-  if (!summary) return { title: "Finished", summary: "" };
+  if (!summary) return { title: "Finished", summary: "", questIds: [] };
 
   const single = summary.match(/^\s*(q-\d+)\s+(?:ready\s+for\s+review|finished)(?:\s*:\s*(.+?))?\s*$/i);
   if (single) {
+    const questId = single[1].trim();
     const title = single[2]?.trim();
-    return { title: title ? `Finished: ${title}` : "Finished", summary: "" };
+    return {
+      title: "Finished",
+      summary: title ?? "",
+      kind: "journey_finished",
+      questId,
+      questIds: [questId],
+    };
   }
 
   const multi = summary.match(/^\s*(\d+)\s+quests?\s+(?:ready\s+for\s+review|finished)\s*:\s*(.+?)\s*$/i);
   if (multi) {
     const count = multi[1];
     const quests = multi[2].trim();
+    const questIds = [...quests.matchAll(/\bq-\d+\b/gi)].map((match) => match[0].toLowerCase());
     return {
       title: `${count} ${count === "1" ? "quest" : "quests"} finished`,
       summary: quests,
+      kind: "journey_finished",
+      questIds,
     };
   }
 
   return {
     title: summary.replace(/\bready\s+for\s+review\b/gi, "finished"),
     summary: "",
+    questIds: [],
   };
+}
+
+function parseQuestIdsFromReviewSummary(summary: string | undefined): string[] {
+  const match = summary?.match(/^\s*\d+\s+quests?\s+(?:ready\s+for\s+review|finished)\s*:\s*(.+?)\s*$/i);
+  if (!match) return [];
+  return [...match[1].matchAll(/\bq-\d+\b/gi)].map((questIdMatch) => questIdMatch[0].toLowerCase());
 }
 
 function attentionRecordFromBoardRow(
@@ -263,8 +353,10 @@ function normalizeAttentionRecord(record: AttentionRecord, leaderSessionId: stri
   };
 }
 
-function routeForNotification(notification: SessionNotification): AttentionRecord["route"] {
-  const target = normalizeRouteTarget(notification.threadKey ?? notification.questId ?? MAIN_THREAD_KEY);
+function routeForNotification(notification: SessionNotification, inferredQuestId?: string): AttentionRecord["route"] {
+  const target = normalizeRouteTarget(
+    notification.threadKey ?? notification.questId ?? inferredQuestId ?? MAIN_THREAD_KEY,
+  );
   return {
     threadKey: target.threadKey,
     ...(target.questId ? { questId: target.questId } : {}),

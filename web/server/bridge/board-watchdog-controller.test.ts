@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QUEST_JOURNEY_STATES } from "../../shared/quest-journey.js";
-import type { BoardRow } from "../session-types.js";
+import type { BoardRow, SessionAttentionRecord } from "../session-types.js";
 import {
   advanceBoardRow,
   getBoard,
@@ -14,6 +14,7 @@ interface TestSession {
   board: Map<string, BoardRow>;
   completedBoard: Map<string, BoardRow>;
   boardDispatchStates: Map<string, unknown>;
+  attentionRecords: SessionAttentionRecord[];
 }
 
 function createSession(): TestSession {
@@ -22,6 +23,7 @@ function createSession(): TestSession {
     board: new Map(),
     completedBoard: new Map(),
     boardDispatchStates: new Map(),
+    attentionRecords: [],
   };
 }
 
@@ -30,6 +32,7 @@ function createDeps(): WorkBoardStateDeps {
     getBoardDispatchableSignature: () => null,
     markNotificationDone: () => true,
     broadcastBoard: vi.fn(),
+    broadcastAttentionRecords: vi.fn(),
     persistSession: vi.fn(),
     notifyReview: vi.fn(),
   };
@@ -197,5 +200,153 @@ describe("Quest Journey board phase timing", () => {
     expect(getBoard(session)[0]?.journey?.phaseTimings).toEqual({
       "4": { startedAt: 11_000 },
     });
+  });
+
+  it("records a Journey start once when a row first enters an active run", () => {
+    const session = createSession();
+    const deps = createDeps();
+
+    vi.setSystemTime(new Date(1_000));
+    upsertBoardRow(
+      session,
+      {
+        questId: "q-1033",
+        title: "Show Journey lifecycle chips",
+        status: "PLANNING",
+        journey: { phaseIds: ["alignment", "implement"] },
+      },
+      deps,
+    );
+    upsertBoardRow(
+      session,
+      {
+        questId: "q-1033",
+        title: "Show Journey lifecycle chips",
+        status: "IMPLEMENTING",
+      },
+      deps,
+    );
+
+    expect(session.attentionRecords).toHaveLength(1);
+    expect(session.attentionRecords[0]).toMatchObject({
+      type: "quest_journey_started",
+      questId: "q-1033",
+      threadKey: "q-1033",
+      title: "Journey started",
+      summary: "Show Journey lifecycle chips",
+      state: "resolved",
+      createdAt: 1_000,
+      route: { threadKey: "q-1033", questId: "q-1033" },
+    });
+    expect(deps.broadcastAttentionRecords).toHaveBeenCalledTimes(1);
+  });
+
+  it("records Journey start when a proposed row is promoted but not while it is only proposed", () => {
+    const session = createSession();
+    const deps = createDeps();
+
+    vi.setSystemTime(new Date(1_000));
+    upsertBoardRow(
+      session,
+      {
+        questId: "q-1034",
+        title: "Promote proposed Journey",
+        status: "PROPOSED",
+        journey: { mode: "proposed", phaseIds: ["alignment", "implement"] },
+      },
+      deps,
+    );
+    expect(session.attentionRecords).toHaveLength(0);
+
+    vi.setSystemTime(new Date(2_000));
+    upsertBoardRow(
+      session,
+      {
+        questId: "q-1034",
+        status: "PLANNING",
+        journey: { mode: "active", phaseIds: ["alignment", "implement"], activePhaseIndex: 0 },
+      },
+      deps,
+    );
+
+    expect(session.attentionRecords).toHaveLength(1);
+    expect(session.attentionRecords[0]).toMatchObject({
+      type: "quest_journey_started",
+      questId: "q-1034",
+      createdAt: 2_000,
+    });
+  });
+
+  it("records a fresh Journey start for a repeated run after completion", () => {
+    const session = createSession();
+    const deps = createDeps();
+
+    vi.setSystemTime(new Date(1_000));
+    upsertBoardRow(
+      session,
+      {
+        questId: "q-1035",
+        title: "Repeated Journey",
+        status: "PLANNING",
+        journey: { phaseIds: ["alignment"] },
+      },
+      deps,
+    );
+    vi.setSystemTime(new Date(2_000));
+    advanceBoardRow(session, "q-1035", QUEST_JOURNEY_STATES, deps);
+    vi.setSystemTime(new Date(3_000));
+    upsertBoardRow(
+      session,
+      {
+        questId: "q-1035",
+        title: "Repeated Journey",
+        status: "PLANNING",
+        journey: { phaseIds: ["alignment"] },
+      },
+      deps,
+    );
+
+    expect(session.attentionRecords.filter((record) => record.type === "quest_journey_started")).toHaveLength(2);
+    expect(session.attentionRecords.map((record) => record.type)).toEqual([
+      "quest_journey_started",
+      "quest_completed_recent",
+      "quest_journey_started",
+    ]);
+  });
+
+  it("records Journey finish rows with quest-thread routes when board rows complete", () => {
+    const session = createSession();
+    const deps = createDeps();
+
+    vi.setSystemTime(new Date(1_000));
+    upsertBoardRow(
+      session,
+      {
+        questId: "q-1036",
+        title: "Finish compact lifecycle cards",
+        status: "PLANNING",
+        journey: { phaseIds: ["alignment"] },
+      },
+      deps,
+    );
+    vi.setSystemTime(new Date(2_000));
+    advanceBoardRow(session, "q-1036", QUEST_JOURNEY_STATES, deps);
+
+    expect(session.attentionRecords.at(-1)).toMatchObject({
+      type: "quest_completed_recent",
+      questId: "q-1036",
+      threadKey: "q-1036",
+      title: "Finished",
+      summary: "Finish compact lifecycle cards",
+      actionLabel: "Open",
+      priority: "review",
+      state: "unresolved",
+      createdAt: 2_000,
+      route: { threadKey: "q-1036", questId: "q-1036" },
+    });
+    expect(deps.notifyReview).toHaveBeenCalledWith(
+      "leader-1",
+      "q-1036 ready for review: Finish compact lifecycle cards",
+    );
   });
 });
