@@ -29,6 +29,7 @@ import type { SidebarSessionItem as SessionItemType } from "../utils/sidebar-ses
 import { createComposerDraftImage } from "./composer-image-utils.js";
 import { NotificationMarker } from "./NotificationMarker.js";
 import { formatThreadMarker } from "../../shared/thread-routing.js";
+import { isAllThreadsKey, normalizeThreadKey } from "../utils/thread-projection.js";
 
 export { NotificationMarker } from "./NotificationMarker.js";
 
@@ -291,6 +292,7 @@ export const MessageBubble = memo(function MessageBubble({
         sessionId={sessionId}
         showTimestamp={showTimestamp}
         searchHighlight={searchHighlight}
+        currentThreadKey={currentThreadKey}
       />
     );
   }
@@ -425,13 +427,41 @@ function AgentSourceBadge({ source }: { source: { sessionId: string; sessionLabe
   );
 }
 
-function getMessageThreadKey(message: ChatMessage): string | null {
+type MessageThreadBadgeCandidate = {
+  threadKey: string;
+  source?: NonNullable<NonNullable<ChatMessage["metadata"]>["threadRefs"]>[number]["source"];
+};
+
+function getMessageThreadBadgeCandidates(message: ChatMessage): MessageThreadBadgeCandidate[] {
   const metadata = message.metadata;
-  if (!metadata) return null;
-  if (metadata.threadKey) return metadata.threadKey;
-  if (metadata.questId) return metadata.questId;
-  const firstRef = metadata.threadRefs?.[0];
-  return firstRef?.threadKey ?? null;
+  if (!metadata) return [];
+  const candidates: MessageThreadBadgeCandidate[] = [];
+  const add = (threadKey: string | undefined, source?: MessageThreadBadgeCandidate["source"]) => {
+    const normalized = threadKey?.trim();
+    if (!normalized) return;
+    candidates.push(source ? { threadKey: normalized, source } : { threadKey: normalized });
+  };
+  add(metadata.threadKey);
+  add(metadata.questId);
+  for (const ref of metadata.threadRefs ?? []) {
+    add(ref.threadKey, ref.source);
+  }
+  return candidates;
+}
+
+function getMessageThreadBadgeKey(message: ChatMessage, currentThreadKey?: string): string | null {
+  const candidates = getMessageThreadBadgeCandidates(message);
+  const fallback = candidates[0]?.threadKey ?? null;
+  if (!currentThreadKey || isAllThreadsKey(currentThreadKey)) return fallback;
+
+  const normalizedCurrentThread = normalizeThreadKey(currentThreadKey);
+  const crossThreadCandidate = candidates.find(
+    (candidate) => normalizeThreadKey(candidate.threadKey) !== normalizedCurrentThread,
+  );
+  if (crossThreadCandidate) return crossThreadCandidate.threadKey;
+
+  const backfillCandidate = candidates.find((candidate) => candidate.source === "backfill");
+  return backfillCandidate?.threadKey ?? null;
 }
 
 function ThreadSourceBadge({ threadKey }: { threadKey: string }) {
@@ -910,11 +940,13 @@ function UserMessage({
   sessionId,
   showTimestamp,
   searchHighlight,
+  currentThreadKey,
 }: {
   message: ChatMessage;
   sessionId?: string;
   showTimestamp: boolean;
   searchHighlight?: SearchHighlightInfo;
+  currentThreadKey?: string;
 }) {
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
 
@@ -947,7 +979,7 @@ function UserMessage({
   const threadRoutingReminder = useMemo(() => buildThreadRoutingReminderViewModel(message), [message]);
   const localImageEntries = message.localImages ?? [];
   const remoteImageEntries = message.images ?? [];
-  const threadKey = getMessageThreadKey(message);
+  const threadKey = getMessageThreadBadgeKey(message, currentThreadKey);
   const pendingLabel =
     message.pendingState === "uploading"
       ? "Uploading image…"
@@ -1350,7 +1382,7 @@ function AssistantMessage({
   });
   const resolvedNotification = message.notification ?? inboxAnchoredNotification;
   const suppressToolNotificationMarker = !!resolvedNotification;
-  const threadKey = getMessageThreadKey(message);
+  const threadKey = getMessageThreadBadgeKey(message, currentThreadKey);
 
   // Only show copy-message button when there's actual text content to copy
   const hasTextContent = message.content || blocks.some((b) => b.type === "text" || b.type === "thinking");
