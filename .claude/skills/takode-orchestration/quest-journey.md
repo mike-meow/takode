@@ -166,6 +166,7 @@ Advancing from the final planned phase removes the row from the board. Git-track
 
 When new human feedback lands:
 
+0. First check whether the feedback likely belongs to the current quest. Same-thread feedback usually does, but users may occasionally post new-quest or unrelated feature feedback in the wrong thread. If the message appears separate or cross-cutting, ask or propose the split before changing the current quest; after the new quest exists, attach the relevant messages/images there.
 1. Record the feedback on the quest.
 2. Re-open the quest if it was already in `needs_verification` or `done`.
 3. Reset the board row to the earliest valid phase for the new scope.
