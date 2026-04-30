@@ -698,6 +698,61 @@ describe("HerdEventDispatcher", () => {
     dispatcher.destroy();
   });
 
+  it("confirms queued Codex herd events once they are committed to leader history", () => {
+    // Regression for q-998: Codex herd injection initially reports "queued".
+    // If that queued message is committed and handled before the dispatcher
+    // retries, the dispatcher must acknowledge the exact event keys instead
+    // of re-sending the already-handled completion on the next leader turn.
+    const { bridge, launcher } = createMocks();
+    const leaderHistory: NonNullable<ReturnType<WsBridgeHandle["getSession"]>>["messageHistory"] = [];
+    vi.mocked(bridge.getSession).mockImplementation((sessionId) =>
+      sessionId === "orch-1" ? { messageHistory: leaderHistory } : undefined,
+    );
+    vi.mocked(bridge.injectUserMessage).mockImplementation((sessionId, content, agentSource, takodeHerdBatch) => {
+      leaderHistory.push({
+        type: "user_message",
+        content,
+        timestamp: Date.now(),
+        ...(agentSource ? { agentSource } : {}),
+        ...(takodeHerdBatch?.eventKeys?.length ? { takodeHerdEventKeys: takodeHerdBatch.eventKeys } : {}),
+      });
+      return "queued";
+    });
+    const dispatcher = new HerdEventDispatcher(bridge, launcher);
+    dispatcher.setupForOrchestrator("orch-1");
+
+    vi.mocked(bridge.isSessionIdle).mockReturnValue(true);
+
+    const staleCompletion = makeEvent({
+      id: 1,
+      sessionId: "worker-1",
+      sessionNum: 1306,
+      sessionName: "Mental Simulation",
+      data: { duration_ms: 51_700, msgRange: { from: 178, to: 200 }, userMsgs: { count: 1, ids: [178] } },
+    });
+    triggerEvent(staleCompletion);
+
+    vi.advanceTimersByTime(600);
+    expect(bridge.injectUserMessage).toHaveBeenCalledTimes(1);
+
+    dispatcher.onOrchestratorTurnEnd("orch-1");
+    vi.advanceTimersByTime(2100);
+
+    expect(bridge.injectUserMessage).toHaveBeenCalledTimes(1);
+    expect(dispatcher._getInbox("orch-1")?.entries).toHaveLength(0);
+
+    dispatcher.destroy();
+
+    const replayDispatcher = new HerdEventDispatcher(bridge, launcher);
+    replayDispatcher.setupForOrchestrator("orch-1");
+    triggerEvent({ ...staleCompletion, id: 2, ts: staleCompletion.ts + 1000 });
+    vi.advanceTimersByTime(600);
+
+    expect(bridge.injectUserMessage).toHaveBeenCalledTimes(1);
+
+    replayDispatcher.destroy();
+  });
+
   it("wakes idle-killed leader when herd event arrives", () => {
     // When a leader session was stopped by idle-manager (killedByIdleManager=true),
     // new herd events should wake it up by calling wakeIdleKilledSession.

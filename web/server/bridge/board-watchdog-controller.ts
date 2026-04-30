@@ -772,6 +772,7 @@ export function pruneStaleBoardStalledHerdBatch(
 
   const keptEvents: TakodeEvent[] = [];
   const keptRenderedLines: string[] = [];
+  const keptEventKeys: string[] = [];
   let changed = false;
 
   for (let i = 0; i < batch.events.length; i++) {
@@ -787,6 +788,8 @@ export function pruneStaleBoardStalledHerdBatch(
     }
     keptEvents.push(event);
     keptRenderedLines.push(renderedLine);
+    const eventKey = batch.eventKeys?.[i];
+    if (batch.eventKeys) keptEventKeys.push(eventKey ?? "");
   }
 
   if (!changed) return { batch, changed: false };
@@ -794,7 +797,11 @@ export function pruneStaleBoardStalledHerdBatch(
 
   return {
     changed: true,
-    batch: { events: keptEvents, renderedLines: keptRenderedLines },
+    batch: {
+      events: keptEvents,
+      renderedLines: keptRenderedLines,
+      ...(keptEventKeys.some(Boolean) ? { eventKeys: keptEventKeys } : {}),
+    },
     content: formatRenderedHerdEventBatch(keptEvents, keptRenderedLines),
   };
 }

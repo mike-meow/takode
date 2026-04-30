@@ -508,6 +508,11 @@ export class HerdEventDispatcher {
     if (eventKey && (inbox.recentEventKeys.has(eventKey) || inboxHasEventKey(inbox, eventKey))) {
       return;
     }
+    if (eventKey && this.hasCommittedHerdEventKey(orchId, eventKey)) {
+      inbox.recentEventKeys.set(eventKey, Date.now());
+      trimRecentEventKeys(inbox);
+      return;
+    }
 
     // Append to inbox (pure in-memory, never fails)
     const seq = inbox.nextSeq++;
@@ -594,10 +599,8 @@ export class HerdEventDispatcher {
         (entry) => entry.seq >= inbox.confirmedUpTo && entry.seq <= inbox.inFlightUpTo!,
       );
       for (const entry of confirmedEntries) {
-        if (entry.event.event !== "notification_needs_input") continue;
-        const notifId = entry.event.data.notificationId;
-        if (typeof notifId !== "string" || notifId.length === 0) continue;
-        this.runtime?.markNotificationDone?.(entry.event.sessionId, notifId, true);
+        this.markDeliveryHistoryStatus(inbox, entry, "confirmed");
+        this.confirmNotificationIfNeeded(entry);
       }
       inbox.confirmedUpTo = inbox.inFlightUpTo + 1;
       inbox.inFlightUpTo = null;
@@ -606,6 +609,8 @@ export class HerdEventDispatcher {
         inbox.entries.shift();
       }
     }
+
+    this.confirmCommittedHerdHistory(orchId, inbox);
 
     // If there are new pending events, flush synchronously. The orchestrator is
     // idle RIGHT NOW (isGenerating was set to false before this call). Using
@@ -869,6 +874,49 @@ export class HerdEventDispatcher {
       inbox.recentEventKeys.set(key, Date.now());
       trimRecentEventKeys(inbox);
     }
+  }
+
+  private hasCommittedHerdEventKey(orchId: string, key: string): boolean {
+    return getCommittedHerdEventKeys(this.wsBridge.getSession(orchId)?.messageHistory).has(key);
+  }
+
+  private confirmCommittedHerdHistory(orchId: string, inbox: HerdInbox): void {
+    if (inbox.inFlightUpTo !== null || inbox.entries.length === 0) return;
+    const committedKeys = getCommittedHerdEventKeys(this.wsBridge.getSession(orchId)?.messageHistory);
+    if (committedKeys.size === 0) return;
+
+    const confirmedSeqs = new Set<number>();
+    const confirmedEvents: TakodeEvent[] = [];
+    const keptEntries: InboxEntry[] = [];
+    for (const entry of inbox.entries) {
+      const key = getStableHerdEventKey(entry.event);
+      if (key && committedKeys.has(key)) {
+        confirmedSeqs.add(entry.seq);
+        confirmedEvents.push(entry.event);
+        this.markDeliveryHistoryStatus(inbox, entry, "confirmed");
+        this.confirmNotificationIfNeeded(entry);
+        continue;
+      }
+      keptEntries.push(entry);
+    }
+    if (confirmedSeqs.size === 0) return;
+
+    inbox.entries = keptEntries;
+    while (confirmedSeqs.has(inbox.confirmedUpTo)) {
+      inbox.confirmedUpTo += 1;
+    }
+    if (this.pendingCount(inbox) === 0 && inbox.debounceTimer) {
+      clearTimeout(inbox.debounceTimer);
+      inbox.debounceTimer = null;
+    }
+    this.rememberDeliveredEventKeys(inbox, confirmedEvents);
+  }
+
+  private confirmNotificationIfNeeded(entry: InboxEntry): void {
+    if (entry.event.event !== "notification_needs_input") return;
+    const notifId = entry.event.data.notificationId;
+    if (typeof notifId !== "string" || notifId.length === 0) return;
+    this.runtime?.markNotificationDone?.(entry.event.sessionId, notifId, true);
   }
 
   private releaseHeldRestartPrepEvents(operationId: string): void {
@@ -1357,6 +1405,17 @@ function inboxHasEventKey(inbox: HerdInbox, key: string): boolean {
   return inbox.entries.some((entry) => getStableHerdEventKey(entry.event) === key);
 }
 
+function getCommittedHerdEventKeys(history: BrowserIncomingMessage[] | undefined): Set<string> {
+  const keys = new Set<string>();
+  for (const msg of history ?? []) {
+    if (msg.type !== "user_message" || msg.agentSource?.sessionId !== HERD_AGENT_SOURCE.sessionId) continue;
+    for (const key of msg.takodeHerdEventKeys ?? []) {
+      if (typeof key === "string" && key.length > 0) keys.add(key);
+    }
+  }
+  return keys;
+}
+
 function trimRecentEventKeys(inbox: HerdInbox): void {
   if (inbox.recentEventKeys.size <= RECENT_EVENT_DEDUPE_CAP) return;
   const excess = inbox.recentEventKeys.size - RECENT_EVENT_DEDUPE_CAP;
@@ -1387,8 +1446,10 @@ function stableKeyPart(value: unknown): string {
 }
 
 function snapshotHerdBatch(events: TakodeEvent[], renderedLines: string[]): TakodeHerdBatchSnapshot | undefined {
-  if (!events.some((event) => event.event === "board_stalled")) return undefined;
-  return { events, renderedLines };
+  const eventKeys = events.map((event) => getStableHerdEventKey(event) ?? "");
+  const hasBoardStalledEvent = events.some((event) => event.event === "board_stalled");
+  if (!hasBoardStalledEvent && !eventKeys.some(Boolean)) return undefined;
+  return { events, renderedLines, ...(eventKeys.some(Boolean) ? { eventKeys } : {}) };
 }
 
 function groupPendingEntriesByThread(

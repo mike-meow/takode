@@ -1067,6 +1067,7 @@ function commitPendingCodexInput(
     ...(pending.threadKey ? { threadKey: pending.threadKey } : {}),
     ...(pending.questId ? { questId: pending.questId } : {}),
     ...(pending.threadRefs ? { threadRefs: pending.threadRefs } : {}),
+    ...(pending.takodeHerdBatch?.eventKeys?.length ? { takodeHerdEventKeys: pending.takodeHerdBatch.eventKeys } : {}),
   };
   session.messageHistory.push(userHistoryEntry);
   const userMsgHistoryIdx = session.messageHistory.length - 1;

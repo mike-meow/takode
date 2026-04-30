@@ -606,6 +606,7 @@ export type BrowserIncomingMessageBase =
       questId?: string;
       threadRefs?: ThreadRef[];
       threadRoutingError?: ThreadRoutingError;
+      takodeHerdEventKeys?: string[];
     }
   | {
       type: "leader_user_message";
@@ -1324,6 +1325,7 @@ export interface TakodeBoardDispatchableEventData {
 export interface TakodeHerdBatchSnapshot {
   events: TakodeEvent[];
   renderedLines: string[];
+  eventKeys?: string[];
 }
 
 export interface TakodeEventDataByType {
