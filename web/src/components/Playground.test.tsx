@@ -84,6 +84,9 @@ describe("Playground", () => {
 
     const rail = screen.getByTestId("thread-tab-rail");
     expect(rail).toHaveAttribute("data-overflow", "horizontal-scroll-after-min");
+    expect(screen.getByTestId("workboard-main-banner")).toBeTruthy();
+    expect(screen.getByTestId("workboard-summary-button")).toHaveTextContent("Open Workboard");
+    expect(screen.queryByTestId("workboard-current-thread")).toBeNull();
     expect(screen.getByTestId("thread-main-tab")).toHaveTextContent("Main Thread");
     expect(screen.getByTestId("thread-main-tab")).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByTestId("thread-main-tab")).toHaveClass("border-amber-400/60", "bg-cc-bg");
@@ -132,6 +135,13 @@ describe("Playground", () => {
     const movedTabs = screen.getAllByTestId("thread-tab");
     expect(movedTabs[0]).toHaveAttribute("data-thread-key", "q-99");
     expect(movedTabs[0]).toHaveAttribute("data-new-tab", "true");
+    expect(screen.queryByTestId("workboard-main-banner")).toBeNull();
+    expect(screen.getByTestId("thread-tab-rail")).toBeTruthy();
+
+    fireEvent.click(screen.getByText("Main banner"));
+    fireEvent.click(screen.getByTestId("workboard-summary-button"));
+    expect(screen.getByTestId("workboard-thread-main")).toHaveAttribute("data-variant", "compact");
+    expect(screen.getByTestId("workboard-thread-all")).toHaveAttribute("data-secondary", "true");
   });
 
   it("documents compact quest-thread banners without chip note counts and with tap previews", () => {

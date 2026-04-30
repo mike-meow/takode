@@ -257,7 +257,8 @@ describe("WorkBoardBar", () => {
     });
     const { getByText, getByTestId } = render(<WorkBoardBar sessionId="s1" />);
     expect(getByText("Empty")).toBeInTheDocument();
-    expect(getByTestId("workboard-current-thread")).toHaveTextContent("Main Thread");
+    expect(getByTestId("workboard-main-banner")).toBeInTheDocument();
+    expect(getByTestId("workboard-summary-button")).toHaveTextContent("Open Workboard");
     expect(getByTestId("thread-tab-rail")).toHaveAttribute("data-open-tab-count", "1");
     expect(getByTestId("thread-main-tab")).toHaveAttribute("data-thread-key", "main");
     expect(getByTestId("thread-main-tab")).toHaveTextContent("Main Thread");
@@ -272,12 +273,15 @@ describe("WorkBoardBar", () => {
     expect(getByText("Empty")).toBeInTheDocument();
   });
 
-  it("renders summary bar for orchestrator with board data", () => {
+  it("renders the compact Main-thread Work Board banner for orchestrators with board data", () => {
     resetStore({
       sdkSessions: [{ sessionId: "s1", isOrchestrator: true }],
       sessionBoards: new Map([["s1", BOARD_DATA]]),
     });
-    const { getByText } = render(<WorkBoardBar sessionId="s1" />);
+    const { getByText, getByTestId, queryByTestId } = render(<WorkBoardBar sessionId="s1" />);
+    expect(getByTestId("workboard-main-banner")).toBeInTheDocument();
+    expect(queryByTestId("workboard-current-thread")).not.toBeInTheDocument();
+    expect(getByTestId("workboard-summary-button")).toHaveTextContent("Open Workboard");
     // Each status segment renders separately with its color class
     expect(getByText("1 Implement")).toBeInTheDocument();
     expect(getByText("1 Queued")).toBeInTheDocument();
@@ -285,16 +289,21 @@ describe("WorkBoardBar", () => {
     expect(getByText("2 items")).toBeInTheDocument();
   });
 
-  it("shows the current thread without a redundant return-to-Main control", () => {
+  it("hides the Work Board banner and table on quest threads while keeping the tab rail", () => {
     resetStore({
       sdkSessions: [{ sessionId: "s1", isOrchestrator: true }],
       sessionBoards: new Map([["s1", BOARD_DATA]]),
     });
+    localStorage.setItem(scopedKey("cc-work-board-expanded:s1"), "1");
+
     const { getByTestId, queryByTestId } = render(
-      <WorkBoardBar sessionId="s1" currentThreadKey="q-968" currentThreadLabel="q-968" />,
+      <WorkBoardBar sessionId="s1" currentThreadKey="q-1" currentThreadLabel="q-1" />,
     );
 
-    expect(getByTestId("workboard-current-thread")).toHaveTextContent("q-968");
+    expect(getByTestId("thread-tab-rail")).toBeInTheDocument();
+    expect(queryByTestId("workboard-main-banner")).not.toBeInTheDocument();
+    expect(queryByTestId("workboard-summary-button")).not.toBeInTheDocument();
+    expect(queryByTestId("board-table")).not.toBeInTheDocument();
     expect(queryByTestId("workboard-return-main")).not.toBeInTheDocument();
   });
 
@@ -977,6 +986,10 @@ describe("WorkBoardBar", () => {
     rerender(<WorkBoardBar sessionId="s2" />);
     expect(queryByTestId("board-table")).not.toBeInTheDocument();
 
+    rerender(<WorkBoardBar sessionId="s1" currentThreadKey="q-1" />);
+    expect(queryByTestId("workboard-main-banner")).not.toBeInTheDocument();
+    expect(queryByTestId("board-table")).not.toBeInTheDocument();
+
     rerender(<WorkBoardBar sessionId="s1" />);
     expect(getByTestId("board-table")).toBeInTheDocument();
 
@@ -1007,6 +1020,10 @@ describe("WorkBoardBar", () => {
 
     const { getByTestId } = render(<WorkBoardBar sessionId="s1" onSelectThread={onSelectThread} />);
     fireEvent.click(getByTestId("workboard-summary-button"));
+    expect(getByTestId("workboard-thread-main")).toHaveAttribute("data-variant", "compact");
+    expect(getByTestId("workboard-thread-main")).toHaveAttribute("data-secondary", "false");
+    expect(getByTestId("workboard-thread-all")).toHaveAttribute("data-variant", "compact");
+    expect(getByTestId("workboard-thread-all")).toHaveAttribute("data-secondary", "true");
     fireEvent.click(getByTestId("workboard-thread-main"));
     fireEvent.click(getByTestId("workboard-thread-all"));
 

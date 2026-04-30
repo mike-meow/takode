@@ -1,11 +1,10 @@
 /**
  * Persistent work board widget for orchestrator sessions.
  *
- * Positioned above the message feed in ChatView. Shows a thin
- * summary bar (collapsed, default) that expands on click to show the full
- * board table. Once opened, it stays open until the user explicitly collapses
- * it. Visible for orchestrator sessions even before the first board item exists
- * because it is also the primary Main / All Threads / quest navigator.
+ * Positioned above the message feed in ChatView. The tab rail stays visible for
+ * leader navigation, while the Work Board summary/table behaves like a compact
+ * Main-thread banner. Once opened, it stays open until the user explicitly
+ * collapses it.
  */
 import type { CSSProperties, ReactNode } from "react";
 import { useMemo, useState, useEffect, useRef } from "react";
@@ -110,29 +109,48 @@ function ThreadNavButton({
   selected,
   onClick,
   testId,
+  variant = "card",
+  secondary = false,
 }: {
   label: string;
   detail?: string;
   selected: boolean;
   onClick: () => void;
   testId: string;
+  variant?: "card" | "compact";
+  secondary?: boolean;
 }) {
+  const tone = selected
+    ? "border-cc-primary/45 bg-cc-primary/12 text-cc-fg"
+    : secondary
+      ? "border-cc-border/45 bg-transparent text-cc-muted hover:bg-cc-hover/45 hover:text-cc-fg"
+      : "border-cc-border/70 bg-cc-hover/35 text-cc-muted hover:bg-cc-hover/65 hover:text-cc-fg";
+  const layout =
+    variant === "compact"
+      ? "inline-flex min-w-0 items-center gap-1.5 rounded-md border px-2 py-1"
+      : "flex min-w-0 items-center gap-2 rounded-md border px-2.5 py-1.5";
+
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`flex min-w-0 items-center gap-2 rounded-md border px-2.5 py-1.5 text-left transition-colors ${
-        selected
-          ? "border-cc-primary/45 bg-cc-primary/12 text-cc-fg"
-          : "border-cc-border/70 bg-cc-hover/35 text-cc-muted hover:bg-cc-hover/65 hover:text-cc-fg"
-      }`}
+      className={`${layout} text-left transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cc-primary/70 focus-visible:ring-inset ${tone}`}
       data-testid={testId}
+      data-variant={variant}
+      data-secondary={secondary ? "true" : "false"}
       aria-pressed={selected}
     >
-      <span className="min-w-0">
-        <span className="block truncate text-[11px] font-medium">{label}</span>
-        {detail && <span className="block truncate text-[10px] text-cc-muted/80">{detail}</span>}
-      </span>
+      {variant === "compact" ? (
+        <>
+          <span className="min-w-0 truncate text-[11px] font-medium">{label}</span>
+          {detail && <span className="hidden shrink-0 text-[10px] text-cc-muted/75 sm:inline">{detail}</span>}
+        </>
+      ) : (
+        <span className="min-w-0">
+          <span className="block truncate text-[11px] font-medium">{label}</span>
+          {detail && <span className="block truncate text-[10px] text-cc-muted/80">{detail}</span>}
+        </span>
+      )}
     </button>
   );
 }
@@ -626,7 +644,6 @@ function ThreadTabRail({
 export function WorkBoardBar({
   sessionId,
   currentThreadKey = "main",
-  currentThreadLabel = "Main Thread",
   onSelectThread,
   openThreadKeys = [],
   onCloseThreadTab,
@@ -652,6 +669,7 @@ export function WorkBoardBar({
   const [expanded, setExpanded] = useState(() => readExpandedState(sessionId));
   const [completedExpanded, setCompletedExpanded] = useState(false);
   const [threadQuery, setThreadQuery] = useState("");
+  const showMainWorkBoard = isSelectedThread(currentThreadKey, MAIN_THREAD_KEY);
 
   useEffect(() => {
     setExpanded(readExpandedState(sessionId));
@@ -665,13 +683,13 @@ export function WorkBoardBar({
 
   // Close on Escape
   useEffect(() => {
-    if (!expanded) return;
+    if (!expanded || !showMainWorkBoard) return;
     const handler = (e: KeyboardEvent) => {
       if (e.key === "Escape") setExpanded(false);
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-  }, [expanded]);
+  }, [expanded, showMainWorkBoard]);
 
   const activeCount = board?.length ?? 0;
   const completedCount = completedBoard?.length ?? 0;
@@ -807,30 +825,16 @@ export function WorkBoardBar({
 
   return (
     <div className="shrink-0 flex flex-col min-h-0">
-      {/* Summary bar -- click the board area to toggle expanded */}
-      <div className="flex items-stretch border-b border-cc-border bg-cc-card">
-        <button
-          type="button"
-          onClick={() => setExpanded(!expanded)}
-          className="flex min-w-0 flex-1 items-center gap-2 px-3 py-1.5 text-left transition-colors hover:bg-cc-hover/50 sm:px-4"
-          data-testid="workboard-summary-button"
+      {showMainWorkBoard && (
+        <div
+          className="flex min-w-0 items-center gap-2 border-b border-cc-border bg-cc-card px-3 py-1.5 sm:px-4"
+          data-testid="workboard-main-banner"
         >
-          {/* Kanban board icon */}
           <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5 text-blue-400 shrink-0">
             <path d="M1 2.5A1.5 1.5 0 012.5 1h11A1.5 1.5 0 0115 2.5v11a1.5 1.5 0 01-1.5 1.5h-11A1.5 1.5 0 011 13.5v-11zM2.5 2a.5.5 0 00-.5.5v11a.5.5 0 00.5.5h11a.5.5 0 00.5-.5v-11a.5.5 0 00-.5-.5h-11z" />
             <path d="M4 4h2v5H4zM7 4h2v7H7zM10 4h2v3h-2z" />
           </svg>
 
-          <span
-            className="flex min-w-0 max-w-[45%] shrink-0 items-center gap-1 rounded border border-cc-border/70 bg-cc-hover/45 px-2 py-0.5 text-[11px] font-medium text-cc-fg sm:max-w-[16rem]"
-            title={currentThreadLabel}
-            data-testid="workboard-current-thread"
-          >
-            <span className="hidden shrink-0 text-cc-muted sm:inline">Thread</span>
-            <span className="min-w-0 truncate">{currentThreadLabel}</span>
-          </span>
-
-          {/* Summary text -- each status segment gets its own color */}
           <span className="min-w-0 flex-1 truncate text-[11px]" data-testid="workboard-phase-summary">
             {summarySegments.map((seg, i, arr) => (
               <span key={i}>
@@ -842,25 +846,33 @@ export function WorkBoardBar({
             ))}
           </span>
 
-          {/* Item count */}
           <span className="text-[10px] text-cc-muted shrink-0 tabular-nums">
             {activeCount} {activeCount === 1 ? "item" : "items"}
           </span>
 
-          {/* Chevron */}
-          <svg
-            viewBox="0 0 12 12"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className={`w-3 h-3 text-cc-muted shrink-0 transition-transform duration-150 ${expanded ? "rotate-180" : ""}`}
+          <button
+            type="button"
+            onClick={() => setExpanded(!expanded)}
+            className="inline-flex shrink-0 items-center gap-1 rounded-md border border-cc-border/70 bg-cc-hover/40 px-2 py-0.5 text-[10px] font-medium text-cc-fg transition-colors hover:bg-cc-hover/70 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cc-primary/70 focus-visible:ring-inset"
+            data-testid="workboard-summary-button"
+            aria-expanded={expanded}
           >
-            <path d="M3 5l3-3 3 3" />
-          </svg>
-        </button>
-      </div>
+            <span>{expanded ? "Close Workboard" : "Open Workboard"}</span>
+            <svg
+              viewBox="0 0 12 12"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className={`w-3 h-3 text-cc-muted shrink-0 transition-transform duration-150 ${expanded ? "rotate-180" : ""}`}
+              aria-hidden="true"
+            >
+              <path d="M3 5l3-3 3 3" />
+            </svg>
+          </button>
+        </div>
+      )}
 
       <ThreadTabRail
         mainState={mainThreadState}
@@ -873,7 +885,7 @@ export function WorkBoardBar({
       />
 
       {/* Expanded board table -- inline, pushes the feed down */}
-      {expanded && (
+      {showMainWorkBoard && expanded && (
         <div className="border-b border-cc-border bg-cc-card max-h-[55dvh] overflow-y-auto">
           <div className="border-b border-cc-border px-3 py-2" data-testid="workboard-thread-search">
             <input
@@ -886,14 +898,15 @@ export function WorkBoardBar({
             />
           </div>
           {onSelectThread && (
-            <div className="border-b border-cc-border px-3 py-2" data-testid="workboard-thread-nav">
-              <div className="grid gap-1.5 sm:grid-cols-2">
+            <div className="border-b border-cc-border px-3 py-1.5" data-testid="workboard-thread-nav">
+              <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                 <ThreadNavButton
                   label="Main Thread"
                   detail="Clean staging thread"
                   selected={isSelectedThread(currentThreadKey, "main")}
                   onClick={() => onSelectThread("main")}
                   testId="workboard-thread-main"
+                  variant="compact"
                 />
                 <ThreadNavButton
                   label="All Threads"
@@ -901,6 +914,8 @@ export function WorkBoardBar({
                   selected={isSelectedThread(currentThreadKey, "all")}
                   onClick={() => onSelectThread("all")}
                   testId="workboard-thread-all"
+                  variant="compact"
+                  secondary
                 />
               </div>
             </div>
