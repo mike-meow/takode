@@ -59,7 +59,9 @@ function resolvePackageRoot(options?: QuestJourneyPhasePathOptions): string {
 }
 
 function resolveCompanionHome(options?: QuestJourneyPhasePathOptions): string {
-  return options?.companionHome ? resolve(options.companionHome) : join(homedir(), ".companion");
+  if (options?.companionHome) return resolve(options.companionHome);
+  const envHome = process.env.HOME?.trim();
+  return join(envHome || homedir(), ".companion");
 }
 
 export function getQuestJourneyPhaseCanonicalRoot(options?: QuestJourneyPhasePathOptions): string {

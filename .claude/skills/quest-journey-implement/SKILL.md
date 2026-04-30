@@ -5,7 +5,7 @@ description: "Quest Journey phase: implement. Use when a leader is advancing an 
 
 # Quest Journey Phase: Implement
 
-This phase authorizes the worker to make the approved low-risk changes and gather cheap, local, reversible evidence when that evidence stays inside the approved scope.
+This phase authorizes the worker to make the approved low-risk changes and gather cheap, local, reversible evidence when that evidence stays inside the approved scope. It includes the normal investigation, root-cause analysis, code/design reading, and test planning needed to complete the approved fix, docs change, config change, prompt change, or artifact change.
 
 Leader actions:
 - Provide only deltas the assignee is unlikely to infer from the phase brief, quest record, current artifacts, or their own context: exact accepted refs, unusual scope boundaries, nonstandard verification, safety warnings, or facts unavailable to that actor. Avoid restating generic closure checklists covered by the brief.
@@ -14,9 +14,10 @@ Leader actions:
 - Require the worker to add or refresh Implement phase documentation on the quest.
 - Tell the worker to stop and report back after implementation.
 - Keep the board row in `IMPLEMENTING`.
+- Do not add a separate `explore` phase merely for routine pre-implementation reading; ask what that extra phase contributes over doing the work inside `implement`.
 
 Worker-visible boundary:
-- The worker may edit, test, run low-risk local actions, gather cheap local evidence, and update Implement phase documentation.
+- The worker may inspect code/design, diagnose root causes, plan tests, edit, test, run low-risk local actions, gather cheap local evidence, and update Implement phase documentation.
 - Expensive, risky, long-running, externally consequential, or approval-gated runs belong in `execute`, not `implement`.
 - The worker must not run review workflows, port, or change quest status.
 - Before reporting back, the worker should document changed files or artifacts, rationale, verification, remaining risks, and addressed feedback with full agent-oriented detail plus TLDR metadata. Prefer `quest feedback add q-N --text-file ... --tldr-file ... --kind phase-summary`; use explicit `--phase implement` or occurrence flags if current-phase inference is unavailable.

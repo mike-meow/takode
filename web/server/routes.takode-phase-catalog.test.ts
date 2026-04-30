@@ -59,5 +59,14 @@ describe("takode phase catalog route", () => {
       }),
     );
     expect(body.phases.map((phase) => phase.id)).toContain("port");
+    expect(body.phases).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "user-checkpoint",
+          boardState: "USER_CHECKPOINTING",
+          assigneeBriefDisplayPath: "~/.companion/quest-journey-phases/user-checkpoint/assignee.md",
+        }),
+      ]),
+    );
   });
 });

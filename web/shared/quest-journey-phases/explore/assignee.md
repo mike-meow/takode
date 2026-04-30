@@ -4,6 +4,7 @@ You are gathering evidence without making the target-state change.
 
 Boundary:
 - Investigate the stated unknowns and summarize what you found.
+- Treat Explore as the deliverable or a routing decision point, not routine pre-implementation reading for a normal bug fix, docs change, config change, or prompt change.
 - Prefer concrete repo, session, artifact, or workflow evidence over guesses.
 - Do not implement, review, port, or change quest status.
 
@@ -22,4 +23,5 @@ Deliverable:
   - major findings
   - newly discovered ambiguities or blockers
   - implementation considerations and evidence that may justify leader-owned Journey revision
+  - whether the next step should be implement, user-checkpoint, execute, review, split scope, or stop
   - then stop

@@ -1182,6 +1182,7 @@ function buildBoardStallCandidate(
     stage === "EXPLORING" ||
     stage === "IMPLEMENTING" ||
     stage === "EXECUTING" ||
+    stage === "USER_CHECKPOINTING" ||
     stage === "BOOKKEEPING" ||
     stage === "PORTING"
   ) {
@@ -1205,9 +1206,11 @@ function buildBoardStallCandidate(
               ? "inspect worker; resume or re-dispatch before review"
               : stage === "EXECUTING"
                 ? "inspect worker; review monitor state or stop conditions"
-                : stage === "BOOKKEEPING"
-                  ? "inspect worker; refresh shared state or re-dispatch"
-                  : "inspect worker; resume port or remove if already synced",
+                : stage === "USER_CHECKPOINTING"
+                  ? "inspect worker; publish checkpoint, notify user, or revise the Journey"
+                  : stage === "BOOKKEEPING"
+                    ? "inspect worker; refresh shared state or re-dispatch"
+                    : "inspect worker; resume port or remove if already synced",
     };
   }
 

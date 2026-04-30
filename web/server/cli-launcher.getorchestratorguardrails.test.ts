@@ -418,6 +418,10 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("WAIT for their answer");
     expect(guardrails).toContain("Follow the board-approved Quest Journey");
     expect(guardrails).toContain("recommended, not mandatory");
+    expect(guardrails).toContain("ask what it contributes over merging that work into a later phase");
+    expect(guardrails).toContain("`implement` includes normal investigation, root-cause analysis");
+    expect(guardrails).toContain("routine `explore -> implement`");
+    expect(guardrails).toContain("User Checkpoint is an intermediate user-participation stop");
     expect(guardrails).toContain("write the approved Journey to the board before or with dispatch");
     expect(guardrails).toContain("Do not use sleep-based waits");
     expect(guardrails).toContain("repeated `takode peek` / `takode scan` checks");
@@ -537,6 +541,9 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("Initial Journey approval comes before dispatch");
     expect(guardrails).toContain("write the approved Journey to the board before or with dispatch");
     expect(guardrails).toContain("Follow the board-approved Quest Journey");
+    expect(guardrails).toContain("ask what it contributes over merging that work into a later phase");
+    expect(guardrails).toContain("USER_CHECKPOINTING");
+    expect(guardrails).toContain("User Checkpoint");
     expect(guardrails).toContain("not a routine second user-approval gate");
     expect(guardrails).toContain("Alignment approval is leader-owned by default");
     expect(guardrails).toContain("Escalate alignment back to the user only");

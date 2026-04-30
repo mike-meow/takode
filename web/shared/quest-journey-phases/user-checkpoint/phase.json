@@ -1,0 +1,10 @@
+{
+  "id": "user-checkpoint",
+  "label": "User Checkpoint",
+  "color": { "name": "sky", "accent": "#38bdf8" },
+  "boardState": "USER_CHECKPOINTING",
+  "assigneeRole": "worker",
+  "contract": "Present findings, options, tradeoffs, and a recommendation for a required user decision before the Journey continues; do not treat this as a terminal phase or a generic TBD bucket.",
+  "nextLeaderAction": "read the user-checkpoint leader brief, publish the decision prompt, notify the user, wait for the answer, then revise the remaining Journey",
+  "aliases": ["user-decision", "decision-checkpoint", "user-approval"]
+}

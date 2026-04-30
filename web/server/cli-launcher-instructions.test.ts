@@ -94,6 +94,12 @@ describe("getOrchestratorGuardrails", () => {
     expect(result).toContain("initial Journey proposal-and-approval contract");
     expect(result).toContain("durable board recording");
     expect(result).toContain("Standard phases are recommended defaults, not mandates");
+    expect(result).toContain("ask what it contributes over merging that work into a later phase");
+    expect(result).toContain("`implement` includes normal investigation, root-cause analysis");
+    expect(result).toContain("Explore is for investigation deliverables or unknown routing");
+    expect(result).toContain("routine `explore -> implement`");
+    expect(result).toContain("User Checkpoint is an intermediate user-participation stop");
+    expect(result).toContain("notify the user and wait");
     expect(result).toContain("Omit notes for standard phases by default");
     expect(result).toContain("Phase documentation should be useful, not ritual");
     expect(result).toContain("Provide only deltas the actor is unlikely to infer");
@@ -145,6 +151,10 @@ describe("buildInjectedSystemPromptForDebug", () => {
     expect(result).toContain("Use `/leader-dispatch` before dispatching a fresh or newly refined quest");
     expect(result).toContain("board-owned draft-or-active state for the quest");
     expect(result).toContain("Standard phases are recommended defaults, not mandates");
+    expect(result).toContain("ask what it contributes over merging that work into a later phase");
+    expect(result).toContain("USER_CHECKPOINTING");
+    expect(result).toContain("User Checkpoint");
+    expect(result).toContain("Do not use it as terminal closure, generic TBD, or optional leader-only indecision");
     expect(result).toContain("Omit notes for standard phases by default");
     expect(result).toContain("write the approved Journey to the board before or with dispatch");
     expect(result).toContain("Initial Journey approval comes before dispatch");

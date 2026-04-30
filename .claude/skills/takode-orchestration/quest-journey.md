@@ -4,6 +4,8 @@ Every dispatched task follows a **Quest Journey** assembled from built-in phases
 
 The planned Journey is board-owned state associated with the quest while that quest is on the board. Quest creation or refinement defines the quest text; it does not freeze either the proposed draft or the active Journey.
 
+When assembling a Journey, ask what each extra phase contributes over merging that work into a later phase. The normal tracked-code path intentionally keeps common work small: `implement` includes the normal investigation, root-cause analysis, code/design reading, and test planning needed to complete approved fixes, docs changes, config changes, prompt changes, and artifact changes. Do not add `explore` before `implement` merely so a worker can look around.
+
 Board-side Journey modes:
 
 - `proposed`: pre-dispatch draft, no worker required yet, no active/current phase semantics yet
@@ -25,12 +27,13 @@ Use `takode phases` to list available phase metadata and exact brief paths. Lead
 | Phase | Board state | Leader brief | Assignee brief | Contract | Next leader action |
 |-------|-------------|--------------|----------------|----------|--------------------|
 | Alignment | `PLANNING` | `~/.companion/quest-journey-phases/alignment/leader.md` | `~/.companion/quest-journey-phases/alignment/assignee.md` | Do a lightweight read-in to confirm concrete understanding, ambiguities, clarification questions, and whether deeper exploration is needed before implementation or execution | read the alignment leader brief, send the alignment-only instruction, then review the worker read-in for leader approval, routing, or necessary user escalation |
-| Explore | `EXPLORING` | `~/.companion/quest-journey-phases/explore/leader.md` | `~/.companion/quest-journey-phases/explore/assignee.md` | Investigate real unknowns without making the target-state change, then return major findings, new ambiguities or blockers, implementation considerations, and evidence that may justify leader-owned Journey revision | read the explore leader brief, then wait for the findings summary and decide whether to revise the Journey, advance, or escalate |
-| Implement | `IMPLEMENTING` | `~/.companion/quest-journey-phases/implement/leader.md` | `~/.companion/quest-journey-phases/implement/assignee.md` | Make approved code/docs/prompts/config/artifact changes and gather cheap, local, reversible evidence when that stays within the approved scope | read the implement leader brief, then wait for the worker report and choose the next review, execute, or bookkeeping phase |
+| Explore | `EXPLORING` | `~/.companion/quest-journey-phases/explore/leader.md` | `~/.companion/quest-journey-phases/explore/assignee.md` | Investigate when the investigation is the deliverable or when routing is genuinely unknown; do not use Explore as routine pre-implementation looking around for normal bug-fix, docs, or config work | read the explore leader brief, then wait for the findings summary and decide whether to revise the Journey, advance, add a user-checkpoint, or stop |
+| Implement | `IMPLEMENTING` | `~/.companion/quest-journey-phases/implement/leader.md` | `~/.companion/quest-journey-phases/implement/assignee.md` | Make approved code, docs, prompts, config, or artifact changes; this includes normal investigation, root-cause analysis, code/design reading, test planning, and cheap local evidence within the approved scope | read the implement leader brief, then wait for the worker report and choose the next review, execute, or bookkeeping phase |
 | Code Review | `CODE_REVIEWING` | `~/.companion/quest-journey-phases/code-review/leader.md` | `~/.companion/quest-journey-phases/code-review/assignee.md` | Review tracked code or tracked artifacts for comprehensive landing risk: correctness, regressions, tests, maintainability, quest hygiene, implementation completeness, meaningful evidence, and security when relevant | read the code-review leader brief, then wait for the reviewer result and either send rework or advance |
 | Mental Simulation | `MENTAL_SIMULATING` | `~/.companion/quest-journey-phases/mental-simulation/leader.md` | `~/.companion/quest-journey-phases/mental-simulation/assignee.md` | Replay a design, workflow, or implementation against concrete scenarios | read the mental-simulation leader brief, then wait for the scenario review and decide whether the Journey needs revision |
 | Execute | `EXECUTING` | `~/.companion/quest-journey-phases/execute/leader.md` | `~/.companion/quest-journey-phases/execute/assignee.md` | Run approved expensive, risky, long-running, externally consequential, or approval-gated operations | read the execute leader brief, track monitor and stop conditions, then wait for the execution report and decide whether outcome review, more execute work, or a Journey revision is needed |
 | Outcome Review | `OUTCOME_REVIEWING` | `~/.companion/quest-journey-phases/outcome-review/leader.md` | `~/.companion/quest-journey-phases/outcome-review/assignee.md` | Reviewer-owned acceptance judgment over external or non-code outcomes such as metrics, logs, artifacts, prompt behavior, or UX trial notes | read the outcome-review leader brief, then wait for the reviewer judgment and route to implement, execute, alignment, or conclusion |
+| User Checkpoint | `USER_CHECKPOINTING` | `~/.companion/quest-journey-phases/user-checkpoint/leader.md` | `~/.companion/quest-journey-phases/user-checkpoint/assignee.md` | Present findings, options, tradeoffs, and a recommendation for a required user decision before the Journey continues; do not treat this as a terminal phase or a generic TBD bucket | read the user-checkpoint leader brief, publish the decision prompt, notify the user, wait for the answer, then revise the remaining Journey |
 | Bookkeeping | `BOOKKEEPING` | `~/.companion/quest-journey-phases/bookkeeping/leader.md` | `~/.companion/quest-journey-phases/bookkeeping/assignee.md` | Record durable shared external state such as quest updates, stream updates, artifact locations, handoff facts, and superseded facts | read the bookkeeping leader brief, record the durable shared state update, then advance when the facts and handoff state are current |
 | Port | `PORTING` | `~/.companion/quest-journey-phases/port/leader.md` | `~/.companion/quest-journey-phases/port/assignee.md` | Sync accepted tracked changes back to the main repo | read the port leader brief, then wait for sync confirmation and post-port verification before removing the row |
 
@@ -60,6 +63,7 @@ Phase documentation should stay specific to the phase:
 - Mental Simulation: scenarios replayed, concrete examples, risks, recommendations, and confidence limits.
 - Execute: approved action, monitors, stop conditions, outcome, deviations, artifacts or logs, and follow-up needs.
 - Outcome Review: evidence judged, acceptance or insufficiency rationale, bounded reruns, and follow-up routing.
+- User Checkpoint: findings, options, tradeoffs, recommendation, required user answer, and Journey-revision implications.
 - Bookkeeping: cross-phase or external durable state beyond normal phase notes, such as records updated, consolidated summaries, final debrief metadata after port when the port worker could not reliably create it, verification checklist reconciliation, superseded facts, external locations, notification/thread cleanup, and durable handoff facts.
 - Port: ordered synced SHAs, post-port verification, port anomalies, remaining sync risks, and final debrief metadata status or draft.
 
@@ -73,7 +77,7 @@ The recommended built-in tracked-code Journey is:
 
 This preserves a small normal path for common repo work while allowing leaders to choose richer review or operations paths when the quest needs them. It is a default, not a mandate: user overrides win. If the user asks to skip `code-review`, `port`, or another standard phase, follow that instruction or briefly confirm the tradeoff instead of refusing because the phase is standard.
 
-Omit notes for standard phases by default: `alignment`, `implement`, `code-review`, and `port` are self-explanatory unless the user or quest adds unusual phase-specific work. Add concise notes for non-standard phases such as `explore`, `execute`, `outcome-review`, `mental-simulation`, or `bookkeeping`; state why the phase is needed and what evidence, scenario, outcome, or durable state it covers.
+Omit notes for standard phases by default: `alignment`, `implement`, `code-review`, and `port` are self-explanatory unless the user or quest adds unusual phase-specific work. Add concise notes for non-standard phases such as `explore`, `user-checkpoint`, `execute`, `outcome-review`, `mental-simulation`, or `bookkeeping`; state why the phase is needed and what evidence, user decision, scenario, outcome, or durable state it covers. For every extra phase, ask what it contributes over merging the same work into a later phase.
 
 ## Approval and Board Workflow
 
@@ -95,6 +99,7 @@ Examples:
 
 - Straight tracked-code work: `alignment -> implement -> code-review -> port`
 - Expensive or approval-gated run: `alignment -> explore -> execute -> outcome-review`
+- Findings that require user steering: `alignment -> explore -> user-checkpoint -> implement -> code-review -> port`
 - Design or workflow validation: `alignment -> implement -> mental-simulation -> code-review -> port`
 - Cheap local evidence followed by acceptance review: `alignment -> implement -> outcome-review -> code-review -> port`
 
@@ -135,6 +140,7 @@ Rules:
 - **Alignment approval is leader-owned by default.** Once the user has approved the initial Journey plus scheduling plan, the leader normally approves the returned worker read-in and dispatches the next phase.
 - **Escalate alignment back to the user only for real blockers.** Significant ambiguity, scope change, Journey revision, user-visible tradeoff, or another blocking issue can require fresh user approval.
 - **Alignment approval authorizes exactly one next phase.** For example: explore now, then stop and report back.
+- **Use `user-checkpoint` for explicit user participation.** Present findings, options, tradeoffs, and a recommendation; notify the user and wait; then revise the remaining Journey after the user answers. Do not use it as terminal closure, generic TBD, or optional leader-only indecision.
 - **Workers and reviewers document, report, then stop at phase boundaries.** They do not self-review, self-port, self-transition, or self-complete unless explicitly instructed.
 - **Porting requires an explicit instruction.** Port must also settle final debrief ownership: completion by the port worker for a nontrivial quest should use `--debrief-file` and `--debrief-tldr-file`; leader-controlled completion needs a `Final debrief draft:` plus `Debrief TLDR draft:` or a focused Bookkeeping phase if Port cannot reliably produce them.
 

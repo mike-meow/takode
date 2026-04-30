@@ -83,6 +83,7 @@ describe("formatQuestJourneyText", () => {
     expect(formatQuestJourneyText("advanced q-42 to PLANNING")).toBe("advanced q-42 to Alignment");
     expect(formatQuestJourneyText("left q-42 as PROPOSED")).toBe("left q-42 as Proposed");
     expect(formatQuestJourneyText("advanced q-42 to CODE_REVIEWING")).toBe("advanced q-42 to Code Review");
+    expect(formatQuestJourneyText("paused q-42 at USER_CHECKPOINTING")).toBe("paused q-42 at User Checkpoint");
     expect(formatQuestJourneyText("moved from SKEPTIC_REVIEWING to PORTING")).toBe("moved from Code Review to Port");
   });
 
@@ -97,6 +98,7 @@ describe("phase alias compatibility", () => {
     expect(canonicalizeQuestJourneyPhaseId("implementation")).toBe("implement");
     expect(canonicalizeQuestJourneyPhaseId("skeptic-review")).toBe("code-review");
     expect(canonicalizeQuestJourneyPhaseId("reviewer-groom")).toBe("code-review");
+    expect(canonicalizeQuestJourneyPhaseId("user-decision")).toBe("user-checkpoint");
     expect(canonicalizeQuestJourneyPhaseId("state-update")).toBe("bookkeeping");
     expect(canonicalizeQuestJourneyPhaseId("stream-update")).toBe("bookkeeping");
     expect(canonicalizeQuestJourneyPhaseId("porting")).toBe("port");
@@ -153,6 +155,7 @@ describe("Quest Journey phases", () => {
       "mental-simulation",
       "execute",
       "outcome-review",
+      "user-checkpoint",
       "bookkeeping",
       "port",
     ]);
@@ -164,6 +167,7 @@ describe("Quest Journey phases", () => {
       "MENTAL_SIMULATING",
       "EXECUTING",
       "OUTCOME_REVIEWING",
+      "USER_CHECKPOINTING",
       "BOOKKEEPING",
       "PORTING",
     ]);
@@ -179,6 +183,7 @@ describe("Quest Journey phases", () => {
     expect(getQuestJourneyPhaseForState("PROPOSED")).toBeNull();
     expect(getQuestJourneyPhaseForState("PLANNING")?.id).toBe("alignment");
     expect(getQuestJourneyPhaseForState("SKEPTIC_REVIEWING")?.id).toBe("code-review");
+    expect(getQuestJourneyPhaseForState("USER_CHECKPOINTING")?.id).toBe("user-checkpoint");
     expect(getQuestJourneyPhase("bookkeeping")?.boardState).toBe("BOOKKEEPING");
     expect(getQuestJourneyPhase("alignment")?.nextLeaderAction).toContain("leader approval");
     expect(getQuestJourneyPhase("alignment")?.nextLeaderAction).toContain("user escalation");
@@ -198,7 +203,7 @@ describe("Quest Journey phases", () => {
       expect.objectContaining({
         assigneeRole: "worker",
         color: { name: "green", accent: "#4ade80" },
-        contract: expect.stringContaining("cheap, local, reversible evidence"),
+        contract: expect.stringContaining("root-cause analysis"),
         nextLeaderAction: expect.stringContaining("next review, execute, or bookkeeping phase"),
       }),
     );
@@ -218,6 +223,20 @@ describe("Quest Journey phases", () => {
     );
   });
 
+  it("defines user-checkpoint as an intermediate user decision phase", () => {
+    expect(getQuestJourneyPhase("user-checkpoint")).toEqual(
+      expect.objectContaining({
+        assigneeRole: "worker",
+        boardState: "USER_CHECKPOINTING",
+        contract: expect.stringContaining("required user decision"),
+        nextLeaderAction: expect.stringContaining("notify the user"),
+        aliases: expect.arrayContaining(["user-decision", "decision-checkpoint", "user-approval"]),
+      }),
+    );
+    expect(getQuestJourneyPhase("user-checkpoint")?.contract).toContain("not treat this as a terminal phase");
+    expect(QUEST_JOURNEY_HINTS.USER_CHECKPOINTING).toContain("revise the remaining Journey");
+  });
+
   it("loads explicit UI color metadata from every phase definition", () => {
     for (const phase of QUEST_JOURNEY_PHASES) {
       expect(phase.color.name).toEqual(expect.any(String));
@@ -235,8 +254,8 @@ describe("Quest Journey phases", () => {
     );
     expect(getQuestJourneyPhase("explore")).toEqual(
       expect.objectContaining({
-        contract: expect.stringContaining("major findings"),
-        nextLeaderAction: expect.stringContaining("findings summary"),
+        contract: expect.stringContaining("routing is genuinely unknown"),
+        nextLeaderAction: expect.stringContaining("user-checkpoint"),
       }),
     );
   });

@@ -11,6 +11,7 @@ import mentalSimulationPhase from "./quest-journey-phases/mental-simulation/phas
 import outcomeReviewPhase from "./quest-journey-phases/outcome-review/phase.json";
 import alignmentPhase from "./quest-journey-phases/alignment/phase.json";
 import portPhase from "./quest-journey-phases/port/phase.json";
+import userCheckpointPhase from "./quest-journey-phases/user-checkpoint/phase.json";
 
 /** Regex pattern for valid quest IDs: q-NNN (case-insensitive). */
 export const QUEST_ID_PATTERN = /^q-\d+$/i;
@@ -68,6 +69,7 @@ export const QUEST_JOURNEY_STATES = [
   "MENTAL_SIMULATING",
   "EXECUTING",
   "OUTCOME_REVIEWING",
+  "USER_CHECKPOINTING",
   "BOOKKEEPING",
   "PORTING",
 ] as const;
@@ -90,6 +92,7 @@ const QUEST_JOURNEY_PHASE_IDS = [
   "mental-simulation",
   "execute",
   "outcome-review",
+  "user-checkpoint",
   "bookkeeping",
   "port",
 ] as const;
@@ -172,6 +175,7 @@ export const QUEST_JOURNEY_PHASES: readonly QuestJourneyPhase[] = [
   defineQuestJourneyPhase("mental-simulation", mentalSimulationPhase),
   defineQuestJourneyPhase("execute", executePhase),
   defineQuestJourneyPhase("outcome-review", outcomeReviewPhase),
+  defineQuestJourneyPhase("user-checkpoint", userCheckpointPhase),
   defineQuestJourneyPhase("bookkeeping", bookkeepingPhase),
   defineQuestJourneyPhase("port", portPhase),
 ];
@@ -691,6 +695,7 @@ export const QUEST_JOURNEY_PRESENTATION: Record<QuestJourneyState, QuestJourneyP
   MENTAL_SIMULATING: { label: "Mental Simulation" },
   EXECUTING: { label: "Execute" },
   OUTCOME_REVIEWING: { label: "Outcome Review" },
+  USER_CHECKPOINTING: { label: "User Checkpoint" },
   BOOKKEEPING: { label: "Bookkeeping" },
   PORTING: { label: "Port" },
 };
@@ -704,7 +709,7 @@ export function getQuestJourneyPresentation(status?: string | null): QuestJourne
 /** Replace embedded quest-journey enum tokens in freeform text with human labels. */
 export function formatQuestJourneyText(text: string): string {
   return text.replace(
-    /\b(PROPOSED|QUEUED|PLANNING|EXPLORING|IMPLEMENTING|CODE_REVIEWING|MENTAL_SIMULATING|EXECUTING|OUTCOME_REVIEWING|BOOKKEEPING|PORTING|SKEPTIC_REVIEWING|GROOM_REVIEWING)\b/g,
+    /\b(PROPOSED|QUEUED|PLANNING|EXPLORING|IMPLEMENTING|CODE_REVIEWING|MENTAL_SIMULATING|EXECUTING|OUTCOME_REVIEWING|USER_CHECKPOINTING|BOOKKEEPING|PORTING|SKEPTIC_REVIEWING|GROOM_REVIEWING)\b/g,
     (match) => getQuestJourneyPresentation(match)?.label ?? match,
   );
 }
@@ -720,6 +725,7 @@ export const QUEST_JOURNEY_HINTS: Record<string, string> = {
   MENTAL_SIMULATING: QUEST_JOURNEY_PHASE_BY_ID["mental-simulation"].nextLeaderAction,
   EXECUTING: QUEST_JOURNEY_PHASE_BY_ID.execute.nextLeaderAction,
   OUTCOME_REVIEWING: QUEST_JOURNEY_PHASE_BY_ID["outcome-review"].nextLeaderAction,
+  USER_CHECKPOINTING: QUEST_JOURNEY_PHASE_BY_ID["user-checkpoint"].nextLeaderAction,
   BOOKKEEPING: QUEST_JOURNEY_PHASE_BY_ID.bookkeeping.nextLeaderAction,
   PORTING: QUEST_JOURNEY_PHASE_BY_ID.port.nextLeaderAction,
   SKEPTIC_REVIEWING: QUEST_JOURNEY_PHASE_BY_ID["code-review"].nextLeaderAction,

@@ -107,7 +107,10 @@ describe("Quest Journey phase directory loading", () => {
     const outcomeReviewPhase = phases.find((phase) => phase.id === "outcome-review");
 
     expect(implementPhase?.leaderBrief).toContain("cheap, local, reversible outcome evidence");
+    expect(implementPhase?.leaderBrief).toContain("normal investigation, root-cause analysis");
+    expect(implementPhase?.leaderBrief).toContain("what that extra phase contributes");
     expect(implementPhase?.assigneeBrief).toContain("those belong in `EXECUTING`");
+    expect(implementPhase?.assigneeBrief).toContain("code/design reading");
     expect(implementPhase?.assigneeBrief).toContain("Phase documentation");
     expect(implementPhase?.assigneeBrief).toContain("changed files or artifacts");
     expect(executePhase?.leaderBrief).toContain("Use `EXECUTING` instead of `IMPLEMENTING`");
@@ -133,8 +136,31 @@ describe("Quest Journey phase directory loading", () => {
     expect(alignmentPhase?.assigneeBrief).toContain("Concrete understanding:");
     expect(alignmentPhase?.assigneeBrief).toContain("Clarification questions:");
     expect(explorePhase?.leaderBrief).toContain("major findings, newly discovered ambiguities or blockers");
+    expect(explorePhase?.leaderBrief).toContain("investigation is the deliverable");
+    expect(explorePhase?.leaderBrief).toContain("Do not insert `EXPLORE -> IMPLEMENT`");
+    expect(explorePhase?.leaderBrief).toContain("plan or revise to `USER_CHECKPOINTING`");
     expect(explorePhase?.assigneeBrief).toContain("major findings");
     expect(explorePhase?.assigneeBrief).toContain("evidence that may justify leader-owned Journey revision");
+    expect(explorePhase?.assigneeBrief).toContain("routing decision point");
+  });
+
+  it("seeds User Checkpoint briefs as an intermediate user-participation phase", async () => {
+    const companionHome = await makeCompanionHome();
+    await ensureBuiltInQuestJourneyPhaseData({ packageRoot: PACKAGE_ROOT, companionHome });
+
+    const phases = await loadBuiltInQuestJourneyPhases({ companionHome });
+    const userCheckpointPhase = phases.find((phase) => phase.id === "user-checkpoint");
+
+    expect(userCheckpointPhase?.boardState).toBe("USER_CHECKPOINTING");
+    expect(userCheckpointPhase?.contract).toContain("required user decision");
+    expect(userCheckpointPhase?.contract).toContain("not treat this as a terminal phase");
+    expect(userCheckpointPhase?.leaderBrief).toContain("findings, options, tradeoffs, and a recommendation");
+    expect(userCheckpointPhase?.leaderBrief).toContain("takode notify needs-input");
+    expect(userCheckpointPhase?.leaderBrief).toContain("wait for the user answer");
+    expect(userCheckpointPhase?.leaderBrief).toContain("revise the remaining Journey");
+    expect(userCheckpointPhase?.leaderBrief).toContain("Do not use this phase as a terminal phase");
+    expect(userCheckpointPhase?.assigneeBrief).toContain("required user answer");
+    expect(userCheckpointPhase?.assigneeBrief).toContain("Journey-revision implications");
   });
 
   it("seeds reviewer briefs with target-specific skill and context loading guidance", async () => {
@@ -214,6 +240,7 @@ describe("Quest Journey phase directory loading", () => {
       ["mental-simulation", "scenarios replayed"],
       ["execute", "monitor and stop conditions"],
       ["outcome-review", "evidence judged"],
+      ["user-checkpoint", "required user answer"],
       ["bookkeeping", "shared records updated"],
       ["port", "ordered synced SHAs"],
     ]);
