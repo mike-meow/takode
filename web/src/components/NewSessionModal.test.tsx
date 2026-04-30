@@ -6,6 +6,7 @@ import "@testing-library/jest-dom";
 const mockQueuePendingSession = vi.fn();
 const mockGetGlobalNewSessionDefaults = vi.fn();
 const mockGetGroupNewSessionDefaults = vi.fn();
+const mockGetCachedGroupNewSessionDefaults = vi.fn();
 const mockSaveGroupNewSessionDefaults = vi.fn();
 const mockGetRecentDirs = vi.fn();
 const mockScopedSetItem = vi.fn();
@@ -20,6 +21,8 @@ const mockApi = {
   listBranches: vi.fn(),
   gitPull: vi.fn(),
   listCliSessions: vi.fn(),
+  getNewSessionDefaults: vi.fn(),
+  saveNewSessionDefaults: vi.fn(),
 };
 
 vi.mock("../api.js", () => ({
@@ -33,6 +36,8 @@ vi.mock("../api.js", () => ({
     listBranches: (...args: unknown[]) => mockApi.listBranches(...args),
     gitPull: (...args: unknown[]) => mockApi.gitPull(...args),
     listCliSessions: (...args: unknown[]) => mockApi.listCliSessions(...args),
+    getNewSessionDefaults: (...args: unknown[]) => mockApi.getNewSessionDefaults(...args),
+    saveNewSessionDefaults: (...args: unknown[]) => mockApi.saveNewSessionDefaults(...args),
   },
 }));
 
@@ -52,6 +57,7 @@ vi.mock("../utils/scoped-storage.js", () => ({
 vi.mock("../utils/new-session-defaults.js", () => ({
   getGlobalNewSessionDefaults: (...args: unknown[]) => mockGetGlobalNewSessionDefaults(...args),
   getGroupNewSessionDefaults: (...args: unknown[]) => mockGetGroupNewSessionDefaults(...args),
+  getCachedGroupNewSessionDefaults: (...args: unknown[]) => mockGetCachedGroupNewSessionDefaults(...args),
   saveGroupNewSessionDefaults: (...args: unknown[]) => mockSaveGroupNewSessionDefaults(...args),
   saveLastSessionCreationContext: vi.fn(),
 }));
@@ -97,6 +103,7 @@ describe("NewSessionModal", () => {
       codexInternetAccess: true,
       codexReasoningEffort: "high",
     });
+    mockGetCachedGroupNewSessionDefaults.mockReturnValue(null);
     mockApi.getHome.mockResolvedValue({ home: "/Users/test", cwd: "/tmp/project" });
     mockApi.getCodexDefaultModel.mockResolvedValue({ model: "gpt-5.5" });
     mockApi.listEnvs.mockResolvedValue([]);
@@ -108,6 +115,13 @@ describe("NewSessionModal", () => {
     mockApi.getRepoInfo.mockRejectedValue(new Error("not a repo"));
     mockApi.listBranches.mockResolvedValue([]);
     mockApi.gitPull.mockResolvedValue({ success: true });
+    mockApi.getNewSessionDefaults.mockResolvedValue({ key: "tree-group:team-alpha", defaults: null, updatedAt: null });
+    mockApi.saveNewSessionDefaults.mockResolvedValue({
+      ok: true,
+      key: "tree-group:team-alpha",
+      defaults: null,
+      updatedAt: Date.now(),
+    });
     mockGetRecentDirs.mockReturnValue(["/tmp/project"]);
     mockApi.listCliSessions.mockImplementation((backend?: "claude" | "codex") =>
       Promise.resolve({
@@ -231,6 +245,139 @@ describe("NewSessionModal", () => {
     expect(await screen.findByText("team-alpha-repo")).toBeInTheDocument();
     expect(screen.queryByText("global-repo")).not.toBeInTheDocument();
     expect(mockGetRecentDirs).toHaveBeenCalledWith("tree-group:team-alpha");
+  });
+
+  it("hydrates tree-group defaults from the server-backed store", async () => {
+    const serverDefaults = {
+      backend: "codex" as const,
+      model: "gpt-5.5",
+      mode: "agent",
+      askPermission: false,
+      sessionRole: "worker" as const,
+      envSlug: "sandbox",
+      cwd: "/tmp/server-folder",
+      useWorktree: false,
+      codexInternetAccess: false,
+      codexReasoningEffort: "medium",
+    };
+    mockGetGroupNewSessionDefaults.mockReturnValue({
+      backend: "claude",
+      model: "",
+      mode: "agent",
+      askPermission: true,
+      sessionRole: "worker",
+      envSlug: "",
+      cwd: "/tmp/local-folder",
+      useWorktree: true,
+      codexInternetAccess: true,
+      codexReasoningEffort: "high",
+    });
+    mockApi.getNewSessionDefaults.mockResolvedValue({
+      key: "tree-group:team-alpha",
+      defaults: serverDefaults,
+      updatedAt: 123,
+    });
+
+    render(
+      <NewSessionModal
+        open={true}
+        onClose={() => {}}
+        treeGroupId="team-alpha"
+        newSessionDefaultsKey="tree-group:team-alpha"
+      />,
+    );
+
+    expect(await screen.findByText("server-folder")).toBeInTheDocument();
+    expect(mockSaveGroupNewSessionDefaults).toHaveBeenCalledWith("tree-group:team-alpha", serverDefaults);
+  });
+
+  it("migrates cached tree-group defaults to the server when no server value exists", async () => {
+    const cachedDefaults = {
+      backend: "claude" as const,
+      model: "",
+      mode: "agent",
+      askPermission: true,
+      sessionRole: "worker" as const,
+      envSlug: "",
+      cwd: "/tmp/cached-folder",
+      useWorktree: true,
+      codexInternetAccess: false,
+      codexReasoningEffort: "",
+    };
+    mockGetCachedGroupNewSessionDefaults.mockReturnValue(cachedDefaults);
+    mockApi.getNewSessionDefaults.mockResolvedValue({
+      key: "tree-group:team-alpha",
+      defaults: null,
+      updatedAt: null,
+    });
+
+    render(
+      <NewSessionModal
+        open={true}
+        onClose={() => {}}
+        treeGroupId="team-alpha"
+        newSessionDefaultsKey="tree-group:team-alpha"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mockApi.saveNewSessionDefaults).toHaveBeenCalledWith("tree-group:team-alpha", cachedDefaults);
+    });
+  });
+
+  it("does not let the server home fallback overwrite hydrated cwd", async () => {
+    let resolveHome: (value: { home: string; cwd: string }) => void = () => {};
+    mockApi.getHome.mockReturnValue(
+      new Promise((resolve) => {
+        resolveHome = resolve;
+      }),
+    );
+    mockGetGroupNewSessionDefaults.mockReturnValue({
+      backend: "claude",
+      model: "",
+      mode: "agent",
+      askPermission: true,
+      sessionRole: "worker",
+      envSlug: "",
+      cwd: "",
+      useWorktree: true,
+      codexInternetAccess: true,
+      codexReasoningEffort: "high",
+    });
+    mockGetRecentDirs.mockReturnValue([]);
+    mockApi.getNewSessionDefaults.mockResolvedValue({
+      key: "tree-group:team-alpha",
+      defaults: {
+        backend: "claude",
+        model: "",
+        mode: "agent",
+        askPermission: true,
+        sessionRole: "worker",
+        envSlug: "",
+        cwd: "/tmp/server-backed",
+        useWorktree: true,
+        codexInternetAccess: false,
+        codexReasoningEffort: "",
+      },
+      updatedAt: 123,
+    });
+
+    render(
+      <NewSessionModal
+        open={true}
+        onClose={() => {}}
+        treeGroupId="team-alpha"
+        newSessionDefaultsKey="tree-group:team-alpha"
+      />,
+    );
+
+    expect(await screen.findByText("server-backed")).toBeInTheDocument();
+    resolveHome({ home: "/Users/test", cwd: "/tmp/process-cwd" });
+
+    await waitFor(() => {
+      expect(screen.getByText("server-backed")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("process-cwd")).not.toBeInTheDocument();
   });
 
   it("does not write group-scoped selections into global defaults before create", async () => {

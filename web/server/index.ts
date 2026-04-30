@@ -76,6 +76,7 @@ const packageRoot = process.env.__COMPANION_PACKAGE_ROOT || resolve(__dirname, "
 import { DEFAULT_PORT_DEV, DEFAULT_PORT_PROD, RESTART_EXIT_CODE } from "./constants.js";
 import { createLogger, flushServerLogger, initServerLogger } from "./server-logger.js";
 import { initTreeGroupStoreForServer, reconcileSessionTreeGroups } from "./tree-group-store.js";
+import { initNewSessionDefaultsStoreForServer } from "./new-session-defaults-store.js";
 
 const defaultPort = process.env.NODE_ENV === "production" ? DEFAULT_PORT_PROD : DEFAULT_PORT_DEV;
 const port = Number(process.env.PORT) || defaultPort;
@@ -90,6 +91,7 @@ await bootstrapQuestStore({
 });
 const serverId = getServerId();
 initTreeGroupStoreForServer({ serverId, port });
+initNewSessionDefaultsStoreForServer({ serverId });
 const sessionStore = new SessionStore(undefined, port);
 const wsBridge = new WsBridge();
 const launcher = new CliLauncher(port, { serverId });

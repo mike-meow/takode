@@ -223,6 +223,25 @@ export interface CreateSessionOpts {
   resumeCliSessionId?: string;
 }
 
+export interface ServerNewSessionDefaults {
+  backend: "claude" | "codex";
+  model: string;
+  mode: string;
+  askPermission: boolean;
+  sessionRole: "worker" | "leader";
+  envSlug: string;
+  cwd: string;
+  useWorktree: boolean;
+  codexInternetAccess: boolean;
+  codexReasoningEffort: string;
+}
+
+export interface ServerNewSessionDefaultsResponse {
+  key: string;
+  defaults: ServerNewSessionDefaults | null;
+  updatedAt: number | null;
+}
+
 export interface CliSession {
   id: string;
   cwd: string | null;
@@ -924,6 +943,14 @@ export const api = {
 
   updateTreeNodeOrder: (groupId: string, orderedIds: string[]) =>
     patch<{ ok: boolean }>("/tree-groups/node-order", { groupId, orderedIds }),
+
+  getNewSessionDefaults: (key: string) =>
+    get<ServerNewSessionDefaultsResponse>(`/new-session-defaults?key=${encodeURIComponent(key)}`),
+
+  saveNewSessionDefaults: (key: string, defaults: ServerNewSessionDefaults) =>
+    put<{ ok: boolean } & ServerNewSessionDefaultsResponse>(`/new-session-defaults?key=${encodeURIComponent(key)}`, {
+      defaults,
+    }),
 
   // Streams (session-group observability/debugging)
   listStreamGroups: (opts?: { includeArchived?: boolean; query?: string }) => {

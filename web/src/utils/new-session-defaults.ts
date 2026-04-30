@@ -154,6 +154,15 @@ export function getGroupNewSessionDefaults(groupKey: string): NewSessionDefaults
   return buildDefaults({ ...globalDefaults, ...stored });
 }
 
+export function getCachedGroupNewSessionDefaults(groupKey: string): NewSessionDefaults | null {
+  const key = groupKey.trim();
+  if (!key) return null;
+
+  const stored = parseGroupDefaultsMap()[key];
+  if (!stored) return null;
+  return buildDefaults({ ...getGlobalNewSessionDefaults(), ...stored });
+}
+
 export function saveGroupNewSessionDefaults(groupKey: string, defaults: NewSessionDefaults): void {
   const key = groupKey.trim();
   if (!key) return;

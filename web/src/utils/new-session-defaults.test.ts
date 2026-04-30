@@ -4,6 +4,7 @@ import { scopedSetItem } from "./scoped-storage.js";
 import {
   getGlobalNewSessionDefaults,
   getGroupNewSessionDefaults,
+  getCachedGroupNewSessionDefaults,
   getLastSessionCreationContext,
   saveLastSessionCreationContext,
   getTreeGroupNewSessionDefaultsKey,
@@ -38,6 +39,10 @@ describe("new-session-defaults", () => {
       codexInternetAccess: true,
       codexReasoningEffort: "high",
     });
+  });
+
+  it("returns null for cached group defaults when a group has no saved config", () => {
+    expect(getCachedGroupNewSessionDefaults("tree-group:missing")).toBeNull();
   });
 
   it("falls back to the global defaults when a group has no saved config", () => {
@@ -89,6 +94,11 @@ describe("new-session-defaults", () => {
       useWorktree: true,
       codexInternetAccess: true,
       codexReasoningEffort: "medium",
+    });
+    expect(getCachedGroupNewSessionDefaults("/repo-a")).toMatchObject({
+      backend: "codex",
+      cwd: "/repo-a/worktrees/feature-x",
+      sessionRole: "worker",
     });
 
     expect(getGlobalNewSessionDefaults()).toEqual({

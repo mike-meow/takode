@@ -9,6 +9,7 @@ import * as envManager from "../env-manager.js";
 import * as gitUtils from "../git-utils.js";
 import * as sessionNames from "../session-names.js";
 import * as treeGroupStore from "../tree-group-store.js";
+import * as newSessionDefaultsStore from "../new-session-defaults-store.js";
 import { containerManager, ContainerManager, type ContainerConfig, type ContainerInfo } from "../container-manager.js";
 import type { CreationStepId, TakodeSessionArchivedEventData } from "../session-types.js";
 import { hasContainerClaudeAuth } from "../claude-container-auth.js";
@@ -1211,6 +1212,32 @@ export function createSessionsRoutes(ctx: RouteContext) {
     const state = await treeGroupStore.getState();
     return c.json(state);
   });
+
+  api.get("/new-session-defaults", async (c) => {
+    const key = typeof c.req.query("key") === "string" ? c.req.query("key")!.trim() : "";
+    if (!key) return c.json({ error: "key is required" }, 400);
+    const entry = await newSessionDefaultsStore.getDefaults(key);
+    return c.json({
+      key,
+      defaults: entry?.defaults ?? null,
+      updatedAt: entry?.updatedAt ?? null,
+    });
+  });
+
+  api.put("/new-session-defaults", async (c) => {
+    const key = typeof c.req.query("key") === "string" ? c.req.query("key")!.trim() : "";
+    if (!key) return c.json({ error: "key is required" }, 400);
+    const body = await c.req.json().catch(() => ({}));
+    const entry = await newSessionDefaultsStore.saveDefaults(key, body?.defaults);
+    if (!entry) return c.json({ error: "valid defaults are required" }, 400);
+    return c.json({
+      ok: true,
+      key,
+      defaults: entry.defaults,
+      updatedAt: entry.updatedAt,
+    });
+  });
+
   api.put("/tree-groups", async (c) => {
     const body = await c.req.json().catch(() => ({}));
     if (!body || typeof body !== "object") {
