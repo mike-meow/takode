@@ -205,12 +205,15 @@ export function NotificationMarker({
       </div>
 
       {suggestedAnswers.length > 0 && (
-        <div className="flex max-w-full flex-wrap items-center gap-1 pl-5" data-testid="notification-answer-actions">
+        <div
+          className="flex w-full max-w-full flex-col items-stretch gap-1 pl-5"
+          data-testid="notification-answer-actions"
+        >
           {suggestedAnswers.map((answer) => (
             <button
               key={answer}
               onClick={handleSuggestedAnswer(answer)}
-              className="max-w-[7rem] truncate rounded border border-amber-400/25 bg-amber-400/10 px-1.5 py-0.5 text-[10px] text-amber-200 transition-colors hover:bg-amber-400/20 cursor-pointer"
+              className="w-full min-w-0 whitespace-normal break-words rounded border border-amber-400/25 bg-amber-400/10 px-1.5 py-1 text-left text-[10px] leading-snug text-amber-200 transition-colors hover:bg-amber-400/20 cursor-pointer"
               title={`Use suggested answer: ${answer}`}
               aria-label={`Use suggested answer: ${answer}`}
             >

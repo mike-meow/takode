@@ -127,6 +127,47 @@ describe("MessageBubble notification markers", () => {
     }
   });
 
+  it("lays out long suggested answers as full-width wrapping actions", () => {
+    const prevNotifications = useStore.getState().sessionNotifications;
+    const notifications = new Map(prevNotifications);
+    const longAnswer = "Continue the rollout now; the canary looks healthy and the current error budget is acceptable.";
+    notifications.set("notify-session", [
+      {
+        id: "n-long",
+        category: "needs-input",
+        summary: "Choose rollout mode",
+        suggestedAnswers: [longAnswer, "Hold for manual smoke checks before continuing."],
+        timestamp: Date.now(),
+        messageId: "asst-notify",
+        done: false,
+      },
+    ]);
+    useStore.setState({ sessionNotifications: notifications });
+
+    try {
+      render(
+        <NotificationMarker
+          category="needs-input"
+          summary="Choose rollout mode"
+          sessionId="notify-session"
+          messageId="asst-notify"
+          notificationId="n-long"
+        />,
+      );
+
+      const actionColumn = screen.getByTestId("notification-answer-actions");
+      const longAnswerButton = screen.getByRole("button", { name: `Use suggested answer: ${longAnswer}` });
+
+      expect(actionColumn.className).toContain("flex-col");
+      expect(longAnswerButton.className).toContain("w-full");
+      expect(longAnswerButton.className).toContain("whitespace-normal");
+      expect(longAnswerButton.className).toContain("break-words");
+      expect(longAnswerButton.className).not.toContain("truncate");
+    } finally {
+      useStore.setState({ sessionNotifications: prevNotifications });
+    }
+  });
+
   it("switches to the notification owner thread before applying an inline suggested answer", () => {
     const onSelectThread = vi.fn();
     vi.useFakeTimers();

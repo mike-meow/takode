@@ -644,7 +644,10 @@ export function PlaygroundSuggestedAnswerNotificationMarker() {
         timestamp: Date.now() - 30_000,
         messageId: "playground-suggested-notify-msg",
         summary: "Approve the rollout?",
-        suggestedAnswers: ["yes", "no"],
+        suggestedAnswers: [
+          "Continue the rollout now; the canary looks healthy and the current error budget is acceptable.",
+          "Hold the rollout until the manual smoke checks finish and the on-call engineer confirms.",
+        ],
         done: false,
       },
     ]);
@@ -677,7 +680,10 @@ export function PlaygroundAddressedSuggestedAnswerNotificationMarker() {
         timestamp: Date.now() - 30_000,
         messageId: "playground-addressed-suggested-notify-msg",
         summary: "Approve the rollout?",
-        suggestedAnswers: ["yes", "no"],
+        suggestedAnswers: [
+          "Continue the rollout now; the canary looks healthy and the current error budget is acceptable.",
+          "Hold the rollout until the manual smoke checks finish and the on-call engineer confirms.",
+        ],
         done: true,
       },
     ]);
