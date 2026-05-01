@@ -425,6 +425,8 @@ describe("session identity injection", () => {
       "If a user message includes image attachments, read every attached image before you respond.",
     );
     expect(sysPrompt).toContain("Make that your first step for that turn.");
-    expect(sysPrompt).toContain("Only resize when the Read tool fails due to oversized dimensions.");
+    expect(sysPrompt).toContain("Always try user-uploaded chat or Questmaster images directly first");
+    expect(sysPrompt).toContain("Takode's `agent-browser screenshot` wrapper preserves the original");
+    expect(sysPrompt).toContain("Do not recompress paths already containing `.takode-agent.`");
   });
 });
