@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { computeHistoryMessagesSyncHash, computeHistoryPrefixSyncHash } from "../../shared/history-sync-hash.js";
 import { getHistoryWindowTurnCount } from "../../shared/history-window.js";
+import { buildLeaderProjectionSnapshot } from "../../shared/leader-projection.js";
 import { sessionTag } from "../session-tag.js";
 import { findTurnBoundaries } from "../takode-messages.js";
 import { getTrafficMessageType, trafficStats } from "../traffic-stats.js";
@@ -10,6 +11,7 @@ import { routeFromHistoryEntry } from "../thread-routing-metadata.js";
 import type { ThreadRouteMetadata } from "../thread-routing-metadata.js";
 import type {
   ActiveTurnRoute,
+  BoardRow,
   BoardRowSessionStatus,
   BrowserIncomingMessage,
   BrowserOutgoingMessage,
@@ -18,6 +20,8 @@ import type {
   PendingCodexInput,
   PermissionRequest,
   ReplayableBrowserIncomingMessage,
+  SessionAttentionRecord,
+  SessionNotification,
   SessionTaskEntry,
   SessionState,
   TakodeHerdBatchSnapshot,
@@ -61,6 +65,13 @@ export interface BrowserTransportSessionLike {
   processedClientMessageIds: string[];
   processedClientMessageIdSet: Set<string>;
 }
+
+interface CachedLeaderProjection {
+  key: string;
+  projection: NonNullable<Extract<BrowserIncomingMessage, { type: "leader_projection_snapshot" }>["projection"]>;
+}
+
+const leaderProjectionCache = new WeakMap<BrowserTransportSessionLike, CachedLeaderProjection>();
 
 export interface BrowserTransportStateLike {
   vscodeSelectionState: VsCodeSelectionState | null;
@@ -611,6 +622,101 @@ export function deriveActiveTurnRoute(session: BrowserTransportSessionLike): Act
   return { threadKey: "main" };
 }
 
+export function isLeaderSession(
+  session: BrowserTransportSessionLike,
+  deps: Pick<BrowserTransportDeps, "getLauncherSessionInfo">,
+): boolean {
+  if ((session.state as { isOrchestrator?: boolean }).isOrchestrator === true) return true;
+  return deps.getLauncherSessionInfo(session.id)?.isOrchestrator === true;
+}
+
+export function buildLeaderProjectionSnapshotForSession(
+  session: BrowserTransportSessionLike,
+  deps: Pick<BrowserTransportDeps, "getBoard" | "getCompletedBoard" | "getBoardRowSessionStatuses">,
+): CachedLeaderProjection["projection"] {
+  const board = deps.getBoard(session.id) as BoardRow[];
+  const completedBoard = deps.getCompletedBoard(session.id) as BoardRow[];
+  const rowSessionStatuses = deps.getBoardRowSessionStatuses(session.id, board, completedBoard);
+  const key = leaderProjectionCacheKey(session, board, completedBoard, rowSessionStatuses);
+  const cached = leaderProjectionCache.get(session);
+  if (cached?.key === key) return cached.projection;
+
+  const projection = buildLeaderProjectionSnapshot({
+    leaderSessionId: session.id,
+    messageHistory: session.messageHistory,
+    activeBoard: board,
+    completedBoard,
+    rowSessionStatuses,
+    notifications: session.notifications as SessionNotification[],
+    attentionRecords: session.attentionRecords as SessionAttentionRecord[],
+  });
+  leaderProjectionCache.set(session, { key, projection });
+  return projection;
+}
+
+export function sendLeaderProjectionSnapshot(
+  session: BrowserTransportSessionLike,
+  ws: BrowserTransportSocketLike,
+  deps: Pick<
+    BrowserTransportDeps,
+    "getLauncherSessionInfo" | "getBoard" | "getCompletedBoard" | "getBoardRowSessionStatuses"
+  >,
+): void {
+  if (!isLeaderSession(session, deps)) return;
+  sendToBrowser(ws, {
+    type: "leader_projection_snapshot",
+    projection: buildLeaderProjectionSnapshotForSession(session, deps),
+  } as BrowserIncomingMessage);
+}
+
+function leaderProjectionCacheKey(
+  session: BrowserTransportSessionLike,
+  board: BoardRow[],
+  completedBoard: BoardRow[],
+  rowSessionStatuses: Record<string, BoardRowSessionStatus>,
+): string {
+  const lastHistoryEntry = session.messageHistory[session.messageHistory.length - 1] as
+    | (BrowserIncomingMessage & { id?: string; message?: { id?: string } })
+    | undefined;
+  return JSON.stringify({
+    historyLength: session.messageHistory.length,
+    lastHistoryId: lastHistoryEntry?.id ?? lastHistoryEntry?.message?.id ?? null,
+    board: board.map(boardRowProjectionKey),
+    completedBoard: completedBoard.map(boardRowProjectionKey),
+    rowSessionStatuses,
+    notificationStatusVersion: session.notificationStatusVersion ?? 0,
+    notifications: (session.notifications as SessionNotification[]).map((notification) => [
+      notification.id,
+      notification.done,
+      notification.timestamp,
+      notification.threadKey,
+      notification.questId,
+      notification.summary,
+    ]),
+    attentionRecords: (session.attentionRecords as SessionAttentionRecord[]).map((record) => [
+      record.id,
+      record.updatedAt,
+      record.state,
+      record.threadKey,
+      record.questId,
+    ]),
+  });
+}
+
+function boardRowProjectionKey(row: BoardRow): unknown[] {
+  return [
+    row.questId,
+    row.title,
+    row.status,
+    row.createdAt,
+    row.updatedAt,
+    row.completedAt,
+    row.waitForInput?.join(",") ?? "",
+    row.worker,
+    row.workerNum,
+  ];
+}
+
 export function sendStateSnapshot(
   session: BrowserTransportSessionLike,
   ws: BrowserTransportSocketLike,
@@ -837,6 +943,7 @@ export async function handleSessionSubscribe(
   if (cleanedStale) deps.persistSession(session);
 
   if (lastAckSeq === 0) {
+    sendLeaderProjectionSnapshot(session, ws, deps);
     if (session.messageHistory.length > 0) {
       if (
         typeof historyWindowSectionTurnCount === "number" &&

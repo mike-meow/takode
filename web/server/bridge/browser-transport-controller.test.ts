@@ -11,6 +11,7 @@ import { describe, it, expect, vi } from "vitest";
 import {
   broadcastToBrowsers,
   injectUserMessage,
+  sendLeaderProjectionSnapshot,
   type BrowserTransportSessionLike,
 } from "./browser-transport-controller.js";
 import type { BrowserIncomingMessage } from "../session-types.js";
@@ -201,6 +202,71 @@ describe("quest_list_updated replay-buffer exclusion", () => {
     expect(sent.seq).toBeDefined();
     expect(session.eventBuffer).toHaveLength(0);
     expect(deps.persistSession).not.toHaveBeenCalled();
+  });
+});
+
+describe("leader projection snapshots", () => {
+  it("does not buffer leader projection snapshots because they are replaceable snapshots", () => {
+    const sendFn = vi.fn();
+    const session = makeSession({ browserSockets: new Set([{ send: sendFn }]) });
+    const deps = makeDeps();
+
+    broadcastToBrowsers(
+      session,
+      {
+        type: "leader_projection_snapshot",
+        projection: {
+          schemaVersion: 1,
+          revision: 1,
+          sourceHistoryLength: 0,
+          generatedAt: 1,
+          threadSummaries: [],
+          threadRows: [],
+          workBoardThreadRows: [],
+          messageAttentionRecords: [],
+          attentionRecords: [],
+          rawTurnBoundaries: [],
+        },
+      } as BrowserIncomingMessage,
+      deps,
+    );
+
+    expect(sendFn).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(sendFn.mock.calls[0][0]).type).toBe("leader_projection_snapshot");
+    expect(session.eventBuffer).toHaveLength(0);
+    expect(deps.persistSession).not.toHaveBeenCalled();
+  });
+
+  it("sends a leader projection snapshot before the raw history window can be consumed", () => {
+    const send = vi.fn();
+    const session = makeSession({
+      state: { permissionMode: "default", isOrchestrator: true } as any,
+      messageHistory: [
+        {
+          type: "user_message",
+          id: "u1",
+          content: "[thread:q-1039]\nPlease implement the projection slice.",
+          timestamp: 1,
+          threadKey: "q-1039",
+          questId: "q-1039",
+        } as BrowserIncomingMessage,
+      ],
+    });
+    const deps = makeInjectDeps({
+      getBoard: vi.fn(() => [{ questId: "q-1039", title: "Projection summaries", status: "IMPLEMENT", updatedAt: 2 }]),
+    });
+
+    sendLeaderProjectionSnapshot(session, { send }, deps);
+
+    const snapshot = JSON.parse(send.mock.calls[0][0]);
+    expect(snapshot.type).toBe("leader_projection_snapshot");
+    expect(snapshot.projection.sourceHistoryLength).toBe(1);
+    expect(snapshot.projection.threadSummaries).toEqual([
+      expect.objectContaining({ threadKey: "q-1039", messageCount: 1 }),
+    ]);
+    expect(snapshot.projection.threadRows).toEqual([
+      expect.objectContaining({ threadKey: "q-1039", title: "Projection summaries", messageCount: 1 }),
+    ]);
   });
 });
 

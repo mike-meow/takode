@@ -38,7 +38,11 @@ import { QuestInlineLink } from "./QuestInlineLink.js";
 import { SessionInlineLink } from "./SessionInlineLink.js";
 import { SessionStatusDot } from "./SessionStatusDot.js";
 import { useParticipantSessionStatusDotProps } from "./session-participant-status.js";
-import { parseCommandThreadComment, parseThreadTextPrefix } from "../../shared/thread-routing.js";
+import {
+  buildLeaderThreadRowsFromSummaries,
+  collectLeaderThreadSummaries,
+  mergeLeaderThreadSummaries,
+} from "../../shared/leader-projection.js";
 import {
   ALL_THREADS_KEY,
   MAIN_THREAD_KEY,
@@ -48,7 +52,13 @@ import {
 import { requestThreadViewportSnapshot } from "../utils/thread-viewport.js";
 import { buildAttentionRecords } from "../utils/attention-records.js";
 import { scopedGetItem, scopedSetItem } from "../utils/scoped-storage.js";
-import type { BoardRowSessionStatus, ChatMessage, QuestmasterTask, SessionAttentionRecord } from "../types.js";
+import type {
+  BoardRowSessionStatus,
+  ChatMessage,
+  LeaderProjectionSnapshot,
+  QuestmasterTask,
+  SessionAttentionRecord,
+} from "../types.js";
 
 export interface QuestThreadBannerRow {
   threadKey: string;
@@ -70,145 +80,6 @@ type LeaderThreadRow = QuestThreadBannerRow & {
 const EMPTY_BOARD_ROWS: BoardRowData[] = [];
 const EMPTY_MESSAGES: ChatMessage[] = [];
 const EMPTY_ATTENTION_RECORDS: SessionAttentionRecord[] = [];
-
-function messageThreadKeys(message: ChatMessage): string[] {
-  const keys = new Set<string>();
-  const metadata = message.metadata;
-  const addThreadKey = (threadKey: string | undefined) => {
-    if (!threadKey || threadKey === "main") return;
-    keys.add(threadKey.toLowerCase());
-  };
-
-  addThreadKey(metadata?.threadKey);
-  addThreadKey(metadata?.questId);
-  addThreadKey(metadata?.quest?.questId);
-  addThreadKey(metadata?.threadAttachmentMarker?.threadKey);
-  addThreadKey(metadata?.threadAttachmentMarker?.questId);
-  addThreadKey(metadata?.threadAttachmentMarker?.sourceThreadKey);
-  addThreadKey(metadata?.threadAttachmentMarker?.sourceQuestId);
-  addThreadKey(metadata?.threadTransitionMarker?.threadKey);
-  addThreadKey(metadata?.threadTransitionMarker?.questId);
-  addThreadKey(metadata?.threadTransitionMarker?.sourceThreadKey);
-  addThreadKey(metadata?.threadTransitionMarker?.sourceQuestId);
-  for (const ref of metadata?.threadRefs ?? []) {
-    addThreadKey(ref.threadKey);
-  }
-
-  const parsedContentPrefix = parseThreadTextPrefix(message.content);
-  if (parsedContentPrefix.ok) {
-    addThreadKey(parsedContentPrefix.target.threadKey);
-  }
-
-  for (const block of message.contentBlocks ?? []) {
-    if (block.type === "text") {
-      const parsedBlockPrefix = parseThreadTextPrefix(block.text);
-      if (parsedBlockPrefix.ok) addThreadKey(parsedBlockPrefix.target.threadKey);
-    }
-    if (block.type === "tool_use" && block.name === "Bash" && typeof block.input?.command === "string") {
-      addThreadKey(parseCommandThreadComment(block.input.command)?.threadKey);
-    }
-  }
-  return [...keys];
-}
-
-function buildLeaderThreadRows({
-  activeBoard,
-  completedBoard,
-  messages,
-  quests,
-  rowSessionStatuses,
-}: {
-  activeBoard: BoardRowData[];
-  completedBoard: BoardRowData[];
-  messages: ChatMessage[];
-  quests: QuestmasterTask[];
-  rowSessionStatuses?: Record<string, BoardRowSessionStatus>;
-}): LeaderThreadRow[] {
-  const questById = new Map(quests.map((quest) => [quest.questId.toLowerCase(), quest]));
-  const rows = new Map<string, LeaderThreadRow>();
-  const counts = new Map<string, number>();
-  const firstMessageAt = new Map<string, number>();
-
-  for (const message of messages) {
-    for (const key of messageThreadKeys(message)) {
-      counts.set(key, (counts.get(key) ?? 0) + 1);
-      firstMessageAt.set(key, Math.min(firstMessageAt.get(key) ?? Number.POSITIVE_INFINITY, message.timestamp));
-    }
-  }
-
-  const activeKeys = new Set(activeBoard.map((row) => row.questId.toLowerCase()));
-  const boardRowById = new Map<string, BoardRowData>();
-  for (const row of [...activeBoard, ...completedBoard]) {
-    boardRowById.set(row.questId.toLowerCase(), row);
-  }
-
-  const creationTimeFor = (questId: string, row?: BoardRowData) => {
-    const key = questId.toLowerCase();
-    return (
-      questById.get(key)?.createdAt ??
-      row?.createdAt ??
-      firstMessageAt.get(key) ??
-      row?.updatedAt ??
-      Number.MAX_SAFE_INTEGER
-    );
-  };
-
-  const addQuestRow = (questId: string, partial: Partial<LeaderThreadRow> = {}) => {
-    const key = questId.toLowerCase();
-    const quest = questById.get(key);
-    const existing = rows.get(key);
-    const boardRow = partial.boardRow ?? existing?.boardRow ?? boardRowById.get(key);
-    const messageCount = counts.get(key) ?? existing?.messageCount ?? 0;
-    if (messageCount <= 0 && !boardRow) return;
-    const section = activeKeys.has(key) ? "active" : "done";
-    rows.set(key, {
-      threadKey: key,
-      questId: key,
-      title: partial.title ?? existing?.title ?? quest?.title ?? questId,
-      status: partial.status ?? existing?.status ?? quest?.status,
-      boardStatus: partial.boardStatus ?? existing?.boardStatus,
-      journey: partial.journey ?? existing?.journey,
-      boardRow,
-      rowStatus: partial.rowStatus ?? existing?.rowStatus ?? rowSessionStatuses?.[key],
-      messageCount,
-      createdAt: Math.min(
-        partial.createdAt ?? Number.MAX_SAFE_INTEGER,
-        existing?.createdAt ?? creationTimeFor(key, boardRow),
-      ),
-      section,
-    });
-  };
-
-  for (const row of activeBoard) {
-    const key = row.questId.toLowerCase();
-    addQuestRow(row.questId, {
-      title: row.title,
-      boardStatus: row.status,
-      journey: row.journey,
-      boardRow: row,
-      rowStatus: rowSessionStatuses?.[key],
-      createdAt: creationTimeFor(key, row),
-    });
-  }
-  for (const row of completedBoard) {
-    const key = row.questId.toLowerCase();
-    addQuestRow(row.questId, {
-      title: row.title,
-      boardStatus: row.status,
-      journey: row.journey,
-      boardRow: row,
-      rowStatus: rowSessionStatuses?.[key],
-      createdAt: creationTimeFor(key, row),
-    });
-  }
-  for (const key of counts.keys()) {
-    if (/^q-\d+$/.test(key)) {
-      addQuestRow(key, { createdAt: creationTimeFor(key, boardRowById.get(key)) });
-    }
-  }
-
-  return [...rows.values()].sort((a, b) => a.createdAt - b.createdAt || a.threadKey.localeCompare(b.threadKey));
-}
 
 function isDoneThreadRow(row: QuestThreadBannerRow): boolean {
   return (
@@ -378,20 +249,43 @@ function CompactingIndicator({ sessionId }: { sessionId: string }) {
   );
 }
 
+function messageSummariesAfterProjection(messages: ChatMessage[], projection?: LeaderProjectionSnapshot) {
+  if (!projection) return collectLeaderThreadSummaries(messages);
+  return collectLeaderThreadSummaries(
+    messages.filter((message) => {
+      if (typeof message.historyIndex !== "number") return true;
+      return message.historyIndex >= projection.sourceHistoryLength;
+    }),
+  );
+}
+
 function useLeaderThreadModel(sessionId: string, deferMessageDerivedRows = false) {
   const activeBoard = useStore((s) => s.sessionBoards.get(sessionId) ?? EMPTY_BOARD_ROWS);
   const completedBoard = useStore((s) => s.sessionCompletedBoards.get(sessionId) ?? EMPTY_BOARD_ROWS);
   const storedMessages = useStore((s) => s.messages.get(sessionId) ?? EMPTY_MESSAGES);
+  const leaderProjection = useStore((s) => s.leaderProjections.get(sessionId));
   const messages = deferMessageDerivedRows ? EMPTY_MESSAGES : storedMessages;
   const quests = useStore((s) => s.quests);
   const rowSessionStatuses = useStore((s) => s.sessionBoardRowStatuses.get(sessionId));
+  const threadSummaries = useMemo(() => {
+    const projected = leaderProjection?.threadSummaries ?? [];
+    if (deferMessageDerivedRows) return projected;
+    return mergeLeaderThreadSummaries(projected, messageSummariesAfterProjection(messages, leaderProjection));
+  }, [deferMessageDerivedRows, leaderProjection, messages]);
   const rows = useMemo(
-    () => buildLeaderThreadRows({ activeBoard, completedBoard, messages, quests, rowSessionStatuses }),
-    [activeBoard, completedBoard, messages, quests, rowSessionStatuses],
+    () =>
+      buildLeaderThreadRowsFromSummaries({
+        activeBoard,
+        completedBoard,
+        threadSummaries,
+        quests,
+        rowSessionStatuses,
+      }) as LeaderThreadRow[],
+    [activeBoard, completedBoard, quests, rowSessionStatuses, threadSummaries],
   );
   const activeRows = useMemo(() => rows.filter((row) => row.section === "active"), [rows]);
   const doneRows = useMemo(() => rows.filter((row) => row.section === "done"), [rows]);
-  return { activeBoard, completedBoard, messages, rows, activeRows, doneRows };
+  return { activeBoard, completedBoard, leaderProjection, messages, rows, activeRows, doneRows };
 }
 
 function threadLabelForKey(threadKey: string, rows: LeaderThreadRow[]): string {
@@ -631,7 +525,10 @@ export function ChatView({
         s.sdkSessions.some((sdk) => sdk.sessionId === sessionId && sdk.isOrchestrator === true),
       historyLoading: s.historyLoading.get(sessionId) ?? false,
       hasKnownThreadSources:
-        s.messages.has(sessionId) || s.sessionBoards.has(sessionId) || s.sessionCompletedBoards.has(sessionId),
+        s.messages.has(sessionId) ||
+        s.leaderProjections.has(sessionId) ||
+        s.sessionBoards.has(sessionId) ||
+        s.sessionCompletedBoards.has(sessionId),
     })),
   );
   const [selectedThreadKey, setSelectedThreadKey] = useState("main");
@@ -639,6 +536,7 @@ export function ChatView({
   const {
     activeBoard,
     completedBoard,
+    leaderProjection,
     messages: allMessages,
     rows: threadRows,
   } = useLeaderThreadModel(sessionId, historyLoading);
@@ -657,18 +555,20 @@ export function ChatView({
       isLeaderSession
         ? buildAttentionRecords({
             leaderSessionId: sessionId,
-            records: persistedAttentionRecords,
+            records: [...(persistedAttentionRecords ?? []), ...(leaderProjection?.messageAttentionRecords ?? [])],
             notifications: sessionNotifications,
             boardRows: activeBoard,
             completedBoardRows: completedBoard,
-            messages: allMessages,
+            messages: leaderProjection || historyLoading ? EMPTY_MESSAGES : allMessages,
           })
         : EMPTY_ATTENTION_RECORDS,
     [
       activeBoard,
       allMessages,
       completedBoard,
+      historyLoading,
       isLeaderSession,
+      leaderProjection,
       persistedAttentionRecords,
       sessionId,
       sessionNotifications,

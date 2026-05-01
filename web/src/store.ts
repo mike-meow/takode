@@ -9,6 +9,7 @@ import type {
   ToolResultPreview,
   SessionTaskEntry,
   HistoryWindowState,
+  LeaderProjectionSnapshot,
   PendingCodexInput,
   PendingUserUpload,
   QuestmasterTask,
@@ -138,6 +139,14 @@ export const useStore = create<AppState>((set, get) => ({
   messageFrozenRevisions: new Map(),
   historyLoading: new Map(),
   historyWindows: new Map(),
+  leaderProjections: new Map(),
+  setLeaderProjection: (sessionId: string, projection: LeaderProjectionSnapshot | null) =>
+    set((s) => {
+      const next = new Map(s.leaderProjections);
+      if (projection) next.set(sessionId, projection);
+      else next.delete(sessionId);
+      return { leaderProjections: next };
+    }),
   streaming: new Map(),
   streamingByParentToolUseId: new Map(),
   streamingThinking: new Map(),
@@ -550,6 +559,8 @@ export const useStore = create<AppState>((set, get) => ({
       historyLoading.delete(sessionId);
       const historyWindows = new Map(s.historyWindows);
       historyWindows.delete(sessionId);
+      const leaderProjections = new Map(s.leaderProjections);
+      leaderProjections.delete(sessionId);
       const streaming = new Map(s.streaming);
       streaming.delete(sessionId);
       const streamingByParentToolUseId = new Map(s.streamingByParentToolUseId);
@@ -653,6 +664,7 @@ export const useStore = create<AppState>((set, get) => ({
         messageFrozenRevisions,
         historyLoading,
         historyWindows,
+        leaderProjections,
         streaming,
         streamingByParentToolUseId,
         streamingThinking,

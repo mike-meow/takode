@@ -13,6 +13,7 @@ const NON_REPLAYABLE_BROWSER_EVENT_TYPES = new Set<string>([
   "session_quest_claimed",
   "session_name_update",
   "tree_groups_update",
+  "leader_projection_snapshot",
 ]);
 
 export function shouldBufferForReplay(msg: BrowserIncomingMessage): msg is ReplayableBrowserIncomingMessage {

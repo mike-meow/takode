@@ -32,6 +32,7 @@ interface MockStoreState {
   sessionBoards: Map<string, unknown[]>;
   sessionCompletedBoards: Map<string, unknown[]>;
   sessionBoardRowStatuses: Map<string, Record<string, import("../types.js").BoardRowSessionStatus>>;
+  leaderProjections: Map<string, import("../types.js").LeaderProjectionSnapshot>;
   messages: Map<string, unknown[]>;
   historyLoading: Map<string, boolean>;
   quests: Array<{ questId: string; title: string; status: string }>;
@@ -59,6 +60,7 @@ function resetStore(overrides: Partial<MockStoreState> = {}) {
     sessionBoards: new Map(),
     sessionCompletedBoards: new Map(),
     sessionBoardRowStatuses: new Map(),
+    leaderProjections: new Map(),
     messages: new Map(),
     historyLoading: new Map(),
     quests: [],
@@ -1514,6 +1516,83 @@ describe("ChatView backend banners", () => {
     view.rerender(<ChatView sessionId="s1" />);
 
     expect(scope.getByTestId("mock-workboard-thread")).toHaveAttribute("data-thread-key", "q-1005");
+    expect(scope.getByTestId("work-board-bar")).toHaveAttribute("data-attention-count", "1");
+  });
+
+  it("uses leader projection summaries for navigation while raw history is still loading", () => {
+    resetStore({
+      sessions: new Map([["s1", { backend_state: "connected", backend_error: null, isOrchestrator: true }]]),
+      sdkSessions: [{ sessionId: "s1", archived: false, isOrchestrator: true }],
+      historyLoading: new Map([["s1", true]]),
+      leaderProjections: new Map([
+        [
+          "s1",
+          {
+            schemaVersion: 1,
+            revision: 1,
+            sourceHistoryLength: 50_000,
+            generatedAt: Date.now(),
+            threadSummaries: [
+              {
+                threadKey: "q-1039",
+                questId: "q-1039",
+                messageCount: 420,
+                firstMessageAt: 1,
+                lastMessageAt: 2,
+              },
+            ],
+            threadRows: [],
+            workBoardThreadRows: [],
+            messageAttentionRecords: [
+              {
+                id: "message-rework:u-1",
+                leaderSessionId: "s1",
+                type: "quest_reopened_or_rework",
+                source: { kind: "message", id: "u-1", questId: "q-1039", messageId: "u-1" },
+                questId: "q-1039",
+                threadKey: "q-1039",
+                title: "q-1039: rework requested",
+                summary: "Please ask the agent to fix the issue.",
+                actionLabel: "Open",
+                priority: "milestone",
+                state: "reopened",
+                createdAt: 1,
+                updatedAt: 1,
+                route: { threadKey: "q-1039", questId: "q-1039", messageId: "u-1" },
+                chipEligible: false,
+                ledgerEligible: true,
+                dedupeKey: "message-rework:u-1",
+              },
+            ],
+            attentionRecords: [],
+            rawTurnBoundaries: [],
+          },
+        ],
+      ]),
+      messages: new Map([
+        [
+          "s1",
+          [
+            {
+              id: "u-restoring",
+              role: "user",
+              content: "This cold raw window should not be scanned for navigation.",
+              timestamp: Date.now(),
+              metadata: { threadRefs: [{ threadKey: "q-9999", questId: "q-9999", source: "explicit" }] },
+            },
+          ],
+        ],
+      ]),
+      quests: [{ questId: "q-1039", title: "Projection summaries", status: "in_progress" }],
+    });
+
+    const view = render(<ChatView sessionId="s1" />);
+    const scope = within(view.container);
+
+    const row = scope.getByTestId("mock-workboard-thread");
+    expect(row).toHaveAttribute("data-thread-key", "q-1039");
+    expect(row).toHaveTextContent("q-1039 Projection summaries");
+    expect(scope.queryByText(/q-9999/i)).not.toBeInTheDocument();
     expect(scope.getByTestId("work-board-bar")).toHaveAttribute("data-attention-count", "1");
   });
 });

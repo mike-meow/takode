@@ -1648,6 +1648,11 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
       resolvePendingMessageScroll(sessionId, chatMessages);
       break;
     }
+
+    case "leader_projection_snapshot": {
+      store.setLeaderProjection(sessionId, data.projection);
+      break;
+    }
   }
 }
 

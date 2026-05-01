@@ -545,6 +545,53 @@ export interface HistoryWindowState {
   visible_section_count: number;
 }
 
+export interface LeaderProjectionThreadSummary {
+  threadKey: string;
+  questId?: string;
+  messageCount: number;
+  firstMessageAt?: number;
+  lastMessageAt?: number;
+  firstHistoryIndex?: number;
+  lastHistoryIndex?: number;
+}
+
+export interface LeaderProjectionThreadRow {
+  threadKey: string;
+  questId?: string;
+  title: string;
+  status?: string;
+  boardStatus?: string;
+  journey?: import("../shared/quest-journey.js").QuestJourneyPlanState;
+  boardRow?: BoardRow;
+  rowStatus?: BoardRowSessionStatus;
+  section?: "active" | "done";
+  messageCount: number;
+  createdAt: number;
+}
+
+export interface LeaderProjectionSnapshot {
+  schemaVersion: 1;
+  revision: number;
+  sourceHistoryLength: number;
+  generatedAt: number;
+  threadSummaries: LeaderProjectionThreadSummary[];
+  threadRows: LeaderProjectionThreadRow[];
+  workBoardThreadRows: Array<{
+    threadKey: string;
+    questId?: string;
+    title: string;
+    messageCount?: number;
+    section?: "active" | "done";
+  }>;
+  messageAttentionRecords: SessionAttentionRecord[];
+  attentionRecords: SessionAttentionRecord[];
+  rawTurnBoundaries: Array<{
+    turnIndex: number;
+    startHistoryIndex: number;
+    endHistoryIndex: number | null;
+  }>;
+}
+
 /** High-level task recognized by the session auto-namer. */
 export interface SessionTaskEntry {
   title: string;
@@ -639,6 +686,7 @@ export type BrowserIncomingMessageBase =
   | { type: "codex_pending_input_cancelled"; input: PendingCodexInput }
   | { type: "message_history"; messages: BrowserIncomingMessage[] }
   | { type: "history_window_sync"; messages: BrowserIncomingMessage[]; window: HistoryWindowState }
+  | { type: "leader_projection_snapshot"; projection: LeaderProjectionSnapshot }
   | {
       type: "history_sync";
       frozen_base_count: number;

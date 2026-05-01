@@ -7,6 +7,7 @@ import type {
   ChatMessage,
   ComposerDraftImage,
   HistoryWindowState,
+  LeaderProjectionSnapshot,
   McpServerDetail,
   PendingCodexInput,
   PendingUserUpload,
@@ -46,6 +47,8 @@ export interface AppState {
   messageFrozenRevisions: Map<string, number>;
   historyLoading: Map<string, boolean>;
   historyWindows: Map<string, HistoryWindowState>;
+  leaderProjections: Map<string, LeaderProjectionSnapshot>;
+  setLeaderProjection: (sessionId: string, projection: LeaderProjectionSnapshot | null) => void;
   streaming: Map<string, string>;
   streamingByParentToolUseId: Map<string, Map<string, string>>;
   streamingThinking: Map<string, string>;
