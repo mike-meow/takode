@@ -922,7 +922,7 @@ export function Composer({
       try {
         const prepared = await api.prepareUserMessageImages(
           sessionId,
-          [{ mediaType: image.mediaType, data: image.base64 }],
+          [{ mediaType: image.mediaType, data: image.base64, filename: image.name }],
           uploadController.signal,
         );
         const imageRef = prepared.imageRefs[0];

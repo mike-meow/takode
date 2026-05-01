@@ -1,7 +1,13 @@
 import { randomBytes } from "node:crypto";
 import { readdir, readFile, unlink, writeFile, mkdir } from "node:fs/promises";
 import { extname, join } from "node:path";
-import { MIME_TO_EXT, optimizeImageBufferForStore } from "./image-optimizer.js";
+import {
+  buildStoredImageFilename,
+  isTakodeAgentOptimizedPath,
+  MIME_TO_EXT,
+  optimizeImageBufferForStore,
+  wasImageBufferProcessed,
+} from "./image-optimizer.js";
 import type { QuestImage, QuestmasterTask } from "./quest-types.js";
 
 type QuestImageStoreDeps<TStore> = {
@@ -17,9 +23,10 @@ type QuestImageStoreDeps<TStore> = {
   writeQuest: (quest: QuestmasterTask) => Promise<void>;
 };
 
-const QUEST_MIME_TO_EXT = Object.fromEntries(
-  Object.entries(MIME_TO_EXT).map(([mimeType, ext]) => [mimeType, `.${ext === "jpeg" ? "jpg" : ext}`]),
+const QUEST_EXT_TO_MIME = Object.fromEntries(
+  Object.entries(MIME_TO_EXT).map(([mimeType, ext]) => [`.${ext}`, mimeType]),
 );
+QUEST_EXT_TO_MIME[".jpg"] = "image/jpeg";
 
 export async function saveQuestImageFile(args: {
   data: Buffer;
@@ -30,9 +37,13 @@ export async function saveQuestImageFile(args: {
 }): Promise<QuestImage> {
   await args.ensureLiveImagesDir();
   const id = randomBytes(8).toString("hex");
-  const optimized = await optimizeImageBufferForStore(args.data, args.mimeType);
-  const ext = QUEST_MIME_TO_EXT[optimized.mediaType] || ".bin";
-  const diskName = `${id}${ext}`;
+  const alreadyOptimized = isTakodeAgentOptimizedPath(args.filename);
+  const optimized = alreadyOptimized
+    ? { data: args.data, mediaType: args.mimeType, resized: false, convertedToJpeg: false }
+    : await optimizeImageBufferForStore(args.data, args.mimeType);
+  const diskName = buildStoredImageFilename(id, optimized.mediaType, {
+    optimized: alreadyOptimized || wasImageBufferProcessed(optimized),
+  });
   const diskPath = join(args.liveImagesDir, diskName);
   await writeFile(diskPath, optimized.data);
   return { id, filename: args.filename, mimeType: optimized.mediaType, path: diskPath };
@@ -129,7 +140,7 @@ export async function readQuestImageFileFromDirs(
       const fullPath = join(imageDir, file);
       const data = (await readFile(fullPath)) as Buffer;
       const ext = extname(file).toLowerCase();
-      const mimeType = Object.entries(QUEST_MIME_TO_EXT).find(([, e]) => e === ext)?.[0] ?? "application/octet-stream";
+      const mimeType = QUEST_EXT_TO_MIME[ext] ?? "application/octet-stream";
       return { data, mimeType };
     } catch {
       // Try the next known image directory.

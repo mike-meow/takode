@@ -839,7 +839,7 @@ export const api = {
 
   prepareUserMessageImages: async (
     sessionId: string,
-    images: Array<{ mediaType: string; data: string }>,
+    images: Array<{ mediaType: string; data: string; filename?: string }>,
     signal?: AbortSignal,
   ) => {
     const res = await fetch(`${BASE}/sessions/${encodeURIComponent(sessionId)}/images/prepare-user-message`, {

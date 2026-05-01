@@ -74,7 +74,8 @@ describe("saveQuestImage", () => {
     expect(meta.height).toBe(1536);
     expect(meta.format).toBe("jpeg");
     expect(result.mimeType).toBe("image/jpeg");
-    expect(result.path.endsWith(".jpg")).toBe(true);
+    expect(result.filename).toBe("big.png");
+    expect(result.path.endsWith(".takode-agent.jpeg")).toBe(true);
   });
 
   it("converts small eligible images without resizing", async () => {
@@ -93,6 +94,41 @@ describe("saveQuestImage", () => {
     expect(meta.height).toBe(600);
     expect(meta.format).toBe("jpeg");
     expect(result.mimeType).toBe("image/jpeg");
+    expect(result.filename).toBe("small.png");
+    expect(result.path.endsWith(".takode-agent.jpeg")).toBe(true);
+  });
+
+  it("preserves unchanged JPEG uploads under the legacy original name", async () => {
+    const image = await sharp({
+      create: { width: 800, height: 600, channels: 3, background: { r: 20, g: 80, b: 160 } },
+    })
+      .jpeg({ quality: 90 })
+      .toBuffer();
+
+    const result = await questStore.saveQuestImage("photo.jpg", image, "image/jpeg");
+    const saved = await readFile(result.path);
+    const meta = await sharp(saved).metadata();
+    expect(meta.width).toBe(800);
+    expect(meta.height).toBe(600);
+    expect(meta.format).toBe("jpeg");
+    expect(result.mimeType).toBe("image/jpeg");
+    expect(result.filename).toBe("photo.jpg");
+    expect(result.path.endsWith(".orig.jpeg")).toBe(true);
+  });
+
+  it("no-ops already optimized uploads and keeps the .takode-agent convention", async () => {
+    const image = await sharp({
+      create: { width: 640, height: 480, channels: 3, background: { r: 30, g: 40, b: 50 } },
+    })
+      .jpeg({ quality: 85 })
+      .toBuffer();
+
+    const result = await questStore.saveQuestImage("capture.takode-agent.jpeg", image, "image/jpeg");
+    const saved = await readFile(result.path);
+    expect(saved).toEqual(image);
+    expect(result.mimeType).toBe("image/jpeg");
+    expect(result.filename).toBe("capture.takode-agent.jpeg");
+    expect(result.path.endsWith(".takode-agent.jpeg")).toBe(true);
   });
 
   it("skips resize for SVG images", async () => {

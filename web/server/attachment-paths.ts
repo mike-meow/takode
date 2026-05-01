@@ -1,13 +1,12 @@
 import { join } from "node:path";
 import { homedir } from "node:os";
 import type { ImageRef } from "./image-store.js";
-import { MIME_TO_EXT } from "./image-store.js";
+import { buildStoredImageFilename } from "./image-store.js";
 
 export function deriveAttachmentPaths(sessionId: string, imageRefs: ImageRef[]): string[] {
   const imgDir = join(homedir(), ".companion", "images", sessionId);
   return imageRefs.map((ref) => {
-    const ext = MIME_TO_EXT[ref.media_type] || "bin";
-    return join(imgDir, `${ref.imageId}.orig.${ext}`);
+    return join(imgDir, buildStoredImageFilename(ref.imageId, ref.media_type, { optimized: ref.optimized === true }));
   });
 }
 

@@ -223,8 +223,19 @@ export function buildTakodeAgentImagePath(inputPath: string, mediaType = "image/
   return join(dirname(inputPath), `${baseWithoutExt}.takode-agent.${ext}`);
 }
 
+export function buildStoredImageFilename(imageId: string, mediaType: string, options: { optimized: boolean }): string {
+  const ext = MIME_TO_EXT[mediaType] ?? "bin";
+  return options.optimized ? `${imageId}.takode-agent.${ext}` : `${imageId}.orig.${ext}`;
+}
+
 export function isTakodeAgentOptimizedPath(path: string): boolean {
   return basename(path).includes(TAKODE_AGENT_IMAGE_MARKER);
+}
+
+export function wasImageBufferProcessed(
+  result: Pick<BufferOptimizationResult, "resized" | "convertedToJpeg">,
+): boolean {
+  return result.resized || result.convertedToJpeg;
 }
 
 export async function fileExists(path: string): Promise<boolean> {

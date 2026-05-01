@@ -8,12 +8,8 @@
 
 import type { BrowserIncomingMessage, CLIResultMessage, ContentBlock, ToolResultPreview } from "./session-types.js";
 import type { ImageRef } from "./image-store.js";
+import { deriveAttachmentPaths } from "./attachment-paths.js";
 import { TAKODE_PEEK_CONTENT_LIMIT } from "../shared/takode-constants.js";
-import { join } from "node:path";
-import { homedir } from "node:os";
-
-/** Default image store base directory (must match image-store.ts). */
-const IMAGE_STORE_BASE = join(homedir(), ".companion", "images");
 
 // ─── Peek Response Types ──────────────────────────────────────────────────────
 
@@ -159,38 +155,12 @@ export interface TakodeReadResponse {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** MIME type to file extension mapping (must match image-store.ts). */
-const MIME_TO_EXT: Record<string, string> = {
-  "image/png": "png",
-  "image/jpeg": "jpeg",
-  "image/jpg": "jpg",
-  "image/gif": "gif",
-  "image/webp": "webp",
-  "image/svg+xml": "svg",
-  "image/bmp": "bmp",
-  "image/tiff": "tiff",
-  "image/avif": "avif",
-  "image/heic": "heic",
-  "image/heif": "heif",
-};
-
-/** Derive original image file paths from ImageRefs stored in message history.
- *  Original images preserve full quality and metadata — preferred over the
- *  compressed transport JPEGs for downstream consumption. */
-function deriveImagePaths(sessionId: string, images: ImageRef[]): string[] {
-  const dir = join(IMAGE_STORE_BASE, sessionId);
-  return images.map((ref) => {
-    const ext = MIME_TO_EXT[ref.media_type] || "bin";
-    return join(dir, `${ref.imageId}.orig.${ext}`);
-  });
-}
-
 /** Extract image paths from a user_message in message history, if present. */
 function extractImagePaths(sessionId: string, msg: BrowserIncomingMessage): string[] | undefined {
   if (msg.type !== "user_message") return undefined;
   const images = (msg as { images?: ImageRef[] }).images;
   if (!images?.length) return undefined;
-  return deriveImagePaths(sessionId, images);
+  return deriveAttachmentPaths(sessionId, images);
 }
 
 function truncate(s: string, max: number): string {

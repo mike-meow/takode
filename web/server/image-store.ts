@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import { randomBytes } from "node:crypto";
 import {
   AGENT_QUALITY,
+  buildStoredImageFilename,
   MIME_TO_EXT,
   optimizeImageBufferForStore,
   requireSharp,
@@ -15,10 +16,13 @@ import {
   SharpUnavailableError,
   STORE_MAX_DIM,
   isSharpUnavailableError,
+  isTakodeAgentOptimizedPath,
+  wasImageBufferProcessed,
 } from "./image-optimizer.js";
 
 export {
   AGENT_QUALITY,
+  buildStoredImageFilename,
   MIME_TO_EXT,
   resetSharpLoaderForTest,
   setSharpLoaderForTest,
@@ -31,6 +35,12 @@ export {
 export interface ImageRef {
   imageId: string;
   media_type: string;
+  optimized?: boolean;
+  sourceName?: string;
+}
+
+export function getImageUploadSourceName(input: { filename?: unknown }): string | undefined {
+  return typeof input.filename === "string" ? input.filename : undefined;
 }
 
 const DEFAULT_BASE_DIR = join(homedir(), ".companion", "images");
@@ -67,7 +77,7 @@ export class ImageStore {
    * The returned `media_type` reflects the actual stored format, which may
    * differ from the input when lossless-to-JPEG conversion succeeds.
    */
-  async store(sessionId: string, base64Data: string, mediaType: string): Promise<ImageRef> {
+  async store(sessionId: string, base64Data: string, mediaType: string, sourceName?: string): Promise<ImageRef> {
     const sharp = await requireSharp("store session images");
     const dir = this.sessionDir(sessionId);
     await mkdir(dir, { recursive: true });
@@ -76,12 +86,18 @@ export class ImageStore {
     const thumbPath = join(dir, `${imageId}.thumb.jpeg`);
 
     const raw = Buffer.from(base64Data, "base64");
-    const optimized = await optimizeImageBufferForStore(raw, mediaType, { jpegQuality: AGENT_QUALITY });
+    const alreadyOptimized = sourceName ? isTakodeAgentOptimizedPath(sourceName) : false;
+    const optimized = alreadyOptimized
+      ? { data: raw, mediaType, resized: false, convertedToJpeg: false }
+      : await optimizeImageBufferForStore(raw, mediaType, { jpegQuality: AGENT_QUALITY });
     const buffer = optimized.data;
     const actualMediaType = optimized.mediaType;
+    const storedAsOptimized = alreadyOptimized || wasImageBufferProcessed(optimized);
 
-    const ext = MIME_TO_EXT[actualMediaType] || "bin";
-    const originalPath = join(dir, `${imageId}.orig.${ext}`);
+    const originalPath = join(
+      dir,
+      buildStoredImageFilename(imageId, actualMediaType, { optimized: storedAsOptimized }),
+    );
     await writeFile(originalPath, buffer);
 
     // Thumbnails are for browser previews only, so generate them off the
@@ -95,7 +111,12 @@ export class ImageStore {
         console.warn(`[image-store] Failed to generate thumbnail for ${imageId}:`, err);
       });
 
-    return { imageId, media_type: actualMediaType };
+    return {
+      imageId,
+      media_type: actualMediaType,
+      ...(storedAsOptimized ? { optimized: true } : {}),
+      ...(sourceName ? { sourceName } : {}),
+    };
   }
 
   /** Get the disk path for an original image, or null if not found. */
@@ -107,7 +128,9 @@ export class ImageStore {
       return null;
     }
     const files = await readdir(dir);
-    const match = files.find((f) => f.startsWith(`${imageId}.orig.`));
+    const match =
+      files.find((f) => f.startsWith(`${imageId}.takode-agent.`)) ??
+      files.find((f) => f.startsWith(`${imageId}.orig.`));
     return match ? join(dir, match) : null;
   }
 

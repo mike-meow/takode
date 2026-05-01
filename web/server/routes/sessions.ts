@@ -48,7 +48,7 @@ import { registerSessionsArchiveRoutes } from "./sessions-archive-routes.js";
 import { withProgressHeartbeat } from "./progress-heartbeat.js";
 import { deriveAttachmentPaths, formatAttachmentPathAnnotation } from "../attachment-paths.js";
 import { createArchivedWorktreeCleanupQueue } from "./worktree-cleanup.js";
-import { isSharpUnavailableError, SHARP_UNAVAILABLE_MESSAGE } from "../image-store.js";
+import { getImageUploadSourceName, isSharpUnavailableError, SHARP_UNAVAILABLE_MESSAGE } from "../image-store.js";
 import { buildEnrichedSessionsSnapshot } from "./session-list-snapshot.js";
 import { registerSessionSearchRoute } from "./session-search-route.js";
 
@@ -1922,7 +1922,7 @@ export function createSessionsRoutes(ctx: RouteContext) {
 
     const body = await c.req.json().catch(() => null);
     const images = Array.isArray((body as { images?: unknown[] } | null)?.images)
-      ? ((body as { images: Array<{ mediaType?: unknown; data?: unknown }> }).images ?? [])
+      ? ((body as { images: Array<{ mediaType?: unknown; data?: unknown; filename?: unknown }> }).images ?? [])
       : [];
     if (images.length === 0) {
       return c.json({ error: "images must be a non-empty array" }, 400);
@@ -1938,7 +1938,9 @@ export function createSessionsRoutes(ctx: RouteContext) {
     let imageRefs;
     try {
       imageRefs = await Promise.all(
-        images.map((img) => imageStore.store(id, img.data as string, img.mediaType as string)),
+        images.map((img) =>
+          imageStore.store(id, img.data as string, img.mediaType as string, getImageUploadSourceName(img)),
+        ),
       );
     } catch (error) {
       if (isSharpUnavailableError(error)) {
