@@ -110,15 +110,22 @@ vi.mock("./MessageFeed.js", () => ({
   MessageFeed: ({
     sessionId,
     threadKey,
+    projectThreadRoutes,
     latestIndicatorMode,
     onSelectThread,
   }: {
     sessionId: string;
     threadKey?: string;
+    projectThreadRoutes?: boolean;
     latestIndicatorMode?: string;
     onSelectThread?: (threadKey: string) => void;
   }) => (
-    <div data-testid="message-feed" data-thread-key={threadKey} data-latest-indicator-mode={latestIndicatorMode}>
+    <div
+      data-testid="message-feed"
+      data-thread-key={threadKey}
+      data-project-thread-routes={String(projectThreadRoutes)}
+      data-latest-indicator-mode={latestIndicatorMode}
+    >
       {sessionId}
       {onSelectThread && (
         <button type="button" data-testid="mock-feed-thread-jump" onClick={() => onSelectThread("q-941")}>
@@ -427,6 +434,23 @@ describe("ChatView backend banners", () => {
 
     expect(scope.getByTestId("message-feed")).not.toHaveAttribute("data-latest-indicator-mode", "external");
     expect(scope.queryByTestId("elapsed-timer")).not.toBeInTheDocument();
+  });
+
+  it("leaves worker feeds unprojected while keeping worker composer input on Main", () => {
+    // Regression coverage for leader-dispatched workers: quest-routed dispatch
+    // messages must remain visible in the worker transcript even though leaders
+    // still use thread projection for their own Main and quest thread views.
+    resetStore({
+      sessions: new Map([["s1", { backend_state: "connected", backend_error: null, isOrchestrator: false }]]),
+      sdkSessions: [{ sessionId: "s1", archived: false, isOrchestrator: false }],
+    });
+
+    const view = render(<ChatView sessionId="s1" />);
+    const scope = within(view.container);
+
+    expect(scope.getByTestId("message-feed")).toHaveAttribute("data-thread-key", "main");
+    expect(scope.getByTestId("message-feed")).toHaveAttribute("data-project-thread-routes", "false");
+    expect(scope.getByTestId("composer")).toHaveAttribute("data-thread-key", "main");
   });
 
   it("renders a read-only preview surface without live chat controls", () => {

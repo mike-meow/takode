@@ -998,6 +998,7 @@ export function ChatView({
           <MessageFeed
             sessionId={sessionId}
             threadKey={isLeaderSession ? selectedThreadKey : MAIN_THREAD_KEY}
+            projectThreadRoutes={isLeaderSession}
             onSelectThread={isLeaderSession ? handleSelectThread : undefined}
           />
         </div>

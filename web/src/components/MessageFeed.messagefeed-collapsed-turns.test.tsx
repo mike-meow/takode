@@ -619,6 +619,28 @@ describe("MessageFeed - collapsed turns", () => {
     expect(screen.queryByText("q-941 routed update")).toBeNull();
   });
 
+  it("can render an unprojected worker transcript with quest-routed leader dispatch messages", () => {
+    // Worker sessions do not expose leader thread navigation, so their message
+    // feed must show the authoritative chronological history even when the
+    // leader dispatch carries q-thread routing metadata.
+    const sid = "test-worker-unprojected-leader-dispatch";
+    setStoreMessages(sid, [
+      makeMessage({
+        id: "u-dispatch",
+        role: "user",
+        content: "Work on [q-1047](quest:q-1047).",
+        agentSource: { sessionId: "leader-1", sessionLabel: "#1286 Quest Journey UI Leader" },
+        metadata: { threadRefs: [{ threadKey: "q-1047", questId: "q-1047", source: "explicit" }] },
+      }),
+      makeMessage({ id: "a-readin", role: "assistant", content: "Concrete understanding: implement the quest." }),
+    ]);
+
+    render(<MessageFeed sessionId={sid} projectThreadRoutes={false} />);
+
+    expect(screen.getByText("Work on [q-1047](quest:q-1047).")).toBeTruthy();
+    expect(screen.getByText("Concrete understanding: implement the quest.")).toBeTruthy();
+  });
+
   it("keeps explicitly routed quest messages visible in their quest thread and All Threads", () => {
     const sid = "test-quest-routed-visibility";
     setStoreMessages(sid, [

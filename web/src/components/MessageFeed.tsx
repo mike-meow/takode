@@ -202,6 +202,7 @@ interface FeedViewportAnchor {
 export function MessageFeed({
   sessionId,
   threadKey = "main",
+  projectThreadRoutes = true,
   sectionTurnCount = FEED_SECTION_TURN_COUNT,
   latestIndicatorMode = "overlay",
   onLatestIndicatorVisibleChange,
@@ -210,6 +211,7 @@ export function MessageFeed({
 }: {
   sessionId: string;
   threadKey?: string;
+  projectThreadRoutes?: boolean;
   sectionTurnCount?: number;
   latestIndicatorMode?: "overlay" | "external";
   onLatestIndicatorVisibleChange?: (visible: boolean) => void;
@@ -242,8 +244,11 @@ export function MessageFeed({
     [allMessages, historyLoading, selectedFeedWindow, selectedFeedWindowEnabled, selectedFeedWindowMessages],
   );
   const baseMessages = useMemo(
-    () => filterMessagesForThread(messagesAvailableForDerivation, threadKey),
-    [messagesAvailableForDerivation, threadKey],
+    () =>
+      projectThreadRoutes
+        ? filterMessagesForThread(messagesAvailableForDerivation, threadKey)
+        : messagesAvailableForDerivation,
+    [messagesAvailableForDerivation, projectThreadRoutes, threadKey],
   );
   const sessionNotifications = useStore((s) => s.sessionNotifications?.get(sessionId));
   const sessionAttentionRecords = useStore((s) => s.sessionAttentionRecords?.get(sessionId));
