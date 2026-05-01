@@ -124,4 +124,34 @@ describe("GET /api/quests/_page", () => {
       nextOffset: 2,
     });
   });
+
+  it("supports active and previous owner session filters", async () => {
+    const activeOwner = {
+      ...makeQuest({ questId: "q-1", title: "Active owner", status: "in_progress" }),
+      sessionId: "session-a",
+    } as QuestmasterTask;
+    const previousOwner = {
+      ...makeQuest({ questId: "q-2", title: "Previous owner", status: "done" }),
+      previousOwnerSessionIds: ["session-a"],
+    } as QuestmasterTask;
+    const otherOwner = {
+      ...makeQuest({ questId: "q-3", title: "Other owner", status: "idea" }),
+      sessionId: "session-b",
+    } as QuestmasterTask;
+    const app = makeApp([activeOwner, previousOwner, otherOwner]);
+
+    const sessionRes = await app.request("/api/quests/_page?session=session-a&limit=10");
+    expect(sessionRes.status).toBe(200);
+    await expect(sessionRes.json()).resolves.toMatchObject({
+      quests: [{ questId: "q-1" }, { questId: "q-2" }],
+      total: 2,
+    });
+
+    const sessionIdRes = await app.request("/api/quests/_page?sessionId=session-a&limit=10");
+    expect(sessionIdRes.status).toBe(200);
+    await expect(sessionIdRes.json()).resolves.toMatchObject({
+      quests: [{ questId: "q-1" }, { questId: "q-2" }],
+      total: 2,
+    });
+  });
 });

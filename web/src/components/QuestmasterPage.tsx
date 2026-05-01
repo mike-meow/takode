@@ -33,11 +33,13 @@ import {
 } from "./QuestmasterCompactTable.js";
 import type {
   QuestListPage,
+  QuestListPageOptions,
   QuestmasterCompactSort,
   QuestmasterCompactSortColumn,
   QuestmasterViewMode,
 } from "../api.js";
 import type { QuestmasterTask, QuestStatus, QuestFeedbackEntry } from "../types.js";
+import { multiWordMatch } from "../../shared/search-utils.js";
 
 // ─── Status config ──────────────────────────────────────────────────────────
 
@@ -157,6 +159,40 @@ function fallbackQuestPage(quests: QuestmasterTask[]): QuestListPage {
   };
 }
 
+function questMatchesCurrentPageCorpus(
+  quest: QuestmasterTask,
+  selectedTags: Set<string>,
+  negatedTags: Set<string>,
+  searchText: string,
+) {
+  const questTags = new Set((quest.tags ?? []).map((tag) => tag.toLowerCase()));
+  if (selectedTags.size > 0 && !Array.from(selectedTags).some((tag) => questTags.has(tag.toLowerCase()))) return false;
+  if (Array.from(negatedTags).some((tag) => questTags.has(tag.toLowerCase()))) return false;
+
+  const query = searchText.trim();
+  if (!query) return true;
+  const doneText =
+    quest.status === "done" && quest.cancelled !== true ? `${quest.debriefTldr ?? ""}\n${quest.debrief ?? ""}` : "";
+  const feedbackText =
+    "feedback" in quest ? (quest.feedback ?? []).flatMap((entry) => [entry.tldr ?? "", entry.text]) : [];
+  return multiWordMatch(
+    `${quest.questId}\n${quest.title}\n${quest.tldr ?? ""}\n${"description" in quest ? quest.description || "" : ""}\n${doneText}\n${feedbackText.join("\n")}`,
+    query,
+  );
+}
+
+function questMatchesCurrentVisibleFilters(
+  quest: QuestmasterTask,
+  filter: Set<QuestStatus>,
+  allSelected: boolean,
+  selectedTags: Set<string>,
+  negatedTags: Set<string>,
+  searchText: string,
+) {
+  if (!questMatchesCurrentPageCorpus(quest, selectedTags, negatedTags, searchText)) return false;
+  return allSelected || filter.has(quest.status);
+}
+
 function QuestTldrMarkdown({
   text,
   searchText,
@@ -224,6 +260,7 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
   const [loadingMoreDirection, setLoadingMoreDirection] = useState<"next" | "previous" | null>(null);
   const [debouncedSearchText, setDebouncedSearchText] = useState("");
   const pageRequestSeqRef = useRef(0);
+  const visibleWindowRef = useRef({ offset: 0, count: 0 });
 
   // Search, tags, and view mode -- local state initialized from store, synced back on every change.
   // Local state ensures React re-renders on every keystroke; store persists across navigation.
@@ -289,8 +326,12 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
     return () => window.clearTimeout(timeoutId);
   }, [searchText]);
 
+  useEffect(() => {
+    visibleWindowRef.current = { offset: windowOffset, count: pagedQuests.length };
+  }, [windowOffset, pagedQuests.length]);
+
   const loadQuestPage = useCallback(
-    async (offset: number, mode: "replace" | "append" | "prepend") => {
+    async (offset: number, mode: "replace" | "append" | "prepend", pageLimit = QUEST_PAGE_SIZE) => {
       const requestSeq = ++pageRequestSeqRef.current;
       const loadingDirection = mode === "append" ? "next" : mode === "prepend" ? "previous" : null;
       if (mode === "replace") setQuestsLoading(true);
@@ -299,16 +340,19 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
 
       try {
         const status = allSelected ? undefined : Array.from(filter).join(",");
-        const page = await api.listQuestPage({
-          offset,
-          limit: QUEST_PAGE_SIZE,
+        const pageOptions: Omit<QuestListPageOptions, "offset"> = {
+          limit: pageLimit,
           status,
           tags: Array.from(selectedTags),
           excludeTags: negatedTagList,
           text: debouncedSearchText,
           sortColumn: debouncedSearchText ? undefined : viewMode === "compact" ? compactSort.column : "cards",
           sortDirection: debouncedSearchText ? undefined : viewMode === "compact" ? compactSort.direction : "asc",
-        });
+        };
+        let page = await api.listQuestPage({ ...pageOptions, offset });
+        if (page.quests.length === 0 && page.total > 0 && offset > 0) {
+          page = await api.listQuestPage({ ...pageOptions, offset: Math.max(0, page.total - pageLimit) });
+        }
         if (requestSeq !== pageRequestSeqRef.current) return;
 
         setPageInfo(page);
@@ -341,6 +385,12 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
     [allSelected, compactSort, debouncedSearchText, filter, negatedTagList, selectedTags, viewMode],
   );
 
+  const refreshVisibleQuestWindow = useCallback(() => {
+    const { offset, count } = visibleWindowRef.current;
+    const limit = Math.max(QUEST_PAGE_SIZE, Math.min(MAX_RENDERED_QUESTS, count || QUEST_PAGE_SIZE));
+    return loadQuestPage(offset, "replace", limit);
+  }, [loadQuestPage]);
+
   // Load quests on mount, pause polling entirely while hidden, and resume with
   // a foreground refresh when the tab becomes visible again.
   useEffect(() => {
@@ -351,7 +401,7 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
       if (timeoutId !== null) window.clearTimeout(timeoutId);
       if (document.visibilityState !== "visible") return;
       timeoutId = window.setTimeout(() => {
-        void loadQuestPage(0, "replace");
+        void refreshVisibleQuestWindow();
         scheduleNextPoll();
       }, 5_000);
     };
@@ -361,7 +411,7 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
 
     function handleVisibility() {
       if (document.visibilityState === "visible") {
-        void loadQuestPage(0, "replace");
+        void refreshVisibleQuestWindow();
         scheduleNextPoll();
       } else if (timeoutId !== null) {
         window.clearTimeout(timeoutId);
@@ -371,7 +421,7 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
     document.addEventListener("visibilitychange", handleVisibility);
 
     function handleFocus() {
-      void loadQuestPage(0, "replace");
+      void refreshVisibleQuestWindow();
       scheduleNextPoll();
     }
     window.addEventListener("focus", handleFocus);
@@ -381,7 +431,7 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
       document.removeEventListener("visibilitychange", handleVisibility);
       window.removeEventListener("focus", handleFocus);
     };
-  }, [isActive, loadQuestPage]);
+  }, [isActive, loadQuestPage, refreshVisibleQuestWindow]);
 
   const refreshServerQuestmasterSettings = useCallback(async () => {
     try {
@@ -545,21 +595,34 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
           (a, b) => questRecencyTs(b) - questRecencyTs(a),
         ),
       );
-      setPagedQuests((current) =>
-        [createdQuest, ...current.filter((q) => q.questId !== createdQuest.questId)].slice(0, MAX_RENDERED_QUESTS),
+      const matchesCurrentCorpus = questMatchesCurrentPageCorpus(createdQuest, selectedTags, negatedTags, searchText);
+      const matchesVisibleFilters = questMatchesCurrentVisibleFilters(
+        createdQuest,
+        filter,
+        allSelected,
+        selectedTags,
+        negatedTags,
+        searchText,
       );
+      const shouldInsertIntoWindow = matchesVisibleFilters && windowOffset === 0;
+      if (shouldInsertIntoWindow) {
+        setPagedQuests((current) =>
+          [createdQuest, ...current.filter((q) => q.questId !== createdQuest.questId)].slice(0, MAX_RENDERED_QUESTS),
+        );
+      }
       setPageInfo((current) => ({
         ...current,
-        quests: [createdQuest, ...current.quests.filter((q) => q.questId !== createdQuest.questId)].slice(
-          0,
-          current.limit,
-        ),
-        total: current.total + (current.quests.some((q) => q.questId === createdQuest.questId) ? 0 : 1),
-        counts: {
-          ...current.counts,
-          all: current.counts.all + 1,
-          [createdQuest.status]: current.counts[createdQuest.status] + 1,
-        },
+        quests: shouldInsertIntoWindow
+          ? [createdQuest, ...current.quests.filter((q) => q.questId !== createdQuest.questId)].slice(0, current.limit)
+          : current.quests,
+        total: current.total + (matchesVisibleFilters ? 1 : 0),
+        counts: matchesCurrentCorpus
+          ? {
+              ...current.counts,
+              all: current.counts.all + 1,
+              [createdQuest.status]: current.counts[createdQuest.status] + 1,
+            }
+          : current.counts,
         allTags: Array.from(
           new Set([...current.allTags, ...(createdQuest.tags ?? [])].map((tag) => tag.toLowerCase())),
         ).sort((a, b) => a.localeCompare(b)),
@@ -567,7 +630,7 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
       setShowCreateForm(false);
       useStore.getState().openQuestOverlay(createdQuest.questId);
     },
-    [setQuests],
+    [allSelected, filter, negatedTags, searchText, selectedTags, setQuests, windowOffset],
   );
   const handleCreateQuestCancel = useCallback(() => {
     setShowCreateForm(false);

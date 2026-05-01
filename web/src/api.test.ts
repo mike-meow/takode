@@ -117,6 +117,33 @@ describe("listSessions", () => {
 });
 
 // ===========================================================================
+// listQuestPage
+// ===========================================================================
+describe("listQuestPage", () => {
+  it("passes session filters through the paged Questmaster route", async () => {
+    const page = {
+      quests: [],
+      total: 0,
+      offset: 0,
+      limit: 50,
+      hasMore: false,
+      nextOffset: null,
+      previousOffset: null,
+      counts: { all: 0, idea: 0, refined: 0, in_progress: 0, done: 0 },
+      allTags: [],
+    };
+    mockFetch.mockResolvedValueOnce(mockResponse(page));
+
+    const result = await api.listQuestPage({ sessionId: "session-1", session: "session-alias", limit: 50 });
+
+    const [url, opts] = mockFetch.mock.calls[0];
+    expect(url).toBe("/api/quests/_page?limit=50&session=session-alias&sessionId=session-1");
+    expect(opts).toBeUndefined();
+    expect(result).toEqual(page);
+  });
+});
+
+// ===========================================================================
 // killSession
 // ===========================================================================
 describe("killSession", () => {

@@ -476,6 +476,8 @@ export interface QuestListPageOptions {
   offset?: number;
   limit?: number;
   status?: string;
+  session?: string;
+  sessionId?: string;
   tags?: string[];
   excludeTags?: string[];
   text?: string;
@@ -1428,6 +1430,8 @@ export const api = {
     if (typeof options?.offset === "number") params.set("offset", String(options.offset));
     if (typeof options?.limit === "number") params.set("limit", String(options.limit));
     if (options?.status) params.set("status", options.status);
+    if (options?.session) params.set("session", options.session);
+    if (options?.sessionId) params.set("sessionId", options.sessionId);
     if (options?.tags?.length) params.set("tags", options.tags.join(","));
     if (options?.excludeTags?.length) params.set("excludeTags", options.excludeTags.join(","));
     if (options?.text) params.set("text", options.text);

@@ -59,6 +59,7 @@ const STATUS_SORT_RANK: Record<QuestmasterTask["status"], number> = {
   in_progress: 2,
   done: 3,
 };
+const MAX_PAGE_LIMIT = 150;
 
 function parseCsv(value: string | undefined): string[] {
   if (!value) return [];
@@ -221,7 +222,7 @@ function compareSortColumn(left: QuestmasterTask, right: QuestmasterTask, column
 
 function normalizeLimit(limit: number | undefined): number {
   if (limit === undefined || !Number.isFinite(limit)) return 50;
-  return Math.min(100, Math.max(1, Math.trunc(limit)));
+  return Math.min(MAX_PAGE_LIMIT, Math.max(1, Math.trunc(limit)));
 }
 
 function normalizeOffset(offset: number | undefined, total: number): number {

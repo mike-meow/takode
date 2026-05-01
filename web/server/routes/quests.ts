@@ -308,6 +308,7 @@ export function createQuestRoutes(ctx: RouteContext) {
       tags: c.req.query("tags"),
       tag: c.req.query("tag"),
       excludeTags: c.req.query("excludeTags"),
+      session: c.req.query("session") ?? c.req.query("sessionId"),
       text: c.req.query("text"),
       verification: c.req.query("verification"),
       offset: parseIntegerQuery(c.req.query("offset")),
