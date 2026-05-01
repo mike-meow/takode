@@ -1152,9 +1152,45 @@ describe("WorkBoardBar", () => {
     );
 
     fireEvent.click(getByTestId("workboard-summary-button"));
-    expect(getByTestId("workboard-off-board-threads")).toHaveTextContent("Off-board thread");
+    expect(getByTestId("workboard-off-board-threads")).toHaveTextContent("1 other");
+    expect(getByTestId("workboard-other-threads-toggle")).toHaveAttribute("aria-expanded", "false");
+    expect(getByTestId("workboard-phase-summary")).toHaveTextContent("1 other");
+    expect(getByTestId("workboard-off-board-threads")).not.toHaveTextContent("Off-board thread");
+    fireEvent.click(getByTestId("workboard-other-threads-toggle"));
+    expect(getByTestId("workboard-other-threads-toggle")).toHaveAttribute("aria-expanded", "true");
+    expect(getByTestId("workboard-other-threads-content")).toHaveTextContent("Off-board thread");
     fireEvent.click(getByTestId("workboard-off-board-thread"));
     expect(onSelectThread).toHaveBeenCalledWith("q-99");
+  });
+
+  it("persists the Other Threads expanded state per session", () => {
+    resetStore({
+      sdkSessions: [
+        { sessionId: "s1", isOrchestrator: true },
+        { sessionId: "s2", isOrchestrator: true },
+      ],
+      sessionBoards: new Map([
+        ["s1", BOARD_DATA],
+        ["s2", BOARD_DATA],
+      ]),
+    });
+
+    const threadRows = [{ threadKey: "q-99", questId: "q-99", title: "Off-board thread", messageCount: 2 }];
+    const view = render(<WorkBoardBar sessionId="s1" onSelectThread={vi.fn()} threadRows={threadRows} />);
+    fireEvent.click(view.getByTestId("workboard-summary-button"));
+    fireEvent.click(view.getByTestId("workboard-other-threads-toggle"));
+
+    expect(view.getByTestId("workboard-other-threads-content")).toHaveTextContent("Off-board thread");
+    expect(localStorage.getItem(scopedKey("cc-work-board-other-threads-expanded:s1"))).toBe("1");
+
+    view.rerender(<WorkBoardBar sessionId="s2" onSelectThread={vi.fn()} threadRows={threadRows} />);
+    fireEvent.click(view.getByTestId("workboard-summary-button"));
+    expect(view.getByTestId("workboard-other-threads-toggle")).toHaveAttribute("aria-expanded", "false");
+    expect(view.queryByTestId("workboard-other-threads-content")).not.toBeInTheDocument();
+
+    view.rerender(<WorkBoardBar sessionId="s1" onSelectThread={vi.fn()} threadRows={threadRows} />);
+    expect(view.getByTestId("workboard-other-threads-toggle")).toHaveAttribute("aria-expanded", "true");
+    expect(view.getByTestId("workboard-other-threads-content")).toHaveTextContent("Off-board thread");
   });
 
   it("filters expanded board and off-board history lookup by query", () => {
@@ -1174,7 +1210,12 @@ describe("WorkBoardBar", () => {
     fireEvent.click(getByTestId("workboard-summary-button"));
     fireEvent.change(getByLabelText("Search threads, board, and history"), { target: { value: "archived" } });
 
-    expect(getByTestId("workboard-off-board-threads")).toHaveTextContent("Archived follow-up thread");
+    expect(getByTestId("workboard-other-threads-toggle")).toHaveTextContent("1 other");
+    expect(getByTestId("workboard-other-threads-toggle")).toHaveAttribute("aria-expanded", "false");
+    expect(getByTestId("workboard-off-board-threads")).not.toHaveTextContent("Archived follow-up thread");
     expect(queryByText("No active items match")).toBeInTheDocument();
+
+    fireEvent.click(getByTestId("workboard-other-threads-toggle"));
+    expect(getByTestId("workboard-other-threads-content")).toHaveTextContent("Archived follow-up thread");
   });
 });

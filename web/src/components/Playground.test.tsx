@@ -164,6 +164,13 @@ describe("Playground", () => {
     fireEvent.click(screen.getByTestId("workboard-summary-button"));
     expect(screen.getByTestId("workboard-thread-main")).toHaveAttribute("data-variant", "compact");
     expect(screen.getByTestId("workboard-thread-all")).toHaveAttribute("data-secondary", "true");
+    expect(screen.getByTestId("workboard-other-threads-toggle")).toHaveTextContent("2 other");
+    expect(screen.getByTestId("workboard-other-threads-toggle")).toHaveAttribute("aria-expanded", "false");
+    expect(
+      within(screen.getByTestId("workboard-off-board-threads")).queryByText("Off-board routed discussion"),
+    ).toBeNull();
+    fireEvent.click(screen.getByTestId("workboard-other-threads-toggle"));
+    expect(screen.getByTestId("workboard-other-threads-content")).toHaveTextContent("Off-board routed discussion");
   });
 
   it("documents compact quest-thread banners without chip note counts and with tap previews", () => {

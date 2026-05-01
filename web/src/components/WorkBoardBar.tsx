@@ -72,9 +72,18 @@ function workBoardExpandedKey(sessionId: string): string {
   return `cc-work-board-expanded:${sessionId}`;
 }
 
+function workBoardOtherThreadsExpandedKey(sessionId: string): string {
+  return `cc-work-board-other-threads-expanded:${sessionId}`;
+}
+
 function readExpandedState(sessionId: string): boolean {
   if (typeof window === "undefined") return false;
   return scopedGetItem(workBoardExpandedKey(sessionId)) === "1";
+}
+
+function readOtherThreadsExpandedState(sessionId: string): boolean {
+  if (typeof window === "undefined") return false;
+  return scopedGetItem(workBoardOtherThreadsExpandedKey(sessionId)) === "1";
 }
 
 function normalizeThreadKey(threadKey: string): string {
@@ -238,36 +247,71 @@ interface PrimaryThreadChip {
   updatedAt: number;
 }
 
-function OtherThreadList({
+function OtherThreadSection({
   rows,
+  totalCount,
+  expanded,
   currentThreadKey,
+  onToggle,
   onSelectThread,
 }: {
   rows: WorkBoardThreadNavigationRow[];
+  totalCount: number;
+  expanded: boolean;
   currentThreadKey: string;
+  onToggle: () => void;
   onSelectThread: (threadKey: string) => void;
 }) {
-  if (rows.length === 0) return null;
+  if (totalCount === 0) return null;
+
   return (
-    <div className="border-t border-cc-border px-3 py-2" data-testid="workboard-off-board-threads">
-      <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-cc-muted/70">Other Threads</div>
-      <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
-        {rows.map((row) => {
-          const selected = isSelectedThread(currentThreadKey, row.threadKey);
-          const count = row.messageCount ?? 0;
-          const detail = `${count} message${count === 1 ? "" : "s"}`;
-          return (
-            <ThreadNavButton
-              key={row.threadKey}
-              label={row.questId ? `${row.questId} ${row.title}` : row.title}
-              detail={detail}
-              selected={selected}
-              onClick={() => onSelectThread(row.threadKey)}
-              testId="workboard-off-board-thread"
-            />
-          );
-        })}
-      </div>
+    <div className="border-t border-cc-border" data-testid="workboard-off-board-threads">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 transition-colors hover:bg-cc-hover/50"
+        data-testid="workboard-other-threads-toggle"
+        aria-expanded={expanded}
+      >
+        <svg
+          viewBox="0 0 12 12"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={`h-2.5 w-2.5 shrink-0 text-cc-muted transition-transform duration-150 ${expanded ? "rotate-90" : ""}`}
+          aria-hidden="true"
+        >
+          <path d="M4 2l4 4-4 4" />
+        </svg>
+        <span className="text-[11px] text-cc-muted">{totalCount} other</span>
+      </button>
+      {expanded && (
+        <div className="px-3 pb-2" data-testid="workboard-other-threads-content">
+          {rows.length > 0 ? (
+            <div className="grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
+              {rows.map((row) => {
+                const selected = isSelectedThread(currentThreadKey, row.threadKey);
+                const count = row.messageCount ?? 0;
+                const detail = `${count} message${count === 1 ? "" : "s"}`;
+                return (
+                  <ThreadNavButton
+                    key={row.threadKey}
+                    label={row.questId ? `${row.questId} ${row.title}` : row.title}
+                    detail={detail}
+                    selected={selected}
+                    onClick={() => onSelectThread(row.threadKey)}
+                    testId="workboard-off-board-thread"
+                  />
+                );
+              })}
+            </div>
+          ) : (
+            <div className="py-1.5 text-xs text-cc-muted italic">No other threads match</div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -751,6 +795,7 @@ export function WorkBoardBar({
 
   const [expanded, setExpanded] = useState(() => readExpandedState(sessionId));
   const [completedExpanded, setCompletedExpanded] = useState(false);
+  const [otherThreadsExpanded, setOtherThreadsExpanded] = useState(() => readOtherThreadsExpandedState(sessionId));
   const [threadQuery, setThreadQuery] = useState("");
   const [threadSearchFocused, setThreadSearchFocused] = useState(false);
   const showMainWorkBoard = isSelectedThread(currentThreadKey, MAIN_THREAD_KEY);
@@ -758,6 +803,7 @@ export function WorkBoardBar({
   useEffect(() => {
     setExpanded(readExpandedState(sessionId));
     setCompletedExpanded(false);
+    setOtherThreadsExpanded(readOtherThreadsExpandedState(sessionId));
     setThreadQuery("");
     setThreadSearchFocused(false);
   }, [sessionId]);
@@ -765,6 +811,10 @@ export function WorkBoardBar({
   useEffect(() => {
     scopedSetItem(workBoardExpandedKey(sessionId), expanded ? "1" : "0");
   }, [sessionId, expanded]);
+
+  useEffect(() => {
+    scopedSetItem(workBoardOtherThreadsExpandedKey(sessionId), otherThreadsExpanded ? "1" : "0");
+  }, [sessionId, otherThreadsExpanded]);
 
   // Close on Escape
   useEffect(() => {
@@ -1059,9 +1109,12 @@ export function WorkBoardBar({
             </div>
           )}
           {onSelectThread && (
-            <OtherThreadList
+            <OtherThreadSection
               rows={filteredOffBoardThreads}
+              totalCount={offBoardThreads.length}
+              expanded={otherThreadsExpanded}
               currentThreadKey={currentThreadKey}
+              onToggle={() => setOtherThreadsExpanded(!otherThreadsExpanded)}
               onSelectThread={onSelectThread}
             />
           )}
