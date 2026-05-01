@@ -460,6 +460,29 @@ export interface QuestmasterCompactSort {
   direction: QuestmasterCompactSortDirection;
 }
 
+export interface QuestListPage {
+  quests: import("./types.js").QuestmasterTask[];
+  total: number;
+  offset: number;
+  limit: number;
+  hasMore: boolean;
+  nextOffset: number | null;
+  previousOffset: number | null;
+  counts: Record<import("./types.js").QuestStatus | "all", number>;
+  allTags: string[];
+}
+
+export interface QuestListPageOptions {
+  offset?: number;
+  limit?: number;
+  status?: string;
+  tags?: string[];
+  excludeTags?: string[];
+  text?: string;
+  sortColumn?: QuestmasterCompactSortColumn | "cards";
+  sortDirection?: QuestmasterCompactSortDirection;
+}
+
 /** Discriminated union for session auto-namer backend. */
 export type NamerConfig =
   | { backend: "claude"; model?: string }
@@ -1399,6 +1422,19 @@ export const api = {
     if (filters?.verification) params.set("verification", filters.verification);
     const qs = params.toString();
     return get<import("./types.js").QuestmasterTask[]>(`/quests${qs ? `?${qs}` : ""}`);
+  },
+  listQuestPage: (options?: QuestListPageOptions) => {
+    const params = new URLSearchParams();
+    if (typeof options?.offset === "number") params.set("offset", String(options.offset));
+    if (typeof options?.limit === "number") params.set("limit", String(options.limit));
+    if (options?.status) params.set("status", options.status);
+    if (options?.tags?.length) params.set("tags", options.tags.join(","));
+    if (options?.excludeTags?.length) params.set("excludeTags", options.excludeTags.join(","));
+    if (options?.text) params.set("text", options.text);
+    if (options?.sortColumn) params.set("sortColumn", options.sortColumn);
+    if (options?.sortDirection) params.set("sortDirection", options.sortDirection);
+    const qs = params.toString();
+    return get<QuestListPage>(`/quests/_page${qs ? `?${qs}` : ""}`);
   },
   getQuest: (id: string) => get<import("./types.js").QuestmasterTask>(`/quests/${encodeURIComponent(id)}`),
   getQuestHistory: (id: string) =>

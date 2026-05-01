@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import * as questStore from "../quest-store.js";
 import type { QuestFeedbackEntry, QuestmasterTask } from "../quest-types.js";
 import { hasQuestReviewMetadata } from "../quest-types.js";
-import { applyQuestListFilters } from "../quest-list-filters.js";
+import { applyQuestListFilters, getQuestListPage, type QuestListSortColumn } from "../quest-list-filters.js";
 import { SERVER_GIT_CMD } from "../constants.js";
 import {
   addTaskEntry as addTaskEntryController,
@@ -86,6 +86,34 @@ function setDebriefTldrWarningHeaderForAgentWrite(
 ): void {
   if (!isAuthenticatedCompanionCaller(auth)) return;
   setTldrWarningHeader(c, tldrWarningForContent("debrief", debrief, debriefTldr));
+}
+
+function parseIntegerQuery(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function normalizeQuestListSortColumn(value: string | undefined): QuestListSortColumn | undefined {
+  switch (value) {
+    case "cards":
+    case "quest":
+    case "title":
+    case "owner":
+    case "leader":
+    case "status":
+    case "verify":
+    case "feedback":
+    case "updated":
+      return value;
+    default:
+      return undefined;
+  }
+}
+
+function normalizeQuestListSortDirection(value: string | undefined): "asc" | "desc" | undefined {
+  if (value === "asc" || value === "desc") return value;
+  return undefined;
 }
 
 function feedbackEntryWithoutTldr(entry: QuestFeedbackEntry): QuestFeedbackEntry {
@@ -272,6 +300,22 @@ export function createQuestRoutes(ctx: RouteContext) {
         return activeOwner === sessionId || previousOwners.includes(sessionId);
       });
     return c.json(quests);
+  });
+
+  api.get("/quests/_page", async (c) => {
+    const page = getQuestListPage(await questStore.listQuests(), {
+      status: c.req.query("status"),
+      tags: c.req.query("tags"),
+      tag: c.req.query("tag"),
+      excludeTags: c.req.query("excludeTags"),
+      text: c.req.query("text"),
+      verification: c.req.query("verification"),
+      offset: parseIntegerQuery(c.req.query("offset")),
+      limit: parseIntegerQuery(c.req.query("limit")),
+      sortColumn: normalizeQuestListSortColumn(c.req.query("sortColumn")),
+      sortDirection: normalizeQuestListSortDirection(c.req.query("sortDirection")),
+    });
+    return c.json(page);
   });
 
   api.get("/quests/:questId", async (c) => {

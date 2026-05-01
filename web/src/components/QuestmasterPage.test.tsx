@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 import { act, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import "@testing-library/jest-dom";
+import { multiWordMatch, normalizeForSearch } from "../../shared/search-utils.js";
 import type { QuestmasterTask } from "../types.js";
 
 const mockCreateQuest = vi.fn();
+const mockListQuestPage = vi.fn();
 const mockGetSettings = vi.fn();
 const mockUpdateSettings = vi.fn();
 const mockUploadStandaloneQuestImage = vi.fn();
@@ -13,6 +15,8 @@ let promptSpy: ReturnType<typeof vi.spyOn>;
 vi.mock("../api.js", () => ({
   api: {
     createQuest: (...args: unknown[]) => mockCreateQuest(...args),
+    listQuestPage: (...args: unknown[]) => mockListQuestPage(...args),
+    getQuest: (questId: string) => Promise.resolve(mockState.quests.find((quest) => quest.questId === questId)),
     getSettings: (...args: unknown[]) => mockGetSettings(...args),
     updateSettings: (...args: unknown[]) => mockUpdateSettings(...args),
     uploadStandaloneQuestImage: (...args: unknown[]) => mockUploadStandaloneQuestImage(...args),
@@ -94,6 +98,19 @@ type MockStoreState = {
 };
 
 let mockState: MockStoreState;
+
+type MockQuestPageOptions = {
+  offset?: number;
+  limit?: number;
+  status?: string;
+  tags?: string[];
+  excludeTags?: string[];
+  text?: string;
+  sortColumn?: string;
+  sortDirection?: "asc" | "desc";
+};
+
+type MockSearchRank = [number, number, number, number];
 
 function buildVerificationQuest(input: {
   id: string;
@@ -180,6 +197,152 @@ function resetState(overrides: Partial<MockStoreState> = {}) {
   };
 }
 
+function makeQuestPage(quests: QuestmasterTask[], offset = 0, limit = 50, countsSource = quests) {
+  return {
+    quests: quests.slice(offset, offset + limit),
+    total: quests.length,
+    offset,
+    limit,
+    hasMore: offset + limit < quests.length,
+    nextOffset: offset + limit < quests.length ? offset + limit : null,
+    previousOffset: offset > 0 ? Math.max(0, offset - limit) : null,
+    counts: {
+      all: countsSource.length,
+      idea: countsSource.filter((quest) => quest.status === "idea").length,
+      refined: countsSource.filter((quest) => quest.status === "refined").length,
+      in_progress: countsSource.filter((quest) => quest.status === "in_progress").length,
+      done: countsSource.filter((quest) => quest.status === "done").length,
+    },
+    allTags: getMockAllTags(),
+  };
+}
+
+function getMockAllTags() {
+  return Array.from(
+    new Set(mockState.quests.flatMap((quest) => quest.tags ?? []).map((tag) => tag.toLowerCase())),
+  ).sort((a, b) => a.localeCompare(b));
+}
+
+function makeMockQuestPage(options: MockQuestPageOptions = {}) {
+  const withoutStatus = mockState.quests.filter((quest) => {
+    if (options.tags?.length) {
+      const questTags = new Set((quest.tags ?? []).map((tag) => tag.toLowerCase()));
+      if (!options.tags.some((tag) => questTags.has(tag.toLowerCase()))) return false;
+    }
+    if (options.excludeTags?.length) {
+      const questTags = new Set((quest.tags ?? []).map((tag) => tag.toLowerCase()));
+      if (options.excludeTags.some((tag) => questTags.has(tag.toLowerCase()))) return false;
+    }
+    if (options.text && !getMockSearchRank(quest, options.text)) return false;
+    return true;
+  });
+  const statuses = new Set(
+    (options.status ?? "")
+      .split(",")
+      .map((status) => status.trim())
+      .filter(Boolean),
+  );
+  const filtered = statuses.size === 0 ? withoutStatus : withoutStatus.filter((quest) => statuses.has(quest.status));
+  return makeQuestPage(sortMockQuests(filtered, options), options.offset ?? 0, options.limit ?? 50, withoutStatus);
+}
+
+function sortMockQuests(quests: QuestmasterTask[], options: MockQuestPageOptions) {
+  if (options.text?.trim()) {
+    return quests
+      .map((quest) => ({ quest, rank: getMockSearchRank(quest, options.text ?? "") }))
+      .filter((entry): entry is { quest: QuestmasterTask; rank: MockSearchRank } => entry.rank !== null)
+      .sort((left, right) => compareMockRank(left.rank, right.rank) || compareMockQuestIds(left.quest, right.quest))
+      .map((entry) => entry.quest);
+  }
+
+  const column = options.sortColumn ?? "cards";
+  const direction = options.sortDirection ?? (column === "cards" ? "asc" : "desc");
+  return [...quests].sort((left, right) => {
+    const columnResult = compareMockSortColumn(left, right, column);
+    const directed = direction === "asc" ? columnResult : -columnResult;
+    return directed || mockQuestRecencyTs(right) - mockQuestRecencyTs(left) || compareMockQuestIds(left, right);
+  });
+}
+
+function compareMockSortColumn(left: QuestmasterTask, right: QuestmasterTask, column: string) {
+  switch (column) {
+    case "cards": {
+      const statusOrder: Record<string, number> = { in_progress: 0, refined: 1, idea: 2, done: 3 };
+      return (
+        statusOrder[left.status] - statusOrder[right.status] || mockQuestRecencyTs(right) - mockQuestRecencyTs(left)
+      );
+    }
+    case "quest":
+      return compareMockQuestIds(left, right);
+    case "title":
+      return left.title.localeCompare(right.title, undefined, { numeric: true, sensitivity: "base" });
+    case "updated":
+      return mockQuestRecencyTs(left) - mockQuestRecencyTs(right);
+    default:
+      return 0;
+  }
+}
+
+function getMockSearchRank(quest: QuestmasterTask, query: string): MockSearchRank | null {
+  const fields = [
+    { rank: 0, text: quest.questId },
+    { rank: 1, text: quest.title },
+    { rank: 2, text: quest.tldr },
+    { rank: 3, text: "description" in quest ? quest.description : undefined },
+    { rank: 4, text: quest.status === "done" && quest.cancelled !== true ? quest.debriefTldr : undefined },
+    { rank: 5, text: quest.status === "done" && quest.cancelled !== true ? quest.debrief : undefined },
+    ...("feedback" in quest
+      ? (quest.feedback ?? []).flatMap((entry) => [
+          { rank: 6, text: entry.tldr },
+          { rank: 7, text: entry.text },
+        ])
+      : []),
+  ];
+  let best: MockSearchRank | null = null;
+  for (const field of fields) {
+    const rank = getMockFieldSearchRank(field.text, field.rank, query);
+    if (!rank) continue;
+    if (!best || compareMockRank(rank, best) < 0) best = rank;
+  }
+  return best;
+}
+
+function getMockFieldSearchRank(
+  fieldText: string | undefined,
+  fieldRank: number,
+  query: string,
+): MockSearchRank | null {
+  if (!fieldText || !multiWordMatch(fieldText, query)) return null;
+  const normalized = normalizeForSearch(fieldText);
+  const normalizedQuery = normalizeForSearch(query);
+  const words = normalizedQuery.split(/\s+/).filter(Boolean);
+  const positions = words.map((word) => normalized.indexOf(word)).filter((index) => index >= 0);
+  return [fieldRank, normalized.indexOf(normalizedQuery), Math.min(...positions), normalized.length];
+}
+
+function compareMockRank(left: MockSearchRank, right: MockSearchRank) {
+  for (let index = 0; index < left.length; index += 1) {
+    const diff = left[index] - right[index];
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+function compareMockQuestIds(left: QuestmasterTask, right: QuestmasterTask) {
+  return left.questId.localeCompare(right.questId, undefined, { numeric: true, sensitivity: "base" });
+}
+
+function mockQuestRecencyTs(quest: QuestmasterTask) {
+  return Math.max(quest.createdAt, quest.updatedAt ?? 0, quest.statusChangedAt ?? 0);
+}
+
+async function enterBackendSearch(input: HTMLElement, value: string, expectedText = value.trim()) {
+  fireEvent.change(input, { target: { value } });
+  await waitFor(() => {
+    expect(mockListQuestPage).toHaveBeenLastCalledWith(expect.objectContaining({ text: expectedText }));
+  });
+}
+
 vi.mock("../store.js", () => {
   const useStoreFn = (selector: (s: MockStoreState) => unknown) => selector(mockState);
   useStoreFn.getState = () => mockState;
@@ -202,6 +365,21 @@ function compactRowQuestIds(): string[] {
     .filter((questId): questId is string => !!questId);
 }
 
+function renderedQuestIds(): string[] {
+  const compactRows = Array.from(document.querySelectorAll<HTMLElement>("tr[data-quest-id]"));
+  const questElements =
+    compactRows.length > 0 ? compactRows : Array.from(document.querySelectorAll<HTMLElement>("[data-quest-id]"));
+  return questElements.map((el) => el.dataset.questId).filter((questId): questId is string => !!questId);
+}
+
+function clickLoadMore() {
+  const button = Array.from(document.querySelectorAll<HTMLButtonElement>("button")).find(
+    (candidate) => candidate.textContent === "Load more",
+  );
+  if (!button) throw new Error("Load more button not found");
+  fireEvent.click(button);
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   promptSpy = vi.spyOn(window, "prompt").mockReturnValue("");
@@ -222,6 +400,7 @@ beforeEach(() => {
   resetState({
     quests: [inboxQuest, regularQuest],
   });
+  mockListQuestPage.mockImplementation(async (options?: MockQuestPageOptions) => makeMockQuestPage(options));
   mockCreateQuest.mockImplementation(
     async (input: { title: string; description?: string; tags?: string[] }) =>
       ({
@@ -265,7 +444,7 @@ afterEach(() => {
 describe("QuestmasterPage status display", () => {
   it("renders verification quests under Completed without Review Inbox grouping", () => {
     // q-1034: verification remains visible, but inbox state is no longer a Questmaster grouping.
-    renderQuestmaster();
+    renderQuestmaster({ isActive: true });
 
     expect(screen.queryByText("Review Inbox")).not.toBeInTheDocument();
     expect(screen.queryByText("Under Review")).not.toBeInTheDocument();
@@ -296,7 +475,7 @@ describe("QuestmasterPage status display", () => {
       ]),
     });
 
-    renderQuestmaster();
+    renderQuestmaster({ isActive: true });
 
     expect(screen.getByText("Leader-routed quest")).toBeInTheDocument();
     expect(screen.getByText("Leader")).toBeInTheDocument();
@@ -306,7 +485,7 @@ describe("QuestmasterPage status display", () => {
 
   it("collapses and expands the completed section without an inbox split", () => {
     // Completed remains a normal status group even when quests have verification metadata.
-    renderQuestmaster();
+    renderQuestmaster({ isActive: true });
 
     const completedHeader = screen.getByRole("button", { name: /^Completed2$/ });
     expect(screen.getByText("Fresh verification quest")).toBeInTheDocument();
@@ -345,7 +524,7 @@ describe("QuestmasterPage status display", () => {
     } as QuestmasterTask;
 
     mockState.quests = [newerCreatedButNotUpdated, olderCreatedButRecentlyUpdated];
-    renderQuestmaster();
+    renderQuestmaster({ isActive: true });
 
     const order = Array.from(document.querySelectorAll<HTMLElement>("[data-quest-id]")).map((el) => el.dataset.questId);
     expect(order).toEqual(["q-10", "q-11"]);
@@ -667,26 +846,120 @@ describe("QuestmasterPage status display", () => {
 
     try {
       renderQuestmaster({ isActive: true });
-      expect(mockState.refreshQuests).toHaveBeenCalledTimes(1);
+      expect(mockListQuestPage).toHaveBeenCalledTimes(1);
 
       await act(async () => {
         vi.advanceTimersByTime(15_000);
       });
-      expect(mockState.refreshQuests).toHaveBeenCalledTimes(1);
+      expect(mockListQuestPage).toHaveBeenCalledTimes(1);
 
       visibilityState = "visible";
       act(() => {
         document.dispatchEvent(new Event("visibilitychange"));
       });
-      expect(mockState.refreshQuests).toHaveBeenCalledTimes(2);
+      expect(mockListQuestPage).toHaveBeenCalledTimes(2);
 
       await act(async () => {
         vi.advanceTimersByTime(5_000);
       });
-      expect(mockState.refreshQuests).toHaveBeenCalledTimes(3);
+      expect(mockListQuestPage).toHaveBeenCalledTimes(3);
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("debounces text search before calling the backend page API", async () => {
+    // Typing should not issue one backend request per keystroke; the latest
+    // search text is sent only after the Questmaster debounce interval.
+    vi.useFakeTimers();
+    try {
+      renderQuestmaster({ isActive: true });
+      await act(async () => {
+        await Promise.resolve();
+      });
+      mockListQuestPage.mockClear();
+
+      const searchInput = screen.getByPlaceholderText("Search or #tag...");
+      fireEvent.change(searchInput, { target: { value: "q" } });
+      await act(async () => {
+        vi.advanceTimersByTime(499);
+        await Promise.resolve();
+      });
+      expect(mockListQuestPage).not.toHaveBeenCalled();
+
+      fireEvent.change(searchInput, { target: { value: "q-2" } });
+      await act(async () => {
+        vi.advanceTimersByTime(499);
+        await Promise.resolve();
+      });
+      expect(mockListQuestPage).not.toHaveBeenCalled();
+
+      await act(async () => {
+        vi.advanceTimersByTime(1);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      expect(mockListQuestPage).toHaveBeenCalledTimes(1);
+      expect(mockListQuestPage).toHaveBeenLastCalledWith(expect.objectContaining({ text: "q-2" }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("lazily loads later pages while keeping rendered compact rows bounded", async () => {
+    // Loading more can browse past the first backend page, but the mounted list
+    // should stay capped so long sessions do not rebuild hundreds of rows.
+    mockGetSettings.mockResolvedValueOnce({
+      questmasterViewMode: "compact",
+      questmasterCompactSort: { column: "quest", direction: "asc" },
+    });
+    mockState.quests = Array.from({ length: 175 }, (_, index) => {
+      const questNumber = index + 1;
+      return {
+        ...buildVerificationQuest({
+          id: `q-${questNumber}-v1`,
+          questId: `q-${questNumber}`,
+          title: `Generated quest ${String(questNumber).padStart(3, "0")}`,
+        }),
+        status: "done",
+        createdAt: questNumber,
+        updatedAt: questNumber,
+        verificationInboxUnread: false,
+      } as QuestmasterTask;
+    });
+
+    renderQuestmaster({ isActive: true });
+
+    await waitFor(() => {
+      expect(mockListQuestPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ offset: 0, limit: 50, sortColumn: "quest", sortDirection: "asc" }),
+      );
+      expect(renderedQuestIds()).toHaveLength(50);
+      expect(renderedQuestIds()[0]).toBe("q-1");
+    });
+
+    clickLoadMore();
+    await waitFor(() => {
+      expect(mockListQuestPage).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 50, limit: 50 }));
+      expect(renderedQuestIds()).toHaveLength(100);
+      expect(renderedQuestIds()[99]).toBe("q-100");
+    });
+
+    clickLoadMore();
+    await waitFor(() => {
+      expect(mockListQuestPage).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 100, limit: 50 }));
+      expect(renderedQuestIds()).toHaveLength(150);
+      expect(renderedQuestIds()[149]).toBe("q-150");
+    });
+
+    clickLoadMore();
+    await waitFor(() => {
+      expect(mockListQuestPage).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 150, limit: 50 }));
+      expect(renderedQuestIds()).toHaveLength(150);
+      expect(renderedQuestIds()[0]).toBe("q-26");
+      expect(renderedQuestIds()[149]).toBe("q-175");
+      expect(screen.getByText("Showing 26-175 of 175")).toBeInTheDocument();
+    });
   });
 
   it("orders compact rows by newest update without grouping by status", async () => {
@@ -720,7 +993,12 @@ describe("QuestmasterPage status display", () => {
     renderQuestmaster({ isActive: true });
 
     await screen.findByRole("button", { name: /q-21 Newest refined/ });
-    expect(compactRowQuestIds()).toEqual(["q-21", "q-22", "q-20"]);
+    await waitFor(() => {
+      expect(mockListQuestPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sortColumn: "updated", sortDirection: "desc" }),
+      );
+      expect(compactRowQuestIds()).toEqual(["q-21", "q-22", "q-20"]);
+    });
     expect(screen.getAllByRole("table")).toHaveLength(1);
   });
 
@@ -746,7 +1024,12 @@ describe("QuestmasterPage status display", () => {
     renderQuestmaster({ isActive: true });
 
     await screen.findByRole("button", { name: /q-41 Alpha task/ });
-    expect(compactRowQuestIds()).toEqual(["q-41", "q-40"]);
+    await waitFor(() => {
+      expect(mockListQuestPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sortColumn: "title", sortDirection: "asc" }),
+      );
+      expect(compactRowQuestIds()).toEqual(["q-41", "q-40"]);
+    });
   });
 
   it("keeps compact column sorting when search is empty, then ranks non-empty searches by relevance", async () => {
@@ -781,9 +1064,14 @@ describe("QuestmasterPage status display", () => {
 
     renderQuestmaster({ isActive: true });
     await screen.findByRole("button", { name: /q-71 Alpha background note/ });
-    expect(compactRowQuestIds()).toEqual(["q-71", "q-70"]);
+    await waitFor(() => {
+      expect(mockListQuestPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ sortColumn: "title", sortDirection: "asc" }),
+      );
+      expect(compactRowQuestIds()).toEqual(["q-71", "q-70"]);
+    });
 
-    fireEvent.change(screen.getByPlaceholderText("Search or #tag..."), { target: { value: "new tab" } });
+    await enterBackendSearch(screen.getByPlaceholderText("Search or #tag..."), "new tab");
 
     expect(compactRowQuestIds()).toEqual(["q-70", "q-71"]);
   });
@@ -852,7 +1140,7 @@ describe("QuestmasterPage status display", () => {
     renderQuestmaster({ isActive: true });
     await screen.findByRole("button", { name: /q-2 Keep early id/ });
 
-    fireEvent.change(screen.getByPlaceholderText("Search or #tag..."), { target: { value: "Keep" } });
+    await enterBackendSearch(screen.getByPlaceholderText("Search or #tag..."), "Keep");
 
     expect(compactRowQuestIds()).toEqual(["q-2", "q-10"]);
     expect(screen.queryByRole("button", { name: /q-1 Drop this row/ })).toBeNull();
@@ -919,7 +1207,7 @@ describe("QuestmasterPage status display", () => {
     renderQuestmaster({ isActive: true });
     await screen.findByText("Active implementation note");
 
-    fireEvent.change(screen.getByPlaceholderText("Search or #tag..."), { target: { value: "new tab" } });
+    await enterBackendSearch(screen.getByPlaceholderText("Search or #tag..."), "new tab");
 
     expect(
       Array.from(document.querySelectorAll<HTMLElement>("[data-quest-id]")).map((el) => el.dataset.questId),
@@ -942,14 +1230,17 @@ describe("QuestmasterPage status display", () => {
     fireEvent.click(screen.getByRole("button", { name: /^All2/ }));
     fireEvent.click(screen.getByRole("button", { name: /^Actionable1$/ }));
 
-    expect(screen.queryByRole("button", { name: /q-30 Verification row/ })).toBeNull();
-    expect(screen.getByRole("button", { name: /q-31 Refined row/ })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(mockListQuestPage).toHaveBeenLastCalledWith(expect.objectContaining({ status: "refined" }));
+      expect(screen.queryByRole("button", { name: /q-30 Verification row/ })).toBeNull();
+      expect(screen.getByRole("button", { name: /q-31 Refined row/ })).toBeInTheDocument();
+    });
     expect(screen.getAllByRole("table")).toHaveLength(1);
   });
 
   it("saves the compact/cards toggle to server settings", async () => {
     // Toggling should PUT the preference to the server and immediately swap card list for table view.
-    renderQuestmaster();
+    renderQuestmaster({ isActive: true });
 
     fireEvent.click(screen.getByRole("button", { name: "Compact" }));
 
@@ -969,7 +1260,7 @@ describe("QuestmasterPage status display", () => {
   it("opens quest overlay via store when clicking a compact row", async () => {
     // Clicking a compact row should set questOverlayId on the store so
     // QuestDetailPanel renders the detail modal globally.
-    renderQuestmaster();
+    renderQuestmaster({ isActive: true });
 
     fireEvent.click(screen.getByRole("button", { name: "Compact" }));
     await screen.findAllByRole("columnheader", { name: "Quest" });
@@ -981,7 +1272,7 @@ describe("QuestmasterPage status display", () => {
   });
 
   it("copies the quest id from a card without opening the overlay", async () => {
-    renderQuestmaster();
+    renderQuestmaster({ isActive: true });
 
     fireEvent.click(screen.getByRole("button", { name: "q-1" }));
 
@@ -1048,7 +1339,7 @@ describe("QuestmasterPage status display", () => {
 
   it("opens compact rows even when their Cards-mode section is collapsed", async () => {
     // Compact view is flat: a previously-collapsed Cards group must not prevent overlay.
-    renderQuestmaster();
+    renderQuestmaster({ isActive: true });
 
     fireEvent.click(screen.getByRole("button", { name: /^Completed2$/ }));
     expect(screen.queryByText("Fresh verification quest")).toBeNull();
@@ -1064,7 +1355,7 @@ describe("QuestmasterPage status display", () => {
   it("opens quest overlay via deep-link", () => {
     // Deep-linking should open the targeted quest via the store overlay.
     window.location.hash = "#/questmaster?quest=q-2";
-    renderQuestmaster();
+    renderQuestmaster({ isActive: true });
 
     expect(mockState.openQuestOverlay).toHaveBeenCalledWith("q-2");
     expect(mockState.questOverlayId).toBe("q-2");
@@ -1092,30 +1383,30 @@ describe("QuestmasterPage status display", () => {
   it("highlights card with primary border when overlay is open for that quest", () => {
     // The card's appearance should reflect the overlay state from the store.
     mockState.questOverlayId = "q-1";
-    renderQuestmaster();
+    renderQuestmaster({ isActive: true });
 
     const card = document.querySelector('[data-quest-id="q-1"]');
     expect(card).toBeTruthy();
     expect(card!.className).toContain("border-cc-primary");
   });
 
-  it("filters quests by quest id from the search box", () => {
+  it("filters quests by quest id from the search box", async () => {
     // Questmaster search should support direct quest-id lookup so users can
     // jump to a known quest like q-2 without remembering the title text.
-    renderQuestmaster();
+    renderQuestmaster({ isActive: true });
 
     const searchInput = screen.getByPlaceholderText("Search or #tag...");
 
-    fireEvent.change(searchInput, { target: { value: "q-2" } });
+    await enterBackendSearch(searchInput, "q-2");
     expect(screen.getByText("Regular verification quest")).toBeInTheDocument();
     expect(screen.queryByText("Fresh verification quest")).toBeNull();
 
-    fireEvent.change(searchInput, { target: { value: "Q-1" } });
+    await enterBackendSearch(searchInput, "Q-1");
     expect(screen.getByText("Fresh verification quest")).toBeInTheDocument();
     expect(screen.queryByText("Regular verification quest")).toBeNull();
   });
 
-  it("filters by TLDR and full feedback text when feedback has TLDR metadata", () => {
+  it("filters by TLDR and full feedback text when feedback has TLDR metadata", async () => {
     // TLDR should improve visible scan text without making the detailed body unsearchable.
     mockState.quests = [
       {
@@ -1129,14 +1420,14 @@ describe("QuestmasterPage status display", () => {
       } as QuestmasterTask,
     ];
 
-    renderQuestmaster();
+    renderQuestmaster({ isActive: true });
 
     const searchInput = screen.getByPlaceholderText("Search or #tag...");
-    fireEvent.change(searchInput, { target: { value: "scanline" } });
+    await enterBackendSearch(searchInput, "scanline");
     expect(document.querySelector('[data-quest-id="q-30"]')).toBeTruthy();
     expect(document.querySelector('[data-quest-id="q-31"]')).toBeNull();
 
-    fireEvent.change(searchInput, { target: { value: "implementation" } });
+    await enterBackendSearch(searchInput, "implementation");
     expect(document.querySelector('[data-quest-id="q-30"]')).toBeTruthy();
     expect(document.querySelector('[data-quest-id="q-31"]')).toBeNull();
   });
@@ -1188,14 +1479,14 @@ describe("QuestmasterPage status display", () => {
       } as QuestmasterTask,
     ];
 
-    renderQuestmaster();
+    renderQuestmaster({ isActive: true });
 
     expect(screen.getByText(/Implement phase 2:/)).toBeInTheDocument();
     expect(screen.getByText(/Implementation phase scanline/)).toBeInTheDocument();
     expect(screen.queryByText(/Full implementation detail should stay out/)).toBeNull();
   });
 
-  it("preserves plain-text title search while ignoring negated-tag syntax", () => {
+  it("preserves plain-text title search while ignoring negated-tag syntax", async () => {
     // q-331: plain-text matching should remain intact after introducing
     // explicit `-#tag` exclusion parsing.
     mockState.quests = [
@@ -1211,16 +1502,16 @@ describe("QuestmasterPage status display", () => {
       } as QuestmasterTask,
     ];
 
-    renderQuestmaster();
+    renderQuestmaster({ isActive: true });
 
     const searchInput = screen.getByPlaceholderText("Search or #tag...");
-    fireEvent.change(searchInput, { target: { value: "backend" } });
+    await enterBackendSearch(searchInput, "backend");
 
     expect(document.querySelector('[data-quest-id="q-41"]')).toBeTruthy();
     expect(document.querySelector('[data-quest-id="q-40"]')).toBeNull();
   });
 
-  it("preserves positive #tag search through the existing autocomplete tag-pill flow", () => {
+  it("preserves positive #tag search through the existing autocomplete tag-pill flow", async () => {
     // Positive #tag search should keep working exactly as before: selecting an
     // autocomplete tag turns it into a pill and filters by matching quests.
     mockState.quests = [
@@ -1241,16 +1532,19 @@ describe("QuestmasterPage status display", () => {
       } as QuestmasterTask,
     ];
 
-    renderQuestmaster();
+    renderQuestmaster({ isActive: true });
 
     const searchInput = screen.getByPlaceholderText("Search or #tag...");
     fireEvent.change(searchInput, { target: { value: "#mob" } });
     fireEvent.keyDown(searchInput, { key: "Enter" });
 
     expect(screen.getByText("#mobile")).toBeInTheDocument();
-    expect(screen.getByText("Auth mobile quest")).toBeInTheDocument();
-    expect(screen.getByText("Infra mobile quest")).toBeInTheDocument();
-    expect(screen.queryByText("Auth backend quest")).toBeNull();
+    await waitFor(() => {
+      expect(mockListQuestPage).toHaveBeenLastCalledWith(expect.objectContaining({ tags: ["mobile"] }));
+      expect(screen.getByText("Auth mobile quest")).toBeInTheDocument();
+      expect(screen.getByText("Infra mobile quest")).toBeInTheDocument();
+      expect(screen.queryByText("Auth backend quest")).toBeNull();
+    });
   });
 
   it("supports bare # as the positive-tag autocomplete entry path", () => {
@@ -1270,7 +1564,7 @@ describe("QuestmasterPage status display", () => {
       } as QuestmasterTask,
     ];
 
-    renderQuestmaster();
+    renderQuestmaster({ isActive: true });
 
     const searchInput = screen.getByPlaceholderText("Search or #tag...") as HTMLInputElement;
     fireEvent.focus(searchInput);
@@ -1299,7 +1593,7 @@ describe("QuestmasterPage status display", () => {
       } as QuestmasterTask,
     ];
 
-    renderQuestmaster();
+    renderQuestmaster({ isActive: true });
 
     const searchInput = screen.getByPlaceholderText("Search or #tag...") as HTMLInputElement;
     fireEvent.focus(searchInput);
@@ -1312,7 +1606,7 @@ describe("QuestmasterPage status display", () => {
     expect(screen.queryByText("#alpha")).toBeNull();
   });
 
-  it("supports -#tag to exclude quests with matching tags", () => {
+  it("supports -#tag to exclude quests with matching tags", async () => {
     // q-331: the search box should support explicit negated tags that exclude
     // matching quests without requiring users to mutate the positive tag pills.
     mockState.quests = [
@@ -1333,10 +1627,13 @@ describe("QuestmasterPage status display", () => {
       } as QuestmasterTask,
     ];
 
-    renderQuestmaster();
+    renderQuestmaster({ isActive: true });
 
     const searchInput = screen.getByPlaceholderText("Search or #tag...");
     fireEvent.change(searchInput, { target: { value: "!#mobile" } });
+    await waitFor(() => {
+      expect(mockListQuestPage).toHaveBeenLastCalledWith(expect.objectContaining({ excludeTags: ["mobile"] }));
+    });
 
     expect(document.querySelector('[data-quest-id="q-61"]')).toBeTruthy();
     expect(document.querySelector('[data-quest-id="q-60"]')).toBeNull();
@@ -1369,7 +1666,7 @@ describe("QuestmasterPage status display", () => {
     expect(screen.queryByText("#mobile")).toBeNull();
   });
 
-  it("treats numeric-leading hashtag tokens as plain text search", () => {
+  it("treats numeric-leading hashtag tokens as plain text search", async () => {
     // Session-style references like #123 should remain searchable literal text
     // instead of being stripped as tag syntax or turned into tag autocomplete.
     mockState.quests = [
@@ -1385,17 +1682,17 @@ describe("QuestmasterPage status display", () => {
       } as QuestmasterTask,
     ];
 
-    renderQuestmaster();
+    renderQuestmaster({ isActive: true });
 
     const searchInput = screen.getByPlaceholderText("Search or #tag...");
-    fireEvent.change(searchInput, { target: { value: "#123" } });
+    await enterBackendSearch(searchInput, "#123");
 
     expect(document.querySelector('[data-quest-id="q-67"]')).toBeTruthy();
     expect(document.querySelector('[data-quest-id="q-68"]')).toBeNull();
     expect(screen.queryByText("excluding:")).toBeNull();
   });
 
-  it("supports mixed free-text plus negated-tag queries and only highlights the positive text", () => {
+  it("supports mixed free-text plus negated-tag queries and only highlights the positive text", async () => {
     // Mixed queries like `auth !#mobile` should preserve the positive text
     // match while excluding the negated tag, and highlight only the positive
     // free-text portion of the query.
@@ -1417,10 +1714,10 @@ describe("QuestmasterPage status display", () => {
       } as QuestmasterTask,
     ];
 
-    const { container } = renderQuestmaster();
+    const { container } = renderQuestmaster({ isActive: true });
 
     const searchInput = screen.getByPlaceholderText("Search or #tag...");
-    fireEvent.change(searchInput, { target: { value: "auth !#mobile" } });
+    await enterBackendSearch(searchInput, "auth !#mobile", "auth");
 
     expect(document.querySelector('[data-quest-id="q-71"]')).toBeTruthy();
     expect(document.querySelector('[data-quest-id="q-70"]')).toBeNull();
@@ -1431,7 +1728,7 @@ describe("QuestmasterPage status display", () => {
     expect(marks).not.toContain("mobile");
   });
 
-  it("supports mixed positive #tag pills plus negated-tag queries", () => {
+  it("supports mixed positive #tag pills plus negated-tag queries", async () => {
     // Users should be able to select a positive tag via the existing pill flow
     // and then further narrow the result with a raw `!#tag` exclusion query.
     mockState.quests = [
@@ -1452,7 +1749,7 @@ describe("QuestmasterPage status display", () => {
       } as QuestmasterTask,
     ];
 
-    renderQuestmaster();
+    renderQuestmaster({ isActive: true });
 
     const searchInput = screen.getByPlaceholderText("Search or #tag...");
     fireEvent.change(searchInput, { target: { value: "#auth" } });
@@ -1461,9 +1758,14 @@ describe("QuestmasterPage status display", () => {
 
     fireEvent.change(searchInput, { target: { value: "!#backend" } });
 
-    expect(document.querySelector('[data-quest-id="q-80"]')).toBeTruthy();
-    expect(document.querySelector('[data-quest-id="q-81"]')).toBeNull();
-    expect(document.querySelector('[data-quest-id="q-82"]')).toBeNull();
+    await waitFor(() => {
+      expect(mockListQuestPage).toHaveBeenLastCalledWith(
+        expect.objectContaining({ tags: ["auth"], excludeTags: ["backend"] }),
+      );
+      expect(document.querySelector('[data-quest-id="q-80"]')).toBeTruthy();
+      expect(document.querySelector('[data-quest-id="q-81"]')).toBeNull();
+      expect(document.querySelector('[data-quest-id="q-82"]')).toBeNull();
+    });
   });
 
   it("passes only the positive/free-text portion of a mixed negated query into the quest overlay", () => {
