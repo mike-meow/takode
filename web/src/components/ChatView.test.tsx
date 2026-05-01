@@ -1595,4 +1595,95 @@ describe("ChatView backend banners", () => {
     expect(scope.queryByText(/q-9999/i)).not.toBeInTheDocument();
     expect(scope.getByTestId("work-board-bar")).toHaveAttribute("data-attention-count", "1");
   });
+
+  it("counts live attachment markers with negative history indexes after a projection is installed", async () => {
+    resetStore({
+      sessions: new Map([["s1", { backend_state: "connected", backend_error: null, isOrchestrator: true }]]),
+      sdkSessions: [{ sessionId: "s1", archived: false, isOrchestrator: true }],
+      leaderProjections: new Map([
+        [
+          "s1",
+          {
+            schemaVersion: 1,
+            revision: 1,
+            sourceHistoryLength: 500,
+            generatedAt: Date.now(),
+            threadSummaries: [
+              {
+                threadKey: "q-941",
+                questId: "q-941",
+                messageCount: 12,
+                firstMessageAt: 1,
+                lastMessageAt: 2,
+              },
+            ],
+            threadRows: [],
+            workBoardThreadRows: [],
+            messageAttentionRecords: [],
+            attentionRecords: [],
+            rawTurnBoundaries: [],
+          },
+        ],
+      ]),
+      messages: new Map([["s1", []]]),
+      quests: [
+        { questId: "q-941", title: "Projected baseline thread", status: "in_progress" },
+        { questId: "q-1005", title: "Live moved marker thread", status: "in_progress" },
+      ],
+    });
+
+    const view = render(<ChatView sessionId="s1" />);
+    const scope = within(view.container);
+    expect(scope.getByRole("button", { name: /q-941 projected baseline thread/i })).toBeInTheDocument();
+
+    const attachedAt = Date.now();
+    mockState.messages = new Map([
+      [
+        "s1",
+        [
+          {
+            id: "u-live",
+            role: "user",
+            content: "Please make this a quest.",
+            timestamp: attachedAt - 2,
+            historyIndex: -1,
+            metadata: { threadRefs: [{ threadKey: "q-1005", questId: "q-1005", source: "backfill" }] },
+          },
+          {
+            id: "marker-live-q-1005",
+            role: "system",
+            content: "1 message moved to q-1005",
+            timestamp: attachedAt,
+            historyIndex: -1,
+            metadata: {
+              threadAttachmentMarker: {
+                type: "thread_attachment_marker",
+                id: "marker-live-q-1005",
+                timestamp: attachedAt,
+                markerKey: "thread-attachment:q-1005:u-live",
+                threadKey: "q-1005",
+                questId: "q-1005",
+                attachedAt,
+                attachedBy: "leader",
+                messageIds: ["u-live"],
+                messageIndices: [-1],
+                ranges: ["live"],
+                count: 1,
+                firstMessageId: "u-live",
+                firstMessageIndex: -1,
+              },
+            },
+          },
+        ],
+      ],
+    ]);
+
+    view.rerender(<ChatView sessionId="s1" />);
+
+    await waitFor(() => {
+      expect(scope.getByRole("button", { name: /q-1005 live moved marker thread/i })).toBeInTheDocument();
+    });
+    fireEvent.click(scope.getByRole("button", { name: /q-1005 live moved marker thread/i }));
+    expect(scope.getByTestId("message-feed")).toHaveAttribute("data-thread-key", "q-1005");
+  });
 });

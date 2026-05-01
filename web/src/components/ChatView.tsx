@@ -254,6 +254,7 @@ function messageSummariesAfterProjection(messages: ChatMessage[], projection?: L
   return collectLeaderThreadSummaries(
     messages.filter((message) => {
       if (typeof message.historyIndex !== "number") return true;
+      if (message.historyIndex < 0) return true;
       return message.historyIndex >= projection.sourceHistoryLength;
     }),
   );
