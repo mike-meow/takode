@@ -33,6 +33,8 @@ import type {
   ThreadRef,
   ThreadAttachmentMarker,
   ThreadTransitionMarker,
+  ThreadWindowEntry,
+  ThreadWindowState,
   ThreadRoutingError,
 } from "../server/session-types.js";
 import { assertNever, isClaudeFamily } from "../server/session-types.js";
@@ -88,6 +90,8 @@ export type {
   ThreadRef,
   ThreadAttachmentMarker,
   ThreadTransitionMarker,
+  ThreadWindowEntry,
+  ThreadWindowState,
   ThreadRoutingError,
 };
 export type { TreeGroup, TreeGroupState } from "../server/tree-group-store.js";

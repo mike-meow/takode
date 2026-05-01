@@ -403,6 +403,47 @@ function normalizeHistoryMessages(
   return { chatMessages, frozenCount };
 }
 
+function normalizeThreadWindowEntries(
+  sessionId: string,
+  entries: Extract<BrowserIncomingMessage, { type: "thread_window_sync" }>["entries"],
+): ChatMessage[] {
+  const store = useStore.getState();
+  const chatMessages: ChatMessage[] = [];
+  for (const entry of entries) {
+    const histMsg = entry.message;
+    const historyIndex = entry.history_index;
+    if (histMsg.type === "assistant") {
+      chatMessages.push(...normalizeHistoryMessageToChatMessages(histMsg, historyIndex));
+      if (histMsg.message.content?.length) {
+        extractTasksFromBlocks(sessionId, histMsg.message.content);
+        extractChangedFilesFromBlocks(sessionId, histMsg.message.content);
+      }
+      const histToolStartTimes = histMsg.tool_start_times;
+      if (histToolStartTimes) {
+        store.setToolStartTimestamps(sessionId, histToolStartTimes);
+      }
+      continue;
+    }
+    if (histMsg.type === "tool_result_preview") {
+      for (const preview of histMsg.previews) {
+        store.setToolResult(sessionId, preview.tool_use_id, preview);
+      }
+      continue;
+    }
+    if (histMsg.type === "task_notification") {
+      if (histMsg.tool_use_id) {
+        store.setBackgroundAgentNotif(sessionId, histMsg.tool_use_id, {
+          status: histMsg.status,
+          outputFile: histMsg.output_file,
+          summary: histMsg.summary,
+        });
+      }
+    }
+    chatMessages.push(...normalizeHistoryMessageToChatMessages(histMsg, historyIndex));
+  }
+  return chatMessages;
+}
+
 function updateSessionPreviewFromHistory(
   sessionId: string,
   historyMessages: BrowserIncomingMessage[],
@@ -1646,6 +1687,16 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
         allowOlderHistory: data.window.from_turn + data.window.turn_count >= data.window.total_turns,
       });
       resolvePendingMessageScroll(sessionId, chatMessages);
+      break;
+    }
+
+    case "thread_window_sync": {
+      const chatMessages = normalizeThreadWindowEntries(sessionId, data.entries);
+      store.setThreadWindow(sessionId, data.thread_key, data.window, chatMessages);
+      clearPendingUploadsCoveredByHistory(
+        sessionId,
+        data.entries.map((entry) => entry.message),
+      );
       break;
     }
 

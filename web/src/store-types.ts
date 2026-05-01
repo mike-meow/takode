@@ -19,6 +19,7 @@ import type {
   ActiveTurnRoute,
   TaskItem,
   ToolResultPreview,
+  ThreadWindowState,
   VsCodeSelectionState,
 } from "./types.js";
 
@@ -47,6 +48,8 @@ export interface AppState {
   messageFrozenRevisions: Map<string, number>;
   historyLoading: Map<string, boolean>;
   historyWindows: Map<string, HistoryWindowState>;
+  threadWindows: Map<string, Map<string, ThreadWindowState>>;
+  threadWindowMessages: Map<string, Map<string, ChatMessage[]>>;
   leaderProjections: Map<string, LeaderProjectionSnapshot>;
   setLeaderProjection: (sessionId: string, projection: LeaderProjectionSnapshot | null) => void;
   streaming: Map<string, string>;
@@ -220,6 +223,12 @@ export interface AppState {
   ) => void;
   setHistoryLoading: (sessionId: string, loading: boolean) => void;
   setHistoryWindow: (sessionId: string, window: HistoryWindowState | null) => void;
+  setThreadWindow: (
+    sessionId: string,
+    threadKey: string,
+    window: ThreadWindowState | null,
+    messages?: ChatMessage[],
+  ) => void;
   setPendingCodexInputs: (sessionId: string, inputs: PendingCodexInput[]) => void;
   updateMessage: (sessionId: string, msgId: string, updates: Partial<ChatMessage>) => void;
   updateQuestTitleInMessages: (sessionId: string, questId: string, newTitle: string) => void;

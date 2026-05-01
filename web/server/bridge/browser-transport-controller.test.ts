@@ -13,6 +13,7 @@ import {
   injectUserMessage,
   sendLeaderProjectionSnapshot,
   sendHistoryWindowSync,
+  sendThreadWindowSync,
   type BrowserTransportSessionLike,
 } from "./browser-transport-controller.js";
 import type { BrowserIncomingMessage } from "../session-types.js";
@@ -357,6 +358,47 @@ describe("history window tool results", () => {
       synthetic_reason: "superseded_by_later_completed_tool",
       retained_output: false,
     });
+  });
+});
+
+describe("selected feed thread windows", () => {
+  it("sends bounded thread_window_sync entries without using the raw history window protocol", () => {
+    const send = vi.fn();
+    const history: BrowserIncomingMessage[] = [];
+    for (let index = 0; index < 1_000; index++) {
+      const threadKey = index % 100 === 0 ? "q-1040" : "q-noise";
+      history.push({
+        type: "user_message",
+        id: `u-${index}`,
+        content: `message ${index}`,
+        timestamp: index,
+        threadKey,
+        questId: threadKey,
+        threadRefs: [{ threadKey, questId: threadKey, source: "explicit" }],
+      } as BrowserIncomingMessage);
+    }
+    const session = makeSession({ messageHistory: history });
+
+    sendThreadWindowSync(
+      session,
+      { send },
+      {
+        threadKey: "q-1040",
+        fromItem: -1,
+        itemCount: 3,
+        sectionItemCount: 3,
+        visibleItemCount: 1,
+      },
+    );
+
+    const sync = JSON.parse(send.mock.calls[0][0]);
+    expect(sync.type).toBe("thread_window_sync");
+    expect(sync.thread_key).toBe("q-1040");
+    expect(sync.window.source_history_length).toBe(1_000);
+    expect(sync.window.total_items).toBe(10);
+    expect(sync.entries).toHaveLength(3);
+    expect(sync.entries.map((entry: any) => entry.history_index)).toEqual([700, 800, 900]);
+    expect(sync.entries.map((entry: any) => entry.message.id)).toEqual(["u-700", "u-800", "u-900"]);
   });
 });
 

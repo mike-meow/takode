@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { computeHistoryMessagesSyncHash, computeHistoryPrefixSyncHash } from "../../shared/history-sync-hash.js";
 import { getHistoryWindowTurnCount } from "../../shared/history-window.js";
 import { buildLeaderProjectionSnapshot } from "../../shared/leader-projection.js";
+import { buildThreadWindowSync, getThreadWindowItemCount } from "../../shared/thread-window.js";
 import { sessionTag } from "../session-tag.js";
 import { findTurnBoundaries } from "../takode-messages.js";
 import { getTrafficMessageType, trafficStats } from "../traffic-stats.js";
@@ -361,6 +362,18 @@ export function handleBrowserProtocolMessage(
       turnCount: msg.turn_count,
       sectionTurnCount: msg.section_turn_count,
       visibleSectionCount: msg.visible_section_count,
+    });
+    return true;
+  }
+
+  if (msg.type === "thread_window_request") {
+    if (!ws) return true;
+    sendThreadWindowSync(session, ws, {
+      threadKey: msg.thread_key,
+      fromItem: msg.from_item,
+      itemCount: msg.item_count,
+      sectionItemCount: msg.section_item_count,
+      visibleItemCount: msg.visible_item_count,
     });
     return true;
   }
@@ -947,6 +960,40 @@ function appendResolvedToolResultPreviewsForWindow(
       previews: supplementalPreviews,
     },
   ];
+}
+
+export function sendThreadWindowSync(
+  session: BrowserTransportSessionLike,
+  ws: BrowserTransportSocketLike,
+  options: {
+    threadKey: string;
+    fromItem: number;
+    itemCount?: number;
+    sectionItemCount: number;
+    visibleItemCount: number;
+  },
+): void {
+  const normalizedSectionItemCount = Math.max(1, Math.floor(options.sectionItemCount));
+  const normalizedVisibleItemCount = Math.max(1, Math.floor(options.visibleItemCount));
+  const normalizedItemCount = Math.max(
+    1,
+    Math.floor(options.itemCount || getThreadWindowItemCount(normalizedVisibleItemCount, normalizedSectionItemCount)),
+  );
+  const sync = buildThreadWindowSync({
+    messageHistory: session.messageHistory,
+    threadKey: options.threadKey,
+    fromItem: options.fromItem,
+    itemCount: normalizedItemCount,
+    sectionItemCount: normalizedSectionItemCount,
+    visibleItemCount: normalizedVisibleItemCount,
+  });
+
+  sendToBrowser(ws, {
+    type: "thread_window_sync",
+    thread_key: sync.threadKey,
+    entries: sync.entries,
+    window: sync.window,
+  } as BrowserIncomingMessage);
 }
 
 export async function handleSessionSubscribe(

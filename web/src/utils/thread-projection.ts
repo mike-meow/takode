@@ -285,6 +285,11 @@ function filterMainThreadMessages(messages: ChatMessage[]): ChatMessage[] {
   };
 
   for (const message of messages) {
+    if (isCrossThreadActivityMarkerMessage(message)) {
+      flushHiddenRun();
+      projected.push(message);
+      continue;
+    }
     if (isThreadAttachmentMarkerMessage(message)) {
       flushHiddenRun();
       projected.push(message);

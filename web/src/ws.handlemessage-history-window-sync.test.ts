@@ -301,3 +301,104 @@ describe("handleMessage: history_window_sync", () => {
     expect(useStore.getState().historyWindows.has("s1")).toBe(false);
   });
 });
+
+describe("handleMessage: thread_window_sync", () => {
+  it("stores selected-feed window messages without replacing raw history state", () => {
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+    useStore
+      .getState()
+      .setMessages("s1", [{ id: "raw-existing", role: "user", content: "raw", timestamp: 1 }], { frozenCount: 1 });
+    useStore.getState().setHistoryWindow("s1", {
+      from_turn: 10,
+      turn_count: 5,
+      total_turns: 100,
+      start_index: 50,
+      section_turn_count: HISTORY_WINDOW_SECTION_TURN_COUNT,
+      visible_section_count: HISTORY_WINDOW_VISIBLE_SECTION_COUNT,
+    });
+
+    fireMessage({
+      type: "thread_window_sync",
+      thread_key: "q-1040",
+      entries: [
+        {
+          history_index: 120,
+          message: {
+            type: "user_message",
+            id: "u-thread",
+            content: "selected feed message",
+            timestamp: 2000,
+            threadKey: "q-1040",
+            questId: "q-1040",
+            threadRefs: [{ threadKey: "q-1040", questId: "q-1040", source: "explicit" }],
+          },
+        },
+        {
+          history_index: 121,
+          synthetic: true,
+          message: {
+            type: "cross_thread_activity_marker",
+            id: "cross-thread-activity:project-notes:u-project",
+            timestamp: 2100,
+            threadKey: "project-notes",
+            count: 2,
+            firstMessageId: "u-project",
+            lastMessageId: "a-project",
+            firstHistoryIndex: 12,
+            lastHistoryIndex: 13,
+            startedAt: 2050,
+            updatedAt: 2100,
+          },
+        },
+      ],
+      window: {
+        thread_key: "q-1040",
+        from_item: 20,
+        item_count: 2,
+        total_items: 40,
+        source_history_length: 150,
+        section_item_count: 10,
+        visible_item_count: 2,
+      },
+    });
+
+    expect(
+      useStore
+        .getState()
+        .messages.get("s1")
+        ?.map((message) => message.id),
+    ).toEqual(["raw-existing"]);
+    expect(useStore.getState().historyWindows.get("s1")).toEqual({
+      from_turn: 10,
+      turn_count: 5,
+      total_turns: 100,
+      start_index: 50,
+      section_turn_count: HISTORY_WINDOW_SECTION_TURN_COUNT,
+      visible_section_count: HISTORY_WINDOW_VISIBLE_SECTION_COUNT,
+    });
+    expect(useStore.getState().threadWindows.get("s1")?.get("q-1040")).toEqual({
+      thread_key: "q-1040",
+      from_item: 20,
+      item_count: 2,
+      total_items: 40,
+      source_history_length: 150,
+      section_item_count: 10,
+      visible_item_count: 2,
+    });
+    expect(
+      useStore
+        .getState()
+        .threadWindowMessages.get("s1")
+        ?.get("q-1040")
+        ?.map((message) => message.id),
+    ).toEqual(["u-thread", "cross-thread-activity:project-notes:u-project"]);
+    expect(
+      useStore
+        .getState()
+        .threadWindowMessages.get("s1")
+        ?.get("q-1040")
+        ?.map((message) => message.historyIndex),
+    ).toEqual([120, 121]);
+  });
+});

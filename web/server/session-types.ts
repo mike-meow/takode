@@ -476,6 +476,14 @@ export type BrowserOutgoingMessage =
       visible_section_count: number;
     }
   | {
+      type: "thread_window_request";
+      thread_key: string;
+      from_item: number;
+      item_count: number;
+      section_item_count: number;
+      visible_item_count: number;
+    }
+  | {
       type: "history_sync_mismatch";
       frozen_count: number;
       expected_frozen_hash: string;
@@ -547,6 +555,22 @@ export interface HistoryWindowState {
   start_index?: number;
   section_turn_count: number;
   visible_section_count: number;
+}
+
+export interface ThreadWindowState {
+  thread_key: string;
+  from_item: number;
+  item_count: number;
+  total_items: number;
+  source_history_length: number;
+  section_item_count: number;
+  visible_item_count: number;
+}
+
+export interface ThreadWindowEntry {
+  message: BrowserIncomingMessage;
+  history_index: number;
+  synthetic?: boolean;
 }
 
 export interface LeaderProjectionThreadSummary {
@@ -690,6 +714,7 @@ export type BrowserIncomingMessageBase =
   | { type: "codex_pending_input_cancelled"; input: PendingCodexInput }
   | { type: "message_history"; messages: BrowserIncomingMessage[] }
   | { type: "history_window_sync"; messages: BrowserIncomingMessage[]; window: HistoryWindowState }
+  | { type: "thread_window_sync"; thread_key: string; entries: ThreadWindowEntry[]; window: ThreadWindowState }
   | { type: "leader_projection_snapshot"; projection: LeaderProjectionSnapshot }
   | {
       type: "history_sync";
@@ -719,6 +744,20 @@ export type BrowserIncomingMessageBase =
   | { type: "tool_result_preview"; previews: ToolResultPreview[] }
   | ThreadAttachmentMarker
   | ThreadTransitionMarker
+  | {
+      type: "cross_thread_activity_marker";
+      id: string;
+      timestamp: number;
+      threadKey: string;
+      questId?: string;
+      count: number;
+      firstMessageId: string;
+      lastMessageId: string;
+      firstHistoryIndex?: number;
+      lastHistoryIndex?: number;
+      startedAt: number;
+      updatedAt: number;
+    }
   | {
       type: "permission_denied";
       id: string;

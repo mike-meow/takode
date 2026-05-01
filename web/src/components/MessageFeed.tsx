@@ -65,6 +65,7 @@ import {
   filterMessagesForThread,
   isAllThreadsKey,
   isMainThreadKey,
+  normalizeThreadKey,
 } from "../utils/thread-projection.js";
 import { YarnBallDot, YarnBallSpinner, SleepingCat } from "./CatIcons.js";
 import { PawTrailAvatar, PawCounterContext, PawScrollProvider, HidePawContext } from "./PawTrail.js";
@@ -74,7 +75,9 @@ import { useCollapsePolicy } from "../hooks/use-collapse-policy.js";
 import { useTextSelection } from "../hooks/useTextSelection.js";
 import { SelectionContextMenu } from "./SelectionContextMenu.js";
 import { getHistoryWindowTurnCount } from "../../shared/history-window.js";
+import { getThreadWindowItemCount } from "../../shared/thread-window.js";
 import { collectAnchoredNotificationMessageIds } from "../utils/anchored-notifications.js";
+import { composeSelectedFeedMessages } from "../utils/thread-window-messages.js";
 import {
   buildAttentionLedgerMessages,
   buildAttentionRecords,
@@ -215,7 +218,29 @@ export function MessageFeed({
 }) {
   const allMessages = useStore((s) => s.messages.get(sessionId) ?? EMPTY_MESSAGES);
   const historyLoading = useStore((s) => s.historyLoading.get(sessionId) ?? false);
-  const messagesAvailableForDerivation = historyLoading ? EMPTY_MESSAGES : allMessages;
+  const normalizedThreadKey = useMemo(() => normalizeThreadKey(threadKey || "main"), [threadKey]);
+  const selectedFeedWindowEnabled = useStore((s) => {
+    if (isAllThreadsKey(normalizedThreadKey)) return false;
+    return (
+      s.sessions?.get(sessionId)?.isOrchestrator === true ||
+      s.sdkSessions?.some((sdk) => sdk.sessionId === sessionId && sdk.isOrchestrator === true) === true
+    );
+  });
+  const selectedFeedWindow = useStore((s) => s.threadWindows?.get(sessionId)?.get(normalizedThreadKey) ?? null);
+  const selectedFeedWindowMessages = useStore(
+    (s) => s.threadWindowMessages?.get(sessionId)?.get(normalizedThreadKey) ?? EMPTY_MESSAGES,
+  );
+  const messagesAvailableForDerivation = useMemo(
+    () =>
+      composeSelectedFeedMessages({
+        allMessages,
+        historyLoading,
+        selectedFeedWindow,
+        selectedFeedWindowEnabled,
+        selectedFeedWindowMessages,
+      }),
+    [allMessages, historyLoading, selectedFeedWindow, selectedFeedWindowEnabled, selectedFeedWindowMessages],
+  );
   const baseMessages = useMemo(
     () => filterMessagesForThread(messagesAvailableForDerivation, threadKey),
     [messagesAvailableForDerivation, threadKey],
@@ -575,23 +600,26 @@ export function MessageFeed({
   }, [persistFeedViewport, sessionId]);
 
   const sections = useMemo(() => buildFeedSections(turns, sectionTurnCount), [sectionTurnCount, turns]);
-  const isWindowedHistory = historyWindow !== null;
+  const activeHistoryWindow = selectedFeedWindowEnabled ? null : historyWindow;
+  const isWindowedHistory = activeHistoryWindow !== null;
+  const activeThreadWindow = selectedFeedWindowEnabled ? selectedFeedWindow : null;
+  const isWindowedFeed = isWindowedHistory || activeThreadWindow !== null;
   const totalSections = sections.length;
   const latestVisibleSectionStartIndex = useMemo(
     () => findVisibleSectionStartIndex(sections, DEFAULT_VISIBLE_SECTION_COUNT),
     [sections],
   );
-  const visibleSectionStartIndex = isWindowedHistory ? 0 : (sectionWindowStart ?? latestVisibleSectionStartIndex);
+  const visibleSectionStartIndex = isWindowedFeed ? 0 : (sectionWindowStart ?? latestVisibleSectionStartIndex);
   const visibleSectionEndIndex = useMemo(
     () =>
-      isWindowedHistory
+      isWindowedFeed
         ? sections.length
         : findVisibleSectionEndIndex(sections, visibleSectionStartIndex, DEFAULT_VISIBLE_SECTION_COUNT),
-    [isWindowedHistory, sections, visibleSectionStartIndex],
+    [isWindowedFeed, sections, visibleSectionStartIndex],
   );
   const visibleSections = useMemo(
-    () => (isWindowedHistory ? sections : sections.slice(visibleSectionStartIndex, visibleSectionEndIndex)),
-    [isWindowedHistory, sections, visibleSectionEndIndex, visibleSectionStartIndex],
+    () => (isWindowedFeed ? sections : sections.slice(visibleSectionStartIndex, visibleSectionEndIndex)),
+    [isWindowedFeed, sections, visibleSectionEndIndex, visibleSectionStartIndex],
   );
   const visibleTurns = useMemo(() => visibleSections.flatMap((section) => section.turns), [visibleSections]);
   const { turnStates, toggleTurn } = useCollapsePolicy({
@@ -605,17 +633,48 @@ export function MessageFeed({
   );
   const showConversationLoading = historyLoading && messages.length === 0 && !streamingText;
   const previousSectionStartIndex = useMemo(
-    () => (isWindowedHistory ? null : findPreviousSectionStartIndex(sections, visibleSectionStartIndex)),
-    [isWindowedHistory, sections, visibleSectionStartIndex],
+    () => (isWindowedFeed ? null : findPreviousSectionStartIndex(sections, visibleSectionStartIndex)),
+    [isWindowedFeed, sections, visibleSectionStartIndex],
   );
   const nextSectionStartIndex = useMemo(() => {
-    if (isWindowedHistory) return null;
+    if (isWindowedFeed) return null;
     return visibleSectionStartIndex + 1 < sections.length ? visibleSectionStartIndex + 1 : null;
-  }, [isWindowedHistory, sections, visibleSectionStartIndex]);
-  const hasOlderSections = historyWindow ? historyWindow.from_turn > 0 : previousSectionStartIndex !== null;
-  const hasNewerSections = historyWindow
-    ? historyWindow.from_turn + historyWindow.turn_count < historyWindow.total_turns
-    : sectionWindowStart !== null && nextSectionStartIndex !== null;
+  }, [isWindowedFeed, sections, visibleSectionStartIndex]);
+  const hasOlderSections = activeThreadWindow
+    ? activeThreadWindow.from_item > 0
+    : activeHistoryWindow
+      ? activeHistoryWindow.from_turn > 0
+      : previousSectionStartIndex !== null;
+  const hasNewerSections = activeThreadWindow
+    ? activeThreadWindow.from_item + activeThreadWindow.item_count < activeThreadWindow.total_items
+    : activeHistoryWindow
+      ? activeHistoryWindow.from_turn + activeHistoryWindow.turn_count < activeHistoryWindow.total_turns
+      : sectionWindowStart !== null && nextSectionStartIndex !== null;
+  const requestThreadWindow = useCallback(
+    (fromItem: number) => {
+      const itemCount = activeThreadWindow
+        ? activeThreadWindow.item_count ||
+          getThreadWindowItemCount(activeThreadWindow.visible_item_count, activeThreadWindow.section_item_count)
+        : getThreadWindowItemCount(DEFAULT_VISIBLE_SECTION_COUNT, sectionTurnCount);
+      const sectionItemCount = activeThreadWindow?.section_item_count ?? sectionTurnCount;
+      const visibleItemCount = activeThreadWindow?.visible_item_count ?? DEFAULT_VISIBLE_SECTION_COUNT;
+      sendToSession(sessionId, {
+        type: "thread_window_request",
+        thread_key: normalizedThreadKey,
+        from_item: fromItem,
+        item_count: itemCount,
+        section_item_count: sectionItemCount,
+        visible_item_count: visibleItemCount,
+      });
+    },
+    [activeThreadWindow, normalizedThreadKey, sectionTurnCount, sessionId],
+  );
+
+  useEffect(() => {
+    if (!selectedFeedWindowEnabled) return;
+    if (activeThreadWindow) return;
+    requestThreadWindow(-1);
+  }, [activeThreadWindow, requestThreadWindow, selectedFeedWindowEnabled]);
   // Collapsible turn IDs: all turns with agent content are collapsible (including the last).
   // Stats and text preview recompute as new messages stream in.
   const collapsibleTurnIds = useMemo(
@@ -629,7 +688,7 @@ export function MessageFeed({
   }, [sessionId, collapsibleTurnIds]);
 
   useEffect(() => {
-    if (isWindowedHistory) {
+    if (isWindowedFeed) {
       setSectionWindowStart(null);
       return;
     }
@@ -640,7 +699,7 @@ export function MessageFeed({
       const next = findSectionWindowStartIndexForTarget(sections, normalizedCurrent, DEFAULT_VISIBLE_SECTION_COUNT);
       return next === latestVisibleSectionStartIndex ? null : next;
     });
-  }, [isWindowedHistory, latestVisibleSectionStartIndex, sections]);
+  }, [isWindowedFeed, latestVisibleSectionStartIndex, sections]);
 
   const getSectionWindowStartForTurnId = useCallback(
     (turnId: string): number | null => {
@@ -770,19 +829,26 @@ export function MessageFeed({
   );
 
   const handleLoadOlderSection = useCallback(() => {
-    if (historyWindow) {
+    if (activeThreadWindow) {
+      const nextFromItem = Math.max(0, activeThreadWindow.from_item - activeThreadWindow.section_item_count);
+      autoFollowEnabledRef.current = false;
+      setShowScrollButton(true);
+      requestThreadWindow(nextFromItem);
+      return;
+    }
+    if (activeHistoryWindow) {
       const turnCount =
-        historyWindow.turn_count ||
-        getHistoryWindowTurnCount(historyWindow.visible_section_count, historyWindow.section_turn_count);
-      const nextFromTurn = Math.max(0, historyWindow.from_turn - historyWindow.section_turn_count);
+        activeHistoryWindow.turn_count ||
+        getHistoryWindowTurnCount(activeHistoryWindow.visible_section_count, activeHistoryWindow.section_turn_count);
+      const nextFromTurn = Math.max(0, activeHistoryWindow.from_turn - activeHistoryWindow.section_turn_count);
       autoFollowEnabledRef.current = false;
       setShowScrollButton(true);
       sendToSession(sessionId, {
         type: "history_window_request",
         from_turn: nextFromTurn,
         turn_count: turnCount,
-        section_turn_count: historyWindow.section_turn_count,
-        visible_section_count: historyWindow.visible_section_count,
+        section_turn_count: activeHistoryWindow.section_turn_count,
+        visible_section_count: activeHistoryWindow.visible_section_count,
       });
       return;
     }
@@ -790,45 +856,77 @@ export function MessageFeed({
     autoFollowEnabledRef.current = false;
     setShowScrollButton(true);
     moveSectionWindow(previousSectionStartIndex);
-  }, [historyWindow, moveSectionWindow, previousSectionStartIndex, sessionId]);
+  }, [
+    activeThreadWindow,
+    activeHistoryWindow,
+    moveSectionWindow,
+    previousSectionStartIndex,
+    requestThreadWindow,
+    sessionId,
+  ]);
 
   const handleLoadNewerSection = useCallback(() => {
-    if (historyWindow) {
+    if (activeThreadWindow) {
+      const maxFromItem = Math.max(0, activeThreadWindow.total_items - activeThreadWindow.item_count);
+      const nextFromItem = Math.min(maxFromItem, activeThreadWindow.from_item + activeThreadWindow.section_item_count);
+      if (nextFromItem === activeThreadWindow.from_item) return;
+      autoFollowEnabledRef.current = false;
+      requestThreadWindow(nextFromItem);
+      return;
+    }
+    if (activeHistoryWindow) {
       const turnCount =
-        historyWindow.turn_count ||
-        getHistoryWindowTurnCount(historyWindow.visible_section_count, historyWindow.section_turn_count);
-      const maxFromTurn = Math.max(0, historyWindow.total_turns - turnCount);
-      const nextFromTurn = Math.min(maxFromTurn, historyWindow.from_turn + historyWindow.section_turn_count);
-      if (nextFromTurn === historyWindow.from_turn) return;
+        activeHistoryWindow.turn_count ||
+        getHistoryWindowTurnCount(activeHistoryWindow.visible_section_count, activeHistoryWindow.section_turn_count);
+      const maxFromTurn = Math.max(0, activeHistoryWindow.total_turns - turnCount);
+      const nextFromTurn = Math.min(
+        maxFromTurn,
+        activeHistoryWindow.from_turn + activeHistoryWindow.section_turn_count,
+      );
+      if (nextFromTurn === activeHistoryWindow.from_turn) return;
       autoFollowEnabledRef.current = false;
       sendToSession(sessionId, {
         type: "history_window_request",
         from_turn: nextFromTurn,
         turn_count: turnCount,
-        section_turn_count: historyWindow.section_turn_count,
-        visible_section_count: historyWindow.visible_section_count,
+        section_turn_count: activeHistoryWindow.section_turn_count,
+        visible_section_count: activeHistoryWindow.visible_section_count,
       });
       return;
     }
     if (nextSectionStartIndex == null) return;
     autoFollowEnabledRef.current = false;
     moveSectionWindow(nextSectionStartIndex === latestVisibleSectionStartIndex ? null : nextSectionStartIndex);
-  }, [historyWindow, latestVisibleSectionStartIndex, moveSectionWindow, nextSectionStartIndex, sessionId]);
+  }, [
+    activeThreadWindow,
+    activeHistoryWindow,
+    latestVisibleSectionStartIndex,
+    moveSectionWindow,
+    nextSectionStartIndex,
+    requestThreadWindow,
+    sessionId,
+  ]);
 
   const scrollToBottom = useCallback(
     (behavior: ScrollBehavior = "smooth") => {
-      if (historyWindow && hasNewerSections) {
+      if (activeThreadWindow && hasNewerSections) {
+        const latestFromItem = Math.max(0, activeThreadWindow.total_items - activeThreadWindow.item_count);
+        autoFollowEnabledRef.current = true;
+        requestThreadWindow(latestFromItem);
+        return;
+      }
+      if (activeHistoryWindow && hasNewerSections) {
         const turnCount =
-          historyWindow.turn_count ||
-          getHistoryWindowTurnCount(historyWindow.visible_section_count, historyWindow.section_turn_count);
-        const latestFromTurn = Math.max(0, historyWindow.total_turns - turnCount);
+          activeHistoryWindow.turn_count ||
+          getHistoryWindowTurnCount(activeHistoryWindow.visible_section_count, activeHistoryWindow.section_turn_count);
+        const latestFromTurn = Math.max(0, activeHistoryWindow.total_turns - turnCount);
         autoFollowEnabledRef.current = true;
         sendToSession(sessionId, {
           type: "history_window_request",
           from_turn: latestFromTurn,
           turn_count: turnCount,
-          section_turn_count: historyWindow.section_turn_count,
-          visible_section_count: historyWindow.visible_section_count,
+          section_turn_count: activeHistoryWindow.section_turn_count,
+          visible_section_count: activeHistoryWindow.visible_section_count,
         });
         return;
       }
@@ -855,8 +953,10 @@ export function MessageFeed({
     },
     [
       getRealContentBottom,
+      activeThreadWindow,
       hasNewerSections,
-      historyWindow,
+      activeHistoryWindow,
+      requestThreadWindow,
       scrollContainerTo,
       sectionWindowStart,
       sessionId,
@@ -913,18 +1013,24 @@ export function MessageFeed({
 
   const resetVisibleSectionsToLatest = useCallback(
     (behavior: ScrollBehavior = "auto") => {
-      if (historyWindow && hasNewerSections) {
+      if (activeThreadWindow && hasNewerSections) {
+        const latestFromItem = Math.max(0, activeThreadWindow.total_items - activeThreadWindow.item_count);
+        autoFollowEnabledRef.current = true;
+        requestThreadWindow(latestFromItem);
+        return;
+      }
+      if (activeHistoryWindow && hasNewerSections) {
         const turnCount =
-          historyWindow.turn_count ||
-          getHistoryWindowTurnCount(historyWindow.visible_section_count, historyWindow.section_turn_count);
-        const latestFromTurn = Math.max(0, historyWindow.total_turns - turnCount);
+          activeHistoryWindow.turn_count ||
+          getHistoryWindowTurnCount(activeHistoryWindow.visible_section_count, activeHistoryWindow.section_turn_count);
+        const latestFromTurn = Math.max(0, activeHistoryWindow.total_turns - turnCount);
         autoFollowEnabledRef.current = true;
         sendToSession(sessionId, {
           type: "history_window_request",
           from_turn: latestFromTurn,
           turn_count: turnCount,
-          section_turn_count: historyWindow.section_turn_count,
-          visible_section_count: historyWindow.visible_section_count,
+          section_turn_count: activeHistoryWindow.section_turn_count,
+          visible_section_count: activeHistoryWindow.visible_section_count,
         });
         return;
       }
@@ -941,9 +1047,11 @@ export function MessageFeed({
       });
     },
     [
+      activeThreadWindow,
       getRealContentBottom,
       hasNewerSections,
-      historyWindow,
+      activeHistoryWindow,
+      requestThreadWindow,
       scrollContainerTo,
       sectionWindowStart,
       sessionId,

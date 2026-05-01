@@ -320,6 +320,36 @@ export function normalizeHistoryMessageToChatMessages(
     ];
   }
 
+  if (histMsg.type === "cross_thread_activity_marker") {
+    const destination = histMsg.questId ?? histMsg.threadKey;
+    const countLabel = `${histMsg.count} ${histMsg.count === 1 ? "activity" : "activities"}`;
+    return [
+      {
+        id: histMsg.id,
+        role: "system",
+        content: `${countLabel} in thread:${destination}`,
+        timestamp: histMsg.timestamp,
+        historyIndex,
+        ephemeral: true,
+        metadata: {
+          threadKey: histMsg.threadKey,
+          ...(histMsg.questId ? { questId: histMsg.questId } : {}),
+          crossThreadActivityMarker: {
+            threadKey: histMsg.threadKey,
+            ...(histMsg.questId ? { questId: histMsg.questId } : {}),
+            count: histMsg.count,
+            firstMessageId: histMsg.firstMessageId,
+            lastMessageId: histMsg.lastMessageId,
+            ...(typeof histMsg.firstHistoryIndex === "number" ? { firstHistoryIndex: histMsg.firstHistoryIndex } : {}),
+            ...(typeof histMsg.lastHistoryIndex === "number" ? { lastHistoryIndex: histMsg.lastHistoryIndex } : {}),
+            startedAt: histMsg.startedAt,
+            updatedAt: histMsg.updatedAt,
+          },
+        },
+      },
+    ];
+  }
+
   if (histMsg.type === "permission_denied") {
     return [
       {
