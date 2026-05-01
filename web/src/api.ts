@@ -592,6 +592,9 @@ export interface TranscriptionLogIndexEntry {
   sttDurationMs: number;
   rawTranscript: string;
   audioSizeBytes: number;
+  audioMimeType?: string | null;
+  audioFileName?: string | null;
+  audioUrl?: string;
   enhancement: {
     model: string;
     enhancedText: string | null;

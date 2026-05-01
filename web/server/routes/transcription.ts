@@ -314,6 +314,9 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
             sttPrompt,
             rawTranscript: rawText,
             audioSizeBytes: buf.length,
+            audioMimeType: audioMimeType ?? uploadFormat.mimeType,
+            audioFileName: audioFileName ?? null,
+            audioBytes: Buffer.from(buf),
             enhancement: {
               model: result._debug.model,
               systemPrompt: result._debug.systemPrompt,
@@ -368,6 +371,9 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
             sttPrompt,
             rawTranscript: rawText,
             audioSizeBytes: buf.length,
+            audioMimeType: audioMimeType ?? uploadFormat.mimeType,
+            audioFileName: audioFileName ?? null,
+            audioBytes: Buffer.from(buf),
             enhancement: {
               model: result._debug.model,
               systemPrompt: result._debug.systemPrompt,
@@ -417,6 +423,9 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
             sttPrompt,
             rawTranscript: rawText,
             audioSizeBytes: buf.length,
+            audioMimeType: audioMimeType ?? uploadFormat.mimeType,
+            audioFileName: audioFileName ?? null,
+            audioBytes: Buffer.from(buf),
             enhancement: result._debug
               ? {
                   model: result._debug.model,
@@ -452,6 +461,9 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
           sttPrompt,
           rawTranscript: rawText,
           audioSizeBytes: buf.length,
+          audioMimeType: audioMimeType ?? uploadFormat.mimeType,
+          audioFileName: audioFileName ?? null,
+          audioBytes: Buffer.from(buf),
           enhancement: null,
         });
 

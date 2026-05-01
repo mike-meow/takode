@@ -714,8 +714,18 @@ describe("POST /api/transcribe", () => {
         uploadDurationMs: expect.any(Number),
         sttDurationMs: expect.any(Number),
         rawTranscript: "timed transcript",
+        audioMimeType: "audio/wav",
+        audioFileName: "recording.wav",
+        audioUrl: expect.stringMatching(/^\/api\/transcription-logs\/\d+\/audio$/),
       }),
     );
+
+    // The debug panel should be able to inspect the exact source audio behind a transcript.
+    const logEntry = transcriptionEnhancer.getTranscriptionLogIndex()[0];
+    const audioRes = await app.request(logEntry.audioUrl);
+    expect(audioRes.status).toBe(200);
+    expect(audioRes.headers.get("Content-Type")).toBe("audio/wav");
+    expect(new Uint8Array(await audioRes.arrayBuffer())).toEqual(new Uint8Array([0x52, 0x49, 0x46, 0x46]));
 
     const [, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
     const outboundForm = init.body as FormData;

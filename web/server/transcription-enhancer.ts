@@ -1085,6 +1085,10 @@ export interface TranscriptionLogEntry {
   audioSizeBytes: number;
   /** Prompt sent to the STT model to guide vocabulary recognition. */
   sttPrompt: string;
+  /** Source audio metadata for replaying/debugging the original transcription input. */
+  audioMimeType: string | null;
+  audioFileName: string | null;
+  audioUrl: string;
   /** Enhancement phase (null if not attempted) */
   enhancement: {
     model: string;
@@ -1096,13 +1100,26 @@ export interface TranscriptionLogEntry {
   } | null;
 }
 
+interface StoredTranscriptionLogEntry extends Omit<TranscriptionLogEntry, "audioUrl"> {
+  audioBytes: Buffer;
+}
+
 const MAX_LOG_ENTRIES = 50;
 let logIdCounter = 0;
-const transcriptionLog: TranscriptionLogEntry[] = [];
+const transcriptionLog: StoredTranscriptionLogEntry[] = [];
+
+function buildTranscriptionAudioUrl(id: number): string {
+  return `/api/transcription-logs/${id}/audio`;
+}
+
+function toPublicTranscriptionLogEntry(entry: StoredTranscriptionLogEntry): TranscriptionLogEntry {
+  const { audioBytes: _audioBytes, ...rest } = entry;
+  return { ...rest, audioUrl: buildTranscriptionAudioUrl(entry.id) };
+}
 
 /** Add a transcription log entry. Called from routes.ts after each transcription. */
 export function addTranscriptionLogEntry(
-  entry: Omit<TranscriptionLogEntry, "id" | "timestamp">,
+  entry: Omit<StoredTranscriptionLogEntry, "id" | "timestamp">,
 ): TranscriptionLogEntry {
   const full = { ...entry, id: ++logIdCounter, timestamp: Date.now() };
   transcriptionLog.push(full);
@@ -1110,8 +1127,8 @@ export function addTranscriptionLogEntry(
     transcriptionLog.splice(0, transcriptionLog.length - MAX_LOG_ENTRIES);
   }
   // Persist to JSONL file (fire-and-forget, non-blocking)
-  persistLogEntry(full);
-  return full;
+  persistLogEntry(toPublicTranscriptionLogEntry(full));
+  return toPublicTranscriptionLogEntry(full);
 }
 
 // ─── Persistent JSONL file logging ──────────────────────────────────────────
@@ -1164,7 +1181,8 @@ export function getTranscriptionLogIndex(): Array<
 > {
   return transcriptionLog
     .map((entry) => {
-      const { sttPrompt: _p, enhancement, ...rest } = entry;
+      const publicEntry = toPublicTranscriptionLogEntry(entry);
+      const { sttPrompt: _p, enhancement, ...rest } = publicEntry;
       if (!enhancement) return { ...rest, enhancement: null };
       const { systemPrompt: _s, userMessage: _u, ...enhRest } = enhancement;
       return { ...rest, enhancement: enhRest };
@@ -1174,7 +1192,21 @@ export function getTranscriptionLogIndex(): Array<
 
 /** Get a single log entry by ID (includes full details). */
 export function getTranscriptionLogEntry(id: number): TranscriptionLogEntry | undefined {
-  return transcriptionLog.find((e) => e.id === id);
+  const entry = transcriptionLog.find((e) => e.id === id);
+  return entry ? toPublicTranscriptionLogEntry(entry) : undefined;
+}
+
+/** Get source audio bytes for a transcription log entry. */
+export function getTranscriptionLogAudio(
+  id: number,
+): { data: Buffer; mimeType: string; fileName: string | null } | undefined {
+  const entry = transcriptionLog.find((e) => e.id === id);
+  if (!entry) return undefined;
+  return {
+    data: entry.audioBytes,
+    mimeType: entry.audioMimeType || "application/octet-stream",
+    fileName: entry.audioFileName,
+  };
 }
 
 // ─── Test helpers ───────────────────────────────────────────────────────────

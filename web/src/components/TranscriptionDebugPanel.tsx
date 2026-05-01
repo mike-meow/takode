@@ -23,6 +23,14 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }
 
+function resolveAbsoluteUrl(path: string): string {
+  try {
+    return new URL(path, window.location.origin).toString();
+  } catch {
+    return path;
+  }
+}
+
 function enhancementLabel(entry: TranscriptionLogIndexEntry): string {
   if (!entry.enhancement) return "STT only";
   if (entry.enhancement.skipReason) return `skipped: ${entry.enhancement.skipReason}`;
@@ -46,6 +54,7 @@ export function TranscriptionDebugPanel() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [expandedEntry, setExpandedEntry] = useState<TranscriptionLogEntry | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [copiedAudioUrl, setCopiedAudioUrl] = useState(false);
 
   const fetchIndex = useCallback(() => {
     setLoading(true);
@@ -70,10 +79,12 @@ export function TranscriptionDebugPanel() {
     if (expandedId === id) {
       setExpandedId(null);
       setExpandedEntry(null);
+      setCopiedAudioUrl(false);
       return;
     }
     setExpandedId(id);
     setExpandedEntry(null);
+    setCopiedAudioUrl(false);
     setDetailLoading(true);
     try {
       const entry = await api.getTranscriptionLogEntry(id);
@@ -86,6 +97,7 @@ export function TranscriptionDebugPanel() {
   };
 
   const selectedIndexEntry = expandedId !== null ? entries.find((e) => e.id === expandedId) : null;
+  const audioUrl = expandedEntry?.audioUrl ? resolveAbsoluteUrl(expandedEntry.audioUrl) : null;
 
   // Close modal on Escape key
   useEffect(() => {
@@ -94,6 +106,7 @@ export function TranscriptionDebugPanel() {
       if (e.key === "Escape") {
         setExpandedId(null);
         setExpandedEntry(null);
+        setCopiedAudioUrl(false);
       }
     };
     document.addEventListener("keydown", handleKeyDown);
@@ -177,6 +190,7 @@ export function TranscriptionDebugPanel() {
             onClick={() => {
               setExpandedId(null);
               setExpandedEntry(null);
+              setCopiedAudioUrl(false);
             }}
           >
             <div
@@ -210,6 +224,7 @@ export function TranscriptionDebugPanel() {
                   onClick={() => {
                     setExpandedId(null);
                     setExpandedEntry(null);
+                    setCopiedAudioUrl(false);
                   }}
                   className="px-2 py-1 rounded text-xs text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
                 >
@@ -235,11 +250,37 @@ export function TranscriptionDebugPanel() {
                       <span className="ml-3">
                         Audio: <span className="text-cc-fg">{formatBytes(expandedEntry.audioSizeBytes)}</span>
                       </span>
+                      {audioUrl && (
+                        <span className="ml-3 inline-flex items-center gap-2">
+                          <a
+                            href={audioUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-cc-accent hover:underline"
+                          >
+                            Open source audio
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (navigator.clipboard) {
+                                void navigator.clipboard
+                                  .writeText(audioUrl)
+                                  .then(() => setCopiedAudioUrl(true))
+                                  .catch(() => {});
+                              }
+                            }}
+                            className="rounded px-1.5 py-0.5 text-[11px] text-cc-muted hover:text-cc-fg hover:bg-cc-hover transition-colors cursor-pointer"
+                          >
+                            {copiedAudioUrl ? "Copied" : "Copy audio link"}
+                          </button>
+                        </span>
+                      )}
                     </div>
 
                     <div>
                       <span className="text-[11px] uppercase tracking-wider text-cc-muted font-medium">
-                        Raw Transcript (Whisper Output)
+                        Raw Transcript (STT Output)
                       </span>
                       <pre className="mt-1 text-[12px] leading-relaxed text-cc-fg bg-cc-hover rounded-lg p-4 overflow-x-auto whitespace-pre-wrap break-words font-mono">
                         {expandedEntry.rawTranscript || "(empty)"}
