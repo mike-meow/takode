@@ -2060,17 +2060,19 @@ export function routeAdapterBrowserMessage(
         );
       }
       const currentTurnId = session.codexAdapter?.getCurrentTurnId() ?? null;
-      if (currentTurnId) {
-        const steeredPending = deps.trySteerPendingCodexInputs(session, "browser_user_message");
+      const isHerdEvent = deps.isHerdEventSource(msg.agentSource);
+      const deliveryReason = isHerdEvent ? "herd_event_message" : "browser_user_message";
+      if (currentTurnId && !isHerdEvent) {
+        const steeredPending = deps.trySteerPendingCodexInputs(session, deliveryReason);
         if (!steeredPending) {
           deps.rebuildQueuedCodexPendingStartBatch(session);
         }
       } else {
-        if (session.codexAdapter && !!ingested.wasGenerating && session.isGenerating) {
+        if (!isHerdEvent && session.codexAdapter && !!ingested.wasGenerating && session.isGenerating) {
           deps.rebuildQueuedCodexPendingStartBatch(session);
           deps.persistSession(session);
         } else {
-          deps.queueCodexPendingStartBatch(session, "browser_user_message");
+          deps.queueCodexPendingStartBatch(session, deliveryReason);
         }
       }
       if (session.state.backend_state === "broken") {

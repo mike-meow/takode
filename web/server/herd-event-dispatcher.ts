@@ -605,24 +605,33 @@ export class HerdEventDispatcher {
   // ─── Event Delivery (step 2: inject when CLI is ready) ────────────────────
 
   /** Called from ws-bridge when an orchestrator finishes a turn. */
-  onOrchestratorTurnEnd(orchId: string): void {
+  onOrchestratorTurnEnd(orchId: string, reason = "result"): void {
     const inbox = this.inboxes.get(orchId);
     if (!inbox) return;
 
-    // Confirm in-flight events: the turn completed, so the CLI consumed them
+    // Confirm in-flight events only for normal completed turns. Recovery turn
+    // endings clear stale local state; they do not prove the CLI consumed the
+    // injected herd batch.
     if (inbox.inFlightUpTo !== null) {
-      const confirmedEntries = inbox.entries.filter(
-        (entry) => entry.seq >= inbox.confirmedUpTo && entry.seq <= inbox.inFlightUpTo!,
-      );
-      for (const entry of confirmedEntries) {
-        this.markDeliveryHistoryStatus(inbox, entry, "confirmed");
-        this.confirmNotificationIfNeeded(entry);
-      }
-      inbox.confirmedUpTo = inbox.inFlightUpTo + 1;
-      inbox.inFlightUpTo = null;
-      // Trim confirmed entries from the inbox
-      while (inbox.entries.length > 0 && inbox.entries[0].seq < inbox.confirmedUpTo) {
-        inbox.entries.shift();
+      if (reason === "result") {
+        const confirmedEntries = inbox.entries.filter(
+          (entry) => entry.seq >= inbox.confirmedUpTo && entry.seq <= inbox.inFlightUpTo!,
+        );
+        for (const entry of confirmedEntries) {
+          this.markDeliveryHistoryStatus(inbox, entry, "confirmed");
+          this.confirmNotificationIfNeeded(entry);
+        }
+        inbox.confirmedUpTo = inbox.inFlightUpTo + 1;
+        inbox.inFlightUpTo = null;
+        // Trim confirmed entries from the inbox
+        while (inbox.entries.length > 0 && inbox.entries[0].seq < inbox.confirmedUpTo) {
+          inbox.entries.shift();
+        }
+      } else {
+        for (const h of inbox.deliveryHistory) {
+          if (h.status === "in_flight") h.status = "redelivered";
+        }
+        inbox.inFlightUpTo = null;
       }
     }
 

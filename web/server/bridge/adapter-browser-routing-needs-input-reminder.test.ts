@@ -545,6 +545,40 @@ describe("direct user needs-input reminders", () => {
     expect(session.messageHistory[1]).toMatchObject({ type: "user_message", content: "Fresh user message" });
   });
 
+  it("queues Codex herd inputs as a fresh pending batch instead of steering into an active turn", () => {
+    // Herd events are delivered when the leader is idle, or force-delivered by
+    // recovery when the active turn is stale. They should wake the leader with
+    // a fresh turn instead of steering into that stale active Codex turn.
+    const session = makeSession();
+    session.backendType = "codex";
+    session.isGenerating = true;
+    session.codexAdapter = {
+      getCurrentTurnId: () => "turn-active",
+    } as any;
+    const deps = makeDeps({ isOrchestrator: true });
+    deps.addPendingCodexInput = vi.fn((targetSession, input) => {
+      targetSession.pendingCodexInputs.push(input);
+    });
+
+    const routed = routeAdapterBrowserMessage(
+      session,
+      userMessage({
+        content: "1 event from 1 session\n\n#1380 | turn_end | ✓",
+        agentSource: {
+          sessionId: "herd-events",
+          sessionLabel: "Herd Events",
+        },
+      }),
+      null,
+      deps,
+    );
+
+    expect(routed).toBe(true);
+    expect(deps.markRunningFromUserDispatch).not.toHaveBeenCalled();
+    expect(deps.trySteerPendingCodexInputs).not.toHaveBeenCalled();
+    expect(deps.queueCodexPendingStartBatch).toHaveBeenCalledWith(session, "herd_event_message");
+  });
+
   it("broadcasts the routed active turn for Codex quest-thread messages while Main is selected", () => {
     const session = makeSession();
     session.backendType = "codex";

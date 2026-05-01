@@ -2940,11 +2940,11 @@ export class WsBridge {
         }
         this.recomputeAndBroadcastHistoryBytes(session);
       },
-      onOrchestratorTurnEnd: (sessionId: string) => {
+      onOrchestratorTurnEnd: (sessionId: string, reason?: string) => {
         if (!this.herdEventDispatcher) return;
         const info = this.launcher?.getSession(sessionId);
         if (info?.isOrchestrator) {
-          this.herdEventDispatcher.onOrchestratorTurnEnd(sessionId);
+          this.herdEventDispatcher.onOrchestratorTurnEnd(sessionId, reason);
         }
       },
       getCurrentTurnTriggerSource: (session: Session) =>

@@ -52,7 +52,7 @@ export interface GenerationLifecycleDeps<S extends GenerationLifecycleSession> {
   recordGenerationStarted?: (session: S, reason: string) => void;
   recordGenerationEnded?: (session: S, reason: string, elapsedMs: number) => void;
   onGenerationStopped?: (session: S, reason: string) => void;
-  onOrchestratorTurnEnd?: (sessionId: string) => void;
+  onOrchestratorTurnEnd?: (sessionId: string, reason?: string) => void;
   /** Returns who triggered the current turn on a given session. */
   getCurrentTurnTriggerSource?: (session: S) => "user" | "leader" | "system" | "unknown";
   /** Returns true if the session is a herded worker (owned by an orchestrator). */
@@ -387,7 +387,7 @@ export function setGenerating<S extends GenerationLifecycleSession>(
       ...(activeTurnRoute?.questId ? { questId: activeTurnRoute.questId } : {}),
     });
 
-    deps.onOrchestratorTurnEnd?.(session.id);
+    deps.onOrchestratorTurnEnd?.(session.id, reason);
 
     // On normal result: promote the next queued turn (the CLI is ready for more).
     // On recovery/error: drain ALL queued turns -- the CLI that would process them

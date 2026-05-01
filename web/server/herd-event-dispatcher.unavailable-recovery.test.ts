@@ -113,3 +113,45 @@ describe("HerdEventDispatcher unavailable leader recovery retries", () => {
     dispatcher.destroy();
   });
 });
+
+describe("HerdEventDispatcher recovery confirmation", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("does not confirm in-flight herd events when a stale orchestrator turn is recovery-ended", () => {
+    // Recovery endings clear local stuck state; unlike a normal result, they
+    // do not prove the leader actually consumed the previously injected batch.
+    const { bridge, launcher } = createMocks();
+    vi.mocked(bridge.isSessionIdle).mockReturnValue(true);
+    vi.mocked(bridge.injectUserMessage).mockReturnValueOnce("sent").mockReturnValueOnce("queued");
+    const dispatcher = new HerdEventDispatcher(bridge, launcher);
+    dispatcher.setupForOrchestrator("orch-1");
+
+    triggerEvent(makeEvent({ id: 1, data: { duration_ms: 1000, msgRange: { from: 0, to: 0 } } }));
+    vi.advanceTimersByTime(500);
+
+    expect(bridge.injectUserMessage).toHaveBeenCalledTimes(1);
+    expect(dispatcher.getDiagnostics("orch-1")).toMatchObject({
+      pendingEventCount: 0,
+      inFlightCount: 1,
+      confirmedUpTo: 0,
+    });
+
+    dispatcher.onOrchestratorTurnEnd("orch-1", "stuck_auto_recovery");
+
+    expect(bridge.injectUserMessage).toHaveBeenCalledTimes(2);
+    expect(dispatcher.getDiagnostics("orch-1")).toMatchObject({
+      pendingEventCount: 1,
+      inFlightCount: 0,
+      confirmedUpTo: 0,
+    });
+    expect(dispatcher.getDiagnostics("orch-1").eventHistory[0]?.status).toBe("redelivered");
+
+    dispatcher.destroy();
+  });
+});
