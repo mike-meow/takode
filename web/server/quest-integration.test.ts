@@ -80,11 +80,15 @@ describe("ensureQuestmasterIntegration", () => {
     expect(skill).toContain("TLDR Quality Guidance");
     expect(skill).toContain("Write the full description, feedback, or summary body first");
     expect(skill).toContain("quest feedback add q-N --text-file summary.md --tldr-file summary-tldr.md");
+    expect(skill).toContain("Final debrief TLDRs should be self-contained quest-journey summaries");
+    expect(skill).toContain("Phase-note TLDRs should preserve conclusions, decisions, evidence, blockers, risks");
+    expect(skill).toContain("Raw commit hashes, branch names, exhaustive command lists");
     expect(skill).toContain("File Link Guidance");
     expect(skill).toContain("[QuestDetailPanel.tsx:42](file:web/src/components/QuestDetailPanel.tsx:42)");
     expect(skill).toContain("Standard Markdown file links to repo files may be opened best-effort");
     expect(skill).toContain("Quest Journey Phase Documentation");
     expect(skill).toContain("every active phase should leave durable quest feedback");
+    expect(skill).toContain("For phase-note TLDRs, treat conclusions, decisions, evidence");
     expect(skill).toContain("takode worker-stream");
     expect(skill).toContain("optional, creates an internal herd checkpoint");
     expect(skill).toContain("does not replace phase documentation, final debrief metadata");
@@ -199,6 +203,8 @@ describe("ensureQuestmasterIntegration", () => {
     expect(skill).toContain("--debrief-file");
     expect(skill).toContain("--debrief-tldr-file");
     expect(skill).toContain("If you complete a ported or multi-topic quest");
+    expect(skill).toContain("The debrief TLDR should stay higher level and self-contained");
+    expect(skill).toContain("Routine SHAs, branch names, command lists, and verification mechanics belong in the body");
     expect(skill).toContain("Re-running the same summary-style feedback (`Summary:` or `Refreshed summary:`)");
     expect(skill).toContain("Only add a second port-specific comment");
     expect(skill).toContain("pass `quest complete ... --no-code`");

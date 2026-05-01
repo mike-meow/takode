@@ -39,7 +39,7 @@ Use `takode phases` to list available phase metadata and exact brief paths. Lead
 
 ## Phase Documentation Contract
 
-Each active phase should leave durable quest documentation before the leader treats the phase as complete. The actor for the phase writes the full entry for future agents first, then derives TLDR metadata for human scanning.
+Each active phase should leave durable quest documentation before the leader treats the phase as complete. The actor for the phase writes the full entry for future agents first, then derives TLDR metadata for human scanning. Phase-note TLDRs should preserve conclusions, decisions, evidence, blockers, risks, handoff facts, and phase-specific outcomes. Keep raw SHAs, branch names, exhaustive command lists, routine file paths, and detailed verification mechanics in the full body or port metadata unless the exact detail is central to understanding that phase.
 
 When documenting repository files, use Takode custom file links such as `[QuestDetailPanel.tsx:42](file:web/src/components/QuestDetailPanel.tsx:42)` instead of plain paths. Standard Markdown file links to repo files are a best-effort clickable fallback in Questmaster, but custom `file:` links remain preferred because they carry richer location metadata.
 

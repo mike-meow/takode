@@ -26,6 +26,7 @@ Worker-visible boundary:
 - If the worker believes the Journey should change, they should surface the evidence in the read-in rather than assuming approval for a different phase sequence.
 - The worker must not explore, implement, review, execute, port, or change quest status.
 - Before reporting back, the worker should document the Alignment phase on the quest with full agent-oriented detail plus TLDR metadata. Prefer `quest feedback add q-N --text-file ... --tldr-file ... --kind phase-summary`; use explicit `--phase alignment` or occurrence flags if current-phase inference is unavailable.
+- The TLDR should preserve conclusions, decisions, evidence, blockers, risks, handoff facts, and phase-specific outcomes. Keep raw SHAs, branch names, exhaustive command lists, routine paths, and detailed verification mechanics in the full body unless central to understanding.
 - Apply a value filter: include facts future readers or sessions would actually need; avoid boilerplate, facts obvious from the final artifact, and substantial duplication across phases.
 - If context was compacted during this phase, or if memory confidence is low, reconstruct the relevant facts with `takode scan`, `takode peek`, `takode read`, quest feedback, and local artifacts before documenting. If context is intact, use working memory and current artifacts instead of unnecessary session archaeology.
 

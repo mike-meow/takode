@@ -113,6 +113,9 @@ TLDR metadata is for human scanning, but it must not hide major parts of the ful
 - Each major topic or point from the full content should have a condensed bullet or sentence in the TLDR.
 - One TLDR bullet or sentence is fine only when the source truly has one main point.
 - For multi-topic content, use multiple bullets or sentences, roughly compressing every one to two paragraphs or major sections into one concise TLDR item.
+- Final debrief TLDRs should be self-contained quest-journey summaries: what issue or need drove the work, what was accomplished, why the solution works, and the key technical or product decisions and findings.
+- Phase-note TLDRs should preserve conclusions, decisions, evidence, blockers, risks, handoff facts, and phase-specific outcomes. Omit incidental low-level details unless they are central to understanding that phase.
+- Raw commit hashes, branch names, exhaustive command lists, detailed verification mechanics, and routine file paths belong in port notes, structured commit metadata, detailed bodies, or verification sections when useful. They should not consume scarce TLDR space unless the exact detail is itself important.
 - Keep the full content complete and agent-readable while making the TLDR human-scannable without being lossy.
 
 ## File Link Guidance
@@ -122,6 +125,8 @@ When quest feedback, comments, summaries, notes, or phase documentation refer to
 ## Quest Journey Phase Documentation
 
 When a quest is running through a Quest Journey, every active phase should leave durable quest feedback before handoff or phase end. The entry should be scoped to the current phase when possible, contain full agent-oriented detail for future sessions, and include TLDR metadata for human scanning when the body has more than one small point.
+
+For phase-note TLDRs, treat conclusions, decisions, evidence, blockers, risks, handoff facts, and phase-specific outcomes as the main points to preserve. Low-level details such as full SHAs, branch names, command lists, and routine verification mechanics belong in the full phase body or port metadata unless that exact detail is the point of the phase.
 
 Apply a value filter: include facts future readers or sessions would actually need; avoid boilerplate, facts obvious from the final artifact, and substantial duplication across phases. If your context was compacted during the phase, or if memory confidence is low, reconstruct relevant facts with `takode scan`, `takode peek`, `takode read`, quest feedback, and local artifacts before documenting. If context is intact, use working memory and current artifacts instead of unnecessary session archaeology.
 
@@ -558,7 +563,7 @@ Use `quest complete` for the normal worker handoff from `in_progress` to `done` 
    - The goal: someone reading only the quest (not the session conversation) should understand what happened
    - Treat this as a required worker deliverable before you report back that the quest is ready
 
-   For completed nontrivial quests, prefer structured final debrief metadata over using legacy notes as the outcome summary. If you complete a ported or multi-topic quest, use `--debrief-file` plus `--debrief-tldr-file`; if the leader controls completion, provide a `Final debrief draft:` and `Debrief TLDR draft:` in the handoff instead. The final debrief should summarize the user-facing result, important verification, synced commits when relevant, and residual risks; existing `notes` remain for legacy closure details and cancellation reasons.
+   For completed nontrivial quests, prefer structured final debrief metadata over using legacy notes as the outcome summary. If you complete a ported or multi-topic quest, use `--debrief-file` plus `--debrief-tldr-file`; if the leader controls completion, provide a `Final debrief draft:` and `Debrief TLDR draft:` in the handoff instead. The final debrief body should summarize the user-facing result, important verification, synced commits when relevant, and residual risks; existing `notes` remain for legacy closure details and cancellation reasons. The debrief TLDR should stay higher level and self-contained: issue or need, solution shape, why it works, and key decisions or findings. Routine SHAs, branch names, command lists, and verification mechanics belong in the body or structured metadata unless they are central to understanding the outcome.
 
 3. **Verification items must be human-checkable acceptance items only.** When writing `quest complete --items "..."` or `quest complete --items-file ...`:
    - Do NOT include implementation details, port logs, or automated verification results: "synced commit was pushed", "post-port typecheck passed", "tests pass", "typecheck clean", "code compiles", "no regressions in test suite"
@@ -591,8 +596,8 @@ When you verify a quest (either your own or another agent's), you **MUST** check
 When you are reviewing another agent's quest, directly fix straightforward quest hygiene issues you can verify and safely perform with Quest CLI commands instead of bouncing them back through leader -> worker -> reviewer. Examples:
 
 - Use `quest address q-N <index>` when worker evidence clearly addressed a human feedback entry but the addressed flag is stale.
-- Use `quest feedback latest/list/show` to inspect whether a summary can be refreshed. When the worker report and diff give enough evidence, add or refresh a user-oriented summary with `quest feedback add q-N --text "Summary: ..."` for short single-topic content, or `quest feedback add q-N --text-file /tmp/summary.md --tldr-file /tmp/summary-tldr.md` for long multi-topic content so the TLDR preserves the major topics from the full summary.
-- For Quest Journey work, check phase documentation quality before accepting: phase relevance, useful full detail, TLDR completeness where appropriate, and correct phase association when the phase-scoped primitive is available.
+- Use `quest feedback latest/list/show` to inspect whether a summary can be refreshed. When the worker report and diff give enough evidence, add or refresh a user-oriented summary with `quest feedback add q-N --text "Summary: ..."` for short single-topic content, or `quest feedback add q-N --text-file /tmp/summary.md --tldr-file /tmp/summary-tldr.md` for long multi-topic content so the TLDR preserves the major topics from the full summary without spending scan space on incidental raw details.
+- For Quest Journey work, check phase documentation quality before accepting: phase relevance, useful full detail, TLDR completeness where appropriate, focus on conclusions/evidence/risks/handoff facts instead of incidental raw details, and correct phase association when the phase-scoped primitive is available.
 - Use `quest check q-N <index>` when you personally verified a checklist item.
 - Report every hygiene fix you made in your ACCEPT/CHALLENGE output.
 

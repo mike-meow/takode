@@ -1266,7 +1266,7 @@ function formatCompletionReminder(questId: string, options: { noCode: boolean })
     `Reminder: keep one substantive user-oriented quest summary comment up to date with ` +
     `\`quest feedback ${questId} --text "Summary: <what changed, why it matters, and what verification passed>"\`` +
     ` before reporting that the quest is ready. Use \`--text-file <path>\` or \`--text-file -\`` +
-    ` when that summary includes copied logs, backticks, or other shell-like text. For long multi-topic summaries, write the full \`--text\`/\`--text-file\` body first and add \`--tldr\`/\`--tldr-file\` second, with each major topic preserved in concise scan text. Put implementation details and automated verification results in that summary, not in \`quest complete --items\`. Avoid review/rework timelines unless essential.`;
+    ` when that summary includes copied logs, backticks, or other shell-like text. For long multi-topic summaries, write the full \`--text\`/\`--text-file\` body first and add \`--tldr\`/\`--tldr-file\` second, with each major topic preserved in concise scan text instead of incidental raw details. Put implementation details and automated verification results in that summary, not in \`quest complete --items\`. Avoid review/rework timelines unless essential.`;
   if (options.noCode) {
     return (
       summaryLine +

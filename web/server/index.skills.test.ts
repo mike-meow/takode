@@ -61,5 +61,7 @@ describe("index startup skill registration", () => {
     expect(source).toContain("Final debrief draft:");
     expect(source).toContain("Debrief TLDR draft:");
     expect(source).toContain("focused Bookkeeping phase for final debrief metadata");
+    expect(source).toContain("self-contained quest-journey understanding");
+    expect(source).toContain("Keep routine commit hashes, branch names, command lists");
   });
 });

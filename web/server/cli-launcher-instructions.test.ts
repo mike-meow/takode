@@ -161,12 +161,15 @@ describe("buildInjectedSystemPromptForDebug", () => {
     expect(result).toContain("not a routine second user-approval gate");
     expect(result).toContain("Alignment approval is leader-owned by default");
     expect(result).toContain("Every active phase needs durable quest documentation");
+    expect(result).toContain("Phase-note TLDRs should preserve conclusions, decisions, evidence, blockers, risks");
+    expect(result).toContain("raw SHAs, branch names, exhaustive command lists");
     expect(result).toContain("Phase documentation should be useful, not ritual");
     expect(result).toContain("Worker-stream checkpoints are optional early visibility");
     expect(result).toContain("takode worker-stream");
     expect(result).toContain("do not let it replace phase documentation");
     expect(result).toContain("If the actor's context was compacted during the phase");
     expect(result).toContain("Provide only deltas the actor is unlikely to infer");
+    expect(result).toContain("without spending scan space on incidental raw details");
     expect(result).toContain("Bookkeeping is for extra durable state");
     expect(result).toContain("final debrief metadata after port when the port worker could not reliably create it");
     expect(result).toContain("Port handoff must also settle final debrief ownership");

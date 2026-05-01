@@ -19,6 +19,7 @@ Worker-visible boundary:
 - Do not duplicate normal phase documentation from the phase that produced the facts.
 - The worker should not invent new implementation scope inside this phase.
 - Before reporting back, the worker should document the Bookkeeping phase on the quest with records updated, superseded facts, external locations, durable handoff facts, and TLDR metadata. Prefer `quest feedback add q-N --text-file ... --tldr-file ... --kind phase-summary`; use explicit `--phase bookkeeping` or occurrence flags if current-phase inference is unavailable.
+- The TLDR should preserve conclusions, decisions, evidence, blockers, risks, handoff facts, and phase-specific outcomes. Keep raw SHAs, branch names, exhaustive command lists, routine paths, and detailed verification mechanics in the full body unless central to understanding.
 - Apply a value filter: include facts future readers or sessions would actually need; avoid boilerplate, facts obvious from the final artifact, and substantial duplication across phases.
 - If context was compacted during this phase, or if memory confidence is low, reconstruct the relevant facts with `takode scan`, `takode peek`, `takode read`, quest feedback, and local artifacts before documenting. If context is intact, use working memory and current artifacts instead of unnecessary session archaeology.
 

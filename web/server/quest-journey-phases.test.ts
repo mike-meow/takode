@@ -249,6 +249,8 @@ describe("Quest Journey phase directory loading", () => {
       expect(phase.assigneeBrief).toContain("Phase documentation");
       expect(phase.assigneeBrief).toContain("quest feedback add q-N --text-file");
       expect(phase.assigneeBrief).toContain("--tldr-file");
+      expect(phase.assigneeBrief).toContain("preserves conclusions, decisions, evidence, blockers, risks");
+      expect(phase.assigneeBrief).toContain("Keep raw SHAs, branch names, exhaustive command lists");
       expect(phase.assigneeBrief).toContain("current-phase inference");
       expect(phase.assigneeBrief).toContain("--no-phase");
       expect(phase.assigneeBrief).toContain("Apply a value filter");

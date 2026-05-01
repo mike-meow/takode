@@ -464,6 +464,8 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("ported, committed, or otherwise synced");
     expect(guardrails).toContain("Every active phase needs durable quest documentation");
     expect(guardrails).toContain("quest feedback add q-N --text-file /tmp/phase.md --tldr-file /tmp/phase-tldr.md");
+    expect(guardrails).toContain("Phase-note TLDRs should preserve conclusions, decisions, evidence, blockers, risks");
+    expect(guardrails).toContain("raw SHAs, branch names, exhaustive command lists");
     expect(guardrails).toContain("use explicit `--phase`, `--phase-position`, `--phase-occurrence`");
     expect(guardrails).toContain("final debrief metadata after port when the port worker could not reliably create it");
     expect(guardrails).toContain("Port handoff must also settle final debrief ownership");
@@ -558,6 +560,8 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("ported, committed, or otherwise synced");
     expect(guardrails).toContain("Every active phase needs durable quest documentation");
     expect(guardrails).toContain("quest feedback add q-N --text-file /tmp/phase.md --tldr-file /tmp/phase-tldr.md");
+    expect(guardrails).toContain("Phase-note TLDRs should preserve conclusions, decisions, evidence, blockers, risks");
+    expect(guardrails).toContain("raw SHAs, branch names, exhaustive command lists");
     expect(guardrails).toContain("use explicit `--phase`, `--phase-position`, `--phase-occurrence`");
     expect(guardrails).toContain("perform exactly the approved next phase, document the current phase on the quest");
     expect(guardrails).toContain("Reviewers should judge phase documentation quality, not just presence");

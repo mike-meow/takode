@@ -23,6 +23,7 @@ Reviewer-visible boundary:
 - Do not collapse this into code quality review when the real question is outcome quality.
 - You may rerun only small bounded checks or repros needed for acceptance; do not become the primary experiment owner or repeated iteration loop.
 - Before reporting back, the reviewer should document the Outcome Review phase on the quest with evidence judged, acceptance or insufficiency rationale, bounded reruns, follow-up routing, and TLDR metadata. Prefer `quest feedback add q-N --text-file ... --tldr-file ... --kind review`; use explicit `--phase outcome-review` or occurrence flags if current-phase inference is unavailable.
+- The TLDR should preserve conclusions, decisions, evidence, blockers, risks, handoff facts, and phase-specific outcomes. Keep raw SHAs, branch names, exhaustive command lists, routine paths, and detailed verification mechanics in the full body unless central to understanding.
 - Apply a value filter: include facts future readers or sessions would actually need; avoid boilerplate, facts obvious from the final artifact, and substantial duplication across phases.
 - If context was compacted during this phase, or if memory confidence is low, reconstruct the relevant facts with `takode scan`, `takode peek`, `takode read`, quest feedback, and local artifacts before documenting. If context is intact, use working memory and current artifacts instead of unnecessary session archaeology.
 
