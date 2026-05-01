@@ -950,13 +950,12 @@ export function QuestmasterPage({ isActive = true }: { isActive?: boolean }) {
         )}
 
         {/* Create form */}
-        {showCreateForm && (
-          <QuestmasterCreateForm
-            allTags={allTags}
-            onCreated={handleCreateQuestCreated}
-            onCancel={handleCreateQuestCancel}
-          />
-        )}
+        <QuestmasterCreateForm
+          isVisible={showCreateForm}
+          allTags={allTags}
+          onCreated={handleCreateQuestCreated}
+          onCancel={handleCreateQuestCancel}
+        />
 
         {/* Quest list */}
         <div className="space-y-2">

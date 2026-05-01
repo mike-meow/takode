@@ -13,10 +13,12 @@ import { QuestImageThumbnail } from "./QuestImageThumbnail.js";
 type EditorTarget = "newTitle" | "newDescription";
 
 export const QuestmasterCreateForm = memo(function QuestmasterCreateForm({
+  isVisible,
   allTags,
   onCreated,
   onCancel,
 }: {
+  isVisible: boolean;
   allTags: string[];
   onCreated: (quest: QuestmasterTask) => void;
   onCancel: () => void;
@@ -36,8 +38,9 @@ export const QuestmasterCreateForm = memo(function QuestmasterCreateForm({
   const createFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    if (!isVisible) return;
     titleInputRef.current?.focus();
-  }, []);
+  }, [isVisible]);
 
   useEffect(() => {
     autoResizeTextarea(newDescRef.current);
@@ -69,6 +72,12 @@ export const QuestmasterCreateForm = memo(function QuestmasterCreateForm({
         tags: tags.length > 0 ? tags : undefined,
         images: createImages.length > 0 ? createImages : undefined,
       });
+      setNewTitle("");
+      setNewDescription("");
+      setCreateImages([]);
+      setEditorHashtagQuery("");
+      setEditorAutocompleteTarget(null);
+      setEditorAutocompleteIndex(0);
       onCreated(createdQuest);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
@@ -212,8 +221,9 @@ export const QuestmasterCreateForm = memo(function QuestmasterCreateForm({
   return (
     <div
       data-testid="questmaster-create-form"
-      className="mb-4 bg-cc-card border border-cc-border rounded-xl p-4 sm:p-5 space-y-3"
+      className={`mb-4 bg-cc-card border border-cc-border rounded-xl p-4 sm:p-5 space-y-3 ${isVisible ? "" : "hidden"}`}
       style={{ contain: "layout paint style" }}
+      aria-hidden={!isVisible}
       onPaste={handleCreatePaste}
     >
       <h2 className="text-sm font-semibold text-cc-fg">New Quest</h2>
