@@ -11,6 +11,10 @@ The goal is to give the user one concise chance to correct the agent's understan
 When the user clearly wants a quest created and dispatched, combine this with `/leader-dispatch`: describe the proposed quest draft and the proposed Quest Journey/scheduling plan together in natural prose so one confirmation can approve quest text, Journey, and dispatch plan. After approval, the leader must write the approved Journey to the board before or with dispatch.
 After successful quest creation or refinement, include a lightweight non-blocking thread reminder when prior discussion may belong to the new quest thread: Thread reminder: attach any prior messages that clearly belong to this quest to [q-N](quest:q-N) with `takode thread attach`.
 
+Before proposing quest text, explicitly check whether the new or refined quest is a true follow-up to earlier work. Use explicit follow-up relationships for true follow-ups, bug fixes, successors, redesigns, or user-approved next quests that came from prior findings. Leave incidental mentions, loose background context, copied examples, and broad references to auto-detected backlinks instead.
+
+When a follow-up relationship is relevant, include it in the approval surface as a dedicated line such as `Relationship: follow-up of [q-1023](quest:q-1023)`. After the user confirms, persist it when creating the quest with `quest create ... --follow-up-of q-1023`, or when refining an existing quest with `quest edit q-N --follow-up-of q-1023`. If a relationship was recorded by mistake, use `quest edit q-N --clear-follow-up-of`.
+
 ## Scope
 
 Use `/quest-design` before:
@@ -34,6 +38,7 @@ Do not write the quest yet. First respond with the narrowest confirmation surfac
 
 Best case: if the user clearly wants quest creation plus immediate dispatch and the request is already understood, include both:
 - the proposed quest draft: title, description/scope, tags when useful, assumptions, and non-goals
+- the proposed explicit relationship, when relevant: `Relationship: follow-up of [q-N](quest:q-N)`
 - the proposed Quest Journey/scheduling draft from `/leader-dispatch`: phase sequence, concise non-standard phase reasons when useful, worker choice or fresh-spawn intent, and dispatch/queueing plan
 
 One user confirmation can approve both the quest draft and the Journey/scheduling plan. Do not add a separate confirmation round just to restate understanding, and do not require a separate board-presentation approval ceremony.

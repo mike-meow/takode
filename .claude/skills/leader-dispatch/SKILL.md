@@ -29,6 +29,7 @@ This skill covers leader discipline and the step-by-step dispatch process. Invok
 - **Never hallucinate user intent.** If the user says "fix the sidebar bug", don't turn it into "fix the sidebar bug by adjusting the CSS grid layout and adding a media query for mobile breakpoints". Pass through what the user said and let the worker investigate.
 - **Added details need confirmation.** If you want to add specifics to make instructions more actionable (e.g. suggesting an approach, naming specific files, or scoping the fix), confirm with the user first. An over-specified instruction based on wrong assumptions wastes more time than a brief clarifying question.
 - **Classify same-thread feedback before mutating scope.** Most user messages in a quest thread belong to that quest, but a user may occasionally post new-quest or unrelated feature feedback in the wrong thread. Before recording feedback, interrupting workers, resetting a board row, or expanding scope, do a quick relevance check; if the message appears unrelated, cross-cutting, or cleaner as its own unit of work, propose a new quest/Journey and attach the relevant discussion/images there instead of changing the current quest. If unclear, ask a short clarifying question and pause only the affected quest.
+- **Persist true follow-up relationships.** When a new or refined quest is a true follow-up to earlier work, record that relationship with `quest create ... --follow-up-of q-N` or `quest edit q-M --follow-up-of q-N` after approval. Use this for true follow-ups, bug fixes, successors, redesigns, and user-approved next quests from prior findings. Leave incidental mentions and loose background context to auto-detected backlinks.
 - **Use `/quest-design` before quest creation/refinement.** Before creating a quest or refining an `idea` quest into worker-ready scope, invoke `/quest-design` and wait for user confirmation or correction. When the user clearly wants a quest created and dispatched, combine quest-design with this dispatch approval: describe the proposed quest draft plus Journey/scheduling plan naturally in prose so one confirmation can approve quest text, Journey, and dispatch plan. Routine feedback, claims, completion, verification checks, board updates, and already-approved phase transitions do not need a separate confirmation round.
 - **`/leader-dispatch` owns the initial Journey proposal.** Before dispatching a fresh or newly refined quest, get approval for the quest and Journey/scheduling plan, then write that approved Journey to the board before or with dispatch. A separate `takode board present` ceremony is optional, not required.
 - **Standard tracked-code phases are defaults, not mandates.** `alignment -> implement -> code-review -> port` is the recommended normal path for tracked-code work, but user overrides win. If the user asks to skip `code-review`, `port`, or another standard phase, follow that instruction or briefly confirm the tradeoff; do not refuse because the phase is "mandatory."
@@ -51,6 +52,8 @@ Before you dispatch a quest, or intentionally leave it `QUEUED` for a later disp
 That pre-dispatch approval surface must include both:
 - the planned initial Quest Journey phases
 - the planned scheduling/orchestration approach
+
+When the quest is a true follow-up to earlier work, the approval surface must also include a relationship line, for example `Relationship: follow-up of [q-1023](quest:q-1023)`. After approval, persist that relationship with the quest create/edit command. Do not use explicit follow-up for incidental references; those should remain detected backlinks.
 
 The approval surface can be a natural leader response. It should still be concrete enough that the approved phases and scheduling plan can be written to the board immediately afterward. If a proposed board row already exists, revise that same row with `takode board propose ...` or `takode board propose --spec-file ...` so it remains the draft carrier; `takode board present` is available when you want an explicit rendered proposal artifact.
 
@@ -187,6 +190,7 @@ Before dispatching a fresh or newly refined quest, get user approval for the pla
 
 This is the `/leader-dispatch` contract:
 - `/quest-design` confirms quest understanding and finalizes the quest text.
+- `/quest-design` also confirms any explicit follow-up relationship, so the leader can persist it with `--follow-up-of` instead of leaving true follow-ups as prose only.
 - `/leader-dispatch` proposes the initial Journey and scheduling plan for execution.
 - When the user asked for quest creation plus dispatch and the scope is clear, combine those into one approval surface instead of running a quest-text confirmation and a separate Journey confirmation.
 

@@ -93,6 +93,9 @@ describe("getOrchestratorGuardrails", () => {
     const result = getOrchestratorGuardrails();
     expect(result).toContain("orchestrator agent");
     expect(result).toContain("/quest-design");
+    expect(result).toContain("true follow-up of earlier work");
+    expect(result).toContain("Relationship: follow-up of [q-N](quest:q-N)");
+    expect(result).toContain("quest create ... --follow-up-of q-N");
     expect(result).toContain("initial Journey proposal-and-approval contract");
     expect(result).toContain("durable board recording");
     expect(result).toContain("Standard phases are recommended defaults, not mandates");
@@ -127,6 +130,7 @@ describe("getOrchestratorGuardrails", () => {
     const result = getOrchestratorGuardrails("codex");
     expect(result).toContain("orchestrator leader session");
     expect(result).toContain("/quest-design");
+    expect(result).toContain("persist it with `--follow-up-of`");
     expect(result).toContain("initial Journey proposal-and-approval");
     expect(result).toContain("write the approved Journey to the board before or with dispatch");
     expect(result).toContain("Alignment approval is leader-owned by default");
@@ -154,6 +158,8 @@ describe("buildInjectedSystemPromptForDebug", () => {
     expect(result).toContain("Takode -- Cross-Session Orchestration");
     expect(result).toContain("Every dispatched task follows a **Quest Journey** assembled from phases");
     expect(result).toContain("Use `/quest-design` before creating or materially refining quest text");
+    expect(result).toContain("explicitly check whether the quest is a true follow-up to earlier work");
+    expect(result).toContain("Relationship: follow-up of [q-N](quest:q-N)");
     expect(result).toContain("Use `/leader-dispatch` before dispatching a fresh or newly refined quest");
     expect(result).toContain("board-owned draft-or-active state for the quest");
     expect(result).toContain("Standard phases are recommended defaults, not mandates");

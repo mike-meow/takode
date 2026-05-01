@@ -43,12 +43,15 @@ Use `/quest-design` before:
 
 The `/quest-design` confirmation must be concise and include:
 - **Intended goal/scope**: what the quest or update will ask for.
+- **Relationship**: when this is a true follow-up to earlier work, name it as `Relationship: follow-up of [q-N](quest:q-N)` so it can be persisted with `quest create --follow-up-of q-N` or `quest edit q-N --follow-up-of q-M`.
 - **Major assumptions**: important interpretation choices the agent is making.
 - **Non-goals** when relevant: what should stay out of scope.
 - **Highest-leverage clarification questions**: ask only questions that could materially change the quest.
 
 When the user clearly wants a quest created and dispatched, combine the `/quest-design` and `/leader-dispatch` approval surfaces: the leader's first response should describe both the proposed quest draft and the proposed Quest Journey/scheduling draft in natural prose, so one user confirmation can approve quest text, Journey, and dispatch plan together. After approval, the leader must write the approved Journey to the board before or with dispatch; do not rely on transcript prose as the only durable Journey record. If meaningful clarification is needed, ask those questions with the quest framing; after the user clarifies and no major ambiguity remains, the next response should include both drafts together. Avoid a separate extra round that only restates understanding after clarification when there are no new questions and no quest/Journey draft yet. More than two confirmation rounds should happen only when genuine additional clarification is needed.
 Leader/orchestrator sessions: after successful quest creation, refinement, or dispatch, trigger a lightweight non-blocking thread reminder when prior discussion may belong to the quest thread by writing this as a standalone line: Thread reminder: attach any prior messages that clearly belong to this quest to [q-N](quest:q-N) with `takode thread attach`. Takode converts that line into a separate injected system reminder, so it should not remain part of assistant prose.
+
+Before creating or refining a quest, explicitly check whether it is a true follow-up to earlier work. Use explicit follow-up relationships for true follow-ups, bug fixes, successors, redesigns, or user-approved next quests that came from prior findings. Do not classify incidental mentions, loose context, or copied examples as follow-ups; those can remain auto-detected reference backlinks. If the relationship is relevant, include it in the approval surface and persist it with `--follow-up-of` after confirmation. If a relationship was recorded by mistake, clear it with `quest edit q-N --clear-follow-up-of`.
 
 For Journey notes, standard tracked-code phases are self-explanatory by default: `alignment`, `implement`, `code-review`, and `port` only need notes for unusual phase-specific work. Non-standard phases such as `explore`, `user-checkpoint`, `execute`, `outcome-review`, `mental-simulation`, and `bookkeeping` should be explained concisely with why the phase is needed and what evidence, user decision, scenario, outcome, or durable state it covers. Standard phases are recommended defaults, not mandates; user overrides win. Before adding an extra phase, ask what it contributes over merging the work into a later phase; `implement` includes normal investigation, root-cause analysis, code/design reading, and test planning for approved fixes, docs changes, config changes, prompt changes, and artifact changes.
 
@@ -72,7 +75,7 @@ quest show   <id> [--json]                                    Show quest detail
 quest status <id> [--json]                                    Show compact action-oriented status and next action
 quest history <id> [--json]                                   Show quest history (legacy backup after cutover)
 quest tags   [--json]                                         List all existing tags with counts
-quest create [<title> | --title "..." | --title-file <path>|-] [--desc "..." | --desc-file <path>|-] [--tldr "..." | --tldr-file <path>|-] [--tags "t1,t2"] [--image <path>] [--images "p1,p2"] [--json] Create a quest (auto-assigns ID)
+quest create [<title> | --title "..." | --title-file <path>|-] [--desc "..." | --desc-file <path>|-] [--tldr "..." | --tldr-file <path>|-] [--tags "t1,t2"] [--follow-up-of "q-1,q-2"] [--image <path>] [--images "p1,p2"] [--json] Create a quest (auto-assigns ID)
 quest claim  <id> [--session <sid>] [--json]                  Claim for your session
 quest complete <id> [--items "c1,c2" | --items-file <path>|-] [--no-code] [--session <sid>] [--commit <sha>] [--commits "c1,c2"] [--debrief "..." | --debrief-file <path>|-] [--debrief-tldr "..." | --debrief-tldr-file <path>|-] [--json]  Mark done and submit for review
 quest done   <id> [--notes "..." | --notes-file <path>|-] [--debrief "..." | --debrief-file <path>|-] [--debrief-tldr "..." | --debrief-tldr-file <path>|-] [--cancelled] [--json]      Mark as done/cancelled
@@ -80,7 +83,7 @@ quest cancel <id> [--notes "reason" | --notes-file <path>|-] [--json]           
 quest transition <id> --status <s> [--desc "..." | --desc-file <path>|-] [--tldr "..." | --tldr-file <path>|-] [--debrief "..." | --debrief-file <path>|-] [--debrief-tldr "..." | --debrief-tldr-file <path>|-] [--json]    Change status
 quest later  <id> [--json]                                    Move review-pending quest out of inbox
 quest inbox  <id> [--json]                                    Move review-pending quest back to inbox
-quest edit   <id> [--title "..." | --title-file <path>|-] [--desc "..." | --desc-file <path>|-] [--tldr "..." | --tldr-file <path>|-] [--tags "t1,t2"] [--json]     Edit in place (NEVER use to create)
+quest edit   <id> [--title "..." | --title-file <path>|-] [--desc "..." | --desc-file <path>|-] [--tldr "..." | --tldr-file <path>|-] [--tags "t1,t2"] [--follow-up-of "q-1,q-2" | --clear-follow-up-of] [--json]     Edit in place (NEVER use to create)
 quest check  <id> <index> [--json]                            Toggle verification item
 quest feedback <id> [--text "..." | --text-file <path>|-] [--tldr "..." | --tldr-file <path>|-] [--author agent|human] [--phase <id>] [--phase-position <n>] [--phase-occurrence <n>] [--phase-occurrence-id <id>] [--journey-run <id>] [--kind <kind>] [--infer-phase] [--no-phase] [--image <path>] [--images "p1,p2"] [--json]  Add feedback entry
 quest feedback add <id> [--text "..." | --text-file <path>|-] [--tldr "..." | --tldr-file <path>|-] [--author agent|human] [--phase <id>] [--phase-position <n>] [--phase-occurrence <n>] [--phase-occurrence-id <id>] [--journey-run <id>] [--kind <kind>] [--infer-phase] [--no-phase] [--image <path>] [--images "p1,p2"] [--json]  Add feedback entry explicitly
@@ -167,6 +170,7 @@ Reviewers should check documentation quality, not just whether a comment exists.
 | `--tldr "..."` | Optional human-readable TLDR metadata for long descriptions |
 | `--tldr-file <path>` | Read TLDR metadata from a file, or use `-` to read from stdin |
 | `--tags "t1,t2"` | Comma-separated tags |
+| `--follow-up-of "q-1,q-2"` | Persist that the new quest is a true follow-up of earlier quest(s) |
 | `--image <path>` | Attach an image (can repeat: --image a.png --image b.png) |
 | `--images "a.png,b.png"` | Attach multiple images (comma-separated) |
 | `--json` | Output JSON |
@@ -181,6 +185,8 @@ Reviewers should check documentation quality, not just whether a comment exists.
 | `--tldr "..."` | Optional human-readable TLDR metadata for long descriptions |
 | `--tldr-file <path>` | Read TLDR metadata from a file, or use `-` to read from stdin |
 | `--tags "t1,t2"` | New tags (replaces all) |
+| `--follow-up-of "q-1,q-2"` | Persist that this quest is a true follow-up of earlier quest(s) |
+| `--clear-follow-up-of` | Clear explicit follow-up relationships from this quest |
 | `--json` | Output JSON |
 
 ### quest list [flags]
@@ -368,6 +374,9 @@ quest create "Fix mobile sidebar" --desc "Sidebar overflows on screens <400px" -
 # Create a quest from files when the text includes shell-sensitive content
 quest create --title-file /tmp/quest-title.txt --desc-file /tmp/quest-description.md --tldr-file /tmp/quest-tldr.md --tags "questmaster,cli"
 
+# Create a true follow-up quest and persist the relationship
+quest create "Follow-up redesign" --desc-file /tmp/quest-description.md --follow-up-of q-1023
+
 # List in-progress quests
 quest list --status in_progress
 
@@ -389,6 +398,8 @@ quest transition q-12 --status in_progress --desc-file /tmp/quest-description.md
 # Edit a quest's title and tags
 quest edit q-12 --title "Fix sidebar overflow" --tags "ui,bugfix"
 quest edit q-12 --desc-file /tmp/quest-description.md --tldr-file /tmp/quest-tldr.md
+quest edit q-12 --follow-up-of "q-7,q-9"
+quest edit q-12 --clear-follow-up-of
 
 # Add feedback with an image attachment; put full feedback first, then TLDR metadata
 quest feedback q-12 --text "Fixed with flex-wrap, see screenshot" --tldr "Mobile sidebar fix with screenshot" --image /tmp/screenshot.png
@@ -428,6 +439,7 @@ When the user asks you to work on a quest — whether via the Companion "Assign"
    - If the quest is in `refined` or any later state (`in_progress`, `done`), enforce a short title before proceeding.
    - Run `quest tags` to reuse existing tags.
    - If metadata changes are part of creating or refining the quest, invoke `/quest-design` before applying them unless the user's approved plan already covered those exact updates.
+   - If the quest is a true follow-up to earlier work, persist that with `quest edit q-N --follow-up-of q-M` after approval; if a follow-up relationship was recorded by mistake, clear it with `quest edit q-N --clear-follow-up-of`.
    - Apply confirmed updates with `quest edit q-N --title "..." --desc "..." --tags "t1,t2"`.
    - Immediately re-run `quest show q-N` and verify the final title/description/tags are clean.
    - Title rule: concise, **less than 10 words**. Move details to description.
@@ -515,10 +527,11 @@ Use `quest complete` for the normal worker handoff from `in_progress` to `done` 
 - Ask clarifying questions until the goal, scope, and non-goals are clear enough to draft.
 - Draft the refined title, description, and tags, then invoke `/quest-design`.
 - Wait for user confirmation or correction. If the user corrects the draft and ambiguity remains, repeat `/quest-design` before writing the quest.
+- If this is a true follow-up, bug fix, successor, redesign, or user-approved next quest from earlier findings, include `Relationship: follow-up of [q-M](quest:q-M)` in the draft and persist it with `quest edit <id> --follow-up-of q-M` after approval. Leave incidental mentions to auto-detected backlinks instead.
 - Title: concise, less than 10 words. Move detail to description.
 - Description: clear, actionable. Define what "done" looks like.
 - Tags: run `quest tags`, reuse existing tags. Every quest needs at least one tag.
-- Apply confirmed updates via `quest edit <id> --title "..." --desc "..." --tags "t1,t2"`
+- Apply confirmed updates via `quest edit <id> --title "..." --desc "..." --tags "t1,t2"` and add `--follow-up-of q-M` only when the relationship was confirmed.
 
 ### refined → in_progress
 - The quest should already be claimed (claiming is always the first step when assigned).
