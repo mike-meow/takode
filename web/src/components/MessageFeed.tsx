@@ -66,6 +66,7 @@ import {
   isAllThreadsKey,
   isMainThreadKey,
   normalizeThreadKey,
+  recoverRoutedNotificationSourceMessages,
 } from "../utils/thread-projection.js";
 import type { SessionAttentionRecord } from "../types.js";
 import { YarnBallDot, YarnBallSpinner, SleepingCat } from "./CatIcons.js";
@@ -247,14 +248,18 @@ export function MessageFeed({
       }),
     [allMessages, historyLoading, selectedFeedWindow, selectedFeedWindowEnabled, selectedFeedWindowMessages],
   );
+  const sessionNotifications = useStore((s) => s.sessionNotifications?.get(sessionId));
+  const messagesAvailableForProjection = useMemo(
+    () => recoverRoutedNotificationSourceMessages(messagesAvailableForDerivation, sessionNotifications, threadKey),
+    [messagesAvailableForDerivation, sessionNotifications, threadKey],
+  );
   const baseMessages = useMemo(
     () =>
       projectThreadRoutes
-        ? filterMessagesForThread(messagesAvailableForDerivation, threadKey)
+        ? filterMessagesForThread(messagesAvailableForProjection, threadKey)
         : messagesAvailableForDerivation,
-    [messagesAvailableForDerivation, projectThreadRoutes, threadKey],
+    [messagesAvailableForDerivation, messagesAvailableForProjection, projectThreadRoutes, threadKey],
   );
-  const sessionNotifications = useStore((s) => s.sessionNotifications?.get(sessionId));
   const sessionAttentionRecords = useStore((s) => s.sessionAttentionRecords?.get(sessionId));
   const sessionBoard = useStore((s) => s.sessionBoards?.get(sessionId));
   const sessionCompletedBoard = useStore((s) => s.sessionCompletedBoards?.get(sessionId));

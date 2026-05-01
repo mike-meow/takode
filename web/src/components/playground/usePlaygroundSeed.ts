@@ -290,6 +290,14 @@ export function usePlaygroundSeed() {
         historyIndex: 8,
         metadata: { threadRefs: [{ threadKey: "q-964", questId: "q-964", source: "explicit" }] },
       }),
+      makePlaygroundMessage({
+        id: "playground-thread-q965-recovered-source",
+        role: "assistant",
+        content:
+          "Approval plan for q-965: run the focused worker, then hold at Code Review for the thumbnail evidence.",
+        timestamp: Date.now() - 20_000,
+        historyIndex: 9,
+      }),
     ]);
     store.setSessionNotifications(PLAYGROUND_THREAD_PANEL_SESSION_ID, [
       {
@@ -310,6 +318,16 @@ export function usePlaygroundSeed() {
         messageId: null,
         threadKey: "q-963",
         questId: "q-963",
+        done: false,
+      },
+      {
+        id: "playground-routed-source-decision",
+        category: "needs-input",
+        summary: "Approve the q-965 plan/description",
+        timestamp: Date.now() - 24_000,
+        messageId: "playground-thread-q965-recovered-source",
+        threadKey: "q-965",
+        questId: "q-965",
         done: false,
       },
       {
@@ -357,6 +375,15 @@ export function usePlaygroundSeed() {
         waitForInput: ["playground-missing-user-decision"],
         updatedAt: Date.now() - 60_000,
         createdAt: Date.now() - 180_000,
+        journey: { mode: "active", phaseIds: ["alignment", "implement", "code-review"] },
+      },
+      {
+        questId: "q-965",
+        title: "Recover approval source message",
+        status: "QUEUED",
+        waitForInput: ["playground-routed-source-decision"],
+        updatedAt: Date.now() - 24_000,
+        createdAt: Date.now() - 150_000,
         journey: { mode: "active", phaseIds: ["alignment", "implement", "code-review"] },
       },
     ]);

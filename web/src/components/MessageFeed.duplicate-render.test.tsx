@@ -84,6 +84,7 @@ vi.mock("../store.js", () => {
       sessionNotifications: mockStoreValues.sessionNotifications ?? new Map(),
       sessionAttentionRecords: mockStoreValues.sessionAttentionRecords ?? new Map(),
       sessionSearch: mockStoreValues.sessionSearch ?? new Map(),
+      quests: mockStoreValues.quests ?? [],
       toggleTurnActivity: vi.fn(),
     };
     return selector(state);
@@ -295,6 +296,62 @@ describe("MessageFeed duplicate rendering regression", () => {
     expect(screen.queryByTestId("attention-ledger-row")).toBeNull();
     expect(screen.getAllByRole("button", { name: /Mark handled|Mark unhandled/ })).toHaveLength(1);
     expect(screen.getAllByText("Pick the dispatch order")).toHaveLength(1);
+  });
+
+  it("shows a routed needs-input source assistant message in its owner thread", () => {
+    // The notification chip is only the affordance. When a needs-input
+    // notification points at an assistant plan message, the owner thread must
+    // recover and show that source content instead of replacing it with a
+    // synthetic fallback row.
+    const sid = "test-owner-thread-routed-source-message";
+    setStoreMessages(sid, [
+      makeMessage({ id: "u1", role: "user", content: "Prepare the dispatch plan." }),
+      makeMessage({
+        id: "a-plan",
+        role: "assistant",
+        content: "Plan for q-983: dispatch the worker, then wait for review approval.",
+      }),
+    ]);
+    setStoreNotifications(sid, [
+      {
+        id: "n-q983",
+        category: "needs-input",
+        timestamp: Date.now(),
+        messageId: "a-plan",
+        threadKey: "q-983",
+        questId: "q-983",
+        summary: "Approve q-983 dispatch plan",
+        done: false,
+      },
+    ]);
+
+    render(<MessageFeed sessionId={sid} threadKey="q-983" />);
+
+    expect(screen.getByText("Plan for q-983: dispatch the worker, then wait for review approval.")).toBeTruthy();
+    expect(screen.getAllByText("Approve q-983 dispatch plan")).toHaveLength(1);
+    expect(screen.queryByTestId("attention-ledger-row")).toBeNull();
+  });
+
+  it("still uses a synthetic owner-thread row for genuinely unanchored needs-input notifications", () => {
+    const sid = "test-owner-thread-unanchored-fallback";
+    setStoreMessages(sid, [makeMessage({ id: "u1", role: "user", content: "Prepare the dispatch plan." })]);
+    setStoreNotifications(sid, [
+      {
+        id: "n-q983",
+        category: "needs-input",
+        timestamp: Date.now(),
+        messageId: null,
+        threadKey: "q-983",
+        questId: "q-983",
+        summary: "Approve q-983 dispatch plan",
+        done: false,
+      },
+    ]);
+
+    render(<MessageFeed sessionId={sid} threadKey="q-983" />);
+
+    expect(screen.getByTestId("attention-ledger-row").getAttribute("data-attention-type")).toBe("needs_input");
+    expect(screen.getByText("Approve q-983 dispatch plan")).toBeTruthy();
   });
 
   it("renders needs-input notify tool calls as normal commands beside the generated notification chip", () => {

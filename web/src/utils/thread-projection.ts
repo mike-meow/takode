@@ -1,5 +1,9 @@
-import type { ChatMessage, ThreadAttachmentMarker, ThreadTransitionMarker } from "../types.js";
-import { inferThreadTargetFromTextContent, isQuestThreadKey } from "../../shared/thread-routing.js";
+import type { ChatMessage, SessionNotification, ThreadAttachmentMarker, ThreadTransitionMarker } from "../types.js";
+import {
+  inferThreadTargetFromTextContent,
+  isQuestThreadKey,
+  normalizeThreadTarget,
+} from "../../shared/thread-routing.js";
 
 export const MAIN_THREAD_KEY = "main";
 export const ALL_THREADS_KEY = "all";
@@ -76,6 +80,72 @@ function normalizedRouteKeys(message: ChatMessage): Set<string> {
 function messageHasThreadRef(message: ChatMessage, threadKey: string): boolean {
   if (isThreadAttachmentMarkerMessage(message) || isThreadTransitionMarkerMessage(message)) return false;
   return normalizedRouteKeys(message).has(normalizeThreadKey(threadKey));
+}
+
+export function recoverRoutedNotificationSourceMessages(
+  messages: ChatMessage[],
+  notifications: ReadonlyArray<SessionNotification> | undefined,
+  threadKey: string,
+): ChatMessage[] {
+  const normalizedThreadKey = normalizeThreadKey(threadKey);
+  if (isMainThreadKey(normalizedThreadKey) || isAllThreadsKey(normalizedThreadKey) || !notifications?.length) {
+    return messages;
+  }
+
+  const sourceRoutes = notificationSourceRoutesByMessageId(notifications, normalizedThreadKey);
+  if (sourceRoutes.size === 0) return messages;
+
+  let changed = false;
+  const recovered = messages.map((message) => {
+    const route = sourceRoutes.get(message.id);
+    if (!route || messageHasThreadRef(message, route.threadKey)) return message;
+    changed = true;
+    return {
+      ...message,
+      metadata: {
+        ...message.metadata,
+        threadRefs: [
+          ...(message.metadata?.threadRefs ?? []),
+          {
+            threadKey: route.threadKey,
+            ...(route.questId ? { questId: route.questId } : {}),
+            source: "inferred" as const,
+          },
+        ],
+      },
+    };
+  });
+
+  return changed ? recovered : messages;
+}
+
+function notificationSourceRoutesByMessageId(
+  notifications: ReadonlyArray<SessionNotification>,
+  threadKey: string,
+): Map<string, { threadKey: string; questId?: string }> {
+  const routes = new Map<string, { threadKey: string; questId?: string }>();
+  for (const notification of notifications) {
+    if (notification.done || notification.category !== "needs-input" || !notification.messageId) continue;
+    const route = routeFromNotification(notification);
+    if (!route || route.threadKey !== threadKey) continue;
+    routes.set(notification.messageId, route);
+  }
+  return routes;
+}
+
+function routeFromNotification(notification: SessionNotification): { threadKey: string; questId?: string } | null {
+  const rawTarget =
+    notification.threadKey ??
+    notification.questId ??
+    notification.threadRefs?.find((ref) => ref.threadKey || ref.questId)?.threadKey ??
+    notification.threadRefs?.find((ref) => ref.questId)?.questId;
+  if (!rawTarget) return null;
+  const target = normalizeThreadTarget(rawTarget) ?? { threadKey: normalizeThreadKey(rawTarget) };
+  if (!target.threadKey || isMainThreadKey(target.threadKey)) return null;
+  return {
+    threadKey: target.threadKey,
+    ...(target.questId ? { questId: target.questId } : notification.questId ? { questId: notification.questId } : {}),
+  };
 }
 
 function contentBlockToolUseId(block: NonNullable<ChatMessage["contentBlocks"]>[number]): string | null {
