@@ -474,6 +474,7 @@ export type BrowserOutgoingMessage =
       turn_count: number;
       section_turn_count: number;
       visible_section_count: number;
+      cached_window_hash?: string;
     }
   | {
       type: "thread_window_request";
@@ -482,6 +483,7 @@ export type BrowserOutgoingMessage =
       item_count: number;
       section_item_count: number;
       visible_item_count: number;
+      cached_window_hash?: string;
     }
   | {
       type: "history_sync_mismatch";
@@ -555,6 +557,7 @@ export interface HistoryWindowState {
   start_index?: number;
   section_turn_count: number;
   visible_section_count: number;
+  window_hash?: string;
 }
 
 export interface ThreadWindowState {
@@ -565,6 +568,7 @@ export interface ThreadWindowState {
   source_history_length: number;
   section_item_count: number;
   visible_item_count: number;
+  window_hash?: string;
 }
 
 export interface ThreadWindowEntry {
@@ -713,8 +717,14 @@ export type BrowserIncomingMessageBase =
   | { type: "codex_pending_inputs"; inputs: PendingCodexInput[] }
   | { type: "codex_pending_input_cancelled"; input: PendingCodexInput }
   | { type: "message_history"; messages: BrowserIncomingMessage[] }
-  | { type: "history_window_sync"; messages: BrowserIncomingMessage[]; window: HistoryWindowState }
-  | { type: "thread_window_sync"; thread_key: string; entries: ThreadWindowEntry[]; window: ThreadWindowState }
+  | { type: "history_window_sync"; messages: BrowserIncomingMessage[]; window: HistoryWindowState; cache_hit?: boolean }
+  | {
+      type: "thread_window_sync";
+      thread_key: string;
+      entries: ThreadWindowEntry[];
+      window: ThreadWindowState;
+      cache_hit?: boolean;
+    }
   | { type: "leader_projection_snapshot"; projection: LeaderProjectionSnapshot }
   | {
       type: "history_sync";

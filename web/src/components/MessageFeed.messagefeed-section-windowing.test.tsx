@@ -29,7 +29,7 @@ beforeAll(() => {
 });
 
 import { render, screen, fireEvent, act, within } from "@testing-library/react";
-import type { ChatMessage } from "../types.js";
+import type { BrowserIncomingMessage, ChatMessage } from "../types.js";
 import type { FeedEntry, Turn } from "../hooks/use-feed-model.js";
 
 // Mock react-markdown to avoid ESM issues in tests
@@ -140,6 +140,7 @@ import {
   findVisibleSectionStartIndex,
 } from "./MessageFeed.js";
 import { HISTORY_WINDOW_SECTION_TURN_COUNT } from "../../shared/history-window.js";
+import { cacheHistoryWindow } from "../utils/history-window-cache.js";
 
 function makeMessage(overrides: Partial<ChatMessage> & { role: ChatMessage["role"] }): ChatMessage {
   return {
@@ -428,6 +429,7 @@ function resetStore() {
   mockStoreValues.pendingCodexInputs = new Map();
   mockStoreValues.activeTaskTurnId = new Map();
   mockStoreValues.sdkSessions = [];
+  localStorage.clear();
 }
 
 /** Set explicit overrides for turn activity expansion per session.
@@ -481,6 +483,28 @@ function setElementClientSize(element: HTMLElement, width: number, height: numbe
   });
 }
 
+function setElementScrollMetrics(element: HTMLElement, scrollHeight: number, clientHeight: number, scrollTop: number) {
+  Object.defineProperty(element, "scrollHeight", {
+    configurable: true,
+    get() {
+      return scrollHeight;
+    },
+  });
+  Object.defineProperty(element, "clientHeight", {
+    configurable: true,
+    get() {
+      return clientHeight;
+    },
+  });
+  element.scrollTop = scrollTop;
+}
+
+function getScrollContainer(container: HTMLElement): HTMLElement {
+  const scrollContainer = container.querySelector<HTMLElement>('[data-testid="message-feed-scroll-container"]');
+  if (!scrollContainer) throw new Error("Message feed scroll container missing");
+  return scrollContainer;
+}
+
 beforeEach(() => {
   resetStore();
   mockScrollIntoView.mockClear();
@@ -531,24 +555,28 @@ describe("MessageFeed section windowing", () => {
     expect(findSectionWindowStartIndexForTarget(sections, 3, 3)).toBe(1);
   });
 
-  it("slides a bounded three-section window when the user loads older and then loads newer", () => {
+  it("slides a bounded three-section window when the user scrolls older and then newer", () => {
     const sid = "test-section-window";
     setStoreMessages(sid, makeSectionedMessages(4, 2));
     const { container } = render(<MessageFeed sessionId={sid} sectionTurnCount={2} />);
+    const scrollContainer = getScrollContainer(container);
 
     expect(screen.queryByText("Section 1 marker")).toBeNull();
     expect(screen.getByText("Section 2 marker")).toBeTruthy();
     expect(screen.getByText("Section 4 marker")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Load older section" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Load older section" })).toBeNull();
+    expect(screen.getByText("Older section above")).toBeTruthy();
     expect(container.querySelectorAll("[data-feed-section-id]")).toHaveLength(3);
 
-    fireEvent.click(screen.getByRole("button", { name: "Load older section" }));
+    setElementScrollMetrics(scrollContainer, 1000, 300, 0);
+    fireEvent.wheel(scrollContainer, { deltaY: -80 });
 
     expect(screen.getByText("Section 1 marker")).toBeTruthy();
     expect(screen.queryByText("Section 4 marker")).toBeNull();
     expect(container.querySelectorAll("[data-feed-section-id]")).toHaveLength(3);
 
-    fireEvent.click(screen.getByRole("button", { name: "Load newer section" }));
+    setElementScrollMetrics(scrollContainer, 1000, 300, 700);
+    fireEvent.wheel(scrollContainer, { deltaY: 80 });
 
     expect(screen.queryByText("Section 1 marker")).toBeNull();
     expect(screen.getByText("Section 2 marker")).toBeTruthy();
@@ -556,15 +584,19 @@ describe("MessageFeed section windowing", () => {
     expect(container.querySelectorAll("[data-feed-section-id]")).toHaveLength(3);
   });
 
-  it("shows the newer-section control after loading older history", () => {
+  it("shows newer-section boundary text after loading older history", () => {
     const sid = "test-section-newer-control";
     setStoreMessages(sid, makeSectionedMessages(4, 2));
 
     const { container } = render(<MessageFeed sessionId={sid} sectionTurnCount={2} />);
-    fireEvent.click(screen.getByRole("button", { name: "Load older section" }));
+    const scrollContainer = getScrollContainer(container);
+    setElementScrollMetrics(scrollContainer, 1000, 300, 0);
+    fireEvent.wheel(scrollContainer, { deltaY: -80 });
 
-    expect(screen.getByRole("button", { name: "Load newer section" })).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Load newer section" }));
+    expect(screen.queryByRole("button", { name: "Load newer section" })).toBeNull();
+    expect(screen.getByText("Newer section below")).toBeTruthy();
+    setElementScrollMetrics(scrollContainer, 1000, 300, 700);
+    fireEvent.wheel(scrollContainer, { deltaY: 80 });
     expect(screen.queryByText("Section 1 marker")).toBeNull();
     expect(screen.getByText("Section 2 marker")).toBeTruthy();
     expect(screen.getByText("Section 4 marker")).toBeTruthy();
@@ -584,9 +616,11 @@ describe("MessageFeed section windowing", () => {
     });
     mockStoreValues.historyWindows = windows;
 
-    render(<MessageFeed sessionId={sid} sectionTurnCount={2} />);
+    const { container } = render(<MessageFeed sessionId={sid} sectionTurnCount={2} />);
+    const scrollContainer = getScrollContainer(container);
 
-    fireEvent.click(screen.getByRole("button", { name: "Load older section" }));
+    setElementScrollMetrics(scrollContainer, 1000, 300, 0);
+    fireEvent.wheel(scrollContainer, { deltaY: -80 });
 
     expect(mockSendToSession).toHaveBeenCalledWith(sid, {
       type: "history_window_request",
@@ -594,6 +628,46 @@ describe("MessageFeed section windowing", () => {
       turn_count: 6,
       section_turn_count: 2,
       visible_section_count: 3,
+    });
+  });
+
+  it("sends a cached history window hash with scroll-triggered server window requests", () => {
+    const sid = "test-windowed-history-cached-request";
+    setStoreMessages(sid, makeSectionedMessages(3, 2));
+    cacheHistoryWindow(
+      sid,
+      {
+        from_turn: 0,
+        turn_count: 6,
+        total_turns: 10,
+        section_turn_count: 2,
+        visible_section_count: 3,
+        window_hash: "cached-history-window",
+      },
+      [{ type: "user_message", id: "cached-u1", content: "cached", timestamp: 1 } as BrowserIncomingMessage],
+    );
+    const windows = new Map();
+    windows.set(sid, {
+      from_turn: 2,
+      turn_count: 6,
+      total_turns: 10,
+      section_turn_count: 2,
+      visible_section_count: 3,
+    });
+    mockStoreValues.historyWindows = windows;
+
+    const { container } = render(<MessageFeed sessionId={sid} sectionTurnCount={2} />);
+    const scrollContainer = getScrollContainer(container);
+    setElementScrollMetrics(scrollContainer, 1000, 300, 0);
+    fireEvent.wheel(scrollContainer, { deltaY: -80 });
+
+    expect(mockSendToSession).toHaveBeenCalledWith(sid, {
+      type: "history_window_request",
+      from_turn: 0,
+      turn_count: 6,
+      section_turn_count: 2,
+      visible_section_count: 3,
+      cached_window_hash: "cached-history-window",
     });
   });
 

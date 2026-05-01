@@ -188,6 +188,45 @@ describe("handleMessage: history_window_sync", () => {
     });
   });
 
+  it("reuses cached history window messages only after a server-validated cache hit", () => {
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+
+    const window = {
+      from_turn: 100,
+      turn_count: 1,
+      total_turns: 320,
+      start_index: 50,
+      section_turn_count: HISTORY_WINDOW_SECTION_TURN_COUNT,
+      visible_section_count: HISTORY_WINDOW_VISIBLE_SECTION_COUNT,
+      window_hash: "history-window-hash",
+    };
+
+    fireMessage({
+      type: "history_window_sync",
+      messages: [{ type: "user_message", id: "u-cached", content: "cached window user", timestamp: 1000 }],
+      window,
+    });
+
+    useStore
+      .getState()
+      .setMessages("s1", [{ id: "stale", role: "assistant", content: "stale", timestamp: 1 }], { frozenCount: 0 });
+
+    fireMessage({
+      type: "history_window_sync",
+      cache_hit: true,
+      messages: [],
+      window,
+    });
+
+    expect(
+      useStore
+        .getState()
+        .messages.get("s1")
+        ?.map((msg) => msg.id),
+    ).toEqual(["u-cached"]);
+  });
+
   it("keeps a pending raw-index scroll when the current history window does not contain the target", () => {
     wsModule.connectSession("s1");
     fireMessage({ type: "session_init", session: makeSession("s1") });
@@ -400,5 +439,57 @@ describe("handleMessage: thread_window_sync", () => {
         ?.get("q-1040")
         ?.map((message) => message.historyIndex),
     ).toEqual([120, 121]);
+  });
+
+  it("reuses cached thread window entries only after a server-validated cache hit", () => {
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+
+    const window = {
+      thread_key: "q-1040",
+      from_item: 20,
+      item_count: 1,
+      total_items: 40,
+      source_history_length: 150,
+      section_item_count: 10,
+      visible_item_count: 2,
+      window_hash: "thread-window-hash",
+    };
+
+    fireMessage({
+      type: "thread_window_sync",
+      thread_key: "q-1040",
+      entries: [
+        {
+          history_index: 120,
+          message: {
+            type: "user_message",
+            id: "u-thread-cached",
+            content: "selected feed message",
+            timestamp: 2000,
+            threadKey: "q-1040",
+            questId: "q-1040",
+            threadRefs: [{ threadKey: "q-1040", questId: "q-1040", source: "explicit" }],
+          },
+        },
+      ],
+      window,
+    });
+
+    fireMessage({
+      type: "thread_window_sync",
+      cache_hit: true,
+      thread_key: "q-1040",
+      entries: [],
+      window,
+    });
+
+    expect(
+      useStore
+        .getState()
+        .threadWindowMessages.get("s1")
+        ?.get("q-1040")
+        ?.map((message) => message.id),
+    ).toEqual(["u-thread-cached"]);
   });
 });

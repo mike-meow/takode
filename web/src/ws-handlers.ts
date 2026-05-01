@@ -19,6 +19,12 @@ import {
   shouldApplyAttentionReasonWithNotificationFreshness,
   summarizeNotificationStatus,
 } from "./notification-status.js";
+import {
+  cacheHistoryWindow,
+  cacheThreadWindow,
+  resolveCachedHistoryWindowMessages,
+  resolveCachedThreadWindowEntries,
+} from "./utils/history-window-cache.js";
 
 const taskCounters = new Map<string, number>();
 const pendingCliDisconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -1668,14 +1674,18 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
     }
 
     case "history_window_sync": {
+      const sourceMessages =
+        data.cache_hit === true
+          ? (resolveCachedHistoryWindowMessages(sessionId, data.window) ?? data.messages)
+          : data.messages;
       resetAuthoritativeHistoryState(sessionId);
       const { chatMessages, frozenCount } = normalizeHistoryMessages(
         sessionId,
-        data.messages,
+        sourceMessages,
         historyWindowStartIndex(data),
       );
       store.setMessages(sessionId, chatMessages, { frozenCount });
-      clearPendingUploadsCoveredByHistory(sessionId, data.messages);
+      clearPendingUploadsCoveredByHistory(sessionId, sourceMessages);
       store.setHistoryWindow(sessionId, data.window);
       store.setHistoryLoading(sessionId, false);
       if (chatMessages.length > 0) {
@@ -1683,20 +1693,30 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
       }
       processedToolUseIds.delete(sessionId);
       taskCounters.delete(sessionId);
-      updateSessionPreviewFromHistory(sessionId, data.messages, {
+      updateSessionPreviewFromHistory(sessionId, sourceMessages, {
         allowOlderHistory: data.window.from_turn + data.window.turn_count >= data.window.total_turns,
       });
       resolvePendingMessageScroll(sessionId, chatMessages);
+      if (data.cache_hit !== true) {
+        cacheHistoryWindow(sessionId, data.window, data.messages);
+      }
       break;
     }
 
     case "thread_window_sync": {
-      const chatMessages = normalizeThreadWindowEntries(sessionId, data.entries);
+      const sourceEntries =
+        data.cache_hit === true
+          ? (resolveCachedThreadWindowEntries(sessionId, data.window) ?? data.entries)
+          : data.entries;
+      const chatMessages = normalizeThreadWindowEntries(sessionId, sourceEntries);
       store.setThreadWindow(sessionId, data.thread_key, data.window, chatMessages);
       clearPendingUploadsCoveredByHistory(
         sessionId,
-        data.entries.map((entry) => entry.message),
+        sourceEntries.map((entry) => entry.message),
       );
+      if (data.cache_hit !== true) {
+        cacheThreadWindow(sessionId, data.window, data.entries);
+      }
       break;
     }
 

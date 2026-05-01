@@ -217,6 +217,10 @@ export function computeHistoryMessagesSyncHash(
   };
 }
 
+export function computeHistoryPayloadSyncHash(value: unknown): string {
+  return hashString(stableStringify(value));
+}
+
 export function computeHistoryPrefixSyncHash(
   historyMessages: readonly BrowserIncomingMessage[],
   renderedCount: number,

@@ -359,6 +359,56 @@ describe("history window tool results", () => {
       retained_output: false,
     });
   });
+
+  it("omits history payload when the browser proves its cached window still matches", () => {
+    const send = vi.fn();
+    const session = makeSession({
+      messageHistory: [
+        { type: "user_message", id: "u1", content: "turn 1", timestamp: 1000 } as BrowserIncomingMessage,
+        {
+          type: "result",
+          data: {
+            type: "result",
+            subtype: "success",
+            is_error: false,
+            result: "",
+            duration_ms: 1,
+            duration_api_ms: 1,
+            num_turns: 1,
+            total_cost_usd: 0,
+            session_id: "test-session",
+          },
+        } as BrowserIncomingMessage,
+        { type: "user_message", id: "u2", content: "turn 2", timestamp: 2000 } as BrowserIncomingMessage,
+      ],
+    });
+
+    sendHistoryWindowSync(
+      session,
+      { send },
+      { fromTurn: 0, turnCount: 1, sectionTurnCount: 1, visibleSectionCount: 1 },
+    );
+    const firstPayload = JSON.parse(send.mock.calls[0][0]);
+    send.mockClear();
+
+    sendHistoryWindowSync(
+      session,
+      { send },
+      {
+        fromTurn: 0,
+        turnCount: 1,
+        sectionTurnCount: 1,
+        visibleSectionCount: 1,
+        cachedWindowHash: firstPayload.window.window_hash,
+      },
+    );
+
+    const payload = JSON.parse(send.mock.calls[0][0]);
+    expect(payload.type).toBe("history_window_sync");
+    expect(payload.cache_hit).toBe(true);
+    expect(payload.messages).toEqual([]);
+    expect(payload.window.window_hash).toBe(firstPayload.window.window_hash);
+  });
 });
 
 describe("selected feed thread windows", () => {
@@ -399,6 +449,56 @@ describe("selected feed thread windows", () => {
     expect(sync.entries).toHaveLength(3);
     expect(sync.entries.map((entry: any) => entry.history_index)).toEqual([700, 800, 900]);
     expect(sync.entries.map((entry: any) => entry.message.id)).toEqual(["u-700", "u-800", "u-900"]);
+  });
+
+  it("omits selected-thread payload when the cached thread window hash still matches", () => {
+    const send = vi.fn();
+    const session = makeSession({
+      messageHistory: [
+        {
+          type: "user_message",
+          id: "u-thread",
+          content: "thread message",
+          timestamp: 1,
+          threadKey: "q-1040",
+          questId: "q-1040",
+          threadRefs: [{ threadKey: "q-1040", questId: "q-1040", source: "explicit" }],
+        } as BrowserIncomingMessage,
+      ],
+    });
+
+    sendThreadWindowSync(
+      session,
+      { send },
+      {
+        threadKey: "q-1040",
+        fromItem: 0,
+        itemCount: 1,
+        sectionItemCount: 1,
+        visibleItemCount: 1,
+      },
+    );
+    const firstPayload = JSON.parse(send.mock.calls[0][0]);
+    send.mockClear();
+
+    sendThreadWindowSync(
+      session,
+      { send },
+      {
+        threadKey: "q-1040",
+        fromItem: 0,
+        itemCount: 1,
+        sectionItemCount: 1,
+        visibleItemCount: 1,
+        cachedWindowHash: firstPayload.window.window_hash,
+      },
+    );
+
+    const payload = JSON.parse(send.mock.calls[0][0]);
+    expect(payload.type).toBe("thread_window_sync");
+    expect(payload.cache_hit).toBe(true);
+    expect(payload.entries).toEqual([]);
+    expect(payload.window.window_hash).toBe(firstPayload.window.window_hash);
   });
 });
 

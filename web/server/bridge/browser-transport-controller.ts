@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
-import { computeHistoryMessagesSyncHash, computeHistoryPrefixSyncHash } from "../../shared/history-sync-hash.js";
+import {
+  computeHistoryMessagesSyncHash,
+  computeHistoryPayloadSyncHash,
+  computeHistoryPrefixSyncHash,
+} from "../../shared/history-sync-hash.js";
 import { getHistoryWindowTurnCount } from "../../shared/history-window.js";
 import { buildLeaderProjectionSnapshot } from "../../shared/leader-projection.js";
 import { buildThreadWindowSync, getThreadWindowItemCount } from "../../shared/thread-window.js";
@@ -362,6 +366,7 @@ export function handleBrowserProtocolMessage(
       turnCount: msg.turn_count,
       sectionTurnCount: msg.section_turn_count,
       visibleSectionCount: msg.visible_section_count,
+      cachedWindowHash: msg.cached_window_hash,
     });
     return true;
   }
@@ -374,6 +379,7 @@ export function handleBrowserProtocolMessage(
       itemCount: msg.item_count,
       sectionItemCount: msg.section_item_count,
       visibleItemCount: msg.visible_item_count,
+      cachedWindowHash: msg.cached_window_hash,
     });
     return true;
   }
@@ -867,6 +873,7 @@ export function sendHistoryWindowSync(
     turnCount: number;
     sectionTurnCount: number;
     visibleSectionCount: number;
+    cachedWindowHash?: string;
   },
 ): void {
   const normalizedSectionTurnCount = Math.max(1, Math.floor(options.sectionTurnCount));
@@ -894,10 +901,12 @@ export function sendHistoryWindowSync(
     messages = session.messageHistory.slice(startIdx, endIdx + 1);
   }
   messages = appendResolvedToolResultPreviewsForWindow(messages, session.messageHistory);
+  const windowHash = computeHistoryPayloadSyncHash({ startIdx, messages });
+  const cacheHit = options.cachedWindowHash === windowHash;
 
   sendToBrowser(ws, {
     type: "history_window_sync",
-    messages,
+    messages: cacheHit ? [] : messages,
     window: {
       from_turn: fromTurn,
       turn_count: totalTurns === 0 ? 0 : turnCount,
@@ -905,7 +914,9 @@ export function sendHistoryWindowSync(
       start_index: startIdx,
       section_turn_count: normalizedSectionTurnCount,
       visible_section_count: normalizedVisibleSectionCount,
+      window_hash: windowHash,
     },
+    ...(cacheHit ? { cache_hit: true } : {}),
   } as BrowserIncomingMessage);
 }
 
@@ -971,6 +982,7 @@ export function sendThreadWindowSync(
     itemCount?: number;
     sectionItemCount: number;
     visibleItemCount: number;
+    cachedWindowHash?: string;
   },
 ): void {
   const normalizedSectionItemCount = Math.max(1, Math.floor(options.sectionItemCount));
@@ -987,12 +999,21 @@ export function sendThreadWindowSync(
     sectionItemCount: normalizedSectionItemCount,
     visibleItemCount: normalizedVisibleItemCount,
   });
+  const windowHash = computeHistoryPayloadSyncHash({
+    threadKey: sync.threadKey,
+    entries: sync.entries,
+  });
+  const cacheHit = options.cachedWindowHash === windowHash;
 
   sendToBrowser(ws, {
     type: "thread_window_sync",
     thread_key: sync.threadKey,
-    entries: sync.entries,
-    window: sync.window,
+    entries: cacheHit ? [] : sync.entries,
+    window: {
+      ...sync.window,
+      window_hash: windowHash,
+    },
+    ...(cacheHit ? { cache_hit: true } : {}),
   } as BrowserIncomingMessage);
 }
 
