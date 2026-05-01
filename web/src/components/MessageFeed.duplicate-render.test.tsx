@@ -65,6 +65,8 @@ vi.mock("../store.js", () => {
       toolResults: mockStoreValues.toolResults ?? new Map(),
       toolStartTimestamps: mockStoreValues.toolStartTimestamps ?? new Map(),
       sdkSessions: mockStoreValues.sdkSessions ?? [],
+      threadWindows: mockStoreValues.threadWindows ?? new Map(),
+      threadWindowMessages: mockStoreValues.threadWindowMessages ?? new Map(),
       feedScrollPosition: mockStoreValues.feedScrollPosition ?? new Map(),
       turnActivityOverrides: mockStoreValues.turnActivityOverrides ?? new Map(),
       autoExpandedTurnIds: mockStoreValues.autoExpandedTurnIds ?? new Map(),
@@ -330,6 +332,70 @@ describe("MessageFeed duplicate rendering regression", () => {
     expect(screen.getByText("Plan for q-983: dispatch the worker, then wait for review approval.")).toBeTruthy();
     expect(screen.getAllByText("Approve q-983 dispatch plan")).toHaveLength(1);
     expect(screen.queryByTestId("attention-ledger-row")).toBeNull();
+  });
+
+  it("recovers a routed needs-input source message from selected thread-window history", () => {
+    // Reloaded leader thread windows can omit historical source messages that
+    // lack ordinary thread refs. Notification messageId routing must keep the
+    // source plan available before projection so the owner thread does not
+    // degrade to a synthetic-only approval row.
+    const sid = "test-windowed-owner-thread-routed-source-message";
+    setStoreMessages(sid, [
+      makeMessage({
+        id: "a-plan",
+        role: "assistant",
+        content: "Windowed q-983 plan: approve the implementation direction before dispatch.",
+        timestamp: 100,
+        historyIndex: 4,
+      }),
+      makeMessage({
+        id: "a-live-tail",
+        role: "assistant",
+        content: "Unrelated live Main tail",
+        timestamp: 200,
+        historyIndex: 25,
+      }),
+    ]);
+    mockStoreValues.sessions = new Map([[sid, { isOrchestrator: true }]]);
+    mockStoreValues.threadWindows = new Map([
+      [
+        sid,
+        new Map([
+          [
+            "q-983",
+            {
+              thread_key: "q-983",
+              from_item: 0,
+              item_count: 0,
+              total_items: 0,
+              source_history_length: 20,
+              section_item_count: 50,
+              visible_item_count: 3,
+            },
+          ],
+        ]),
+      ],
+    ]);
+    mockStoreValues.threadWindowMessages = new Map([[sid, new Map([["q-983", []]])]]);
+    setStoreNotifications(sid, [
+      {
+        id: "n-q983",
+        category: "needs-input",
+        timestamp: Date.now(),
+        messageId: "a-plan",
+        threadKey: "q-983",
+        questId: "q-983",
+        summary: "Approve q-983 implementation direction",
+        done: false,
+      },
+    ]);
+
+    render(<MessageFeed sessionId={sid} threadKey="q-983" />);
+
+    expect(screen.getByText("Windowed q-983 plan: approve the implementation direction before dispatch.")).toBeTruthy();
+    expect(screen.getAllByText("Approve q-983 implementation direction")).toHaveLength(1);
+    expect(screen.queryByTestId("attention-ledger-row")).toBeNull();
+    expect(screen.queryByText("Unrelated live Main tail")).toBeNull();
   });
 
   it("still uses a synthetic owner-thread row for genuinely unanchored needs-input notifications", () => {

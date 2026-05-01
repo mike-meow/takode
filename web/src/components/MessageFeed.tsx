@@ -61,6 +61,7 @@ import {
 } from "./message-feed-utils.js";
 import { isSubagentToolName } from "../types.js";
 import {
+  collectRoutedNotificationSourceMessageIds,
   collectMessageToolUseIds,
   filterMessagesForThread,
   isAllThreadsKey,
@@ -237,6 +238,11 @@ export function MessageFeed({
   const selectedFeedWindowMessages = useStore(
     (s) => s.threadWindowMessages?.get(sessionId)?.get(normalizedThreadKey) ?? EMPTY_MESSAGES,
   );
+  const sessionNotifications = useStore((s) => s.sessionNotifications?.get(sessionId));
+  const routedNotificationSourceMessageIds = useMemo(
+    () => collectRoutedNotificationSourceMessageIds(sessionNotifications, threadKey),
+    [sessionNotifications, threadKey],
+  );
   const messagesAvailableForDerivation = useMemo(
     () =>
       composeSelectedFeedMessages({
@@ -245,10 +251,17 @@ export function MessageFeed({
         selectedFeedWindow,
         selectedFeedWindowEnabled,
         selectedFeedWindowMessages,
+        retainedMessageIds: routedNotificationSourceMessageIds,
       }),
-    [allMessages, historyLoading, selectedFeedWindow, selectedFeedWindowEnabled, selectedFeedWindowMessages],
+    [
+      allMessages,
+      historyLoading,
+      routedNotificationSourceMessageIds,
+      selectedFeedWindow,
+      selectedFeedWindowEnabled,
+      selectedFeedWindowMessages,
+    ],
   );
-  const sessionNotifications = useStore((s) => s.sessionNotifications?.get(sessionId));
   const messagesAvailableForProjection = useMemo(
     () => recoverRoutedNotificationSourceMessages(messagesAvailableForDerivation, sessionNotifications, threadKey),
     [messagesAvailableForDerivation, sessionNotifications, threadKey],

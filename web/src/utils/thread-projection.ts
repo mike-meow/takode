@@ -119,6 +119,17 @@ export function recoverRoutedNotificationSourceMessages(
   return changed ? recovered : messages;
 }
 
+export function collectRoutedNotificationSourceMessageIds(
+  notifications: ReadonlyArray<SessionNotification> | undefined,
+  threadKey: string,
+): Set<string> {
+  const normalizedThreadKey = normalizeThreadKey(threadKey);
+  if (isMainThreadKey(normalizedThreadKey) || isAllThreadsKey(normalizedThreadKey) || !notifications?.length) {
+    return new Set();
+  }
+  return new Set(notificationSourceRoutesByMessageId(notifications, normalizedThreadKey).keys());
+}
+
 function notificationSourceRoutesByMessageId(
   notifications: ReadonlyArray<SessionNotification>,
   threadKey: string,
