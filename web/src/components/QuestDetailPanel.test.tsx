@@ -640,7 +640,7 @@ describe("QuestDetailPanel", () => {
     expect(await screen.findByText("Full second implementation detail.")).toBeVisible();
   });
 
-  it("orders completed quest detail as description, final debrief, then Journey details", () => {
+  it("orders completed quest detail as TLDRs, full details, then Journey details", () => {
     const quest = makeVerificationQuest({
       tldr: "Initial TLDR.",
       description: "Initial quest description.",
@@ -686,13 +686,40 @@ describe("QuestDetailPanel", () => {
 
     render(<QuestDetailPanel />);
 
-    expect(screen.getByText("Description")).toBeTruthy();
-    expect(screen.getByText("Final Debrief")).toBeTruthy();
+    expect(screen.getByText("TLDR")).toBeTruthy();
+    expect(screen.getByText("Description TLDR")).toBeTruthy();
+    expect(screen.getByText("Debrief TLDR")).toBeTruthy();
+    expect(screen.getByText("Full Description")).toBeTruthy();
+    expect(screen.getByText("Full Final Debrief")).toBeTruthy();
     expect(screen.getByText("Journey Details")).toBeTruthy();
     const text = document.body.textContent ?? "";
-    expect(text.indexOf("Initial quest description.")).toBeLessThan(text.indexOf("Final debrief outcome."));
+    expect(text.indexOf("Initial TLDR.")).toBeLessThan(text.indexOf("Final debrief TLDR."));
+    expect(text.indexOf("Final debrief TLDR.")).toBeLessThan(text.indexOf("Full Description"));
+    expect(text.indexOf("Full Description")).toBeLessThan(text.indexOf("Initial quest description."));
+    expect(text.indexOf("Initial quest description.")).toBeLessThan(text.indexOf("Full Final Debrief"));
+    expect(text.indexOf("Full Final Debrief")).toBeLessThan(text.indexOf("Final debrief outcome."));
     expect(text.indexOf("Final debrief outcome.")).toBeLessThan(text.indexOf("Journey Details"));
     expect(text.indexOf("Journey Details")).toBeLessThan(text.indexOf("Implementation phase TLDR."));
+  });
+
+  it("does not use the merged TLDR layout when only debrief TLDR is present", () => {
+    const quest = makeVerificationQuest({
+      tldr: "Initial TLDR.",
+      description: "Initial quest description.",
+      debrief: undefined,
+      debriefTldr: "Debrief TLDR without full debrief.",
+    });
+    useStore.setState({ quests: [quest], questOverlayId: "q-42" });
+
+    render(<QuestDetailPanel />);
+
+    expect(screen.getByText("Description")).toBeTruthy();
+    expect(screen.getByText("Final Debrief")).toBeTruthy();
+    expect(screen.queryByText("Description TLDR")).toBeNull();
+    expect(screen.queryByText("Full Description")).toBeNull();
+    expect(screen.queryByText("Full Final Debrief")).toBeNull();
+    const text = document.body.textContent ?? "";
+    expect(text.indexOf("Initial quest description.")).toBeLessThan(text.indexOf("Debrief TLDR without full debrief."));
   });
 
   it("renders verification items with correct checked state", () => {

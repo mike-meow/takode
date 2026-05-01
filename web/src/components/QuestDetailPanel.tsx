@@ -12,11 +12,7 @@ import {
   getDoneVerificationItems,
   autoResizeTextarea,
   isQuestCancelled,
-  getQuestDescription,
-  getQuestTldr,
   getQuestNotes,
-  getQuestDebrief,
-  getQuestDebriefTldr,
   getQuestFeedback,
   getQuestRecencyTs,
 } from "../utils/quest-editor-helpers.js";
@@ -34,8 +30,8 @@ import { MarkdownContent } from "./MarkdownContent.js";
 import { PickerSessionChip } from "./QuestPickerSessionChip.js";
 import { QuestImageThumbnail } from "./QuestImageThumbnail.js";
 import { DiffViewer } from "./DiffViewer.js";
-import { QuestPhaseDocumentationTimeline } from "./QuestPhaseDocumentationTimeline.js";
 import { isCompletedJourneyPresentationStatus, QuestJourneyTimeline } from "./QuestJourneyTimeline.js";
+import { QuestDetailTextSections } from "./QuestDetailTextSections.js";
 import { buildQuestAssignDraft } from "./quest-assign.js";
 import { buildQuestReworkDraft } from "./quest-rework.js";
 import { summarizeQuestPhaseDocumentation } from "../../shared/quest-phase-documentation-summary.js";
@@ -774,11 +770,7 @@ export function QuestDetailPanel() {
   const isEditing = editingId === quest.questId;
   const hasVerification = "verificationItems" in quest && quest.verificationItems?.length > 0;
   const vProgress = hasVerification ? verificationProgress(quest.verificationItems) : null;
-  const description = getQuestDescription(quest);
-  const questTldr = getQuestTldr(quest);
   const questNotes = getQuestNotes(quest);
-  const questDebrief = getQuestDebrief(quest);
-  const questDebriefTldr = getQuestDebriefTldr(quest);
   const questSessionId = getQuestOwnerSessionId(quest);
   const questMarkdownSessionId = questSessionId ?? undefined;
   const leaderSessionId = getQuestLeaderSessionId(quest);
@@ -1096,106 +1088,14 @@ export function QuestDetailPanel() {
             </>
           ) : (
             <>
-              {/* Description, final debrief, then Journey history */}
-              {(questTldr ||
-                description ||
-                questDebrief ||
-                questDebriefTldr ||
-                phaseDocumentationSummary.hasPhaseDocumentation ||
-                (quest.status === "done" && journeyBoardRow?.journey)) && (
-                <div className="space-y-2">
-                  {(questTldr || description) && (
-                    <div className="space-y-2">
-                      <div className="text-[10px] font-medium uppercase tracking-[0.08em] text-cc-muted/60">
-                        Description
-                      </div>
-                      {questTldr && (
-                        <div className="rounded-lg border border-cc-border bg-cc-input-bg px-3 py-2">
-                          <div className="mb-1 text-[10px] font-medium uppercase tracking-[0.08em] text-cc-muted/60">
-                            TLDR
-                          </div>
-                          <MarkdownContent
-                            text={questTldr}
-                            size="sm"
-                            sessionId={questMarkdownSessionId}
-                            searchHighlight={
-                              searchHighlight ? { query: searchHighlight, mode: "fuzzy", isCurrent: false } : null
-                            }
-                          />
-                        </div>
-                      )}
-                      {description && (
-                        <MarkdownContent
-                          text={description}
-                          size="sm"
-                          sessionId={questMarkdownSessionId}
-                          searchHighlight={
-                            searchHighlight ? { query: searchHighlight, mode: "fuzzy", isCurrent: false } : null
-                          }
-                        />
-                      )}
-                    </div>
-                  )}
-                  {(questDebrief || questDebriefTldr) && (
-                    <div className="space-y-2">
-                      <div className="text-[10px] font-medium uppercase tracking-[0.08em] text-cc-muted/60">
-                        Final Debrief
-                      </div>
-                      {questDebriefTldr && (
-                        <div className="rounded-lg border border-cc-border bg-cc-input-bg px-3 py-2">
-                          <div className="mb-1 text-[10px] font-medium uppercase tracking-[0.08em] text-cc-muted/60">
-                            Debrief TLDR
-                          </div>
-                          <MarkdownContent
-                            text={questDebriefTldr}
-                            size="sm"
-                            sessionId={questMarkdownSessionId}
-                            searchHighlight={
-                              searchHighlight ? { query: searchHighlight, mode: "fuzzy", isCurrent: false } : null
-                            }
-                          />
-                        </div>
-                      )}
-                      {questDebrief && (
-                        <MarkdownContent
-                          text={questDebrief}
-                          size="sm"
-                          sessionId={questMarkdownSessionId}
-                          searchHighlight={
-                            searchHighlight ? { query: searchHighlight, mode: "fuzzy", isCurrent: false } : null
-                          }
-                        />
-                      )}
-                    </div>
-                  )}
-                  {phaseDocumentationSummary.hasPhaseDocumentation && (
-                    <div className="space-y-2">
-                      <div className="text-[10px] font-medium uppercase tracking-[0.08em] text-cc-muted/60">
-                        Journey Details
-                      </div>
-                      <QuestPhaseDocumentationTimeline
-                        summary={phaseDocumentationSummary}
-                        searchHighlight={searchHighlight}
-                        sessionId={questMarkdownSessionId}
-                      />
-                    </div>
-                  )}
-                  {quest.status === "done" &&
-                    !phaseDocumentationSummary.hasPhaseDocumentation &&
-                    journeyBoardRow?.journey && (
-                      <div className="space-y-2" data-testid="quest-detail-journey-section">
-                        <div className="text-[10px] font-medium uppercase tracking-[0.08em] text-cc-muted/60">
-                          Journey Details
-                        </div>
-                        <QuestJourneyTimeline
-                          journey={journeyBoardRow.journey}
-                          status={journeyStatus}
-                          variant="vertical"
-                        />
-                      </div>
-                    )}
-                </div>
-              )}
+              <QuestDetailTextSections
+                quest={quest}
+                phaseDocumentationSummary={phaseDocumentationSummary}
+                journey={journeyBoardRow?.journey}
+                journeyStatus={journeyStatus}
+                searchHighlight={searchHighlight}
+                sessionId={questMarkdownSessionId}
+              />
 
               {/* Images (read-only) */}
               {quest.images && quest.images.length > 0 && (
