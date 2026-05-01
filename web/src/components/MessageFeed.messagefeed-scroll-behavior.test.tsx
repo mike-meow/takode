@@ -1830,6 +1830,22 @@ describe("MessageFeed - scroll behavior", () => {
     expect(screen.queryByText("Start a conversation")).toBeNull();
   });
 
+  it("keeps the restore loading screen cheap after history messages arrive but before the loading flag clears", () => {
+    const sid = "test-loading-conversation-with-messages";
+    // message_history updates messages before clearing historyLoading. This
+    // transient state should not render or derive the full feed yet.
+    setStoreMessages(sid, [
+      makeMessage({ id: "u1", role: "user", content: "Question" }),
+      makeMessage({ id: "a1", role: "assistant", content: "Loaded answer" }),
+    ]);
+    setStoreHistoryLoading(sid, true);
+
+    render(<MessageFeed sessionId={sid} />);
+
+    expect(screen.getByText("Loading conversation...")).toBeTruthy();
+    expect(screen.queryByText("Loaded answer")).toBeNull();
+  });
+
   it("does not trigger a smooth bottom-follow when initial history lands after showing the loading conversation state", () => {
     const sid = "test-loading-history-no-smooth-jump";
     setStoreMessages(sid, []);

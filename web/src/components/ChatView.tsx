@@ -378,10 +378,11 @@ function CompactingIndicator({ sessionId }: { sessionId: string }) {
   );
 }
 
-function useLeaderThreadModel(sessionId: string) {
+function useLeaderThreadModel(sessionId: string, deferMessageDerivedRows = false) {
   const activeBoard = useStore((s) => s.sessionBoards.get(sessionId) ?? EMPTY_BOARD_ROWS);
   const completedBoard = useStore((s) => s.sessionCompletedBoards.get(sessionId) ?? EMPTY_BOARD_ROWS);
-  const messages = useStore((s) => s.messages.get(sessionId) ?? EMPTY_MESSAGES);
+  const storedMessages = useStore((s) => s.messages.get(sessionId) ?? EMPTY_MESSAGES);
+  const messages = deferMessageDerivedRows ? EMPTY_MESSAGES : storedMessages;
   const quests = useStore((s) => s.quests);
   const rowSessionStatuses = useStore((s) => s.sessionBoardRowStatuses.get(sessionId));
   const rows = useMemo(
@@ -635,7 +636,12 @@ export function ChatView({
   );
   const [selectedThreadKey, setSelectedThreadKey] = useState("main");
   const [openThreadTabKeys, setOpenThreadTabKeys] = useState(() => readOpenThreadTabKeys(sessionId));
-  const { activeBoard, completedBoard, messages: allMessages, rows: threadRows } = useLeaderThreadModel(sessionId);
+  const {
+    activeBoard,
+    completedBoard,
+    messages: allMessages,
+    rows: threadRows,
+  } = useLeaderThreadModel(sessionId, historyLoading);
   const sessionNotifications = useStore((s) => s.sessionNotifications.get(sessionId));
   const persistedAttentionRecords = useStore((s) => s.sessionAttentionRecords.get(sessionId));
   const routeSyncEnabled = hasThreadRoute !== undefined || routeThreadKey !== undefined;

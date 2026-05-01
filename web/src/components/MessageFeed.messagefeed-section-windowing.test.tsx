@@ -139,6 +139,7 @@ import {
   findVisibleSectionEndIndex,
   findVisibleSectionStartIndex,
 } from "./MessageFeed.js";
+import { HISTORY_WINDOW_SECTION_TURN_COUNT } from "../../shared/history-window.js";
 
 function makeMessage(overrides: Partial<ChatMessage> & { role: ChatMessage["role"] }): ChatMessage {
   return {
@@ -502,15 +503,23 @@ function makeDomRect(height: number, width = 0): DOMRect {
 }
 
 describe("MessageFeed section windowing", () => {
-  it("chunks turns into fixed-size 50-turn sections", () => {
-    const sections = buildFeedSections(makeSectionTurns(120));
+  it("chunks turns into fixed-size default sections", () => {
+    const turns = makeSectionTurns(120);
+    const sections = buildFeedSections(turns);
+    const expectedSectionCount = Math.ceil(turns.length / HISTORY_WINDOW_SECTION_TURN_COUNT);
 
-    expect(sections).toHaveLength(3);
-    expect(sections.map((section) => section.turns.length)).toEqual([50, 50, 20]);
-    expect(findVisibleSectionStartIndex(sections, 3)).toBe(0);
-    expect(findVisibleSectionEndIndex(sections, 0, 3)).toBe(3);
-    expect(findVisibleSectionStartIndex(sections, 2)).toBe(1);
-    expect(findVisibleSectionEndIndex(sections, 1, 2)).toBe(3);
+    expect(sections).toHaveLength(expectedSectionCount);
+    expect(sections.map((section) => section.turns.length)).toEqual(
+      Array.from({ length: expectedSectionCount }, (_, index) =>
+        index === expectedSectionCount - 1
+          ? turns.length - HISTORY_WINDOW_SECTION_TURN_COUNT * index
+          : HISTORY_WINDOW_SECTION_TURN_COUNT,
+      ),
+    );
+    expect(findVisibleSectionStartIndex(sections, 3)).toBe(Math.max(0, expectedSectionCount - 3));
+    expect(findVisibleSectionEndIndex(sections, 0, 3)).toBe(Math.min(expectedSectionCount, 3));
+    expect(findVisibleSectionStartIndex(sections, 2)).toBe(Math.max(0, expectedSectionCount - 2));
+    expect(findVisibleSectionEndIndex(sections, 1, 2)).toBe(Math.min(expectedSectionCount, 3));
   });
 
   it("clamps target window selection for section-aware jumps", () => {

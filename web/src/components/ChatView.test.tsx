@@ -1479,4 +1479,41 @@ describe("ChatView backend banners", () => {
     expect(document.body.querySelector('[data-testid="quest-thread-journey-hover-card"]')).toBeInTheDocument();
     expect(document.body.querySelector('[data-testid="quest-journey-preview-card"]')).toHaveTextContent("1 note");
   });
+
+  it("defers leader message-derived tabs and attention while history restore is still loading", () => {
+    resetStore({
+      sessions: new Map([["s1", { backend_state: "connected", backend_error: null, isOrchestrator: true }]]),
+      sdkSessions: [{ sessionId: "s1", archived: false, isOrchestrator: true }],
+      historyLoading: new Map([["s1", true]]),
+      messages: new Map([
+        [
+          "s1",
+          [
+            {
+              id: "u-restoring",
+              role: "user",
+              content: "Please ask the agent to fix the rough edge.",
+              timestamp: Date.now(),
+              metadata: { threadRefs: [{ threadKey: "q-1005", questId: "q-1005", source: "explicit" }] },
+            },
+          ],
+        ],
+      ]),
+      quests: [{ questId: "q-1005", title: "Restore leader sessions", status: "in_progress" }],
+    });
+
+    const view = render(<ChatView sessionId="s1" />);
+    const scope = within(view.container);
+
+    // message_history sets messages before clearing historyLoading; that
+    // intermediate render must not scan the full leader transcript.
+    expect(scope.queryAllByTestId("mock-workboard-thread")).toHaveLength(0);
+    expect(scope.getByTestId("work-board-bar")).toHaveAttribute("data-attention-count", "0");
+
+    mockState.historyLoading = new Map();
+    view.rerender(<ChatView sessionId="s1" />);
+
+    expect(scope.getByTestId("mock-workboard-thread")).toHaveAttribute("data-thread-key", "q-1005");
+    expect(scope.getByTestId("work-board-bar")).toHaveAttribute("data-attention-count", "1");
+  });
 });

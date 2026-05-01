@@ -180,4 +180,90 @@ describe("handleMessage: event_replay", () => {
     expect(lastWs.send).toHaveBeenCalledTimes(1);
     expect(lastWs.send).toHaveBeenCalledWith(JSON.stringify({ type: "session_ack", last_seq: 2 }));
   });
+
+  it("acks but skips stale transient replay after a cold authoritative history window", () => {
+    wsModule.connectSession("s1");
+    lastWs.onopen?.(new Event("open"));
+    lastWs.send.mockClear();
+
+    fireMessage({
+      type: "history_window_sync",
+      messages: [],
+      window: {
+        from_turn: 0,
+        turn_count: 0,
+        total_turns: 0,
+        start_index: 0,
+        section_turn_count: HISTORY_WINDOW_SECTION_TURN_COUNT,
+        visible_section_count: HISTORY_WINDOW_VISIBLE_SECTION_COUNT,
+      },
+    });
+    fireMessage({
+      type: "event_replay",
+      events: [
+        {
+          seq: 1,
+          message: {
+            type: "stream_event",
+            event: { type: "content_block_delta", delta: { type: "text_delta", text: "stale" } },
+            parent_tool_use_id: null,
+          },
+        },
+        {
+          seq: 2,
+          message: {
+            type: "pr_status_update",
+            available: true,
+            pr: null,
+          },
+        },
+      ],
+    });
+    fireMessage({ type: "state_snapshot", sessionStatus: "idle", backendConnected: true });
+
+    expect(useStore.getState().streaming.get("s1")).toBeUndefined();
+    expect(useStore.getState().prStatus.get("s1")).toBeUndefined();
+    expect(localStorage.getItem("companion:last-seq:s1")).toBe("2");
+    expect(lastWs.send).toHaveBeenCalledWith(JSON.stringify({ type: "session_ack", last_seq: 2 }));
+  });
+
+  it("replays buffered cold transient events when the authoritative snapshot is still running", () => {
+    wsModule.connectSession("s1");
+    lastWs.onopen?.(new Event("open"));
+    lastWs.send.mockClear();
+
+    fireMessage({
+      type: "history_window_sync",
+      messages: [],
+      window: {
+        from_turn: 0,
+        turn_count: 0,
+        total_turns: 0,
+        start_index: 0,
+        section_turn_count: HISTORY_WINDOW_SECTION_TURN_COUNT,
+        visible_section_count: HISTORY_WINDOW_VISIBLE_SECTION_COUNT,
+      },
+    });
+    fireMessage({
+      type: "event_replay",
+      events: [
+        {
+          seq: 1,
+          message: {
+            type: "stream_event",
+            event: { type: "content_block_delta", delta: { type: "text_delta", text: "live" } },
+            parent_tool_use_id: null,
+          },
+        },
+      ],
+    });
+
+    expect(useStore.getState().streaming.get("s1")).toBeUndefined();
+
+    fireMessage({ type: "state_snapshot", sessionStatus: "running", backendConnected: true });
+
+    expect(useStore.getState().streaming.get("s1")).toBe("live");
+    expect(localStorage.getItem("companion:last-seq:s1")).toBe("1");
+    expect(lastWs.send).toHaveBeenCalledWith(JSON.stringify({ type: "session_ack", last_seq: 1 }));
+  });
 });

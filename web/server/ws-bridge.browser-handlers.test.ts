@@ -872,6 +872,52 @@ describe("Browser handlers", () => {
     expect(replay.events[0].message.type).toBe("stream_event");
   });
 
+  it("session_subscribe: skips stale transient replay on idle cold subscribe", async () => {
+    const cli = makeCliSocket("s1");
+    bridge.handleCLIOpen(cli, "s1");
+    const session = bridge.getSession("s1")!;
+    session.messageHistory.push({
+      type: "assistant",
+      message: {
+        id: "msg-1",
+        type: "message",
+        role: "assistant",
+        model: "claude-sonnet-4-5-20250929",
+        content: [{ type: "text", text: "Persisted answer" }],
+        stop_reason: null,
+        usage: { input_tokens: 10, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+      },
+      parent_tool_use_id: null,
+      uuid: "asst-u1",
+      session_id: "s1",
+    } as any);
+    session.eventBuffer = [
+      {
+        seq: 1,
+        message: {
+          type: "stream_event",
+          event: { type: "content_block_delta", delta: { type: "text_delta", text: "stale" } },
+          parent_tool_use_id: null,
+          uuid: "se-stale",
+          session_id: "s1",
+        } as any,
+      },
+    ];
+    session.nextEventSeq = 2;
+
+    const browser = makeBrowserSocket("s1");
+    bridge.handleBrowserOpen(browser, "s1");
+    browser.send.mockClear();
+
+    bridge.handleBrowserMessage(browser, JSON.stringify({ type: "session_subscribe", last_seq: 0 }));
+    await flushAsync();
+
+    const calls = browser.send.mock.calls.map(([arg]: [string]) => JSON.parse(arg));
+    expect(calls.find((c: any) => c.type === "history_sync")).toBeDefined();
+    expect(calls.find((c: any) => c.type === "state_snapshot")).toBeDefined();
+    expect(calls.find((c: any) => c.type === "event_replay")).toBeUndefined();
+  });
+
   it("session_subscribe: falls back to full history sync when known_frozen_count is invalid", async () => {
     // When the browser claims a frozen count larger than the server's rendered
     // count, the initial sync is refused. The fallback retries with

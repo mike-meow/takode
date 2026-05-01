@@ -858,7 +858,7 @@ export async function handleSessionSubscribe(
         await sendHistorySync(session, ws, knownFrozenCount ?? 0, knownFrozenHash);
       }
     }
-    if (session.eventBuffer.length > 0) {
+    if (deriveSessionStatus(session, deps) === "running" && session.eventBuffer.length > 0) {
       const transient = session.eventBuffer.filter(
         (evt) => !isHistoryBackedEvent(evt.message as ReplayableBrowserIncomingMessage),
       );

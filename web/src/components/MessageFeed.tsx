@@ -214,7 +214,12 @@ export function MessageFeed({
   onSelectThread?: (threadKey: string) => void;
 }) {
   const allMessages = useStore((s) => s.messages.get(sessionId) ?? EMPTY_MESSAGES);
-  const baseMessages = useMemo(() => filterMessagesForThread(allMessages, threadKey), [allMessages, threadKey]);
+  const historyLoading = useStore((s) => s.historyLoading.get(sessionId) ?? false);
+  const messagesAvailableForDerivation = historyLoading ? EMPTY_MESSAGES : allMessages;
+  const baseMessages = useMemo(
+    () => filterMessagesForThread(messagesAvailableForDerivation, threadKey),
+    [messagesAvailableForDerivation, threadKey],
+  );
   const sessionNotifications = useStore((s) => s.sessionNotifications?.get(sessionId));
   const sessionAttentionRecords = useStore((s) => s.sessionAttentionRecords?.get(sessionId));
   const sessionBoard = useStore((s) => s.sessionBoards?.get(sessionId));
@@ -227,9 +232,16 @@ export function MessageFeed({
         notifications: sessionNotifications,
         boardRows: sessionBoard,
         completedBoardRows: sessionCompletedBoard,
-        messages: allMessages,
+        messages: messagesAvailableForDerivation,
       }),
-    [allMessages, sessionAttentionRecords, sessionBoard, sessionCompletedBoard, sessionId, sessionNotifications],
+    [
+      messagesAvailableForDerivation,
+      sessionAttentionRecords,
+      sessionBoard,
+      sessionCompletedBoard,
+      sessionId,
+      sessionNotifications,
+    ],
   );
   const attentionLedgerMessages = useMemo(
     () => (isMainThreadKey(threadKey) ? buildAttentionLedgerMessages(attentionRecords) : EMPTY_MESSAGES),
@@ -247,7 +259,6 @@ export function MessageFeed({
   const pendingCodexInputs = useStore((s) => s.pendingCodexInputs.get(sessionId) ?? EMPTY_PENDING_CODEX_INPUTS);
   const frozenCount = useStore((s) => s.messageFrozenCounts.get(sessionId) ?? 0);
   const frozenRevision = useStore((s) => s.messageFrozenRevisions.get(sessionId) ?? 0);
-  const historyLoading = useStore((s) => s.historyLoading.get(sessionId) ?? false);
   const historyWindow = useStore((s) => s.historyWindows.get(sessionId) ?? null);
   const streamingText = useStore((s) => s.streaming.get(sessionId));
   const isCodexSession = useStore((s) => s.sessions.get(sessionId)?.backend_type === "codex");

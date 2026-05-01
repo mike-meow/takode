@@ -1,4 +1,4 @@
-export const HISTORY_WINDOW_SECTION_TURN_COUNT = 50;
+export const HISTORY_WINDOW_SECTION_TURN_COUNT = 5;
 export const HISTORY_WINDOW_VISIBLE_SECTION_COUNT = 3;
 
 export function getHistoryWindowTurnCount(

@@ -80,6 +80,9 @@ export function createWsTransport(callbacks: WsTransportCallbacks): WsTransport 
   const heartbeatIntervals = new Map<string, ReturnType<typeof setInterval>>();
   const heartbeatOwners = new Map<string, WebSocket>();
   const lastSeqBySession = new Map<string, number>();
+  const coldSubscribeAwaitingSnapshot = new Set<string>();
+  const coldSubscribeReceivedHistory = new Set<string>();
+  const coldSubscribeBufferedReplay = new Map<string, BrowserIncomingMessage[]>();
   const intentionalCloseSockets = new WeakSet<WebSocket>();
 
   let clientMsgCounter = 0;
@@ -116,6 +119,12 @@ export function createWsTransport(callbacks: WsTransportCallbacks): WsTransport 
     }
   }
 
+  function clearColdSubscribeState(sessionId: string): void {
+    coldSubscribeAwaitingSnapshot.delete(sessionId);
+    coldSubscribeReceivedHistory.delete(sessionId);
+    coldSubscribeBufferedReplay.delete(sessionId);
+  }
+
   function sendSessionSubscribe(sessionId: string, forceFullHistory = false): boolean {
     const ws = sockets.get(sessionId);
     if (ws?.readyState !== WebSocket.OPEN) return false;
@@ -138,6 +147,13 @@ export function createWsTransport(callbacks: WsTransportCallbacks): WsTransport 
           : {}),
       }),
     );
+    if (lastSeq === 0 && !forceFullHistory) {
+      coldSubscribeAwaitingSnapshot.add(sessionId);
+      coldSubscribeReceivedHistory.delete(sessionId);
+      coldSubscribeBufferedReplay.delete(sessionId);
+    } else {
+      clearColdSubscribeState(sessionId);
+    }
     return true;
   }
 
@@ -146,15 +162,33 @@ export function createWsTransport(callbacks: WsTransportCallbacks): WsTransport 
   }
 
   function handleParsedMessage(sessionId: string, message: SequencedIncomingMessage): void {
+    if (
+      coldSubscribeAwaitingSnapshot.has(sessionId) &&
+      (message.type === "message_history" || message.type === "history_sync" || message.type === "history_window_sync")
+    ) {
+      coldSubscribeReceivedHistory.add(sessionId);
+    }
+
     if (message.type === "event_replay" && Array.isArray(message.events)) {
       let latestProcessed: number | undefined;
+      const bufferColdReplay =
+        coldSubscribeAwaitingSnapshot.has(sessionId) && coldSubscribeReceivedHistory.has(sessionId);
+      const bufferedMessages: BrowserIncomingMessage[] = [];
       for (const evt of message.events) {
         if (typeof evt.seq !== "number") continue;
         const previous = getLastSeq(sessionId);
         if (evt.seq <= previous) continue;
         setLastSeq(sessionId, evt.seq);
         latestProcessed = evt.seq;
+        if (bufferColdReplay) {
+          bufferedMessages.push(evt.message);
+          continue;
+        }
         callbacks.onMessage(sessionId, evt.message);
+      }
+      if (bufferedMessages.length > 0) {
+        const previous = coldSubscribeBufferedReplay.get(sessionId) ?? [];
+        coldSubscribeBufferedReplay.set(sessionId, [...previous, ...bufferedMessages]);
       }
       if (typeof latestProcessed === "number") {
         ackSeq(sessionId, latestProcessed);
@@ -176,6 +210,15 @@ export function createWsTransport(callbacks: WsTransportCallbacks): WsTransport 
       }
     }
 
+    if (message.type === "state_snapshot") {
+      const bufferedReplay = coldSubscribeBufferedReplay.get(sessionId) ?? [];
+      if (message.sessionStatus === "running") {
+        for (const replayedMessage of bufferedReplay) {
+          callbacks.onMessage(sessionId, replayedMessage);
+        }
+      }
+      clearColdSubscribeState(sessionId);
+    }
     callbacks.onMessage(sessionId, message);
   }
 
@@ -216,6 +259,9 @@ export function createWsTransport(callbacks: WsTransportCallbacks): WsTransport 
 
     if (ws && currentWs === ws) {
       sockets.delete(sessionId);
+    }
+    if (!targetWs || currentWs === ws) {
+      clearColdSubscribeState(sessionId);
     }
     return ws;
   }
