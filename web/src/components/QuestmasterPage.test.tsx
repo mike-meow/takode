@@ -535,7 +535,8 @@ describe("QuestmasterPage status display", () => {
     renderQuestmaster({ isActive: true });
 
     const staleBoardRow = await screen.findByRole("button", { name: /q-93 Done quest with stale board row/ });
-    expect(within(staleBoardRow).getByText("Completed")).toBeInTheDocument();
+    const staleBoardStatus = within(staleBoardRow).getByText("Completed");
+    expect(staleBoardStatus).toBeInTheDocument();
     expect(within(staleBoardRow).queryByText("Port")).not.toBeInTheDocument();
     expect(within(staleBoardRow).getByText("0/1")).toBeInTheDocument();
 
@@ -543,6 +544,12 @@ describe("QuestmasterPage status display", () => {
     expect(within(staleRunRow).getByText("Completed")).toBeInTheDocument();
     expect(within(staleRunRow).queryByText("Port")).not.toBeInTheDocument();
     expect(within(staleRunRow).getByText("0/1")).toBeInTheDocument();
+
+    fireEvent.mouseEnter(staleBoardStatus);
+    expect(await screen.findByTestId("quest-hover-journey")).toBeInTheDocument();
+    expect(screen.getByTestId("quest-hover-status-row")).toHaveTextContent("Completed");
+    expect(screen.getByTestId("quest-hover-status-row")).not.toHaveTextContent("Port");
+    expect(screen.getByTestId("quest-hover-journey")).toHaveTextContent("Completed Journey");
   });
 
   it("limits compact title cells to title, tags, and one plain-text description TLDR string", async () => {

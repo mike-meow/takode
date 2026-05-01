@@ -56,11 +56,13 @@ export function QuestHoverCard({ quest, anchorRect, onMouseEnter, onMouseLeave }
   const gap = 6;
   const left = anchorRect.left;
   const top = anchorRect.bottom + gap;
-  const journeyStatus =
-    isCompletedJourneyPresentationStatus(quest.status) || journeyContext?.completed ? "done" : journeyBoardRow?.status;
-  const journeyPhase = !journeyContext?.completed ? getQuestJourneyPhaseForState(journeyBoardRow?.status) : null;
-  const journeyPresentation = !journeyContext?.completed ? getQuestJourneyPresentation(journeyBoardRow?.status) : null;
-  const statusLabel = journeyPresentation?.label ?? journeyPhase?.label ?? statusTheme.label;
+  const isTerminalQuest = isCompletedJourneyPresentationStatus(quest.status);
+  const journeyStatus = isTerminalQuest || journeyContext?.completed ? "done" : journeyBoardRow?.status;
+  const canUseJourneyStatusLabel = !isTerminalQuest && !journeyContext?.completed;
+  const journeyPhase = canUseJourneyStatusLabel ? getQuestJourneyPhaseForState(journeyBoardRow?.status) : null;
+  const journeyPresentation = canUseJourneyStatusLabel ? getQuestJourneyPresentation(journeyBoardRow?.status) : null;
+  const terminalStatusLabel = quest.status === "done" ? "Completed" : statusTheme.label;
+  const statusLabel = journeyPresentation?.label ?? journeyPhase?.label ?? terminalStatusLabel;
   const statusDotStyle = journeyPhase?.color.accent ? { backgroundColor: journeyPhase.color.accent } : undefined;
   const showOwnerSession = !!ownerSessionId && workerParticipant?.sessionId !== ownerSessionId;
 
