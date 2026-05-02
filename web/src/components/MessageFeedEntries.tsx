@@ -34,7 +34,7 @@ import type { FeedSection } from "./message-feed-sections.js";
 import { YarnBallDot, YarnBallSpinner } from "./CatIcons.js";
 import { PawTrailAvatar, HidePawContext } from "./PawTrail.js";
 import {
-  formatThreadAttachmentMarkerDetails,
+  formatThreadAttachmentMarkerDetail,
   isCrossThreadActivityMarkerMessage,
   isThreadAttachmentMarkerMessage,
   isThreadTransitionMarkerMessage,
@@ -598,10 +598,7 @@ function buildThreadMarkerClusterDetails(messages: ChatMessage[]): string[] {
 }
 
 function formatThreadAttachmentDetail(marker: ThreadAttachmentMarker): string {
-  const destination = marker.questId ?? marker.threadKey;
-  const countLabel = `${marker.count} ${marker.count === 1 ? "message" : "messages"}`;
-  const details = formatThreadAttachmentMarkerDetails(marker);
-  return `${countLabel} moved to thread:${destination}${details ? ` · ${details}` : ""}`;
+  return formatThreadAttachmentMarkerDetail(marker);
 }
 
 function formatThreadTransitionDetail(marker: ThreadTransitionMarker): string {

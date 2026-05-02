@@ -1,4 +1,10 @@
-import type { ChatMessage, SessionNotification, ThreadAttachmentMarker, ThreadTransitionMarker } from "../types.js";
+import type {
+  ChatMessage,
+  SessionNotification,
+  ThreadAttachmentMarker,
+  ThreadAttachmentMovementSummary,
+  ThreadTransitionMarker,
+} from "../types.js";
 import {
   inferThreadTargetFromTextContent,
   isQuestThreadKey,
@@ -47,6 +53,46 @@ export function formatThreadAttachmentMarkerDetails(marker: ThreadAttachmentMark
     parts.push(`Message ids: ${marker.messageIds.join(", ")}`);
   }
   return parts.join(" · ");
+}
+
+export function formatThreadAttachmentMarkerDetail(marker: ThreadAttachmentMarker): string {
+  const destination = marker.questId ?? marker.threadKey;
+  const countLabel = `${marker.count} ${marker.count === 1 ? "message" : "messages"}`;
+  const details = formatThreadAttachmentMarkerDetails(marker);
+  return `${countLabel} moved to thread:${destination}${details ? ` · ${details}` : ""}`;
+}
+
+export function formatThreadAttachmentMovementSummary(summary: ThreadAttachmentMovementSummary): string {
+  const countLabel = `${summary.count} ${summary.count === 1 ? "message" : "messages"}`;
+  return `${countLabel} moved to ${formatThreadLabel(summary.questId ?? summary.threadKey)}`;
+}
+
+export function threadAttachmentMarkerTargetKey(marker: ThreadAttachmentMarker): string {
+  return normalizeThreadKey(marker.threadKey || marker.questId || "");
+}
+
+export function summarizeThreadAttachmentMarkersForThread(
+  messages: ReadonlyArray<ChatMessage>,
+  threadKey: string,
+): ThreadAttachmentMovementSummary | null {
+  const target = normalizeThreadKey(threadKey);
+  if (!target || isMainThreadKey(target)) return null;
+
+  let count = 0;
+  let questId: string | undefined;
+  const details: string[] = [];
+  const markerIds: string[] = [];
+  for (const message of messages) {
+    const marker = message.metadata?.threadAttachmentMarker;
+    if (!marker || threadAttachmentMarkerTargetKey(marker) !== target) continue;
+    count += marker.count;
+    questId ??= marker.questId;
+    markerIds.push(marker.id);
+    details.push(formatThreadAttachmentMarkerDetail(marker));
+  }
+
+  if (count === 0) return null;
+  return { threadKey: target, ...(questId ? { questId } : {}), count, details, markerIds };
 }
 
 export function formatThreadTransitionMarkerSummary(marker: ThreadTransitionMarker): string {
@@ -427,7 +473,7 @@ function filterQuestThreadMessages(messages: ChatMessage[], threadKey: string): 
   });
 }
 
-function formatThreadLabel(threadKey: string): string {
+export function formatThreadLabel(threadKey: string): string {
   return isMainThreadKey(threadKey) ? "Main" : `thread:${threadKey}`;
 }
 

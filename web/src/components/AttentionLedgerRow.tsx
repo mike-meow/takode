@@ -1,7 +1,12 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { useStore } from "../store.js";
 import type { SessionAttentionRecord } from "../types.js";
-import { ALL_THREADS_KEY, MAIN_THREAD_KEY, normalizeThreadKey } from "../utils/thread-projection.js";
+import {
+  ALL_THREADS_KEY,
+  MAIN_THREAD_KEY,
+  formatThreadAttachmentMovementSummary,
+  normalizeThreadKey,
+} from "../utils/thread-projection.js";
 import { CatPawAvatar } from "./CatIcons.js";
 import { QuestInlineLink } from "./QuestInlineLink.js";
 
@@ -33,6 +38,7 @@ export function AttentionLedgerRow({
   const isThreadCreated = record.type === "quest_thread_created";
   const isNonActionEvent = record.type === "quest_journey_started" || isThreadCreated;
   const targetThread = normalizeThreadKey(record.route.threadKey || record.threadKey || MAIN_THREAD_KEY);
+  const [movementDetailsOpen, setMovementDetailsOpen] = useState(false);
 
   const openRoute = useCallback(() => {
     const selectedThread = normalizeThreadKey(currentThreadKey || MAIN_THREAD_KEY);
@@ -76,6 +82,11 @@ export function AttentionLedgerRow({
   const showSummary = summary.length > 0 && summary !== record.title.trim();
   const shellClasses = isReview ? "rounded-md px-3 py-2" : "rounded-lg px-3 py-2.5";
   const showThreadLink = targetThread !== MAIN_THREAD_KEY;
+  const threadAttachmentSummary = record.threadAttachmentSummary;
+  const movementSummary = threadAttachmentSummary
+    ? formatThreadAttachmentMovementSummary(threadAttachmentSummary)
+    : null;
+  const movementDetails = threadAttachmentSummary?.details ?? [];
 
   return (
     <div
@@ -116,6 +127,34 @@ export function AttentionLedgerRow({
             )}
           </div>
           {showSummary && <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-cc-muted">{summary}</p>}
+          {movementSummary && (
+            <div
+              className="mt-1 text-xs leading-relaxed text-cc-muted font-mono-code"
+              data-testid="attention-thread-movement-summary"
+            >
+              <span>{movementSummary}</span>
+              {movementDetails.length > 0 && (
+                <>
+                  <span className="mx-1.5 text-cc-muted/35">·</span>
+                  <button
+                    type="button"
+                    onClick={() => setMovementDetailsOpen((open) => !open)}
+                    className="text-cc-primary hover:text-cc-primary/80 underline-offset-2 hover:underline"
+                    aria-expanded={movementDetailsOpen}
+                  >
+                    Details
+                  </button>
+                </>
+              )}
+              {movementDetailsOpen && movementDetails.length > 0 && (
+                <div className="mt-1 space-y-0.5 text-cc-muted/70" data-testid="attention-thread-movement-details">
+                  {movementDetails.map((detail, index) => (
+                    <div key={`${detail}-${index}`}>{detail}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
         {!isJourneyLifecycle && !isThreadCreated && (
           <button

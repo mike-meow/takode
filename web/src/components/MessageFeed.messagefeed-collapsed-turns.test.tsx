@@ -1275,6 +1275,123 @@ describe("MessageFeed - collapsed turns", () => {
     expect(screen.queryByRole("button", { name: "Open" })).toBeNull();
   });
 
+  it("merges moved-message summaries into matching thread-created ledger rows", () => {
+    const sid = "test-thread-created-movement-summary";
+    const onSelectThread = vi.fn();
+    const markerA = movedMarker({
+      id: "marker-q-972-a",
+      threadKey: "q-972",
+      timestamp: 122,
+      count: 2,
+      messageIds: ["m1", "m2"],
+      messageIndices: [1, 2],
+      ranges: ["1-2"],
+    });
+    const markerB = movedMarker({
+      id: "marker-q-972-b",
+      threadKey: "q-972",
+      timestamp: 123,
+      count: 1,
+      messageIds: ["m3"],
+      messageIndices: [3],
+      ranges: ["3"],
+    });
+    setStoreMessages(sid, [
+      makeMessage({ id: "u-main", role: "user", content: "Coordinate active quests", timestamp: 100 }),
+      makeMessage({
+        id: markerA.id,
+        role: "system",
+        content: "2 messages moved to q-972",
+        timestamp: markerA.timestamp,
+        metadata: { threadAttachmentMarker: markerA },
+      }),
+      makeMessage({
+        id: markerB.id,
+        role: "system",
+        content: "1 message moved to q-972",
+        timestamp: markerB.timestamp,
+        metadata: { threadAttachmentMarker: markerB },
+      }),
+    ]);
+    setStoreAttentionRecords(sid, [
+      {
+        id: "thread-opened:q-972",
+        leaderSessionId: sid,
+        type: "quest_thread_created",
+        source: { kind: "manual", id: "q-972", questId: "q-972", signature: "thread-opened" },
+        questId: "q-972",
+        threadKey: "q-972",
+        title: "Thread opened",
+        summary: "q-972: Restore source markers",
+        actionLabel: "Open",
+        priority: "created",
+        state: "resolved",
+        createdAt: 121,
+        updatedAt: 121,
+        resolvedAt: 121,
+        route: { threadKey: "q-972", questId: "q-972" },
+        chipEligible: false,
+        ledgerEligible: true,
+        dedupeKey: "thread-opened:q-972",
+      },
+    ]);
+
+    render(<MessageFeed sessionId={sid} onSelectThread={onSelectThread} />);
+
+    const row = screen.getByTestId("attention-ledger-row");
+    expect(row.getAttribute("data-attention-type")).toBe("quest_thread_created");
+    expectTextContent(row, "Thread opened");
+    expectTextContent(row, "3 messages moved to thread:q-972");
+    expect(screen.queryByTestId("thread-attachment-marker")).toBeNull();
+
+    fireEvent.click(within(row).getByRole("button", { name: "Details" }));
+    const details = within(row).getByTestId("attention-thread-movement-details");
+    expectTextContent(details, "2 messages moved to thread:q-972");
+    expectTextContent(details, "1 message moved to thread:q-972");
+    expectTextContent(details, "Ranges: 1-2");
+    expectTextContent(details, "Message ids: m3");
+
+    fireEvent.click(within(row).getByRole("button", { name: "Open thread:q-972" }));
+    expect(onSelectThread).toHaveBeenCalledWith("q-972");
+  });
+
+  it("keeps Main-routed messages visible when quest-routed messages have no movement marker", () => {
+    const sid = "test-main-no-movement-no-loss";
+    setStoreMessages(sid, [
+      makeMessage({
+        id: "u-approve",
+        role: "user",
+        content: "approve",
+        timestamp: 100,
+        metadata: { threadKey: "main" },
+      }),
+      makeMessage({
+        id: "a-q1065",
+        role: "assistant",
+        content: "Approved and dispatched q-1065.",
+        timestamp: 101,
+        metadata: {
+          threadKey: "q-1065",
+          questId: "q-1065",
+          threadRefs: [{ threadKey: "q-1065", questId: "q-1065", source: "explicit" }],
+        },
+      }),
+      makeMessage({
+        id: "a-main",
+        role: "assistant",
+        content: "No. I did not run takode thread attach.",
+        timestamp: 102,
+      }),
+    ]);
+
+    render(<MessageFeed sessionId={sid} />);
+
+    expect(screen.getByText("approve")).toBeTruthy();
+    expect(screen.getByText("No. I did not run takode thread attach.")).toBeTruthy();
+    expect(screen.queryByText("Approved and dispatched q-1065.")).toBeNull();
+    expect(screen.queryByTestId("thread-attachment-marker")).toBeNull();
+  });
+
   it("renders server-authoritative attention lifecycle records from the live store", () => {
     // `seen`, `dismissed`, and `superseded` are not notification states. Main
     // must render them from the shared server-authoritative record collection.

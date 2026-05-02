@@ -159,6 +159,15 @@ const ATTENTION_LEDGER_RECORDS: SessionAttentionRecord[] = [
     chipEligible: false,
     ledgerEligible: true,
     dedupeKey: "playground-attention-thread-opened",
+    threadAttachmentSummary: {
+      threadKey: "q-964",
+      questId: "q-964",
+      count: 2,
+      details: [
+        "2 messages moved to thread:q-964 · Ranges: 14-15 · Message ids: playground-main-question, playground-main-approval",
+      ],
+      markerIds: ["playground-thread-attachment-marker-q964"],
+    },
   },
   {
     id: "playground-attention-finished",

@@ -298,6 +298,14 @@ export interface ThreadAttachmentMarker {
   firstMessageIndex?: number;
 }
 
+export interface ThreadAttachmentMovementSummary {
+  threadKey: string;
+  questId?: string;
+  count: number;
+  details: string[];
+  markerIds: string[];
+}
+
 export interface ThreadTransitionMarker {
   type: "thread_transition_marker";
   id: string;
@@ -1122,6 +1130,7 @@ export interface SessionAttentionRecord {
   ledgerEligible: boolean;
   dedupeKey: string;
   supersedesDedupeKeys?: string[];
+  threadAttachmentSummary?: ThreadAttachmentMovementSummary;
 }
 
 /** A notification collected when `takode notify` fires. Persisted per session. */
