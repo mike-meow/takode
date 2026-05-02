@@ -1126,6 +1126,91 @@ describe("CodexAdapter", () => {
     expect(adapter.getCurrentTurnId()).toBeNull();
   });
 
+  it("buffers stderr router failures split before the write_stdin error field", async () => {
+    // Stderr stream chunks are not line-delivery boundaries. A router record
+    // split before the error field should be reconstructed before parsing.
+    const messages: BrowserIncomingMessage[] = [];
+    const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+
+    await tick();
+    await initializeAdapter(stdout);
+    stdout.push(JSON.stringify({ id: 3, result: { rateLimits: { primary: null, secondary: null } } }) + "\n");
+    await tick();
+
+    adapter.sendBrowserMessage({ type: "user_message", content: "Poll a closed stdin terminal" });
+    await tick();
+    stdout.push(JSON.stringify({ id: 4, result: { turn: { id: "turn_closed_stdin_split_before_error" } } }) + "\n");
+    await tick();
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: { item: { id: "cmd_split_before_error", type: "commandExecution", command: ["bun", "test"] } },
+      }) + "\n",
+    );
+    await tick();
+
+    const errorMessage =
+      "write_stdin failed: stdin is closed for this session; rerun exec_command with tty=true to keep stdin open";
+    adapter.handleProcessStderr("2026-05-02T19:19:37.348471Z ERROR codex_core::tools::router: ");
+    await tick();
+    expect(getToolUseBlocks(messages, "write_stdin")).toHaveLength(0);
+
+    adapter.handleProcessStderr(`error=${errorMessage}\n`);
+    await tick();
+
+    const failedWriteStdinResults = getToolResultBlocks(messages).filter(
+      (block) => block.is_error === true && typeof block.content === "string" && block.content.includes(errorMessage),
+    );
+    expect(failedWriteStdinResults).toHaveLength(1);
+    expect(messages.some((msg) => msg.type === "error" && msg.message === errorMessage)).toBe(false);
+  });
+
+  it("buffers stderr router failures split inside the closed-stdin message", async () => {
+    // Do not emit a truncated failed write_stdin result when the stream splits
+    // inside "stdin is closed for this session"; parse only after newline.
+    const messages: BrowserIncomingMessage[] = [];
+    const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+
+    await tick();
+    await initializeAdapter(stdout);
+    stdout.push(JSON.stringify({ id: 3, result: { rateLimits: { primary: null, secondary: null } } }) + "\n");
+    await tick();
+
+    adapter.sendBrowserMessage({ type: "user_message", content: "Poll a closed stdin terminal" });
+    await tick();
+    stdout.push(JSON.stringify({ id: 4, result: { turn: { id: "turn_closed_stdin_split_inside" } } }) + "\n");
+    await tick();
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: { item: { id: "cmd_split_inside", type: "commandExecution", command: ["bun", "test"] } },
+      }) + "\n",
+    );
+    await tick();
+
+    const errorMessage =
+      "write_stdin failed: stdin is closed for this session; rerun exec_command with tty=true to keep stdin open";
+    const fullLine = `2026-05-02T19:19:37.348471Z ERROR codex_core::tools::router: error=${errorMessage}\n`;
+    const splitAt = fullLine.indexOf("session;") + "sess".length;
+    adapter.handleProcessStderr(fullLine.slice(0, splitAt));
+    await tick();
+    expect(
+      getToolResultBlocks(messages).some(
+        (block) => block.is_error === true && typeof block.content === "string" && block.content.includes("stdin is"),
+      ),
+    ).toBe(false);
+
+    adapter.handleProcessStderr(fullLine.slice(splitAt));
+    await tick();
+
+    const failedWriteStdinResults = getToolResultBlocks(messages).filter(
+      (block) => block.is_error === true && typeof block.content === "string" && block.content === errorMessage,
+    );
+    expect(failedWriteStdinResults).toHaveLength(1);
+  });
+
   it("does not attach closed-stdin stderr router failures when multiple real tools are active", async () => {
     // Without a process id, the closed-stdin stderr fallback is intentionally
     // narrower than the generic router-error path: if more than one real tool

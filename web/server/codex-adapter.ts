@@ -45,6 +45,7 @@ import { getDefaultModelForBackend } from "../shared/backend-defaults.js";
 import { CODEX_LOCAL_SLASH_COMMANDS } from "../shared/codex-slash-commands.js";
 
 const TURN_START_ACK_TIMEOUT_MS = 60_000;
+const STDERR_ROUTER_LINE_BUFFER_MAX = 64 * 1024;
 
 type RouterFailureToolName = "write_stdin";
 
@@ -129,6 +130,7 @@ export class CodexAdapter
   // Last few raw JSON-RPC messages for debugging unexpected disconnects
   private recentRawMessages: string[] = [];
   private static readonly RAW_MESSAGE_RING_SIZE = 5;
+  private processStderrLineBuffer = "";
 
   private itemEventManager: CodexItemEventManager;
   private mcpManager: CodexMcpManager;
@@ -440,7 +442,7 @@ export class CodexAdapter
   }
 
   handleProcessStderr(text: string): void {
-    for (const message of this.extractWriteStdinRouterFailuresFromStderr(text)) {
+    for (const message of this.extractWriteStdinRouterFailuresFromStderrChunk(text)) {
       this.handleToolRouterFailureMessage(message);
     }
   }
@@ -1198,16 +1200,28 @@ export class CodexAdapter
     }
   }
 
-  private extractWriteStdinRouterFailuresFromStderr(text: string): string[] {
+  private extractWriteStdinRouterFailuresFromStderrChunk(text: string): string[] {
+    if (!text) return [];
+    this.processStderrLineBuffer += text;
+    const lines = this.processStderrLineBuffer.split(/\r?\n/);
+    this.processStderrLineBuffer = lines.pop() ?? "";
+    if (this.processStderrLineBuffer.length > STDERR_ROUTER_LINE_BUFFER_MAX) {
+      this.processStderrLineBuffer = this.processStderrLineBuffer.slice(-STDERR_ROUTER_LINE_BUFFER_MAX);
+    }
+
     const messages: string[] = [];
-    for (const line of text.split(/\r?\n/)) {
-      const normalized = line.replace(/\x1b\[[0-9;]*m/g, "").trim();
-      if (!normalized.includes("codex_core::tools::router")) continue;
-      const match = normalized.match(/\berror\s*=\s*(write_stdin failed:.*)$/i);
-      const message = match?.[1]?.trim();
+    for (const line of lines) {
+      const message = this.extractWriteStdinRouterFailureFromStderrLine(line);
       if (message) messages.push(message);
     }
     return messages;
+  }
+
+  private extractWriteStdinRouterFailureFromStderrLine(line: string): string | null {
+    const normalized = line.replace(/\x1b\[[0-9;]*m/g, "").trim();
+    if (!normalized.includes("codex_core::tools::router")) return null;
+    const match = normalized.match(/\berror\s*=\s*(write_stdin failed:.*)$/i);
+    return match?.[1]?.trim() || null;
   }
 
   private updateRateLimits(data: Record<string, unknown>): void {
