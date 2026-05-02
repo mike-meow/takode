@@ -118,6 +118,7 @@ export class CodexAdapter
   private threadId: string | null = null;
   private currentTurnId: string | null = null;
   private suppressedTurnResultIds = new Set<string>();
+  private toolRouterErrorByTurnId = new Map<string, string>();
   private connected = false;
   private initialized = false;
   private initFailed = false;
@@ -1036,7 +1037,16 @@ export class CodexAdapter
           const msg = params.msg as { message?: string } | undefined;
           if (msg?.message) {
             console.error(`[codex-adapter] Codex error: ${msg.message}`);
-            this.emit({ type: "error", message: msg.message });
+            const isToolRouterFailure = this.isToolRouterFailureMessage(msg.message);
+            const renderedAsToolResult = isToolRouterFailure
+              ? this.itemEventManager.handleToolRouterError(msg.message)
+              : false;
+            if (this.currentTurnId && isToolRouterFailure) {
+              this.toolRouterErrorByTurnId.set(this.currentTurnId, msg.message);
+            }
+            if (!renderedAsToolResult) {
+              this.emit({ type: "error", message: msg.message });
+            }
           }
           break;
         }
@@ -1094,11 +1104,22 @@ export class CodexAdapter
     if (threadId && this.threadId && threadId !== this.threadId) return;
 
     if (status.type === "idle" && this.currentTurnId) {
+      const staleTurnId = this.currentTurnId;
       console.log(
-        `[codex-adapter] Thread reported idle while currentTurnId=${this.currentTurnId} is set; clearing stale turn for session ${this.sessionId}`,
+        `[codex-adapter] Thread reported idle while currentTurnId=${staleTurnId} is set; clearing stale turn for session ${this.sessionId}`,
       );
       this.currentTurnId = null;
       for (const resolve of this.turnEndResolvers.splice(0)) resolve();
+      const routerError = this.toolRouterErrorByTurnId.get(staleTurnId);
+      if (routerError) {
+        this.toolRouterErrorByTurnId.delete(staleTurnId);
+        this.suppressedTurnResultIds.add(staleTurnId);
+        this.emitTurnResult({
+          turnId: staleTurnId,
+          status: "failed",
+          errorMessage: routerError,
+        });
+      }
     }
   }
 
@@ -1110,6 +1131,9 @@ export class CodexAdapter
     }
 
     this.currentTurnId = null;
+    if (typeof turn?.id === "string") {
+      this.toolRouterErrorByTurnId.delete(turn.id);
+    }
     // Wake any callers waiting for the turn to end (e.g. interruptAndWaitForTurnEnd)
     for (const resolve of this.turnEndResolvers.splice(0)) resolve();
 
@@ -1121,26 +1145,40 @@ export class CodexAdapter
     // transitions to idle. For internal interrupts (new message while a turn
     // was active), the next turn/start will immediately set generating=true
     // again, so the brief idle flash is imperceptible.
+    this.emitTurnResult({
+      turnId: typeof turn?.id === "string" ? turn.id : null,
+      status: turn?.status || "end_turn",
+      errorMessage: turn?.error?.message,
+    });
+  }
 
-    // Synthesize a CLIResultMessage-like structure
-    const isSuccess = turn?.status === "completed" || turn?.status === "interrupted";
+  private emitTurnResult(args: { turnId?: string | null; status: string; errorMessage?: string }): void {
+    const isSuccess = args.status === "completed" || args.status === "interrupted";
     const result: CLIResultMessage = {
       type: "result",
       subtype: isSuccess ? "success" : "error_during_execution",
       is_error: !isSuccess,
-      result: turn?.error?.message,
+      result: args.errorMessage,
       duration_ms: 0,
       duration_api_ms: 0,
       num_turns: 1,
       total_cost_usd: 0,
-      stop_reason: turn?.status || "end_turn",
+      stop_reason: args.status,
       usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-      ...(typeof turn?.id === "string" ? { codex_turn_id: turn.id } : {}),
+      ...(typeof args.turnId === "string" ? { codex_turn_id: args.turnId } : {}),
       uuid: randomUUID(),
       session_id: this.sessionId,
     };
 
     this.emit({ type: "result", data: result });
+  }
+
+  private isToolRouterFailureMessage(message: string): boolean {
+    return [
+      /\bapply_patch verification failed\b/i,
+      /\b(?:exec_command|write_stdin|view_image|spawn_agent|send_input|resume_agent|wait_agent|close_agent)\s+failed\b/i,
+      /\btool(?:\s+call)?\s+failed\b/i,
+    ].some((pattern) => pattern.test(message));
   }
 
   private updateRateLimits(data: Record<string, unknown>): void {

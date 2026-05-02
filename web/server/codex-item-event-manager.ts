@@ -48,6 +48,7 @@ export class CodexItemEventManager {
   private emittedToolUseIds = new Set<string>();
   private emittedToolUseInputsById = new Map<string, Record<string, unknown>>();
   private emittedToolResultIds = new Set<string>();
+  private activeToolUseIds = new Set<string>();
   private patchChangesByCallId = new Map<string, ToolFileChange[]>();
   private parentToolUseIdByThreadId = new Map<string, string>();
   private parentToolUseIdByItemId = new Map<string, string | null>();
@@ -69,6 +70,7 @@ export class CodexItemEventManager {
     this.emittedToolUseIds.clear();
     this.emittedToolUseInputsById.clear();
     this.emittedToolResultIds.clear();
+    this.activeToolUseIds.clear();
     this.patchChangesByCallId.clear();
     this.parentToolUseIdByThreadId.clear();
     this.parentToolUseIdByItemId.clear();
@@ -366,6 +368,7 @@ export class CodexItemEventManager {
     const item = params.item as CodexItem;
     if (!item) return;
     const parentToolUseId = this.resolveParentToolUseId(params, item.id);
+    this.activeToolUseIds.delete(item.id);
 
     switch (item.type) {
       case "agentMessage": {
@@ -621,10 +624,14 @@ export class CodexItemEventManager {
   ): void {
     this.emittedToolUseIds.add(toolUseId);
     this.emittedToolUseInputsById.set(toolUseId, input);
+    if (this.isResultBearingToolUse(toolUseId, toolName)) {
+      this.activeToolUseIds.add(toolUseId);
+    }
     this.emitToolUse(toolUseId, toolName, input, options);
   }
 
   emitToolResult(toolUseId: string, content: unknown, isError: boolean, parentToolUseId?: string | null): void {
+    this.activeToolUseIds.delete(toolUseId);
     const safeContent = typeof content === "string" ? content : JSON.stringify(content);
     const completedAt = Date.now();
     this.emit({
@@ -649,6 +656,19 @@ export class CodexItemEventManager {
       timestamp: completedAt,
     });
     this.markMessageFinished(completedAt);
+  }
+
+  handleToolRouterError(message: string): boolean {
+    if (this.activeToolUseIds.size !== 1) return false;
+    const activeToolUseId = Array.from(this.activeToolUseIds).at(-1);
+    if (!activeToolUseId) return false;
+    const parentToolUseId = this.parentToolUseIdByItemId.get(activeToolUseId) ?? null;
+    this.emitToolResultOnce(activeToolUseId, message, true, parentToolUseId);
+    return true;
+  }
+
+  private isResultBearingToolUse(toolUseId: string, toolName: string): boolean {
+    return !toolUseId.startsWith("codex-plan-") && toolName !== "TodoWrite" && toolName !== "TaskUpdate";
   }
 
   private resolveFileChangesForTool(toolUseId: string, rawChanges: unknown): ToolFileChange[] {

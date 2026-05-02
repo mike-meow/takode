@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { CodexAdapter } from "./codex-adapter.js";
-import type { BrowserIncomingMessage, BrowserOutgoingMessage, SessionState } from "./session-types.js";
+import type { BrowserIncomingMessage, BrowserOutgoingMessage, ContentBlock, SessionState } from "./session-types.js";
 import { CODEX_LOCAL_SLASH_COMMANDS } from "../shared/codex-slash-commands.js";
 
 /** Minimal event-loop yield so the ReadableStream reader can process chunks.
@@ -78,6 +78,38 @@ function parseWrittenJsonLines(chunks: string[]): any[] {
     .split("\n")
     .filter(Boolean)
     .map((line) => JSON.parse(line));
+}
+
+function getToolResultBlocks(
+  messages: BrowserIncomingMessage[],
+  toolUseId?: string,
+): Extract<ContentBlock, { type: "tool_result" }>[] {
+  const blocks: Extract<ContentBlock, { type: "tool_result" }>[] = [];
+  for (const msg of messages) {
+    if (msg.type !== "assistant") continue;
+    for (const block of msg.message.content) {
+      if (block.type !== "tool_result") continue;
+      if (toolUseId && block.tool_use_id !== toolUseId) continue;
+      blocks.push(block);
+    }
+  }
+  return blocks;
+}
+
+function getToolUseBlocks(
+  messages: BrowserIncomingMessage[],
+  toolName?: string,
+): Extract<ContentBlock, { type: "tool_use" }>[] {
+  const blocks: Extract<ContentBlock, { type: "tool_use" }>[] = [];
+  for (const msg of messages) {
+    if (msg.type !== "assistant") continue;
+    for (const block of msg.message.content) {
+      if (block.type !== "tool_use") continue;
+      if (toolName && block.name !== toolName) continue;
+      blocks.push(block);
+    }
+  }
+  return blocks;
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -712,6 +744,344 @@ describe("CodexAdapter", () => {
     expect(result.data.is_error).toBe(true);
     expect(result.data.subtype).toBe("error_during_execution");
     expect(result.data.result).toBe("Rate limit exceeded");
+  });
+
+  it("renders tool-router errors as failed tool results and clears the turn on idle fallback", async () => {
+    const messages: BrowserIncomingMessage[] = [];
+    const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+
+    await tick();
+    await initializeAdapter(stdout);
+    stdout.push(JSON.stringify({ id: 3, result: { rateLimits: { primary: null, secondary: null } } }) + "\n");
+    await tick();
+
+    adapter.sendBrowserMessage({ type: "user_message", content: "Apply a patch" });
+    await tick();
+
+    stdout.push(JSON.stringify({ id: 4, result: { turn: { id: "turn_router_error" } } }) + "\n");
+    await tick();
+
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          item: {
+            id: "tool_apply_patch",
+            type: "commandExecution",
+            command: ["apply_patch"],
+          },
+        },
+      }) + "\n",
+    );
+    await tick();
+
+    const errorMessage =
+      "apply_patch verification failed: Failed to find expected lines in /workspace/file.ts:\nexpected line";
+    stdout.push(
+      JSON.stringify({
+        method: "codex/event/error",
+        params: { msg: { message: errorMessage } },
+      }) + "\n",
+    );
+    await tick();
+
+    stdout.push(
+      JSON.stringify({
+        method: "thread/status/changed",
+        params: { threadId: "thr_123", status: { type: "idle" } },
+      }) + "\n",
+    );
+    await tick();
+
+    const toolResult = messages.find(
+      (msg): msg is Extract<BrowserIncomingMessage, { type: "assistant" }> =>
+        msg.type === "assistant" &&
+        msg.message.content.some((block) => block.type === "tool_result" && block.tool_use_id === "tool_apply_patch"),
+    );
+    const toolResultBlock = (toolResult?.message.content ?? []).find((block) => block.type === "tool_result");
+    if (!toolResultBlock || toolResultBlock.type !== "tool_result") {
+      throw new Error("missing failed tool result");
+    }
+    expect(toolResultBlock?.is_error).toBe(true);
+    expect(toolResultBlock?.content).toContain("apply_patch verification failed");
+
+    const results = messages.filter((m) => m.type === "result");
+    expect(results).toHaveLength(1);
+    const result = results[0] as { data: { is_error: boolean; result: string; codex_turn_id?: string } };
+    expect(result.data.is_error).toBe(true);
+    expect(result.data.result).toContain("apply_patch verification failed");
+    expect(result.data.codex_turn_id).toBe("turn_router_error");
+    expect(adapter.getCurrentTurnId()).toBeNull();
+
+    stdout.push(
+      JSON.stringify({
+        method: "turn/completed",
+        params: {
+          turn: { id: "turn_router_error", status: "failed", error: { message: "duplicate terminal error" } },
+        },
+      }) + "\n",
+    );
+    await tick();
+
+    expect(messages.filter((m) => m.type === "result")).toHaveLength(1);
+  });
+
+  it("ignores synthetic plan entries when attaching router errors to an active command", async () => {
+    // Codex plan updates render as TodoWrite UI state, but they are not
+    // result-bearing tools. They must not prevent a later apply_patch router
+    // failure from closing the real active command.
+    const messages: BrowserIncomingMessage[] = [];
+    const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+
+    await tick();
+    await initializeAdapter(stdout);
+    stdout.push(JSON.stringify({ id: 3, result: { rateLimits: { primary: null, secondary: null } } }) + "\n");
+    await tick();
+
+    adapter.sendBrowserMessage({ type: "user_message", content: "Plan and patch" });
+    await tick();
+    stdout.push(JSON.stringify({ id: 4, result: { turn: { id: "turn_plan_then_router_error" } } }) + "\n");
+    await tick();
+
+    stdout.push(
+      JSON.stringify({
+        method: "turn/plan/updated",
+        params: {
+          turnId: "turn_plan_then_router_error",
+          plan: [{ content: "Patch file", status: "in_progress" }],
+        },
+      }) + "\n",
+    );
+    await tick();
+
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          item: {
+            id: "tool_apply_patch_after_plan",
+            type: "commandExecution",
+            command: ["apply_patch"],
+          },
+        },
+      }) + "\n",
+    );
+    await tick();
+
+    const errorMessage =
+      "apply_patch verification failed: Failed to find expected lines in /workspace/file.ts:\nexpected line";
+    stdout.push(
+      JSON.stringify({
+        method: "codex/event/error",
+        params: { msg: { message: errorMessage } },
+      }) + "\n",
+    );
+    await tick();
+
+    const todoToolUses = getToolUseBlocks(messages, "TodoWrite");
+    expect(todoToolUses).toHaveLength(1);
+    expect(todoToolUses[0]?.id).toMatch(/^codex-plan-/);
+
+    const commandResults = getToolResultBlocks(messages, "tool_apply_patch_after_plan");
+    expect(commandResults).toHaveLength(1);
+    expect(commandResults[0]?.is_error).toBe(true);
+    expect(commandResults[0]?.content).toContain("apply_patch verification failed");
+
+    const todoResults = getToolResultBlocks(messages).filter((block) => block.tool_use_id.startsWith("codex-plan-"));
+    expect(todoResults).toHaveLength(0);
+  });
+
+  it("does not attach router-shaped errors to plan-only synthetic TodoWrite state", async () => {
+    // A plan-only turn has visible checklist UI but no result-bearing active
+    // tool. Router-shaped errors should remain ordinary visible errors for
+    // tool targeting, not failed results for the synthetic TodoWrite block.
+    const messages: BrowserIncomingMessage[] = [];
+    const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+
+    await tick();
+    await initializeAdapter(stdout);
+    stdout.push(JSON.stringify({ id: 3, result: { rateLimits: { primary: null, secondary: null } } }) + "\n");
+    await tick();
+
+    adapter.sendBrowserMessage({ type: "user_message", content: "Plan only" });
+    await tick();
+    stdout.push(JSON.stringify({ id: 4, result: { turn: { id: "turn_plan_only_router_error" } } }) + "\n");
+    await tick();
+
+    stdout.push(
+      JSON.stringify({
+        method: "turn/plan/updated",
+        params: {
+          turnId: "turn_plan_only_router_error",
+          plan: [{ content: "Decide patch", status: "in_progress" }],
+        },
+      }) + "\n",
+    );
+    await tick();
+
+    const errorMessage =
+      "apply_patch verification failed: Failed to find expected lines in /workspace/file.ts:\nexpected line";
+    stdout.push(
+      JSON.stringify({
+        method: "codex/event/error",
+        params: { msg: { message: errorMessage } },
+      }) + "\n",
+    );
+    await tick();
+
+    const todoToolUses = getToolUseBlocks(messages, "TodoWrite");
+    expect(todoToolUses).toHaveLength(1);
+    expect(todoToolUses[0]?.id).toMatch(/^codex-plan-/);
+    expect(getToolResultBlocks(messages)).toHaveLength(0);
+    expect(messages).toContainEqual(expect.objectContaining({ type: "error", message: errorMessage }));
+
+    stdout.push(
+      JSON.stringify({
+        method: "thread/status/changed",
+        params: { threadId: "thr_123", status: { type: "idle" } },
+      }) + "\n",
+    );
+    await tick();
+
+    const results = messages.filter((m) => m.type === "result");
+    expect(results).toHaveLength(1);
+    expect(getToolResultBlocks(messages).filter((block) => block.tool_use_id.startsWith("codex-plan-"))).toHaveLength(
+      0,
+    );
+  });
+
+  it("keeps non-router codex/event/error visible without failing the active tool", async () => {
+    // Regression for q-1066 Mental Simulation: an ordinary session-level Codex
+    // error during an active tool must not be misclassified as that tool's
+    // failed result, and must not arm the router-error idle fallback.
+    const messages: BrowserIncomingMessage[] = [];
+    const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+
+    await tick();
+    await initializeAdapter(stdout);
+    stdout.push(JSON.stringify({ id: 3, result: { rateLimits: { primary: null, secondary: null } } }) + "\n");
+    await tick();
+
+    adapter.sendBrowserMessage({ type: "user_message", content: "Run a command" });
+    await tick();
+    stdout.push(JSON.stringify({ id: 4, result: { turn: { id: "turn_non_router_error" } } }) + "\n");
+    await tick();
+
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          item: {
+            id: "tool_active",
+            type: "commandExecution",
+            command: ["sleep", "1"],
+          },
+        },
+      }) + "\n",
+    );
+    await tick();
+
+    stdout.push(
+      JSON.stringify({
+        method: "codex/event/error",
+        params: { msg: { message: "Rate limit exceeded" } },
+      }) + "\n",
+    );
+    await tick();
+
+    expect(
+      messages.some(
+        (msg) =>
+          msg.type === "assistant" &&
+          msg.message.content.some((block) => block.type === "tool_result" && block.tool_use_id === "tool_active"),
+      ),
+    ).toBe(false);
+    expect(messages).toContainEqual(expect.objectContaining({ type: "error", message: "Rate limit exceeded" }));
+
+    stdout.push(
+      JSON.stringify({
+        method: "thread/status/changed",
+        params: { threadId: "thr_123", status: { type: "idle" } },
+      }) + "\n",
+    );
+    await tick();
+
+    expect(messages.filter((m) => m.type === "result")).toHaveLength(0);
+    expect(adapter.getCurrentTurnId()).toBeNull();
+  });
+
+  it("does not attach router errors to an arbitrary tool when multiple tools are active", async () => {
+    // If Codex ever overlaps tool items, the adapter should prefer a generic
+    // visible error plus turn-level fallback over closing the newest active
+    // tool incorrectly.
+    const messages: BrowserIncomingMessage[] = [];
+    const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+
+    await tick();
+    await initializeAdapter(stdout);
+    stdout.push(JSON.stringify({ id: 3, result: { rateLimits: { primary: null, secondary: null } } }) + "\n");
+    await tick();
+
+    adapter.sendBrowserMessage({ type: "user_message", content: "Run two tools" });
+    await tick();
+    stdout.push(JSON.stringify({ id: 4, result: { turn: { id: "turn_multi_tool_error" } } }) + "\n");
+    await tick();
+
+    for (const [id, command] of [
+      ["tool_first", ["sleep", "1"]],
+      ["tool_second", ["apply_patch"]],
+    ] as const) {
+      stdout.push(
+        JSON.stringify({
+          method: "item/started",
+          params: {
+            item: {
+              id,
+              type: "commandExecution",
+              command,
+            },
+          },
+        }) + "\n",
+      );
+      await tick();
+    }
+
+    const errorMessage =
+      "apply_patch verification failed: Failed to find expected lines in /workspace/file.ts:\nexpected line";
+    stdout.push(
+      JSON.stringify({
+        method: "codex/event/error",
+        params: { msg: { message: errorMessage } },
+      }) + "\n",
+    );
+    await tick();
+
+    expect(
+      messages.some(
+        (msg) => msg.type === "assistant" && msg.message.content.some((block) => block.type === "tool_result"),
+      ),
+    ).toBe(false);
+    expect(messages).toContainEqual(expect.objectContaining({ type: "error", message: errorMessage }));
+
+    stdout.push(
+      JSON.stringify({
+        method: "thread/status/changed",
+        params: { threadId: "thr_123", status: { type: "idle" } },
+      }) + "\n",
+    );
+    await tick();
+
+    const results = messages.filter((m) => m.type === "result");
+    expect(results).toHaveLength(1);
+    const result = results[0] as { data: { is_error: boolean; result: string; codex_turn_id?: string } };
+    expect(result.data.is_error).toBe(true);
+    expect(result.data.result).toContain("apply_patch verification failed");
+    expect(result.data.codex_turn_id).toBe("turn_multi_tool_error");
   });
 
   it("emits result for interrupted turn/completed so session returns to idle", async () => {
