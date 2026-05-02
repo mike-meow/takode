@@ -1,4 +1,5 @@
 import type { BrowserIncomingMessage, BrowserOutgoingMessage, SdkSessionInfo } from "./types.js";
+import { FEED_WINDOW_SYNC_VERSION } from "../shared/feed-window-sync.js";
 import { scopedGetItem, scopedSetItem } from "./utils/scoped-storage.js";
 import { recordFrontendPerfEntry } from "./utils/frontend-perf-recorder.js";
 
@@ -244,6 +245,7 @@ export function createWsTransport(callbacks: WsTransportCallbacks): WsTransport 
           ? {
               history_window_section_turn_count: Math.max(1, Math.floor(freshWindow.sectionTurnCount)),
               history_window_visible_section_count: Math.max(1, Math.floor(freshWindow.visibleSectionCount)),
+              feed_window_sync_version: FEED_WINDOW_SYNC_VERSION,
             }
           : {}),
       }),

@@ -20,6 +20,10 @@ export function removeSessionState(s: AppState, sessionId: string): Partial<AppS
   threadWindows.delete(sessionId);
   const threadWindowMessages = new Map(s.threadWindowMessages);
   threadWindowMessages.delete(sessionId);
+  const feedWindowSyncs = new Map(s.feedWindowSyncs);
+  feedWindowSyncs.delete(sessionId);
+  const threadFeedWindowSyncs = new Map(s.threadFeedWindowSyncs);
+  threadFeedWindowSyncs.delete(sessionId);
   const leaderProjections = new Map(s.leaderProjections);
   leaderProjections.delete(sessionId);
   const streaming = new Map(s.streaming);
@@ -129,6 +133,8 @@ export function removeSessionState(s: AppState, sessionId: string): Partial<AppS
     historyWindows,
     threadWindows,
     threadWindowMessages,
+    feedWindowSyncs,
+    threadFeedWindowSyncs,
     leaderProjections,
     streaming,
     streamingByParentToolUseId,

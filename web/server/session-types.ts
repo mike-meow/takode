@@ -1,4 +1,5 @@
 import type { ReplyContext } from "../shared/reply-context.js";
+import type { FeedWindowSync } from "../shared/feed-window-sync.js";
 
 // Types for the WebSocket bridge between Claude Code CLI and the browser
 
@@ -475,6 +476,7 @@ export type BrowserOutgoingMessage =
       known_frozen_hash?: string;
       history_window_section_turn_count?: number;
       history_window_visible_section_count?: number;
+      feed_window_sync_version?: number;
     }
   | {
       type: "history_window_request";
@@ -483,6 +485,7 @@ export type BrowserOutgoingMessage =
       section_turn_count: number;
       visible_section_count: number;
       cached_window_hash?: string;
+      feed_window_sync_version?: number;
     }
   | {
       type: "thread_window_request";
@@ -492,6 +495,7 @@ export type BrowserOutgoingMessage =
       section_item_count: number;
       visible_item_count: number;
       cached_window_hash?: string;
+      feed_window_sync_version?: number;
     }
   | {
       type: "history_sync_mismatch";
@@ -725,6 +729,7 @@ export type BrowserIncomingMessageBase =
   | { type: "codex_pending_inputs"; inputs: PendingCodexInput[] }
   | { type: "codex_pending_input_cancelled"; input: PendingCodexInput }
   | { type: "message_history"; messages: BrowserIncomingMessage[] }
+  | { type: "feed_window_sync"; sync: FeedWindowSync }
   | { type: "history_window_sync"; messages: BrowserIncomingMessage[]; window: HistoryWindowState; cache_hit?: boolean }
   | {
       type: "thread_window_sync";

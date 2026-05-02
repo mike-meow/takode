@@ -1,6 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import {
+  buildHistoryFeedWindowSync,
+  buildThreadFeedWindowSync,
+  supportsFeedWindowSync,
+  type FeedWindowSync,
+} from "../../shared/feed-window-sync.js";
+import {
   computeHistoryMessagesSyncHash,
   computeHistoryPayloadSyncHash,
   computeHistoryPrefixSyncHash,
@@ -355,6 +361,7 @@ export function handleBrowserProtocolMessage(
       msg.known_frozen_hash,
       msg.history_window_section_turn_count,
       msg.history_window_visible_section_count,
+      msg.feed_window_sync_version,
       deps,
     ).then(() => true);
   }
@@ -367,6 +374,7 @@ export function handleBrowserProtocolMessage(
       sectionTurnCount: msg.section_turn_count,
       visibleSectionCount: msg.visible_section_count,
       cachedWindowHash: msg.cached_window_hash,
+      feedWindowSyncVersion: msg.feed_window_sync_version,
     });
     return true;
   }
@@ -380,6 +388,7 @@ export function handleBrowserProtocolMessage(
       sectionItemCount: msg.section_item_count,
       visibleItemCount: msg.visible_item_count,
       cachedWindowHash: msg.cached_window_hash,
+      feedWindowSyncVersion: msg.feed_window_sync_version,
     });
     return true;
   }
@@ -874,6 +883,7 @@ export function sendHistoryWindowSync(
     sectionTurnCount: number;
     visibleSectionCount: number;
     cachedWindowHash?: string;
+    feedWindowSyncVersion?: number;
   },
 ): void {
   const normalizedSectionTurnCount = Math.max(1, Math.floor(options.sectionTurnCount));
@@ -904,20 +914,24 @@ export function sendHistoryWindowSync(
   const windowHash = computeHistoryPayloadSyncHash({ startIdx, messages });
   const cacheHit = options.cachedWindowHash === windowHash;
 
+  const window = {
+    from_turn: fromTurn,
+    turn_count: totalTurns === 0 ? 0 : turnCount,
+    total_turns: totalTurns,
+    start_index: startIdx,
+    section_turn_count: normalizedSectionTurnCount,
+    visible_section_count: normalizedVisibleSectionCount,
+    window_hash: windowHash,
+  };
+
   sendToBrowser(ws, {
     type: "history_window_sync",
     messages: cacheHit ? [] : messages,
-    window: {
-      from_turn: fromTurn,
-      turn_count: totalTurns === 0 ? 0 : turnCount,
-      total_turns: totalTurns,
-      start_index: startIdx,
-      section_turn_count: normalizedSectionTurnCount,
-      visible_section_count: normalizedVisibleSectionCount,
-      window_hash: windowHash,
-    },
+    window,
     ...(cacheHit ? { cache_hit: true } : {}),
   } as BrowserIncomingMessage);
+
+  sendFeedWindowSyncIfSupported(ws, options.feedWindowSyncVersion, buildHistoryFeedWindowSync({ messages, window }));
 }
 
 function appendResolvedToolResultPreviewsForWindow(
@@ -983,6 +997,7 @@ export function sendThreadWindowSync(
     sectionItemCount: number;
     visibleItemCount: number;
     cachedWindowHash?: string;
+    feedWindowSyncVersion?: number;
   },
 ): void {
   const normalizedSectionItemCount = Math.max(1, Math.floor(options.sectionItemCount));
@@ -1005,16 +1020,33 @@ export function sendThreadWindowSync(
   });
   const cacheHit = options.cachedWindowHash === windowHash;
 
+  const window = {
+    ...sync.window,
+    window_hash: windowHash,
+  };
+
   sendToBrowser(ws, {
     type: "thread_window_sync",
     thread_key: sync.threadKey,
     entries: cacheHit ? [] : sync.entries,
-    window: {
-      ...sync.window,
-      window_hash: windowHash,
-    },
+    window,
     ...(cacheHit ? { cache_hit: true } : {}),
   } as BrowserIncomingMessage);
+
+  sendFeedWindowSyncIfSupported(
+    ws,
+    options.feedWindowSyncVersion,
+    buildThreadFeedWindowSync({ threadKey: sync.threadKey, entries: sync.entries, window }),
+  );
+}
+
+function sendFeedWindowSyncIfSupported(
+  ws: BrowserTransportSocketLike,
+  requestedVersion: number | undefined,
+  sync: FeedWindowSync,
+): void {
+  if (!supportsFeedWindowSync(requestedVersion)) return;
+  sendToBrowser(ws, { type: "feed_window_sync", sync } as BrowserIncomingMessage);
 }
 
 export async function handleSessionSubscribe(
@@ -1025,6 +1057,7 @@ export async function handleSessionSubscribe(
   knownFrozenHash: string | undefined,
   historyWindowSectionTurnCount: number | undefined,
   historyWindowVisibleSectionCount: number | undefined,
+  feedWindowSyncVersion: number | undefined,
   deps: BrowserTransportDeps,
 ): Promise<void> {
   if (!ws) return;
@@ -1083,6 +1116,7 @@ export async function handleSessionSubscribe(
           turnCount: getHistoryWindowTurnCount(historyWindowVisibleSectionCount, historyWindowSectionTurnCount),
           sectionTurnCount: historyWindowSectionTurnCount,
           visibleSectionCount: historyWindowVisibleSectionCount,
+          feedWindowSyncVersion,
         });
       } else {
         await sendHistorySync(session, ws, knownFrozenCount ?? 0, knownFrozenHash);

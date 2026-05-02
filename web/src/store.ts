@@ -53,6 +53,12 @@ import {
 } from "./store-initial.js";
 import type { AppState, PendingSession } from "./store-types.js";
 import { removeSessionState } from "./store-session-cleanup.js";
+import {
+  clearFeedWindowSyncState,
+  clearHistoryFeedWindowSyncState,
+  clearThreadFeedWindowSyncState,
+  updateFeedWindowSyncState,
+} from "./store-feed-window-sync.js";
 import { isDesktopShellLayout } from "./utils/layout.js";
 import { formatReplyContentForPreview } from "./utils/reply-context.js";
 
@@ -143,6 +149,8 @@ export const useStore = create<AppState>((set, get) => ({
   historyWindows: new Map(),
   threadWindows: new Map(),
   threadWindowMessages: new Map(),
+  feedWindowSyncs: new Map(),
+  threadFeedWindowSyncs: new Map(),
   leaderProjections: new Map(),
   setLeaderProjection: (sessionId: string, projection: LeaderProjectionSnapshot | null) =>
     set((s) => {
@@ -674,10 +682,11 @@ export const useStore = create<AppState>((set, get) => ({
       const historyWindows = new Map(s.historyWindows);
       if (window) {
         historyWindows.set(sessionId, window);
+        return { historyWindows };
       } else {
         historyWindows.delete(sessionId);
+        return { historyWindows, ...clearHistoryFeedWindowSyncState(s, sessionId) };
       }
-      return { historyWindows };
     }),
 
   setThreadWindow: (sessionId, threadKey, window, msgs = []) =>
@@ -698,8 +707,15 @@ export const useStore = create<AppState>((set, get) => ({
       else threadWindows.delete(sessionId);
       if (nextMessages.size > 0) threadWindowMessages.set(sessionId, nextMessages);
       else threadWindowMessages.delete(sessionId);
-      return { threadWindows, threadWindowMessages };
+      if (window) return { threadWindows, threadWindowMessages };
+      return {
+        threadWindows,
+        threadWindowMessages,
+        ...clearThreadFeedWindowSyncState(s, sessionId, normalizedThreadKey),
+      };
     }),
+
+  setFeedWindowSync: (sessionId, sync) => set((s) => updateFeedWindowSyncState(s, sessionId, sync)),
 
   setPendingCodexInputs: (sessionId, inputs) =>
     set((s) => {
@@ -910,6 +926,7 @@ export const useStore = create<AppState>((set, get) => ({
       threadWindows.delete(sessionId);
       const threadWindowMessages = new Map(s.threadWindowMessages);
       threadWindowMessages.delete(sessionId);
+      const feedWindowSyncPatch = clearFeedWindowSyncState(s, sessionId);
       const streaming = new Map(s.streaming);
       streaming.delete(sessionId);
       const streamingByParentToolUseId = new Map(s.streamingByParentToolUseId);
@@ -971,6 +988,7 @@ export const useStore = create<AppState>((set, get) => ({
         historyWindows,
         threadWindows,
         threadWindowMessages,
+        ...feedWindowSyncPatch,
         streaming,
         streamingByParentToolUseId,
         streamingThinking,
@@ -1863,6 +1881,8 @@ export const useStore = create<AppState>((set, get) => ({
       historyWindows: new Map(),
       threadWindows: new Map(),
       threadWindowMessages: new Map(),
+      feedWindowSyncs: new Map(),
+      threadFeedWindowSyncs: new Map(),
       streaming: new Map(),
       streamingByParentToolUseId: new Map(),
       streamingThinking: new Map(),

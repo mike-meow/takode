@@ -25,6 +25,7 @@ import {
   resolveCachedHistoryWindowMessages,
   resolveCachedThreadWindowEntries,
 } from "./utils/history-window-cache.js";
+import { FEED_WINDOW_SYNC_VERSION } from "../shared/feed-window-sync.js";
 
 const taskCounters = new Map<string, number>();
 const pendingCliDisconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -542,6 +543,7 @@ function requestUncachedHistoryWindow(
     turn_count: data.window.turn_count,
     section_turn_count: data.window.section_turn_count,
     visible_section_count: data.window.visible_section_count,
+    feed_window_sync_version: FEED_WINDOW_SYNC_VERSION,
   });
 }
 
@@ -557,6 +559,7 @@ function requestUncachedThreadWindow(
     item_count: data.window.item_count,
     section_item_count: data.window.section_item_count,
     visible_item_count: data.window.visible_item_count,
+    feed_window_sync_version: FEED_WINDOW_SYNC_VERSION,
   });
 }
 
@@ -1700,6 +1703,11 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
       taskCounters.delete(sessionId);
       updateSessionPreviewFromHistory(sessionId, [...data.frozen_delta, ...data.hot_messages]);
       resolvePendingMessageScroll(sessionId, mergedMessages);
+      break;
+    }
+
+    case "feed_window_sync": {
+      store.setFeedWindowSync(sessionId, data.sync);
       break;
     }
 

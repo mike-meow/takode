@@ -3,6 +3,7 @@
 import type { SessionState, PermissionRequest, ContentBlock, BrowserIncomingMessage } from "./types.js";
 import { computeHistoryMessagesSyncHash } from "../shared/history-sync-hash.js";
 import { HISTORY_WINDOW_SECTION_TURN_COUNT, HISTORY_WINDOW_VISIBLE_SECTION_COUNT } from "../shared/history-window.js";
+import { FEED_WINDOW_SYNC_VERSION } from "../shared/feed-window-sync.js";
 
 // Mock the names utility before any imports
 vi.mock("./utils/names.js", () => ({
@@ -196,6 +197,7 @@ describe("connectSession", () => {
         known_frozen_count: 0,
         history_window_section_turn_count: HISTORY_WINDOW_SECTION_TURN_COUNT,
         history_window_visible_section_count: HISTORY_WINDOW_VISIBLE_SECTION_COUNT,
+        feed_window_sync_version: FEED_WINDOW_SYNC_VERSION,
       }),
     );
   });
@@ -213,6 +215,7 @@ describe("connectSession", () => {
         known_frozen_count: 0,
         history_window_section_turn_count: HISTORY_WINDOW_SECTION_TURN_COUNT,
         history_window_visible_section_count: HISTORY_WINDOW_VISIBLE_SECTION_COUNT,
+        feed_window_sync_version: FEED_WINDOW_SYNC_VERSION,
       }),
     );
   });
@@ -256,6 +259,7 @@ describe("connectSession", () => {
         known_frozen_count: 0,
         history_window_section_turn_count: HISTORY_WINDOW_SECTION_TURN_COUNT,
         history_window_visible_section_count: HISTORY_WINDOW_VISIBLE_SECTION_COUNT,
+        feed_window_sync_version: FEED_WINDOW_SYNC_VERSION,
       }),
     );
   });

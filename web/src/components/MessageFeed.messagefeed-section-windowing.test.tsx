@@ -31,6 +31,7 @@ beforeAll(() => {
 import { render, screen, fireEvent, act, within } from "@testing-library/react";
 import type { BrowserIncomingMessage, ChatMessage } from "../types.js";
 import type { FeedEntry, Turn } from "../hooks/use-feed-model.js";
+import { FEED_WINDOW_SYNC_VERSION } from "../../shared/feed-window-sync.js";
 
 // Mock react-markdown to avoid ESM issues in tests
 vi.mock("react-markdown", () => ({
@@ -673,6 +674,7 @@ describe("MessageFeed section windowing", () => {
       turn_count: 6,
       section_turn_count: 2,
       visible_section_count: 3,
+      feed_window_sync_version: FEED_WINDOW_SYNC_VERSION,
     });
   });
 
@@ -712,6 +714,7 @@ describe("MessageFeed section windowing", () => {
       turn_count: 6,
       section_turn_count: 2,
       visible_section_count: 3,
+      feed_window_sync_version: FEED_WINDOW_SYNC_VERSION,
       cached_window_hash: "cached-history-window",
     });
   });

@@ -68,6 +68,7 @@ import { useTextSelection } from "../hooks/useTextSelection.js";
 import { SelectionContextMenu } from "./SelectionContextMenu.js";
 import { getHistoryWindowTurnCount } from "../../shared/history-window.js";
 import { getThreadWindowItemCount } from "../../shared/thread-window.js";
+import { FEED_WINDOW_SYNC_VERSION } from "../../shared/feed-window-sync.js";
 import { collectAnchoredNotificationMessageIds } from "../utils/anchored-notifications.js";
 import { getCachedHistoryWindowHash, getCachedThreadWindowHash } from "../utils/history-window-cache.js";
 import { buildFeedMessageModel, buildFeedWindowModel } from "../utils/feed-render-model.js";
@@ -591,6 +592,7 @@ export function MessageFeed({
         item_count: itemCount,
         section_item_count: sectionItemCount,
         visible_item_count: visibleItemCount,
+        feed_window_sync_version: FEED_WINDOW_SYNC_VERSION,
         ...(cachedWindowHash ? { cached_window_hash: cachedWindowHash } : {}),
       });
     },
@@ -780,6 +782,7 @@ export function MessageFeed({
         turn_count: turnCount,
         section_turn_count: sectionTurnCount,
         visible_section_count: visibleSectionCount,
+        feed_window_sync_version: FEED_WINDOW_SYNC_VERSION,
         ...(cachedWindowHash ? { cached_window_hash: cachedWindowHash } : {}),
       });
     },

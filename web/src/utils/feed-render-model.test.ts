@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { ChatMessage, SessionNotification, ThreadWindowState } from "../types.js";
+import type { BrowserIncomingMessage, ChatMessage, SessionNotification, ThreadWindowState } from "../types.js";
 import type { Turn } from "../hooks/use-feed-model.js";
 import { buildFeedMessageModel, buildFeedWindowModel } from "./feed-render-model.js";
+import { buildThreadFeedWindowSync } from "../../shared/feed-window-sync.js";
 
 function makeMessage(overrides: Partial<ChatMessage> & { id: string; role: ChatMessage["role"] }): ChatMessage {
   return {
@@ -208,5 +209,52 @@ describe("feed render model builders", () => {
     expect(model.hasNewerSections).toBe(true);
     expect(model.previousSectionStartIndex).toBeNull();
     expect(model.nextSectionStartIndex).toBeNull();
+  });
+
+  it("keeps selected-thread feed_window_sync item order aligned with the render-model target", () => {
+    const rawThreadMessage = {
+      type: "user_message",
+      id: "u-q1080",
+      content: "Selected thread message",
+      timestamp: 100,
+      threadKey: "q-1080",
+      questId: "q-1080",
+      threadRefs: [{ threadKey: "q-1080", questId: "q-1080", source: "explicit" }],
+    } satisfies BrowserIncomingMessage;
+    const threadWindow = makeWindow({
+      thread_key: "q-1080",
+      from_item: 0,
+      item_count: 1,
+      total_items: 1,
+      source_history_length: 4,
+    });
+    const feedSync = buildThreadFeedWindowSync({
+      threadKey: "q-1080",
+      entries: [{ message: rawThreadMessage, history_index: 3 }],
+      window: threadWindow,
+    });
+    const chatThreadMessage = makeMessage({
+      id: "u-q1080",
+      role: "user",
+      content: "Selected thread message",
+      timestamp: 100,
+      historyIndex: 3,
+      metadata: {
+        threadKey: "q-1080",
+        questId: "q-1080",
+        threadRefs: [{ threadKey: "q-1080", questId: "q-1080", source: "explicit" }],
+      },
+    });
+
+    const model = buildMessageModel({
+      threadKey: "q-1080",
+      allMessages: [],
+      selectedFeedWindow: threadWindow,
+      selectedFeedWindowMessages: [chatThreadMessage],
+      sessionNotifications: [],
+    });
+
+    expect(feedSync.items.map((item) => item.messageId)).toEqual(model.messages.map((message) => message.id));
+    expect(feedSync.bounds).toMatchObject({ from: 0, count: 1, total: 1, sourceHistoryLength: 4 });
   });
 });

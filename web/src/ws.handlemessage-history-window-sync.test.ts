@@ -3,6 +3,7 @@
 import type { SessionState, PermissionRequest, ContentBlock, BrowserIncomingMessage } from "./types.js";
 import { computeHistoryMessagesSyncHash } from "../shared/history-sync-hash.js";
 import { HISTORY_WINDOW_SECTION_TURN_COUNT, HISTORY_WINDOW_VISIBLE_SECTION_COUNT } from "../shared/history-window.js";
+import { FEED_WINDOW_SYNC_VERSION } from "../shared/feed-window-sync.js";
 
 // Mock the names utility before any imports
 vi.mock("./utils/names.js", () => ({
@@ -276,7 +277,60 @@ describe("handleMessage: history_window_sync", () => {
       turn_count: 150,
       section_turn_count: HISTORY_WINDOW_SECTION_TURN_COUNT,
       visible_section_count: HISTORY_WINDOW_VISIBLE_SECTION_COUNT,
+      feed_window_sync_version: FEED_WINDOW_SYNC_VERSION,
     });
+  });
+
+  it("stores additive feed_window_sync without replacing authoritative history state", () => {
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+    useStore.getState().setMessages("s1", [{ id: "visible", role: "assistant", content: "visible", timestamp: 1 }], {
+      frozenCount: 0,
+    });
+
+    fireMessage({
+      type: "feed_window_sync",
+      sync: {
+        version: FEED_WINDOW_SYNC_VERSION,
+        source: "history_window",
+        legacySyncType: "history_window_sync",
+        threadKey: "main",
+        windowHash: "hash-1",
+        window: {
+          from_turn: 20,
+          turn_count: 10,
+          total_turns: 40,
+          start_index: 200,
+          section_turn_count: HISTORY_WINDOW_SECTION_TURN_COUNT,
+          visible_section_count: HISTORY_WINDOW_VISIBLE_SECTION_COUNT,
+          window_hash: "hash-1",
+        },
+        items: [
+          {
+            key: "200:u-window",
+            kind: "message",
+            messageId: "u-window",
+            messageType: "user_message",
+            historyIndex: 200,
+            timestamp: 1000,
+          },
+        ],
+        bounds: { from: 20, count: 10, total: 40 },
+      },
+    });
+
+    expect(
+      useStore
+        .getState()
+        .messages.get("s1")
+        ?.map((message) => message.id),
+    ).toEqual(["visible"]);
+    expect(
+      useStore
+        .getState()
+        .feedWindowSyncs.get("s1")
+        ?.items.map((item) => item.messageId),
+    ).toEqual(["u-window"]);
   });
 
   it("keeps a pending raw-index scroll when the current history window does not contain the target", () => {
@@ -599,6 +653,73 @@ describe("handleMessage: thread_window_sync", () => {
       item_count: 10,
       section_item_count: 10,
       visible_item_count: 2,
+      feed_window_sync_version: FEED_WINDOW_SYNC_VERSION,
     });
+  });
+
+  it("stores additive selected-thread feed_window_sync without replacing selected-thread messages", () => {
+    wsModule.connectSession("s1");
+    fireMessage({ type: "session_init", session: makeSession("s1") });
+    useStore.getState().setThreadWindow(
+      "s1",
+      "q-1040",
+      {
+        thread_key: "q-1040",
+        from_item: 20,
+        item_count: 1,
+        total_items: 40,
+        source_history_length: 150,
+        section_item_count: 10,
+        visible_item_count: 2,
+      },
+      [{ id: "visible-thread", role: "assistant", content: "visible", timestamp: 1 }],
+    );
+
+    fireMessage({
+      type: "feed_window_sync",
+      sync: {
+        version: FEED_WINDOW_SYNC_VERSION,
+        source: "thread_window",
+        legacySyncType: "thread_window_sync",
+        threadKey: "q-1040",
+        windowHash: "hash-thread",
+        window: {
+          thread_key: "q-1040",
+          from_item: 20,
+          item_count: 1,
+          total_items: 40,
+          source_history_length: 150,
+          section_item_count: 10,
+          visible_item_count: 2,
+          window_hash: "hash-thread",
+        },
+        items: [
+          {
+            key: "120:u-thread",
+            kind: "message",
+            messageId: "u-thread",
+            messageType: "user_message",
+            historyIndex: 120,
+            timestamp: 1000,
+          },
+        ],
+        bounds: { from: 20, count: 1, total: 40, sourceHistoryLength: 150 },
+      },
+    });
+
+    expect(
+      useStore
+        .getState()
+        .threadWindowMessages.get("s1")
+        ?.get("q-1040")
+        ?.map((message) => message.id),
+    ).toEqual(["visible-thread"]);
+    expect(
+      useStore
+        .getState()
+        .threadFeedWindowSyncs.get("s1")
+        ?.get("q-1040")
+        ?.items.map((item) => item.messageId),
+    ).toEqual(["u-thread"]);
   });
 });

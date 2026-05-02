@@ -17,6 +17,7 @@ import {
   type BrowserTransportSessionLike,
 } from "./browser-transport-controller.js";
 import type { BrowserIncomingMessage } from "../session-types.js";
+import { FEED_WINDOW_SYNC_VERSION } from "../../shared/feed-window-sync.js";
 
 function makeSession(overrides?: Partial<BrowserTransportSessionLike>): BrowserTransportSessionLike {
   const mockSocket = { send: vi.fn() };
@@ -465,6 +466,65 @@ describe("history window tool results", () => {
     expect(payload.messages).toEqual([]);
     expect(payload.window.window_hash).toBe(firstPayload.window.window_hash);
   });
+
+  it("sends additive feed_window_sync only when the browser advertises v1 support", () => {
+    const send = vi.fn();
+    const session = makeSession({
+      messageHistory: [
+        { type: "user_message", id: "u1", content: "turn 1", timestamp: 1000 } as BrowserIncomingMessage,
+        {
+          type: "result",
+          data: {
+            type: "result",
+            subtype: "success",
+            is_error: false,
+            result: "",
+            duration_ms: 1,
+            duration_api_ms: 1,
+            num_turns: 1,
+            total_cost_usd: 0,
+            session_id: "test-session",
+          },
+        } as BrowserIncomingMessage,
+      ],
+    });
+
+    sendHistoryWindowSync(
+      session,
+      { send },
+      { fromTurn: 0, turnCount: 1, sectionTurnCount: 1, visibleSectionCount: 1 },
+    );
+    expect(send).toHaveBeenCalledTimes(1);
+
+    send.mockClear();
+    sendHistoryWindowSync(
+      session,
+      { send },
+      {
+        fromTurn: 0,
+        turnCount: 1,
+        sectionTurnCount: 1,
+        visibleSectionCount: 1,
+        feedWindowSyncVersion: FEED_WINDOW_SYNC_VERSION,
+      },
+    );
+
+    expect(send).toHaveBeenCalledTimes(2);
+    const legacy = JSON.parse(send.mock.calls[0][0]);
+    const sidecar = JSON.parse(send.mock.calls[1][0]);
+    expect(legacy.type).toBe("history_window_sync");
+    expect(sidecar).toMatchObject({
+      type: "feed_window_sync",
+      sync: {
+        version: FEED_WINDOW_SYNC_VERSION,
+        source: "history_window",
+        threadKey: "main",
+        bounds: { from: 0, count: 1, total: 1 },
+      },
+    });
+    expect(sidecar.sync.windowHash).toBe(legacy.window.window_hash);
+    expect(sidecar.sync.items.map((item: any) => item.messageId)).toEqual(["u1", "result:1"]);
+  });
 });
 
 describe("selected feed thread windows", () => {
@@ -555,6 +615,74 @@ describe("selected feed thread windows", () => {
     expect(payload.cache_hit).toBe(true);
     expect(payload.entries).toEqual([]);
     expect(payload.window.window_hash).toBe(firstPayload.window.window_hash);
+  });
+
+  it("sends additive selected-thread feed_window_sync while keeping cache-hit fallback explicit", () => {
+    const send = vi.fn();
+    const session = makeSession({
+      messageHistory: [
+        {
+          type: "user_message",
+          id: "u-thread",
+          content: "thread message",
+          timestamp: 1,
+          threadKey: "q-1040",
+          questId: "q-1040",
+          threadRefs: [{ threadKey: "q-1040", questId: "q-1040", source: "explicit" }],
+        } as BrowserIncomingMessage,
+      ],
+    });
+
+    sendThreadWindowSync(
+      session,
+      { send },
+      {
+        threadKey: "q-1040",
+        fromItem: 0,
+        itemCount: 1,
+        sectionItemCount: 1,
+        visibleItemCount: 1,
+        feedWindowSyncVersion: FEED_WINDOW_SYNC_VERSION,
+      },
+    );
+    const firstWindow = JSON.parse(send.mock.calls[0][0]).window;
+    send.mockClear();
+
+    sendThreadWindowSync(
+      session,
+      { send },
+      {
+        threadKey: "q-1040",
+        fromItem: 0,
+        itemCount: 1,
+        sectionItemCount: 1,
+        visibleItemCount: 1,
+        cachedWindowHash: firstWindow.window_hash,
+        feedWindowSyncVersion: FEED_WINDOW_SYNC_VERSION,
+      },
+    );
+
+    expect(send).toHaveBeenCalledTimes(2);
+    const legacy = JSON.parse(send.mock.calls[0][0]);
+    const sidecar = JSON.parse(send.mock.calls[1][0]);
+    expect(legacy).toMatchObject({
+      type: "thread_window_sync",
+      cache_hit: true,
+      entries: [],
+    });
+    expect(sidecar).toMatchObject({
+      type: "feed_window_sync",
+      sync: {
+        version: FEED_WINDOW_SYNC_VERSION,
+        source: "thread_window",
+        threadKey: "q-1040",
+        windowHash: firstWindow.window_hash,
+        bounds: { from: 0, count: 1, total: 1, sourceHistoryLength: 1 },
+      },
+    });
+    expect(sidecar.sync.items).toEqual([
+      expect.objectContaining({ messageId: "u-thread", historyIndex: 0, messageType: "user_message" }),
+    ]);
   });
 });
 
