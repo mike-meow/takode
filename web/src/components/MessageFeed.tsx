@@ -66,14 +66,11 @@ import {
   collectMessageToolUseIds,
   filterMessagesForThread,
   isAllThreadsKey,
-  isThreadAttachmentMarkerMessage,
   isMainThreadKey,
   normalizeThreadKey,
   recoverRoutedNotificationSourceMessages,
-  summarizeThreadAttachmentMarkersForThread,
-  threadAttachmentMarkerTargetKey,
 } from "../utils/thread-projection.js";
-import type { ChatMessage, SessionAttentionRecord } from "../types.js";
+import type { SessionAttentionRecord } from "../types.js";
 import { YarnBallDot, YarnBallSpinner, SleepingCat } from "./CatIcons.js";
 import { PawTrailAvatar, PawCounterContext, PawScrollProvider, HidePawContext } from "./PawTrail.js";
 import { isTouchDevice } from "../utils/mobile.js";
@@ -90,6 +87,11 @@ import {
   buildAttentionRecords,
   mergeChronologicalMessages,
 } from "../utils/attention-records.js";
+import {
+  collectMergedThreadAttachmentKeysForThread,
+  enrichThreadOpenedRecordsWithMovement,
+  removeMergedThreadAttachmentMarkers,
+} from "./message-feed-thread-movement.js";
 import { getCachedHistoryWindowHash, getCachedThreadWindowHash } from "../utils/history-window-cache.js";
 import {
   isUserBoundaryEntry,
@@ -124,44 +126,6 @@ const CODEX_TERMINAL_INSPECTOR_DEFAULT_WIDTH_PX = 512;
 const CODEX_TERMINAL_INSPECTOR_DEFAULT_HEIGHT_PX = 360;
 const EMPTY_ATTENTION_RECORDS: SessionAttentionRecord[] = [];
 const SECTION_WINDOW_TRIGGER_PX = 96;
-
-function enrichThreadOpenedRecordsWithMovement(
-  records: SessionAttentionRecord[],
-  messages: ReadonlyArray<ChatMessage>,
-): SessionAttentionRecord[] {
-  let changed = false;
-  const enriched = records.map((record) => {
-    if (record.type !== "quest_thread_created") return record;
-    const threadKey = normalizeThreadKey(record.route.threadKey || record.threadKey);
-    const threadAttachmentSummary = summarizeThreadAttachmentMarkersForThread(messages, threadKey);
-    if (!threadAttachmentSummary) return record;
-    changed = true;
-    return { ...record, threadAttachmentSummary };
-  });
-  return changed ? enriched : records;
-}
-
-function collectMergedThreadAttachmentKeys(records: ReadonlyArray<SessionAttentionRecord>): Set<string> {
-  const keys = new Set<string>();
-  for (const record of records) {
-    if (record.type !== "quest_thread_created" || !record.threadAttachmentSummary) continue;
-    keys.add(normalizeThreadKey(record.threadAttachmentSummary.threadKey));
-  }
-  return keys;
-}
-
-function removeMergedThreadAttachmentMarkers(
-  messages: ChatMessage[],
-  mergedThreadAttachmentKeys: ReadonlySet<string>,
-): ChatMessage[] {
-  if (mergedThreadAttachmentKeys.size === 0) return messages;
-  return messages.filter((message) => {
-    if (!isThreadAttachmentMarkerMessage(message)) return true;
-    const marker = message.metadata?.threadAttachmentMarker;
-    if (!marker) return true;
-    return !mergedThreadAttachmentKeys.has(threadAttachmentMarkerTargetKey(marker));
-  });
-}
 
 type CodexTerminalInspectorViewport = {
   width: number;
@@ -348,10 +312,7 @@ export function MessageFeed({
     [attentionRecords, messagesAvailableForProjection],
   );
   const mergedThreadAttachmentKeys = useMemo(
-    () =>
-      isMainThreadKey(normalizedThreadKey)
-        ? collectMergedThreadAttachmentKeys(attentionRecordsWithThreadMovement)
-        : new Set<string>(),
+    () => collectMergedThreadAttachmentKeysForThread(attentionRecordsWithThreadMovement, normalizedThreadKey),
     [attentionRecordsWithThreadMovement, normalizedThreadKey],
   );
   const visibleBaseMessages = useMemo(
