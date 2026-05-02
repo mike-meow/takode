@@ -58,7 +58,7 @@ export function summarizeQuestPhaseDocumentation(quest: QuestmasterTask): QuestP
   );
   const groups = new Map<string, QuestPhaseDocumentationGroup>();
   for (const ref of occurrences) {
-    const group = groupForOccurrence(ref, runs.length);
+    const group = groupForOccurrence(ref, runs.length, quest.status);
     groups.set(group.key, group);
   }
 
@@ -73,7 +73,7 @@ export function summarizeQuestPhaseDocumentation(quest: QuestmasterTask): QuestP
     scopedEntries.push(entry);
     const ref = resolveOccurrence(entry, occurrences);
     const group = ref
-      ? groupForOccurrence(ref, runs.length)
+      ? groupForOccurrence(ref, runs.length, quest.status)
       : groupForUnmatchedScope(entry, runs.length, groups.size + 1);
     const existing = groups.get(group.key);
     if (existing) {
@@ -159,7 +159,11 @@ function occurrenceMatchesEntry(ref: OccurrenceRef, entry: QuestFeedbackEntry): 
   return true;
 }
 
-function groupForOccurrence(ref: OccurrenceRef, runCount: number): QuestPhaseDocumentationGroup {
+function groupForOccurrence(
+  ref: OccurrenceRef,
+  runCount: number,
+  questStatus: QuestmasterTask["status"],
+): QuestPhaseDocumentationGroup {
   const { run, runOrdinal, occurrence } = ref;
   return {
     key: `occurrence:${occurrence.occurrenceId}`,
@@ -172,7 +176,7 @@ function groupForOccurrence(ref: OccurrenceRef, runCount: number): QuestPhaseDoc
       phasePosition: occurrence.phasePosition,
       scopeMatched: true,
     }),
-    phaseStatus: occurrence.status,
+    phaseStatus: phaseDocumentationStatus(run, occurrence, questStatus),
     journeyRunId: run.runId,
     journeyRunOrdinal: runOrdinal,
     phaseOccurrenceId: occurrence.occurrenceId,
@@ -184,6 +188,16 @@ function groupForOccurrence(ref: OccurrenceRef, runCount: number): QuestPhaseDoc
     scopeMatched: true,
     entries: [],
   };
+}
+
+function phaseDocumentationStatus(
+  run: QuestJourneyRun,
+  occurrence: QuestPhaseOccurrence,
+  questStatus: QuestmasterTask["status"],
+): QuestPhaseOccurrence["status"] {
+  if (occurrence.status !== "active") return occurrence.status;
+  if (run.status === "active" && questStatus === "in_progress") return "active";
+  return "completed";
 }
 
 function groupForUnmatchedScope(

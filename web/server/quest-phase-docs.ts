@@ -315,6 +315,7 @@ function buildRunSnapshot(args: {
   const sourceBoardCreatedAt = args.row.createdAt;
   const runId = `board-${args.leaderSessionId.slice(0, 8)}-${sourceBoardCreatedAt}`;
   const existing = args.existingRuns.find((run) => run.runId === runId);
+  const runCompleted = !!args.row.completedAt;
   const phaseOccurrences = args.phaseIds.map((phaseId, phaseIndex) => {
     const phasePosition = phaseIndex + 1;
     const previousSamePhase = args.phaseIds.slice(0, phaseIndex + 1).filter((candidate) => candidate === phaseId);
@@ -322,18 +323,19 @@ function buildRunSnapshot(args: {
     const timing = phaseOccurrenceTiming(args.row, phaseIndex);
     const startedAt = timing.startedAt ?? existingOccurrence?.startedAt;
     const completedAt = timing.completedAt ?? existingOccurrence?.completedAt;
+    const phaseCompleted = phaseIndex < args.activeIndex || (runCompleted && phaseIndex === args.activeIndex);
     return {
       occurrenceId: existingOccurrence?.occurrenceId ?? `${runId}:p${phasePosition}`,
       phaseId,
       phaseIndex,
       phasePosition,
       phaseOccurrence: previousSamePhase.length,
-      status: phaseIndex < args.activeIndex ? "completed" : phaseIndex === args.activeIndex ? "active" : "pending",
+      status: phaseCompleted ? "completed" : phaseIndex === args.activeIndex ? "active" : "pending",
       boardState: getQuestJourneyPhase(phaseId)?.boardState,
       ...(phaseIndex === args.activeIndex && args.authorSessionId ? { assigneeSessionId: args.authorSessionId } : {}),
       ...(typeof args.row.workerNum === "number" ? { assigneeSessionNum: args.row.workerNum } : {}),
       ...(phaseIndex <= args.activeIndex && startedAt ? { startedAt } : {}),
-      ...(phaseIndex < args.activeIndex && completedAt ? { completedAt } : {}),
+      ...(phaseCompleted && completedAt ? { completedAt } : {}),
     } satisfies QuestPhaseOccurrence;
   });
   return {

@@ -135,6 +135,60 @@ describe("summarizeQuestPhaseDocumentation", () => {
     expect(repeatedGroup?.entries).toHaveLength(1);
   });
 
+  it("does not present stale active occurrences as active after the run is finished", () => {
+    const summary = summarizeQuestPhaseDocumentation({
+      ...baseQuest,
+      status: "done",
+      journeyRuns: [
+        run({
+          status: "completed",
+          completedAt: 300,
+          phaseOccurrences: [
+            {
+              occurrenceId: "run-1:p1",
+              phaseId: "alignment",
+              phaseIndex: 0,
+              phasePosition: 1,
+              phaseOccurrence: 1,
+              status: "completed",
+              startedAt: 100,
+              completedAt: 200,
+            },
+            {
+              occurrenceId: "run-1:p2",
+              phaseId: "implement",
+              phaseIndex: 1,
+              phasePosition: 2,
+              phaseOccurrence: 1,
+              status: "active",
+              startedAt: 200,
+            },
+          ],
+        }),
+      ],
+      feedback: [
+        {
+          author: "agent",
+          text: "Final implementation summary.",
+          tldr: "Final implementation TLDR.",
+          ts: 310,
+          journeyRunId: "run-1",
+          phaseOccurrenceId: "run-1:p2",
+          phaseId: "implement",
+          phasePosition: 2,
+        },
+      ],
+    });
+
+    const staleActiveGroup = summary.groups.find((group) => group.phaseOccurrenceId === "run-1:p2");
+    expect(staleActiveGroup).toMatchObject({
+      displayLabel: "Implement",
+      phaseStatus: "completed",
+      startedAt: 200,
+    });
+    expect(staleActiveGroup?.completedAt).toBeUndefined();
+  });
+
   it("keeps stale or ambiguous scoped entries visible without attaching them to a run occurrence", () => {
     const summary = summarizeQuestPhaseDocumentation({
       ...baseQuest,

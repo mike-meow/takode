@@ -717,6 +717,73 @@ describe("QuestDetailPanel", () => {
     expect(within(thumbnailStrip).getByRole("button", { name: "Open image mobile.jpeg" })).toBeVisible();
   });
 
+  it("does not keep the final phase duration running when a finished Journey has a stale active occurrence", () => {
+    const now = Date.now();
+    const quest = makeVerificationQuest({
+      status: "done",
+      completedAt: now - 60_000,
+      journeyRuns: [
+        {
+          runId: "run-1",
+          source: "board",
+          phaseIds: ["alignment", "implement"],
+          status: "completed",
+          createdAt: now - 900_000,
+          updatedAt: now - 60_000,
+          completedAt: now - 60_000,
+          phaseOccurrences: [
+            {
+              occurrenceId: "run-1:p1",
+              phaseId: "alignment",
+              phaseIndex: 0,
+              phasePosition: 1,
+              phaseOccurrence: 1,
+              status: "completed",
+              startedAt: now - 900_000,
+              completedAt: now - 600_000,
+            },
+            {
+              occurrenceId: "run-1:p2",
+              phaseId: "implement",
+              phaseIndex: 1,
+              phasePosition: 2,
+              phaseOccurrence: 1,
+              status: "active",
+              startedAt: now - 600_000,
+            },
+          ],
+        },
+      ],
+      feedback: [
+        {
+          author: "agent",
+          kind: "phase_summary",
+          text: "Implementation finished before the active occurrence was closed.",
+          tldr: "Implementation done.",
+          ts: now - 90_000,
+          authorSessionId: "session-abc",
+          journeyRunId: "run-1",
+          phaseOccurrenceId: "run-1:p2",
+          phaseId: "implement",
+          phasePosition: 2,
+          phaseOccurrence: 1,
+        },
+      ],
+    });
+    useStore.setState({ quests: [quest], questOverlayId: "q-42" });
+
+    render(<QuestDetailPanel />);
+
+    const timeline = screen.getByTestId("quest-phase-documentation-timeline");
+    const phaseGroups = within(timeline).getAllByTestId("quest-phase-documentation-group");
+    const finalPhase = phaseGroups[1]!;
+    expect(within(finalPhase).getByText("Implement")).toBeTruthy();
+    expect(within(finalPhase).getByTestId("quest-phase-documentation-duration")).toHaveTextContent(
+      "duration unavailable",
+    );
+    expect(within(finalPhase).queryByText("10m")).toBeNull();
+  });
+
   it("orders completed quest detail as TLDRs, full details, then Journey details", () => {
     const quest = makeVerificationQuest({
       tldr: "Initial TLDR.",

@@ -64,6 +64,47 @@ describe("quest phase documentation resolution", () => {
     });
   });
 
+  it("marks the active occurrence completed for completed board row snapshots without inventing an end time", () => {
+    const result = resolveQuestFeedbackDocumentation({
+      quest: quest(),
+      authorSessionId: "worker-1",
+      request: {},
+      now: 500,
+      boardRows: [
+        {
+          leaderSessionId: "leader-1",
+          row: {
+            questId: "q-1",
+            worker: "worker-1",
+            workerNum: 42,
+            status: "IMPLEMENTING",
+            createdAt: 10,
+            updatedAt: 450,
+            completedAt: 480,
+            journey: {
+              phaseIds: ["alignment", "implement"],
+              activePhaseIndex: 1,
+              currentPhaseId: "implement",
+              phaseTimings: {
+                "0": { startedAt: 10, endedAt: 100 },
+                "1": { startedAt: 100 },
+              },
+            },
+          },
+        },
+      ],
+    });
+
+    expect(result.error).toBeUndefined();
+    const occurrence = result.journeyRuns?.[0]?.phaseOccurrences[1];
+    expect(occurrence).toMatchObject({
+      phaseId: "implement",
+      status: "completed",
+      startedAt: 100,
+    });
+    expect(occurrence?.completedAt).toBeUndefined();
+  });
+
   it("rejects explicit scoped writes when a repeated phase is ambiguous", () => {
     // Repeated phase IDs need a stable occurrence position so documentation
     // does not accidentally attach to the wrong implementation/review cycle.
