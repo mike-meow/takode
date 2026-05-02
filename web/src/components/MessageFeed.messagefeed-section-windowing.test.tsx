@@ -83,6 +83,8 @@ vi.mock("../store.js", () => {
       toolResults: mockStoreValues.toolResults ?? new Map(),
       toolStartTimestamps: mockStoreValues.toolStartTimestamps ?? new Map(),
       sdkSessions: mockStoreValues.sdkSessions ?? [],
+      threadWindows: mockStoreValues.threadWindows ?? new Map(),
+      threadWindowMessages: mockStoreValues.threadWindowMessages ?? new Map(),
       feedScrollPosition: mockStoreValues.feedScrollPosition ?? new Map(),
       turnActivityOverrides: mockStoreValues.turnActivityOverrides ?? new Map(),
       autoExpandedTurnIds: mockStoreValues.autoExpandedTurnIds ?? new Map(),
@@ -415,6 +417,8 @@ function resetStore() {
   mockStoreValues.streamingPauseStartedAt = new Map();
   mockStoreValues.sessionStatus = new Map();
   mockStoreValues.sessions = new Map();
+  mockStoreValues.threadWindows = new Map();
+  mockStoreValues.threadWindowMessages = new Map();
   mockStoreValues.toolProgress = new Map();
   mockStoreValues.toolResults = new Map();
   mockStoreValues.toolStartTimestamps = new Map();
@@ -444,6 +448,47 @@ function setStoreAutoExpandedTurns(sessionId: string, turnIds: string[]) {
   const map = new Map();
   map.set(sessionId, new Set(turnIds));
   mockStoreValues.autoExpandedTurnIds = map;
+}
+
+function setStoreSelectedThreadWindow({
+  sessionId,
+  threadKey,
+  fromItem,
+  itemCount,
+  totalItems,
+  sectionItemCount,
+  visibleItemCount,
+  messages,
+}: {
+  sessionId: string;
+  threadKey: string;
+  fromItem: number;
+  itemCount: number;
+  totalItems: number;
+  sectionItemCount: number;
+  visibleItemCount: number;
+  messages: ChatMessage[];
+}) {
+  mockStoreValues.threadWindows = new Map([
+    [
+      sessionId,
+      new Map([
+        [
+          threadKey,
+          {
+            thread_key: threadKey,
+            from_item: fromItem,
+            item_count: itemCount,
+            total_items: totalItems,
+            source_history_length: totalItems,
+            section_item_count: sectionItemCount,
+            visible_item_count: visibleItemCount,
+          },
+        ],
+      ]),
+    ],
+  ]);
+  mockStoreValues.threadWindowMessages = new Map([[sessionId, new Map([[threadKey, messages]])]]);
 }
 
 async function flushFeedObservers() {
@@ -669,6 +714,92 @@ describe("MessageFeed section windowing", () => {
       visible_section_count: 3,
       cached_window_hash: "cached-history-window",
     });
+  });
+
+  it("does not auto-load newer selected-thread content on stationary mobile top overscroll", () => {
+    // q-1050 follow-up: on mobile, pulling upward at the top of a short completed
+    // selected-thread window can produce scroll events without changing scrollTop.
+    // That must not be treated as a downward/newer boundary scroll, or the feed
+    // snaps back toward latest while showing "Loading older section...".
+    mediaState.touchDevice = true;
+    const sid = "test-selected-thread-mobile-top-overscroll";
+    const threadKey = "q-1027";
+    setStoreSessionState(sid, { isOrchestrator: true });
+    const selectedThreadMessages = [
+      makeMessage({ id: "u3", role: "user", content: "Completed q-1027 turn 3", timestamp: 3 }),
+      makeMessage({ id: "a3", role: "assistant", content: "Completed q-1027 reply 3", timestamp: 4 }),
+      makeMessage({ id: "u4", role: "user", content: "Completed q-1027 turn 4", timestamp: 5 }),
+      makeMessage({ id: "a4", role: "assistant", content: "Completed q-1027 reply 4", timestamp: 6 }),
+    ];
+    setStoreSelectedThreadWindow({
+      sessionId: sid,
+      threadKey,
+      fromItem: 2,
+      itemCount: 6,
+      totalItems: 10,
+      sectionItemCount: 2,
+      visibleItemCount: 3,
+      messages: selectedThreadMessages,
+    });
+
+    const { container } = render(
+      <MessageFeed sessionId={sid} threadKey={threadKey} projectThreadRoutes={false} sectionTurnCount={2} />,
+    );
+    const scrollContainer = getScrollContainer(container);
+    setElementScrollMetrics(scrollContainer, 380, 340, 0);
+
+    fireEvent.scroll(scrollContainer);
+
+    expect(mockSendToSession).not.toHaveBeenCalledWith(
+      sid,
+      expect.objectContaining({
+        type: "thread_window_request",
+        from_item: 4,
+      }),
+    );
+    expect(screen.getByText("Older section above")).toBeTruthy();
+    expect(screen.getByText("Newer section below")).toBeTruthy();
+  });
+
+  it("auto-loads older selected-thread content on an upward boundary scroll", () => {
+    const sid = "test-selected-thread-upward-boundary-scroll";
+    const threadKey = "q-1027";
+    setStoreSessionState(sid, { isOrchestrator: true });
+    setStoreSelectedThreadWindow({
+      sessionId: sid,
+      threadKey,
+      fromItem: 2,
+      itemCount: 6,
+      totalItems: 10,
+      sectionItemCount: 2,
+      visibleItemCount: 3,
+      messages: [
+        makeMessage({ id: "u3", role: "user", content: "Completed q-1027 turn 3", timestamp: 3 }),
+        makeMessage({ id: "a3", role: "assistant", content: "Completed q-1027 reply 3", timestamp: 4 }),
+        makeMessage({ id: "u4", role: "user", content: "Completed q-1027 turn 4", timestamp: 5 }),
+        makeMessage({ id: "a4", role: "assistant", content: "Completed q-1027 reply 4", timestamp: 6 }),
+      ],
+    });
+
+    const { container } = render(
+      <MessageFeed sessionId={sid} threadKey={threadKey} projectThreadRoutes={false} sectionTurnCount={2} />,
+    );
+    const scrollContainer = getScrollContainer(container);
+    setElementScrollMetrics(scrollContainer, 1000, 340, 120);
+    fireEvent.scroll(scrollContainer);
+    mockSendToSession.mockClear();
+
+    setElementScrollMetrics(scrollContainer, 1000, 340, 0);
+    fireEvent.scroll(scrollContainer);
+
+    expect(mockSendToSession).toHaveBeenCalledWith(
+      sid,
+      expect.objectContaining({
+        type: "thread_window_request",
+        from_item: 0,
+      }),
+    );
+    expect(screen.getByText("Loading older section...")).toBeTruthy();
   });
 
   it("remounts the correct section window before scrolling to an older turn", async () => {

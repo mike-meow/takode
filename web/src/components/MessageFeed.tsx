@@ -1335,28 +1335,27 @@ export function MessageFeed({
       programmaticScrollTargetRef.current = null;
     }
     const scrollingUp = currentScrollTop < lastScrollTopRef.current - 4;
+    const scrollingDown = currentScrollTop > lastScrollTopRef.current + 4;
     if (!isProgrammaticScroll) {
       if (scrollingUp) {
         autoFollowEnabledRef.current = false;
       } else if (!nearBottom) {
         autoFollowEnabledRef.current = false;
-      } else if (nearBottom) {
+      } else if (nearBottom && !hasNewerSections) {
         autoFollowEnabledRef.current = true;
+      } else if (hasNewerSections) {
+        autoFollowEnabledRef.current = false;
       }
     }
     isNearBottom.current = nearBottom;
-    if (autoFollowEnabledRef.current && nearBottom) {
+    if (autoFollowEnabledRef.current && nearBottom && !hasNewerSections) {
       lastSeenContentBottomRef.current = realContentBottom;
       lastObservedContentBottomRef.current = lastSeenContentBottomRef.current;
       setShowLatestPill(false);
-      if (hasNewerSections) {
-        triggerSectionLoadNearBoundary("newer");
-      } else {
-        resetVisibleSectionsToLatest("auto");
-      }
+      resetVisibleSectionsToLatest("auto");
     } else if (!isProgrammaticScroll && scrollingUp && nearOlderBoundary) {
       triggerSectionLoadNearBoundary("older");
-    } else if (!isProgrammaticScroll && !scrollingUp && nearNewerBoundary) {
+    } else if (!isProgrammaticScroll && scrollingDown && nearNewerBoundary) {
       triggerSectionLoadNearBoundary("newer");
     }
     // Only trigger a re-render when the button state actually changes
@@ -1417,12 +1416,22 @@ export function MessageFeed({
         setShowScrollButton(true);
         lastScrollTopRef.current = el.scrollTop;
       }
+    } else if (activeThreadWindow && hasNewerSections) {
+      const el = containerRef.current;
+      autoFollowEnabledRef.current = false;
+      isNearBottom.current = false;
+      setShowScrollButton(true);
+      if (el) {
+        lastScrollTopRef.current = el.scrollTop;
+      }
     } else {
       scrollToBottom("auto");
     }
     restoredViewportKeyRef.current = viewportKey;
   }, [
+    activeThreadWindow,
     getSectionWindowStartForTurnId,
+    hasNewerSections,
     messages.length,
     restoreTurnAnchor,
     scrollToBottom,
