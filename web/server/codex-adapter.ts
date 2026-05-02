@@ -439,6 +439,12 @@ export class CodexAdapter
     return this.currentTurnId;
   }
 
+  handleProcessStderr(text: string): void {
+    for (const message of this.extractWriteStdinRouterFailuresFromStderr(text)) {
+      this.handleToolRouterFailureMessage(message);
+    }
+  }
+
   async rollbackTurns(numTurns: number): Promise<void> {
     if (!this.threadId) {
       throw new Error("No Codex thread started yet");
@@ -1039,19 +1045,7 @@ export class CodexAdapter
           const msg = params.msg as { message?: string } | undefined;
           if (msg?.message) {
             console.error(`[codex-adapter] Codex error: ${msg.message}`);
-            const isToolRouterFailure = this.isToolRouterFailureMessage(msg.message);
-            const renderedAsToolResult = isToolRouterFailure
-              ? this.itemEventManager.handleToolRouterError(
-                  msg.message,
-                  this.getRouterFailureToolName(msg.message) ?? undefined,
-                )
-              : false;
-            if (this.currentTurnId && isToolRouterFailure) {
-              this.toolRouterErrorByTurnId.set(this.currentTurnId, msg.message);
-            }
-            if (!renderedAsToolResult) {
-              this.emit({ type: "error", message: msg.message });
-            }
+            this.handleToolRouterFailureMessage(msg.message);
           }
           break;
         }
@@ -1189,6 +1183,31 @@ export class CodexAdapter
   private getRouterFailureToolName(message: string): RouterFailureToolName | null {
     if (/\bwrite_stdin\s+failed\b/i.test(message)) return "write_stdin";
     return null;
+  }
+
+  private handleToolRouterFailureMessage(message: string): void {
+    const isToolRouterFailure = this.isToolRouterFailureMessage(message);
+    const renderedAsToolResult = isToolRouterFailure
+      ? this.itemEventManager.handleToolRouterError(message, this.getRouterFailureToolName(message) ?? undefined)
+      : false;
+    if (this.currentTurnId && isToolRouterFailure) {
+      this.toolRouterErrorByTurnId.set(this.currentTurnId, message);
+    }
+    if (!renderedAsToolResult) {
+      this.emit({ type: "error", message });
+    }
+  }
+
+  private extractWriteStdinRouterFailuresFromStderr(text: string): string[] {
+    const messages: string[] = [];
+    for (const line of text.split(/\r?\n/)) {
+      const normalized = line.replace(/\x1b\[[0-9;]*m/g, "").trim();
+      if (!normalized.includes("codex_core::tools::router")) continue;
+      const match = normalized.match(/\berror\s*=\s*(write_stdin failed:.*)$/i);
+      const message = match?.[1]?.trim();
+      if (message) messages.push(message);
+    }
+    return messages;
   }
 
   private updateRateLimits(data: Record<string, unknown>): void {

@@ -28,13 +28,8 @@ import { stripInheritedTelemetryEnv, withNonInteractiveGitEditorEnv } from "./cl
 import { prepareWorktreeSessionArtifacts } from "./cli-launcher-worktree.js";
 import { ensureQuestJourneyPhaseDataForCwd } from "./quest-journey-phases.js";
 import { isRecoverableCodexInitError } from "./codex-adapter-utils.js";
-import {
-  classifyCliStreamLogLevel,
-  isCodexRefreshTokenReusedNoise,
-  maybeFormatCodexTokenRefreshLogLine,
-  type CliStreamLogLevel,
-  type CodexTokenRefreshNoiseState,
-} from "./cli-stream-log-classifier.js";
+import { type CodexTokenRefreshNoiseState } from "./cli-stream-log-classifier.js";
+import { formatStreamTailForError, pipeLauncherStream } from "./cli-launcher-streams.js";
 import { sessionTag } from "./session-tag.js";
 import type { HerdChangeEvent, HerdSessionsResponse } from "../shared/herd-types.js";
 import { getSessionAuthDir, getSessionAuthPath } from "../shared/session-auth.js";
@@ -125,22 +120,6 @@ function sanitizeSpawnArgsForLog(args: string[]): string {
     }
   }
   return out.join(" ");
-}
-
-function appendStreamTail(lines: string[], chunk: string, maxLines = 20): void {
-  for (const rawLine of chunk.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line) continue;
-    lines.push(line);
-    if (lines.length > maxLines) lines.shift();
-  }
-}
-
-function formatStreamTailForError(lines: string[]): string | null {
-  if (lines.length === 0) return null;
-  const summary = lines.slice(-4).join(" | ");
-  if (!summary) return null;
-  return summary.length > 500 ? `${summary.slice(0, 497)}...` : summary;
 }
 
 export interface SdkSessionInfo {
@@ -1344,9 +1323,6 @@ export class CliLauncher {
     // Pipe stderr for debugging (stdout is used for JSON-RPC)
     const stderr = proc.stderr;
     const stderrTail: string[] = [];
-    if (stderr && typeof stderr !== "number") {
-      this.pipeStream(sessionId, stderr, "stderr", stderrTail);
-    }
 
     // Create the CodexAdapter which handles JSON-RPC and message translation
     // Pass the raw permission mode — the adapter maps it to Codex's approval policy
@@ -1377,6 +1353,9 @@ export class CliLauncher {
       instructions: codexInstructions || undefined,
       failureContextProvider: () => formatStreamTailForError(stderrTail),
     });
+    if (stderr && typeof stderr !== "number") {
+      this.pipeStream(sessionId, stderr, "stderr", stderrTail, (text) => adapter.handleProcessStderr(text));
+    }
 
     // Handle init errors — mark session as exited so recovery can relaunch.
     // Preserve cliSessionId for transient startup failures so automatic retry
@@ -1950,43 +1929,17 @@ export class CliLauncher {
     stream: ReadableStream<Uint8Array> | null,
     label: "stdout" | "stderr",
     tailLines?: string[],
+    onText?: (text: string) => void,
   ): Promise<void> {
-    if (!stream) return;
-    const reader = stream.getReader();
-    const decoder = new TextDecoder();
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const text = decoder.decode(value);
-        if (tailLines) appendStreamTail(tailLines, text);
-        if (text.trim()) {
-          const sessionNum = this.getSessionNum(sessionId);
-          const sessionLabel = sessionNum !== undefined ? `#${sessionNum}` : sessionId.slice(0, 8);
-          const line = `[session:${sessionLabel}:${label}] ${text.trimEnd()}`;
-          const level = classifyCliStreamLogLevel(label, text);
-          const suppressedLine =
-            label === "stderr" && isCodexRefreshTokenReusedNoise(text)
-              ? maybeFormatCodexTokenRefreshLogLine(this.codexTokenRefreshNoiseBySession, sessionId, line)
-              : line;
-          if (suppressedLine) this.logCliStreamLine(level, suppressedLine);
-        }
-      }
-    } catch {
-      // stream closed
-    }
-  }
-
-  private logCliStreamLine(level: CliStreamLogLevel, line: string): void {
-    if (level === "info") {
-      console.log(line);
-      return;
-    }
-    if (level === "warn") {
-      console.warn(line);
-      return;
-    }
-    console.error(line);
+    await pipeLauncherStream({
+      sessionId,
+      stream,
+      label,
+      tailLines,
+      onText,
+      getSessionNum: (id) => this.getSessionNum(id),
+      codexTokenRefreshNoiseBySession: this.codexTokenRefreshNoiseBySession,
+    });
   }
 
   private pipeOutput(sessionId: string, proc: Subprocess): void {

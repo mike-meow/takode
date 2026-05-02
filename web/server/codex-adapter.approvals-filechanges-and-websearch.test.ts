@@ -1057,6 +1057,148 @@ describe("CodexAdapter", () => {
     expect(messages).toContainEqual(expect.objectContaining({ type: "error", message: errorMessage }));
   });
 
+  it("renders stderr-only closed-stdin router failures as failed write_stdin results", async () => {
+    // q-1073 feedback #6: this production failure surfaced as Codex process
+    // stderr, not a confirmed codex/event/error notification. Keep stderr
+    // logging intact, but also route the narrow tool-router write_stdin failure
+    // through normal failed tool output when there is one active terminal
+    // command to attach it to.
+    const messages: BrowserIncomingMessage[] = [];
+    const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+
+    await tick();
+    await initializeAdapter(stdout);
+    stdout.push(JSON.stringify({ id: 3, result: { rateLimits: { primary: null, secondary: null } } }) + "\n");
+    await tick();
+
+    adapter.sendBrowserMessage({ type: "user_message", content: "Poll a closed stdin terminal" });
+    await tick();
+    stdout.push(JSON.stringify({ id: 4, result: { turn: { id: "turn_closed_stdin_stderr" } } }) + "\n");
+    await tick();
+
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          item: {
+            id: "cmd_closed_stdin",
+            type: "commandExecution",
+            command: ["bun", "test"],
+          },
+        },
+      }) + "\n",
+    );
+    await tick();
+
+    const errorMessage =
+      "write_stdin failed: stdin is closed for this session; rerun exec_command with tty=true to keep stdin open";
+    adapter.handleProcessStderr(`2026-05-02T19:19:37.348471Z ERROR codex_core::tools::router: error=${errorMessage}\n`);
+    await tick();
+
+    const failedWriteStdinResults = getToolResultBlocks(messages).filter(
+      (block) => block.is_error === true && typeof block.content === "string" && block.content.includes(errorMessage),
+    );
+    expect(failedWriteStdinResults).toHaveLength(1);
+
+    const failedWriteStdinUse = getToolUseBlocks(messages, "write_stdin").find(
+      (block) => block.id === failedWriteStdinResults[0]?.tool_use_id,
+    );
+    expect(failedWriteStdinUse).toBeDefined();
+    expect(failedWriteStdinUse?.input).toMatchObject({ session_id: "", chars: "" });
+    expect(getToolResultBlocks(messages, "cmd_closed_stdin").some((block) => block.is_error)).toBe(false);
+    expect(messages.some((msg) => msg.type === "error" && msg.message === errorMessage)).toBe(false);
+
+    stdout.push(
+      JSON.stringify({
+        method: "thread/status/changed",
+        params: { threadId: "thr_123", status: { type: "idle" } },
+      }) + "\n",
+    );
+    await tick();
+
+    const results = messages.filter((m) => m.type === "result");
+    expect(results).toHaveLength(1);
+    const result = results[0] as { data: { is_error: boolean; result: string; codex_turn_id?: string } };
+    expect(result.data.is_error).toBe(true);
+    expect(result.data.result).toContain("stdin is closed for this session");
+    expect(result.data.codex_turn_id).toBe("turn_closed_stdin_stderr");
+    expect(adapter.getCurrentTurnId()).toBeNull();
+  });
+
+  it("does not attach closed-stdin stderr router failures when multiple real tools are active", async () => {
+    // Without a process id, the closed-stdin stderr fallback is intentionally
+    // narrower than the generic router-error path: if more than one real tool
+    // is active, keep the error visible without guessing a write_stdin parent.
+    const messages: BrowserIncomingMessage[] = [];
+    const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+
+    await tick();
+    await initializeAdapter(stdout);
+    stdout.push(JSON.stringify({ id: 3, result: { rateLimits: { primary: null, secondary: null } } }) + "\n");
+    await tick();
+
+    adapter.sendBrowserMessage({ type: "user_message", content: "Run overlapping tools" });
+    await tick();
+    stdout.push(JSON.stringify({ id: 4, result: { turn: { id: "turn_closed_stdin_multi_tool" } } }) + "\n");
+    await tick();
+
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          item: {
+            id: "cmd_closed_stdin_overlap",
+            type: "commandExecution",
+            command: ["sleep", "20"],
+          },
+        },
+      }) + "\n",
+    );
+    await tick();
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          item: {
+            id: "web_search_overlap",
+            type: "webSearch",
+            query: "router failure",
+          },
+        },
+      }) + "\n",
+    );
+    await tick();
+
+    const errorMessage =
+      "write_stdin failed: stdin is closed for this session; rerun exec_command with tty=true to keep stdin open";
+    adapter.handleProcessStderr(`ERROR codex_core::tools::router: error=${errorMessage}\n`);
+    await tick();
+
+    expect(getToolResultBlocks(messages, "cmd_closed_stdin_overlap")).toHaveLength(0);
+    expect(getToolUseBlocks(messages, "write_stdin")).toHaveLength(0);
+    expect(messages).toContainEqual(expect.objectContaining({ type: "error", message: errorMessage }));
+  });
+
+  it("ignores non-write_stdin Codex stderr router failures", async () => {
+    // The stderr parser is deliberately scoped to write_stdin router failures;
+    // unrelated Codex process failures should remain raw stderr/log events, not
+    // fabricated browser/tool results.
+    const messages: BrowserIncomingMessage[] = [];
+    const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+
+    await tick();
+    await initializeAdapter(stdout);
+    adapter.handleProcessStderr("ERROR codex_core::tools::router: error=exec_command failed: process crashed\n");
+    await tick();
+
+    expect(messages.some((msg) => msg.type === "error")).toBe(false);
+    expect(getToolUseBlocks(messages, "write_stdin")).toHaveLength(0);
+    expect(getToolResultBlocks(messages)).toHaveLength(0);
+  });
+
   it("ignores synthetic plan entries when attaching router errors to an active command", async () => {
     // Codex plan updates render as TodoWrite UI state, but they are not
     // result-bearing tools. They must not prevent a later apply_patch router
