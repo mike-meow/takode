@@ -62,7 +62,7 @@ import {
 } from "./message-feed-utils.js";
 import { isSubagentToolName } from "../types.js";
 import {
-  collectRoutedNotificationSourceMessageIds,
+  collectRetainedNotificationSourceMessageIds,
   collectMessageToolUseIds,
   filterMessagesForThread,
   isAllThreadsKey,
@@ -172,8 +172,8 @@ export function MessageFeed({
     (s) => s.threadWindowMessages?.get(sessionId)?.get(normalizedThreadKey) ?? EMPTY_MESSAGES,
   );
   const sessionNotifications = useStore((s) => s.sessionNotifications?.get(sessionId));
-  const routedNotificationSourceMessageIds = useMemo(
-    () => collectRoutedNotificationSourceMessageIds(sessionNotifications, threadKey),
+  const retainedNotificationSourceMessageIds = useMemo(
+    () => collectRetainedNotificationSourceMessageIds(sessionNotifications, threadKey),
     [sessionNotifications, threadKey],
   );
   const messagesAvailableForDerivation = useMemo(
@@ -184,12 +184,12 @@ export function MessageFeed({
         selectedFeedWindow,
         selectedFeedWindowEnabled,
         selectedFeedWindowMessages,
-        retainedMessageIds: routedNotificationSourceMessageIds,
+        retainedMessageIds: retainedNotificationSourceMessageIds,
       }),
     [
       allMessages,
       historyLoading,
-      routedNotificationSourceMessageIds,
+      retainedNotificationSourceMessageIds,
       selectedFeedWindow,
       selectedFeedWindowEnabled,
       selectedFeedWindowMessages,

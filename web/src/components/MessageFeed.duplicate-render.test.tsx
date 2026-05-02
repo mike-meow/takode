@@ -300,6 +300,167 @@ describe("MessageFeed duplicate rendering regression", () => {
     expect(screen.getAllByText("Pick the dispatch order")).toHaveLength(1);
   });
 
+  it("keeps a Main needs-input source message visible when selected history windows would otherwise omit it", () => {
+    // q-1069: a leader proposal can be older than the bounded Main selected
+    // window while its active needs-input notification remains actionable.
+    // The anchored source message must stay available so the chip has visible
+    // context instead of disappearing with the suppressed Main fallback row.
+    const sid = "test-windowed-main-needs-input-source-message";
+    setStoreMessages(sid, [
+      makeMessage({
+        id: "a-proposal",
+        role: "assistant",
+        content: "Proposed follow-up quest: compact quest lifecycle event chips on mobile without removing content.",
+        timestamp: 100,
+        historyIndex: 4,
+      }),
+      makeMessage({
+        id: "a-visible-tail",
+        role: "assistant",
+        content: "I proposed this as a separate follow-up and sent an approval notification.",
+        timestamp: 200,
+        historyIndex: 25,
+      }),
+    ]);
+    mockStoreValues.sessions = new Map([[sid, { isOrchestrator: true }]]);
+    mockStoreValues.threadWindows = new Map([
+      [
+        sid,
+        new Map([
+          [
+            "main",
+            {
+              thread_key: "main",
+              from_item: 20,
+              item_count: 1,
+              total_items: 30,
+              source_history_length: 20,
+              section_item_count: 50,
+              visible_item_count: 3,
+            },
+          ],
+        ]),
+      ],
+    ]);
+    mockStoreValues.threadWindowMessages = new Map([
+      [
+        sid,
+        new Map([
+          [
+            "main",
+            [
+              makeMessage({
+                id: "a-visible-tail",
+                role: "assistant",
+                content: "I proposed this as a separate follow-up and sent an approval notification.",
+                timestamp: 200,
+                historyIndex: 25,
+              }),
+            ],
+          ],
+        ]),
+      ],
+    ]);
+    setStoreNotifications(sid, [
+      {
+        id: "114",
+        category: "needs-input",
+        timestamp: Date.now(),
+        messageId: "a-proposal",
+        summary: "approve compact quest lifecycle event chip follow-up quest",
+        done: false,
+      },
+    ]);
+
+    render(<MessageFeed sessionId={sid} />);
+
+    expect(
+      screen.getByText(
+        "Proposed follow-up quest: compact quest lifecycle event chips on mobile without removing content.",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText("I proposed this as a separate follow-up and sent an approval notification.")).toBeTruthy();
+    expect(screen.getAllByText("approve compact quest lifecycle event chip follow-up quest")).toHaveLength(1);
+    expect(screen.queryByTestId("attention-ledger-row")).toBeNull();
+  });
+
+  it("does not retain quest-thread needs-input source messages in the Main selected window", () => {
+    const sid = "test-windowed-main-excludes-routed-needs-input-source-message";
+    setStoreMessages(sid, [
+      makeMessage({
+        id: "a-q983-plan",
+        role: "assistant",
+        content: "Plan for q-983: dispatch the worker after user approval.",
+        timestamp: 100,
+        historyIndex: 4,
+      }),
+      makeMessage({
+        id: "a-main-tail",
+        role: "assistant",
+        content: "Main feed tail remains visible.",
+        timestamp: 200,
+        historyIndex: 25,
+      }),
+    ]);
+    mockStoreValues.sessions = new Map([[sid, { isOrchestrator: true }]]);
+    mockStoreValues.threadWindows = new Map([
+      [
+        sid,
+        new Map([
+          [
+            "main",
+            {
+              thread_key: "main",
+              from_item: 20,
+              item_count: 1,
+              total_items: 30,
+              source_history_length: 20,
+              section_item_count: 50,
+              visible_item_count: 3,
+            },
+          ],
+        ]),
+      ],
+    ]);
+    mockStoreValues.threadWindowMessages = new Map([
+      [
+        sid,
+        new Map([
+          [
+            "main",
+            [
+              makeMessage({
+                id: "a-main-tail",
+                role: "assistant",
+                content: "Main feed tail remains visible.",
+                timestamp: 200,
+                historyIndex: 25,
+              }),
+            ],
+          ],
+        ]),
+      ],
+    ]);
+    setStoreNotifications(sid, [
+      {
+        id: "n-q983",
+        category: "needs-input",
+        timestamp: Date.now(),
+        messageId: "a-q983-plan",
+        threadKey: "q-983",
+        questId: "q-983",
+        summary: "Approve q-983 dispatch plan",
+        done: false,
+      },
+    ]);
+
+    render(<MessageFeed sessionId={sid} />);
+
+    expect(screen.getByText("Main feed tail remains visible.")).toBeTruthy();
+    expect(screen.queryByText("Plan for q-983: dispatch the worker after user approval.")).toBeNull();
+    expect(screen.queryByText("Approve q-983 dispatch plan")).toBeNull();
+  });
+
   it("shows a routed needs-input source assistant message in its owner thread", () => {
     // The notification chip is only the affordance. When a needs-input
     // notification points at an assistant plan message, the owner thread must

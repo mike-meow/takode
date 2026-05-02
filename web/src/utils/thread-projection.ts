@@ -165,15 +165,26 @@ export function recoverRoutedNotificationSourceMessages(
   return changed ? recovered : messages;
 }
 
-export function collectRoutedNotificationSourceMessageIds(
+export function collectRetainedNotificationSourceMessageIds(
   notifications: ReadonlyArray<SessionNotification> | undefined,
   threadKey: string,
 ): Set<string> {
   const normalizedThreadKey = normalizeThreadKey(threadKey);
-  if (isMainThreadKey(normalizedThreadKey) || isAllThreadsKey(normalizedThreadKey) || !notifications?.length) {
+  if (isAllThreadsKey(normalizedThreadKey) || !notifications?.length) {
     return new Set();
   }
+  if (isMainThreadKey(normalizedThreadKey)) return mainNotificationSourceMessageIds(notifications);
   return new Set(notificationSourceRoutesByMessageId(notifications, normalizedThreadKey).keys());
+}
+
+function mainNotificationSourceMessageIds(notifications: ReadonlyArray<SessionNotification>): Set<string> {
+  const ids = new Set<string>();
+  for (const notification of notifications) {
+    if (notification.done || notification.category !== "needs-input" || !notification.messageId) continue;
+    if (routeFromNotification(notification)) continue;
+    ids.add(notification.messageId);
+  }
+  return ids;
 }
 
 function notificationSourceRoutesByMessageId(
