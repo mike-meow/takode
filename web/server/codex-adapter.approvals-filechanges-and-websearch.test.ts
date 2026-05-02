@@ -827,6 +827,236 @@ describe("CodexAdapter", () => {
     expect(messages.filter((m) => m.type === "result")).toHaveLength(1);
   });
 
+  it("renders write_stdin router errors as failed write_stdin tool results", async () => {
+    // q-1073: terminal interactions are rendered as write_stdin tool calls.
+    // If Codex later reports the corresponding process id as gone, close a
+    // write_stdin call as failed instead of misattributing the router error to
+    // the parent Bash command.
+    const messages: BrowserIncomingMessage[] = [];
+    const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+
+    await tick();
+    await initializeAdapter(stdout);
+    stdout.push(JSON.stringify({ id: 3, result: { rateLimits: { primary: null, secondary: null } } }) + "\n");
+    await tick();
+
+    adapter.sendBrowserMessage({ type: "user_message", content: "Poll a terminal" });
+    await tick();
+    stdout.push(JSON.stringify({ id: 4, result: { turn: { id: "turn_write_stdin_router_error" } } }) + "\n");
+    await tick();
+
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          item: {
+            id: "cmd_live",
+            type: "commandExecution",
+            command: ["sleep", "20"],
+          },
+        },
+      }) + "\n",
+    );
+    await tick();
+
+    stdout.push(
+      JSON.stringify({
+        method: "item/commandExecution/terminalInteraction",
+        params: {
+          itemId: "cmd_live",
+          processId: "13506",
+          stdin: "",
+        },
+      }) + "\n",
+    );
+    await tick();
+
+    const errorMessage = "write_stdin failed: Unknown process id 13506";
+    stdout.push(
+      JSON.stringify({
+        method: "codex/event/error",
+        params: { msg: { message: errorMessage } },
+      }) + "\n",
+    );
+    await tick();
+
+    stdout.push(
+      JSON.stringify({
+        method: "codex/event/error",
+        params: { msg: { message: errorMessage } },
+      }) + "\n",
+    );
+    await tick();
+
+    const failedWriteStdinResults = getToolResultBlocks(messages).filter(
+      (block) => block.is_error === true && typeof block.content === "string" && block.content.includes(errorMessage),
+    );
+    expect(failedWriteStdinResults).toHaveLength(1);
+
+    const failedWriteStdinUse = getToolUseBlocks(messages, "write_stdin").find(
+      (block) => block.id === failedWriteStdinResults[0]?.tool_use_id,
+    );
+    expect(failedWriteStdinUse).toBeDefined();
+    expect(failedWriteStdinUse?.input).toMatchObject({ session_id: "13506", chars: "" });
+    expect(getToolResultBlocks(messages, "cmd_live").some((block) => block.is_error)).toBe(false);
+    expect(messages.some((msg) => msg.type === "error" && msg.message === errorMessage)).toBe(false);
+
+    stdout.push(
+      JSON.stringify({
+        method: "thread/status/changed",
+        params: { threadId: "thr_123", status: { type: "idle" } },
+      }) + "\n",
+    );
+    await tick();
+
+    const results = messages.filter((m) => m.type === "result");
+    expect(results).toHaveLength(1);
+    const result = results[0] as { data: { is_error: boolean; result: string; codex_turn_id?: string } };
+    expect(result.data.is_error).toBe(true);
+    expect(result.data.result).toContain("write_stdin failed");
+    expect(result.data.codex_turn_id).toBe("turn_write_stdin_router_error");
+    expect(adapter.getCurrentTurnId()).toBeNull();
+  });
+
+  it("does not attach write_stdin router errors to Bash without a matching terminal interaction", async () => {
+    // A write_stdin router failure is only specific enough to close a
+    // write_stdin tool when the adapter has seen a terminal interaction for
+    // that process id. Otherwise keep it visible and let turn-level fallback
+    // clear generation state.
+    const messages: BrowserIncomingMessage[] = [];
+    const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+
+    await tick();
+    await initializeAdapter(stdout);
+    stdout.push(JSON.stringify({ id: 3, result: { rateLimits: { primary: null, secondary: null } } }) + "\n");
+    await tick();
+
+    adapter.sendBrowserMessage({ type: "user_message", content: "Run a terminal command" });
+    await tick();
+    stdout.push(JSON.stringify({ id: 4, result: { turn: { id: "turn_unmatched_write_stdin_error" } } }) + "\n");
+    await tick();
+
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          item: {
+            id: "cmd_without_terminal_poll",
+            type: "commandExecution",
+            command: ["sleep", "20"],
+          },
+        },
+      }) + "\n",
+    );
+    await tick();
+
+    const errorMessage = "write_stdin failed: Unknown process id 24680";
+    stdout.push(
+      JSON.stringify({
+        method: "codex/event/error",
+        params: { msg: { message: errorMessage } },
+      }) + "\n",
+    );
+    await tick();
+
+    expect(getToolResultBlocks(messages, "cmd_without_terminal_poll")).toHaveLength(0);
+    expect(getToolUseBlocks(messages, "write_stdin")).toHaveLength(0);
+    expect(messages).toContainEqual(expect.objectContaining({ type: "error", message: errorMessage }));
+
+    stdout.push(
+      JSON.stringify({
+        method: "thread/status/changed",
+        params: { threadId: "thr_123", status: { type: "idle" } },
+      }) + "\n",
+    );
+    await tick();
+
+    const results = messages.filter((m) => m.type === "result");
+    expect(results).toHaveLength(1);
+    const result = results[0] as { data: { is_error: boolean; result: string; codex_turn_id?: string } };
+    expect(result.data.is_error).toBe(true);
+    expect(result.data.result).toContain("write_stdin failed");
+    expect(result.data.codex_turn_id).toBe("turn_unmatched_write_stdin_error");
+  });
+
+  it("does not attach stale write_stdin router errors after the command completed", async () => {
+    // Once the parent command is complete, a later Unknown process id message
+    // is stale context. It should not reopen or fail the earlier write_stdin UI
+    // entry.
+    const messages: BrowserIncomingMessage[] = [];
+    const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+
+    await tick();
+    await initializeAdapter(stdout);
+    stdout.push(JSON.stringify({ id: 3, result: { rateLimits: { primary: null, secondary: null } } }) + "\n");
+    await tick();
+
+    adapter.sendBrowserMessage({ type: "user_message", content: "Run and finish a terminal command" });
+    await tick();
+    stdout.push(JSON.stringify({ id: 4, result: { turn: { id: "turn_stale_write_stdin_error" } } }) + "\n");
+    await tick();
+
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          item: {
+            id: "cmd_finished",
+            type: "commandExecution",
+            command: ["sleep", "1"],
+          },
+        },
+      }) + "\n",
+    );
+    await tick();
+
+    stdout.push(
+      JSON.stringify({
+        method: "item/commandExecution/terminalInteraction",
+        params: {
+          itemId: "cmd_finished",
+          processId: "13506",
+          stdin: "",
+        },
+      }) + "\n",
+    );
+    await tick();
+
+    stdout.push(
+      JSON.stringify({
+        method: "item/completed",
+        params: {
+          item: {
+            id: "cmd_finished",
+            type: "commandExecution",
+            command: ["sleep", "1"],
+            status: "completed",
+            exitCode: 0,
+          },
+        },
+      }) + "\n",
+    );
+    await tick();
+
+    const errorMessage = "write_stdin failed: Unknown process id 13506";
+    stdout.push(
+      JSON.stringify({
+        method: "codex/event/error",
+        params: { msg: { message: errorMessage } },
+      }) + "\n",
+    );
+    await tick();
+
+    const failedWriteStdinResults = getToolResultBlocks(messages).filter(
+      (block) => block.is_error === true && typeof block.content === "string" && block.content.includes(errorMessage),
+    );
+    expect(failedWriteStdinResults).toHaveLength(0);
+    expect(messages).toContainEqual(expect.objectContaining({ type: "error", message: errorMessage }));
+  });
+
   it("ignores synthetic plan entries when attaching router errors to an active command", async () => {
     // Codex plan updates render as TodoWrite UI state, but they are not
     // result-bearing tools. They must not prevent a later apply_patch router

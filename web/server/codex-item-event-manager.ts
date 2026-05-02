@@ -31,6 +31,16 @@ type ToolEmitOptions = {
   timestamp?: number;
 };
 
+type RouterFailureToolName = "write_stdin";
+
+type TerminalInteractionToolUse = {
+  toolUseId: string;
+  commandToolUseId: string;
+  processId: string;
+  stdin: string;
+  parentToolUseId: string | null;
+};
+
 export class CodexItemEventManager {
   private streamingText = "";
   private streamingItemId: string | null = null;
@@ -47,8 +57,11 @@ export class CodexItemEventManager {
 
   private emittedToolUseIds = new Set<string>();
   private emittedToolUseInputsById = new Map<string, Record<string, unknown>>();
+  private emittedToolUseNamesById = new Map<string, string>();
   private emittedToolResultIds = new Set<string>();
   private activeToolUseIds = new Set<string>();
+  private terminalInteractionByProcessId = new Map<string, TerminalInteractionToolUse>();
+  private failedTerminalRouterErrorKeys = new Set<string>();
   private patchChangesByCallId = new Map<string, ToolFileChange[]>();
   private parentToolUseIdByThreadId = new Map<string, string>();
   private parentToolUseIdByItemId = new Map<string, string | null>();
@@ -69,8 +82,11 @@ export class CodexItemEventManager {
     this.reasoningTimeFromLastMessageByItemId.clear();
     this.emittedToolUseIds.clear();
     this.emittedToolUseInputsById.clear();
+    this.emittedToolUseNamesById.clear();
     this.emittedToolResultIds.clear();
     this.activeToolUseIds.clear();
+    this.terminalInteractionByProcessId.clear();
+    this.failedTerminalRouterErrorKeys.clear();
     this.patchChangesByCallId.clear();
     this.parentToolUseIdByThreadId.clear();
     this.parentToolUseIdByItemId.clear();
@@ -314,6 +330,13 @@ export class CodexItemEventManager {
         ? `Polled session ${processId} via write_stdin(chars="").`
         : `Sent stdin to session ${processId} via write_stdin.`;
     this.emitToolResult(toolUseId, summary, false, parentToolUseId);
+    this.rememberTerminalInteraction({
+      toolUseId,
+      commandToolUseId: itemId,
+      processId,
+      stdin,
+      parentToolUseId,
+    });
   }
 
   handleRawResponseItemCompleted(params: Record<string, unknown>): void {
@@ -369,6 +392,7 @@ export class CodexItemEventManager {
     if (!item) return;
     const parentToolUseId = this.resolveParentToolUseId(params, item.id);
     this.activeToolUseIds.delete(item.id);
+    this.clearTerminalInteractionsForCommand(item.id);
 
     switch (item.type) {
       case "agentMessage": {
@@ -624,6 +648,7 @@ export class CodexItemEventManager {
   ): void {
     this.emittedToolUseIds.add(toolUseId);
     this.emittedToolUseInputsById.set(toolUseId, input);
+    this.emittedToolUseNamesById.set(toolUseId, toolName);
     if (this.isResultBearingToolUse(toolUseId, toolName)) {
       this.activeToolUseIds.add(toolUseId);
     }
@@ -658,13 +683,74 @@ export class CodexItemEventManager {
     this.markMessageFinished(completedAt);
   }
 
-  handleToolRouterError(message: string): boolean {
+  handleToolRouterError(message: string, targetToolName?: RouterFailureToolName): boolean {
+    if (targetToolName === "write_stdin") {
+      if (this.handleWriteStdinRouterError(message)) return true;
+      return this.handleActiveToolRouterError(message, "write_stdin");
+    }
+    return this.handleActiveToolRouterError(message);
+  }
+
+  private handleActiveToolRouterError(message: string, targetToolName?: RouterFailureToolName): boolean {
     if (this.activeToolUseIds.size !== 1) return false;
     const activeToolUseId = Array.from(this.activeToolUseIds).at(-1);
     if (!activeToolUseId) return false;
+    if (targetToolName && this.emittedToolUseNamesById.get(activeToolUseId) !== targetToolName) return false;
     const parentToolUseId = this.parentToolUseIdByItemId.get(activeToolUseId) ?? null;
     this.emitToolResultOnce(activeToolUseId, message, true, parentToolUseId);
     return true;
+  }
+
+  private handleWriteStdinRouterError(message: string): boolean {
+    const processId = this.extractWriteStdinFailureProcessId(message);
+    if (!processId) return false;
+    const interaction = this.terminalInteractionByProcessId.get(processId);
+    if (!interaction) return false;
+    if (!this.activeToolUseIds.has(interaction.commandToolUseId)) return false;
+
+    const duplicateKey = `${interaction.toolUseId}\n${message}`;
+    if (this.failedTerminalRouterErrorKeys.has(duplicateKey)) return true;
+    this.failedTerminalRouterErrorKeys.add(duplicateKey);
+
+    const failedToolUseId = `${interaction.commandToolUseId}:terminal-error:${++this.terminalInteractionToolUseSeq}`;
+    this.emitToolUseTracked(
+      failedToolUseId,
+      "write_stdin",
+      {
+        session_id: interaction.processId,
+        chars: interaction.stdin,
+      },
+      { parentToolUseId: interaction.parentToolUseId },
+    );
+    this.emitToolResult(failedToolUseId, message, true, interaction.parentToolUseId);
+    return true;
+  }
+
+  private extractWriteStdinFailureProcessId(message: string): string | null {
+    const match = message.match(/\bUnknown process id\s+([^\s,.]+)/i);
+    return match?.[1]?.trim() || null;
+  }
+
+  private clearTerminalInteractionsForCommand(commandToolUseId: string): void {
+    for (const [processId, interaction] of this.terminalInteractionByProcessId) {
+      if (interaction.commandToolUseId !== commandToolUseId) continue;
+      this.terminalInteractionByProcessId.delete(processId);
+      this.clearFailedTerminalRouterErrorKeysForInteraction(interaction);
+    }
+  }
+
+  private rememberTerminalInteraction(interaction: TerminalInteractionToolUse): void {
+    const previous = this.terminalInteractionByProcessId.get(interaction.processId);
+    if (previous) this.clearFailedTerminalRouterErrorKeysForInteraction(previous);
+    this.terminalInteractionByProcessId.set(interaction.processId, interaction);
+  }
+
+  private clearFailedTerminalRouterErrorKeysForInteraction(interaction: TerminalInteractionToolUse): void {
+    for (const key of this.failedTerminalRouterErrorKeys) {
+      if (key.startsWith(`${interaction.toolUseId}\n`)) {
+        this.failedTerminalRouterErrorKeys.delete(key);
+      }
+    }
   }
 
   private isResultBearingToolUse(toolUseId: string, toolName: string): boolean {

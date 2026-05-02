@@ -46,6 +46,8 @@ import { CODEX_LOCAL_SLASH_COMMANDS } from "../shared/codex-slash-commands.js";
 
 const TURN_START_ACK_TIMEOUT_MS = 60_000;
 
+type RouterFailureToolName = "write_stdin";
+
 // ─── Adapter Options ──────────────────────────────────────────────────────────
 
 export interface CodexAdapterOptions {
@@ -1039,7 +1041,10 @@ export class CodexAdapter
             console.error(`[codex-adapter] Codex error: ${msg.message}`);
             const isToolRouterFailure = this.isToolRouterFailureMessage(msg.message);
             const renderedAsToolResult = isToolRouterFailure
-              ? this.itemEventManager.handleToolRouterError(msg.message)
+              ? this.itemEventManager.handleToolRouterError(
+                  msg.message,
+                  this.getRouterFailureToolName(msg.message) ?? undefined,
+                )
               : false;
             if (this.currentTurnId && isToolRouterFailure) {
               this.toolRouterErrorByTurnId.set(this.currentTurnId, msg.message);
@@ -1179,6 +1184,11 @@ export class CodexAdapter
       /\b(?:exec_command|write_stdin|view_image|spawn_agent|send_input|resume_agent|wait_agent|close_agent)\s+failed\b/i,
       /\btool(?:\s+call)?\s+failed\b/i,
     ].some((pattern) => pattern.test(message));
+  }
+
+  private getRouterFailureToolName(message: string): RouterFailureToolName | null {
+    if (/\bwrite_stdin\s+failed\b/i.test(message)) return "write_stdin";
+    return null;
   }
 
   private updateRateLimits(data: Record<string, unknown>): void {
