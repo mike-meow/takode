@@ -788,12 +788,12 @@ export function QuestDetailPanel() {
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-3 py-4"
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-x-hidden bg-black/60 px-3 py-4"
       onClick={closePanel}
       data-testid="quest-detail-panel-backdrop"
     >
       <div
-        className="w-[min(920px,100%)] max-h-[88dvh] bg-cc-card border border-cc-border rounded-xl shadow-2xl flex flex-col overflow-hidden"
+        className="w-[min(920px,100%)] min-w-0 max-w-full max-h-[88dvh] bg-cc-card border border-cc-border rounded-xl shadow-2xl flex flex-col overflow-hidden"
         role="dialog"
         aria-modal="true"
         aria-label={`Quest details: ${quest.title}`}
@@ -801,8 +801,8 @@ export function QuestDetailPanel() {
         data-testid="quest-detail-panel"
       >
         {/* Header */}
-        <div className="shrink-0 flex items-start justify-between gap-3 px-4 py-3 border-b border-cc-border">
-          <div className="min-w-0">
+        <div className="min-w-0 shrink-0 flex items-start justify-between gap-3 px-4 py-3 border-b border-cc-border">
+          <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <span className={`w-2 h-2 rounded-full shrink-0 ${isCancelled ? "bg-red-400" : cfg.dot}`} />
               <span
@@ -867,7 +867,10 @@ export function QuestDetailPanel() {
             {quest.tags && quest.tags.length > 0 && (
               <div className="flex flex-wrap items-center gap-1.5 mt-1">
                 {quest.tags.map((tag) => (
-                  <span key={tag} className="text-[10px] px-1.5 py-0.5 rounded-full bg-cc-hover text-cc-muted">
+                  <span
+                    key={tag}
+                    className="min-w-0 max-w-full break-words rounded-full bg-cc-hover px-1.5 py-0.5 text-[10px] text-cc-muted"
+                  >
                     {tag.toLowerCase()}
                   </span>
                 ))}
@@ -918,8 +921,9 @@ export function QuestDetailPanel() {
 
         {/* Scrollable body */}
         <div
-          className="overflow-y-auto px-4 pb-4 pt-3 space-y-3"
+          className="min-w-0 overflow-x-hidden overflow-y-auto px-4 pb-4 pt-3 space-y-3"
           onPaste={isEditing ? (e) => handleEditPaste(quest.questId, e) : undefined}
+          data-testid="quest-detail-scroll-container"
         >
           {quest.status !== "done" && journeyBoardRow?.journey && !phaseDocumentationSummary.hasPhaseDocumentation && (
             <div className="max-w-full" data-testid="quest-detail-journey-section">
@@ -1166,7 +1170,7 @@ export function QuestDetailPanel() {
                                       ? "bg-amber-500/5 border border-amber-500/10 text-amber-300/50"
                                       : "bg-amber-500/8 border border-amber-500/15 text-amber-300/90"
                                     : "bg-cc-input-bg border border-cc-border text-cc-fg/80 ml-4"
-                                }`}
+                                } min-w-0 max-w-full overflow-hidden`}
                               >
                                 <div className="flex items-center gap-1.5 mb-0.5">
                                   {feedbackSessionId ? (
@@ -1332,21 +1336,28 @@ export function QuestDetailPanel() {
                                             text={entry.tldr}
                                             size="sm"
                                             sessionId={questMarkdownSessionId}
+                                            wrapLongContent
                                           />
                                         </div>
-                                        <details className="text-xs text-cc-muted">
+                                        <details className="min-w-0 max-w-full overflow-hidden text-xs text-cc-muted">
                                           <summary className="cursor-pointer select-none">Full feedback</summary>
-                                          <div className="mt-1 text-cc-fg">
+                                          <div className="mt-1 min-w-0 max-w-full overflow-hidden text-cc-fg">
                                             <MarkdownContent
                                               text={entry.text}
                                               size="sm"
                                               sessionId={questMarkdownSessionId}
+                                              wrapLongContent
                                             />
                                           </div>
                                         </details>
                                       </div>
                                     ) : (
-                                      <MarkdownContent text={entry.text} size="sm" sessionId={questMarkdownSessionId} />
+                                      <MarkdownContent
+                                        text={entry.text}
+                                        size="sm"
+                                        sessionId={questMarkdownSessionId}
+                                        wrapLongContent
+                                      />
                                     )}
                                     {entry.images && entry.images.length > 0 && (
                                       <div className="flex flex-wrap gap-1 mt-1">
@@ -1432,8 +1443,8 @@ export function QuestDetailPanel() {
 
               {/* Notes */}
               {questNotes && (
-                <div className="px-3 py-2 text-xs bg-cc-input-bg border border-cc-border rounded-lg">
-                  <MarkdownContent text={questNotes} size="sm" sessionId={questMarkdownSessionId} />
+                <div className="min-w-0 max-w-full overflow-hidden px-3 py-2 text-xs bg-cc-input-bg border border-cc-border rounded-lg">
+                  <MarkdownContent text={questNotes} size="sm" sessionId={questMarkdownSessionId} wrapLongContent />
                 </div>
               )}
 

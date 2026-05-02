@@ -52,12 +52,12 @@ export function QuestDetailTextSections({
   }
 
   return (
-    <div className="space-y-2">
+    <div className="min-w-0 max-w-full space-y-2 overflow-x-hidden">
       <QuestRelationshipLinks quest={quest} />
       {hasFinalDebrief ? (
         <>
           {(questTldr || questDebriefTldr) && (
-            <div className="space-y-2">
+            <div className="min-w-0 max-w-full space-y-2">
               <QuestDetailSectionLabel>TLDR</QuestDetailSectionLabel>
               {questTldr && (
                 <QuestDetailTldrCard label="Description TLDR">
@@ -66,6 +66,7 @@ export function QuestDetailTextSections({
                     size="sm"
                     sessionId={sessionId}
                     searchHighlight={detailSearchHighlight}
+                    wrapLongContent
                   />
                 </QuestDetailTldrCard>
               )}
@@ -76,36 +77,39 @@ export function QuestDetailTextSections({
                     size="sm"
                     sessionId={sessionId}
                     searchHighlight={detailSearchHighlight}
+                    wrapLongContent
                   />
                 </QuestDetailTldrCard>
               )}
             </div>
           )}
           {description && (
-            <div className="space-y-2">
+            <div className="min-w-0 max-w-full space-y-2">
               <QuestDetailSectionLabel>Full Description</QuestDetailSectionLabel>
               <MarkdownContent
                 text={description}
                 size="sm"
                 sessionId={sessionId}
                 searchHighlight={detailSearchHighlight}
+                wrapLongContent
               />
             </div>
           )}
-          <div className="space-y-2">
+          <div className="min-w-0 max-w-full space-y-2">
             <QuestDetailSectionLabel>Full Final Debrief</QuestDetailSectionLabel>
             <MarkdownContent
               text={questDebrief ?? ""}
               size="sm"
               sessionId={sessionId}
               searchHighlight={detailSearchHighlight}
+              wrapLongContent
             />
           </div>
         </>
       ) : (
         <>
           {(questTldr || description) && (
-            <div className="space-y-2">
+            <div className="min-w-0 max-w-full space-y-2">
               <QuestDetailSectionLabel>Description</QuestDetailSectionLabel>
               {questTldr && (
                 <QuestDetailTldrCard label="TLDR">
@@ -114,6 +118,7 @@ export function QuestDetailTextSections({
                     size="sm"
                     sessionId={sessionId}
                     searchHighlight={detailSearchHighlight}
+                    wrapLongContent
                   />
                 </QuestDetailTldrCard>
               )}
@@ -123,12 +128,13 @@ export function QuestDetailTextSections({
                   size="sm"
                   sessionId={sessionId}
                   searchHighlight={detailSearchHighlight}
+                  wrapLongContent
                 />
               )}
             </div>
           )}
           {questDebriefTldr && (
-            <div className="space-y-2">
+            <div className="min-w-0 max-w-full space-y-2">
               <QuestDetailSectionLabel>Final Debrief</QuestDetailSectionLabel>
               <QuestDetailTldrCard label="Debrief TLDR">
                 <MarkdownContent
@@ -136,6 +142,7 @@ export function QuestDetailTextSections({
                   size="sm"
                   sessionId={sessionId}
                   searchHighlight={detailSearchHighlight}
+                  wrapLongContent
                 />
               </QuestDetailTldrCard>
             </div>
@@ -143,7 +150,7 @@ export function QuestDetailTextSections({
         </>
       )}
       {phaseDocumentationSummary.hasPhaseDocumentation && (
-        <div className="space-y-2">
+        <div className="min-w-0 max-w-full space-y-2 overflow-x-hidden">
           <QuestDetailSectionLabel>Journey Details</QuestDetailSectionLabel>
           <QuestPhaseDocumentationTimeline
             summary={phaseDocumentationSummary}
@@ -153,7 +160,7 @@ export function QuestDetailTextSections({
         </div>
       )}
       {quest.status === "done" && !phaseDocumentationSummary.hasPhaseDocumentation && journey && (
-        <div className="space-y-2" data-testid="quest-detail-journey-section">
+        <div className="min-w-0 max-w-full space-y-2 overflow-x-hidden" data-testid="quest-detail-journey-section">
           <QuestDetailSectionLabel>Journey Details</QuestDetailSectionLabel>
           <QuestJourneyTimeline journey={journey} status={journeyStatus} variant="vertical" />
         </div>
@@ -168,7 +175,7 @@ function QuestDetailSectionLabel({ children }: { children: string }) {
 
 function QuestDetailTldrCard({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="rounded-lg border border-cc-border bg-cc-input-bg px-3 py-2">
+    <div className="min-w-0 max-w-full overflow-hidden rounded-lg border border-cc-border bg-cc-input-bg px-3 py-2">
       <div className="mb-1 text-[10px] font-medium uppercase tracking-[0.08em] text-cc-muted/60">{label}</div>
       {children}
     </div>

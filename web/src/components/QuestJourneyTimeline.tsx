@@ -280,7 +280,7 @@ function VerticalJourney({
         : undefined;
   return (
     <div
-      className={`rounded-md border border-cc-border bg-cc-hover/20 p-2 ${className ?? ""}`.trim()}
+      className={`min-w-0 max-w-full overflow-hidden rounded-md border border-cc-border bg-cc-hover/20 p-2 ${className ?? ""}`.trim()}
       data-testid="quest-journey-timeline"
       data-journey-mode={mode}
     >
@@ -294,14 +294,14 @@ function VerticalJourney({
           {`${items.length} phase${items.length === 1 ? "" : "s"}${totalElapsedLabel ? ` · ${totalElapsedLabel}` : ""}`}
         </div>
       </div>
-      <ol className="space-y-0" data-testid="quest-journey-detail-list">
+      <ol className="min-w-0 max-w-full space-y-0" data-testid="quest-journey-detail-list">
         {items.map((item, index) => {
           const hasNext = index < items.length - 1;
           const purpose = phasePurpose(item);
           return (
             <li
               key={`${item.phase.id}-${item.index}`}
-              className="grid grid-cols-[16px_1fr] gap-x-2"
+              className="grid min-w-0 grid-cols-[16px_minmax(0,1fr)] gap-x-2"
               data-phase-index={item.index}
               data-phase-current={item.state === "current" ? "true" : "false"}
               data-phase-state={item.state}
@@ -325,7 +325,7 @@ function VerticalJourney({
                   />
                 )}
               </div>
-              <div className={hasNext ? "pb-1.5" : "pb-0"}>
+              <div className={hasNext ? "min-w-0 pb-1.5" : "min-w-0 pb-0"}>
                 <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
                   <span className="w-4 shrink-0 text-right text-[10px] text-cc-muted">{item.index + 1}</span>
                   <span
@@ -352,7 +352,7 @@ function VerticalJourney({
                 </div>
                 {purpose && (
                   <div
-                    className={`ml-[1.375rem] mt-0.5 text-[10px] leading-snug ${phasePurposeClassName(item, purpose.kind)}`}
+                    className={`ml-[1.375rem] mt-0.5 min-w-0 max-w-full break-words text-[10px] leading-snug [overflow-wrap:anywhere] ${phasePurposeClassName(item, purpose.kind)}`}
                     data-purpose-kind={purpose.kind}
                     data-testid="quest-journey-phase-purpose"
                   >

@@ -89,6 +89,26 @@ describe("MarkdownContent line breaks", () => {
     expect(code?.querySelector("br")).toBeNull();
     expect(code?.textContent).toContain("const x = 1;\nconst y = 2;");
   });
+
+  it("can wrap long inline and block code for constrained detail panels", () => {
+    const longSha = "aa743fb345c5af4ac439f737d89e7a48d9da8090";
+    const { container } = render(
+      <MarkdownContent text={`Inline \`${longSha}\`\n\n\`\`\`\n${longSha}\n\`\`\``} wrapLongContent />,
+    );
+
+    const inlineCode = container.querySelector("p code");
+    const codeBlock = container.querySelector("pre");
+
+    expect(container.firstElementChild?.classList.contains("min-w-0")).toBe(true);
+    expect(container.firstElementChild?.classList.contains("max-w-full")).toBe(true);
+    expect(container.firstElementChild?.classList.contains("[overflow-wrap:anywhere]")).toBe(true);
+    expect(inlineCode?.classList.contains("whitespace-normal")).toBe(true);
+    expect(inlineCode?.classList.contains("break-all")).toBe(true);
+    expect(codeBlock?.classList.contains("overflow-x-hidden")).toBe(true);
+    expect(codeBlock?.classList.contains("whitespace-pre-wrap")).toBe(true);
+    expect(codeBlock?.classList.contains("break-words")).toBe(true);
+    expect(codeBlock?.classList.contains("[overflow-wrap:anywhere]")).toBe(true);
+  });
 });
 
 describe("MarkdownContent tables", () => {

@@ -784,6 +784,72 @@ describe("QuestDetailPanel", () => {
     expect(within(finalPhase).queryByText("10m")).toBeNull();
   });
 
+  it("constrains long phase documentation content so quest details do not scroll horizontally", () => {
+    const now = Date.now();
+    const longSha = "aa743fb345c5af4ac439f737d89e7a48d9da8090";
+    const quest = makeVerificationQuest({
+      status: "done",
+      tags: ["questmaster", "mobile-overflow-regression-tag"],
+      commitShas: [longSha],
+      journeyRuns: [
+        {
+          runId: "run-1",
+          source: "board",
+          phaseIds: ["port"],
+          status: "completed",
+          createdAt: now - 300_000,
+          updatedAt: now - 60_000,
+          phaseOccurrences: [
+            {
+              occurrenceId: "run-1:p1",
+              phaseId: "port",
+              phaseIndex: 0,
+              phasePosition: 1,
+              phaseOccurrence: 1,
+              status: "completed",
+              startedAt: now - 300_000,
+              completedAt: now - 60_000,
+            },
+          ],
+        },
+      ],
+      feedback: [
+        {
+          author: "agent",
+          kind: "phase_summary",
+          text: `Ported \`${longSha}\` to main.\n\n\`\`\`\n${longSha}\n\`\`\``,
+          tldr: `Ported \`${longSha}\`.`,
+          ts: now - 30_000,
+          authorSessionId: "session-abc",
+          journeyRunId: "run-1",
+          phaseOccurrenceId: "run-1:p1",
+          phaseId: "port",
+          phasePosition: 1,
+          phaseOccurrence: 1,
+        },
+      ],
+    });
+    useStore.setState({ quests: [quest], questOverlayId: "q-42" });
+
+    render(<QuestDetailPanel />);
+
+    const panel = screen.getByTestId("quest-detail-panel");
+    const scrollContainer = screen.getByTestId("quest-detail-scroll-container");
+    const timeline = screen.getByTestId("quest-phase-documentation-timeline");
+    const entry = screen.getByTestId("quest-phase-documentation-entry");
+    const visibleInlineCode = within(entry).getAllByText(longSha, { selector: "code" })[0]!;
+
+    expect(panel).toHaveClass("min-w-0", "max-w-full", "overflow-hidden");
+    expect(scrollContainer).toHaveClass("min-w-0", "overflow-x-hidden", "overflow-y-auto");
+    expect(timeline).toHaveClass("min-w-0", "max-w-full", "overflow-hidden");
+    expect(entry).toHaveClass("min-w-0", "max-w-full", "overflow-hidden");
+    expect(visibleInlineCode).toHaveClass("whitespace-normal", "break-all");
+
+    fireEvent.click(within(timeline).getByText("Full phase detail"));
+    const codeBlock = within(timeline).getByText(longSha, { selector: "pre code" }).parentElement;
+    expect(codeBlock).toHaveClass("overflow-x-hidden", "whitespace-pre-wrap", "break-words");
+  });
+
   it("orders completed quest detail as TLDRs, full details, then Journey details", () => {
     const quest = makeVerificationQuest({
       tldr: "Initial TLDR.",

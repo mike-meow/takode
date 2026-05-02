@@ -26,7 +26,7 @@ export function QuestPhaseDocumentationTimeline({
 
   return (
     <section
-      className="rounded-md border border-cc-border bg-cc-hover/20 p-2"
+      className="min-w-0 max-w-full overflow-hidden rounded-md border border-cc-border bg-cc-hover/20 p-2"
       data-testid="quest-phase-documentation-timeline"
     >
       <div className="mb-1.5 flex items-center justify-between gap-3">
@@ -39,7 +39,7 @@ export function QuestPhaseDocumentationTimeline({
           {groups.length} phase{groups.length === 1 ? "" : "s"}
         </div>
       </div>
-      <ol className="space-y-0">
+      <ol className="min-w-0 max-w-full space-y-0">
         {groups.map((group, groupIndex) => {
           const phase = group.phaseId ? getQuestJourneyPhase(group.phaseId) : null;
           const hasNext = groupIndex < groups.length - 1;
@@ -47,7 +47,7 @@ export function QuestPhaseDocumentationTimeline({
           return (
             <li
               key={group.key}
-              className="grid grid-cols-[16px_1fr] gap-x-2"
+              className="grid min-w-0 grid-cols-[16px_minmax(0,1fr)] gap-x-2"
               data-testid="quest-phase-documentation-group"
               data-phase-id={group.phaseId ?? ""}
               data-phase-position={group.phasePosition ?? ""}
@@ -63,7 +63,7 @@ export function QuestPhaseDocumentationTimeline({
                 />
                 {hasNext && <span className="mt-0.5 w-px flex-1 bg-cc-muted/25" aria-hidden="true" />}
               </div>
-              <div className={hasNext ? "pb-2" : "pb-0"}>
+              <div className={hasNext ? "min-w-0 pb-2" : "min-w-0 pb-0"}>
                 <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
                   <span className="w-4 shrink-0 text-right text-[10px] text-cc-muted">
                     {group.phasePosition ?? groupIndex + 1}
@@ -80,7 +80,7 @@ export function QuestPhaseDocumentationTimeline({
                   )}
                 </div>
                 {group.entries.length > 0 && (
-                  <div className="ml-[1.375rem] mt-1 space-y-1.5">
+                  <div className="ml-[1.375rem] mt-1 min-w-0 max-w-full space-y-1.5 overflow-hidden">
                     {group.entries.map((entry) => {
                       const preview = entry.tldr?.trim() || compactText(phaseDocumentationPreview(entry));
                       return (
@@ -137,7 +137,7 @@ function PhaseDocumentationEntry({
 
   return (
     <div
-      className="rounded-md border border-cc-border/70 bg-cc-input-bg/70 px-2 py-1.5"
+      className="min-w-0 max-w-full overflow-hidden rounded-md border border-cc-border/70 bg-cc-input-bg/70 px-2 py-1.5"
       data-testid="quest-phase-documentation-entry"
     >
       <div className="mb-1 flex min-w-0 flex-wrap items-center gap-1.5">
@@ -153,15 +153,24 @@ function PhaseDocumentationEntry({
         {entry.kind && <span className="text-[10px] text-cc-muted">{entry.kind}</span>}
         <span className="text-[10px] text-cc-muted/60">{timeAgo(entry.ts)}</span>
       </div>
-      <div className="text-xs text-cc-fg">
-        <MarkdownContent text={preview} size="sm" sessionId={sessionId} searchHighlight={highlight} />
+      <div className="min-w-0 max-w-full overflow-hidden text-xs text-cc-fg">
+        <MarkdownContent text={preview} size="sm" sessionId={sessionId} searchHighlight={highlight} wrapLongContent />
       </div>
-      <details className="mt-1 text-xs text-cc-muted" onToggle={(event) => setDetailOpen(event.currentTarget.open)}>
+      <details
+        className="mt-1 min-w-0 max-w-full overflow-hidden text-xs text-cc-muted"
+        onToggle={(event) => setDetailOpen(event.currentTarget.open)}
+      >
         <summary className="cursor-pointer select-none" onClick={() => setDetailOpen((open) => !open)}>
           Full phase detail
         </summary>
-        <div className="mt-1 text-cc-fg">
-          <MarkdownContent text={entry.text} size="sm" sessionId={sessionId} searchHighlight={highlight} />
+        <div className="mt-1 min-w-0 max-w-full overflow-hidden text-cc-fg">
+          <MarkdownContent
+            text={entry.text}
+            size="sm"
+            sessionId={sessionId}
+            searchHighlight={highlight}
+            wrapLongContent
+          />
           {detailOpen && <QuestPhaseNoteImages text={entry.text} />}
         </div>
       </details>

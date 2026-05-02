@@ -599,6 +599,7 @@ export function MarkdownContent({
   sessionId,
   searchHighlight,
   enableChatSelectionMenu = false,
+  wrapLongContent = false,
 }: {
   text: string;
   size?: "default" | "sm";
@@ -606,6 +607,7 @@ export function MarkdownContent({
   sessionId?: string;
   searchHighlight?: { query: string; mode: "strict" | "fuzzy"; isCurrent: boolean } | null;
   enableChatSelectionMenu?: boolean;
+  wrapLongContent?: boolean;
 }) {
   const sizeClass =
     size === "sm"
@@ -633,7 +635,9 @@ export function MarkdownContent({
 
   return (
     <div
-      className={`markdown-body ${sizeClass} text-cc-fg leading-relaxed overflow-hidden break-words`}
+      className={`markdown-body ${sizeClass} text-cc-fg leading-relaxed overflow-hidden break-words ${
+        wrapLongContent ? "min-w-0 max-w-full [overflow-wrap:anywhere]" : ""
+      }`}
       data-chat-selection-scope={enableChatSelectionMenu ? "true" : undefined}
     >
       <Markdown
@@ -668,12 +672,20 @@ export function MarkdownContent({
           a: ({ href, children }) => {
             const questId = parseQuestIdFromHref(href);
             if (questId) {
-              return <QuestMarkdownLink questId={questId}>{children}</QuestMarkdownLink>;
+              return (
+                <QuestMarkdownLink questId={questId} wrapLongContent={wrapLongContent}>
+                  {children}
+                </QuestMarkdownLink>
+              );
             }
             const sessionLink = parseSessionLinkFromHref(href);
             if (sessionLink != null) {
               return (
-                <SessionMarkdownLink sessionNum={sessionLink.sessionNum} messageIndex={sessionLink.messageIndex}>
+                <SessionMarkdownLink
+                  sessionNum={sessionLink.sessionNum}
+                  messageIndex={sessionLink.messageIndex}
+                  wrapLongContent={wrapLongContent}
+                >
                   {children}
                 </SessionMarkdownLink>
               );
@@ -681,7 +693,7 @@ export function MarkdownContent({
             const fileTarget = parseFileLinkFromHref(href);
             if (fileTarget) {
               return (
-                <FileMarkdownLink target={fileTarget} sessionId={sessionId}>
+                <FileMarkdownLink target={fileTarget} sessionId={sessionId} wrapLongContent={wrapLongContent}>
                   {children}
                 </FileMarkdownLink>
               );
@@ -689,13 +701,20 @@ export function MarkdownContent({
             const standardFileTarget = parseStandardFileLinkFromHref(href);
             if (standardFileTarget) {
               return (
-                <FileMarkdownLink target={standardFileTarget} sessionId={sessionId}>
+                <FileMarkdownLink target={standardFileTarget} sessionId={sessionId} wrapLongContent={wrapLongContent}>
                   {children}
                 </FileMarkdownLink>
               );
             }
             return (
-              <a href={href} target="_blank" rel="noopener noreferrer" className="text-cc-primary hover:underline">
+              <a
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={`text-cc-primary hover:underline ${
+                  wrapLongContent ? "break-words [overflow-wrap:anywhere]" : ""
+                }`}
+              >
                 {children}
               </a>
             );
@@ -712,11 +731,19 @@ export function MarkdownContent({
             const isBlock = match || (typeof children === "string" && children.includes("\n"));
 
             if (isBlock) {
-              return <CodeBlock lang={match?.[1] || ""}>{children}</CodeBlock>;
+              return (
+                <CodeBlock lang={match?.[1] || ""} wrapLongContent={wrapLongContent}>
+                  {children}
+                </CodeBlock>
+              );
             }
 
             return (
-              <code className="px-1 py-0.5 rounded bg-cc-code-bg/30 text-[13px] font-mono-code text-cc-primary">
+              <code
+                className={`px-1 py-0.5 rounded bg-cc-code-bg/30 text-[13px] font-mono-code text-cc-primary ${
+                  wrapLongContent ? "whitespace-normal break-all" : ""
+                }`}
+              >
                 {highlightChildren(children)}
               </code>
             );
@@ -740,18 +767,33 @@ export function MarkdownContent({
   );
 }
 
-function QuestMarkdownLink({ questId, children }: { questId: string; children: ReactNode }) {
-  return <QuestInlineLink questId={questId}>{children}</QuestInlineLink>;
+function QuestMarkdownLink({
+  questId,
+  children,
+  wrapLongContent,
+}: {
+  questId: string;
+  children: ReactNode;
+  wrapLongContent: boolean;
+}) {
+  const className = `text-cc-primary hover:underline ${wrapLongContent ? "break-words [overflow-wrap:anywhere]" : ""}`;
+  return (
+    <QuestInlineLink questId={questId} className={className}>
+      {children}
+    </QuestInlineLink>
+  );
 }
 
 function SessionMarkdownLink({
   sessionNum,
   messageIndex,
   children,
+  wrapLongContent,
 }: {
   sessionNum: number;
   messageIndex?: number;
   children: ReactNode;
+  wrapLongContent: boolean;
 }) {
   const sdkSessions = useStore((s) => s.sdkSessions);
   const sessionId = useMemo(
@@ -760,7 +802,12 @@ function SessionMarkdownLink({
   );
 
   return (
-    <SessionInlineLink sessionId={sessionId} sessionNum={sessionNum} messageIndex={messageIndex}>
+    <SessionInlineLink
+      sessionId={sessionId}
+      sessionNum={sessionNum}
+      messageIndex={messageIndex}
+      className={`text-cc-primary hover:underline ${wrapLongContent ? "break-words [overflow-wrap:anywhere]" : ""}`}
+    >
       {children}
     </SessionInlineLink>
   );
@@ -770,10 +817,12 @@ function FileMarkdownLink({
   target,
   sessionId,
   children,
+  wrapLongContent,
 }: {
   target: FileLinkTarget;
   sessionId?: string;
   children: ReactNode;
+  wrapLongContent: boolean;
 }) {
   const currentSessionId = useStore((s) => s.currentSessionId);
   const sessions = useStore((s) => s.sessions);
@@ -835,7 +884,9 @@ function FileMarkdownLink({
       onClick={(e) => {
         void onClick(e);
       }}
-      className={resolvedTarget ? "text-cc-primary hover:underline" : "text-cc-muted"}
+      className={`${resolvedTarget ? "text-cc-primary hover:underline" : "text-cc-muted"} ${
+        wrapLongContent ? "break-words [overflow-wrap:anywhere]" : ""
+      }`}
       title={title}
     >
       {children}
@@ -843,7 +894,15 @@ function FileMarkdownLink({
   );
 }
 
-function CodeBlock({ lang, children }: { lang: string; children: ReactNode }) {
+function CodeBlock({
+  lang,
+  children,
+  wrapLongContent,
+}: {
+  lang: string;
+  children: ReactNode;
+  wrapLongContent: boolean;
+}) {
   const codeRef = useRef<HTMLElement>(null);
   const getText = useCallback(() => codeRef.current?.textContent ?? "", []);
 
@@ -868,7 +927,13 @@ function CodeBlock({ lang, children }: { lang: string; children: ReactNode }) {
           <CodeCopyButton getText={getText} />
         </div>
       )}
-      <pre className="px-2 sm:px-3 py-2 sm:py-2.5 bg-cc-code-bg text-cc-code-fg text-[12px] sm:text-[13px] font-mono-code leading-relaxed overflow-x-auto">
+      <pre
+        className={`px-2 sm:px-3 py-2 sm:py-2.5 bg-cc-code-bg text-cc-code-fg text-[12px] sm:text-[13px] font-mono-code leading-relaxed ${
+          wrapLongContent
+            ? "overflow-x-hidden whitespace-pre-wrap break-words [overflow-wrap:anywhere]"
+            : "overflow-x-auto"
+        }`}
+      >
         {highlighted ? (
           <code ref={codeRef} dangerouslySetInnerHTML={{ __html: highlighted }} />
         ) : (
