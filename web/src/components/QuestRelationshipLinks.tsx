@@ -1,14 +1,15 @@
 import type { QuestRelatedQuest, QuestRelatedQuestKind, QuestmasterTask } from "../types.js";
 import { QuestInlineLink } from "./QuestInlineLink.js";
 
-const RELATIONSHIP_LABELS: Record<QuestRelatedQuestKind, string> = {
+type DisplayedQuestRelationshipKind = Exclude<QuestRelatedQuestKind, "references">;
+
+const RELATIONSHIP_LABELS: Record<DisplayedQuestRelationshipKind, string> = {
   follow_up_of: "Follow-up of",
   has_follow_up: "Has follow-up",
   referenced_by: "Referenced by",
-  references: "References",
 };
 
-const RELATIONSHIP_ORDER: QuestRelatedQuestKind[] = ["follow_up_of", "has_follow_up", "referenced_by", "references"];
+const RELATIONSHIP_ORDER: DisplayedQuestRelationshipKind[] = ["follow_up_of", "has_follow_up", "referenced_by"];
 
 export function QuestRelationshipLinks({
   quest,
@@ -65,8 +66,10 @@ export function QuestRelationshipLinks({
   );
 }
 
-function groupRelatedQuests(relatedQuests: QuestRelatedQuest[]): Array<[QuestRelatedQuestKind, QuestRelatedQuest[]]> {
+function groupRelatedQuests(
+  relatedQuests: QuestRelatedQuest[],
+): Array<[DisplayedQuestRelationshipKind, QuestRelatedQuest[]]> {
   return RELATIONSHIP_ORDER.map((kind) => [kind, relatedQuests.filter((entry) => entry.kind === kind)]).filter(
-    (entry): entry is [QuestRelatedQuestKind, QuestRelatedQuest[]] => entry[1].length > 0,
+    (entry): entry is [DisplayedQuestRelationshipKind, QuestRelatedQuest[]] => entry[1].length > 0,
   );
 }
