@@ -3,7 +3,6 @@ import {
   formatQuestJourneyDuration,
   getQuestJourneyCurrentPhaseIndex,
   getQuestJourneyPhaseDurationMs,
-  getQuestJourneyTotalElapsedMs,
   getQuestJourneyPhase,
   type QuestJourneyPhase,
   type QuestJourneyPlanState,
@@ -18,7 +17,9 @@ interface PhaseItem {
   index: number;
   state: PhaseState;
   note?: string;
+  durationMs?: number;
   durationLabel?: string;
+  durationUnavailable?: boolean;
 }
 
 const MUTED_DOT_CLASS = "border-cc-muted/35 bg-cc-muted/15";
@@ -72,8 +73,6 @@ function getPhaseItems(journey: QuestJourneyPlanState, status?: string | null, n
     const phase = getQuestJourneyPhase(phaseId);
     if (!phase) return [];
 
-    const note = journey.phaseNotes?.[String(index)]?.trim() || undefined;
-    const durationMs = getQuestJourneyPhaseDurationMs(journey, index, now);
     const state: PhaseState =
       mode === "proposed"
         ? "proposed"
@@ -86,13 +85,22 @@ function getPhaseItems(journey: QuestJourneyPlanState, status?: string | null, n
               : index === currentIndex
                 ? "current"
                 : "upcoming";
+    const note = journey.phaseNotes?.[String(index)]?.trim() || undefined;
+    const expectsDuration = state === "completed" || state === "current" || state === "finished";
+    const durationMs = getQuestJourneyPhaseDurationMs(journey, index, now, {
+      allowOpenEnded: state === "current",
+    });
     return [
       {
         phase,
         index,
         state,
         note,
-        ...(durationMs !== undefined ? { durationLabel: formatQuestJourneyDuration(durationMs) } : {}),
+        ...(durationMs !== undefined
+          ? { durationMs, durationLabel: formatQuestJourneyDuration(durationMs) }
+          : expectsDuration
+            ? { durationUnavailable: true }
+            : {}),
       },
     ];
   });
@@ -262,8 +270,14 @@ function VerticalJourney({
   now: number;
 }) {
   const mode = getJourneyPresentationMode(journey, status);
-  const totalElapsedMs = getQuestJourneyTotalElapsedMs(journey, now);
-  const totalElapsedLabel = totalElapsedMs !== undefined ? formatQuestJourneyDuration(totalElapsedMs) : undefined;
+  const totalElapsedMs = items.reduce((total, item) => total + (item.durationMs ?? 0), 0);
+  const unavailableDurationCount = items.filter((item) => item.durationUnavailable).length;
+  const totalElapsedLabel =
+    totalElapsedMs > 0
+      ? `${unavailableDurationCount > 0 ? "Partial " : "Total "}${formatQuestJourneyDuration(totalElapsedMs)}`
+      : unavailableDurationCount > 0
+        ? "Duration unavailable"
+        : undefined;
   return (
     <div
       className={`rounded-md border border-cc-border bg-cc-hover/20 p-2 ${className ?? ""}`.trim()}
@@ -277,7 +291,7 @@ function VerticalJourney({
           </div>
         </div>
         <div className="shrink-0 text-[10px] text-cc-muted">
-          {`${items.length} phase${items.length === 1 ? "" : "s"}${totalElapsedLabel ? ` · Total ${totalElapsedLabel}` : ""}`}
+          {`${items.length} phase${items.length === 1 ? "" : "s"}${totalElapsedLabel ? ` · ${totalElapsedLabel}` : ""}`}
         </div>
       </div>
       <ol className="space-y-0" data-testid="quest-journey-detail-list">
@@ -328,6 +342,11 @@ function VerticalJourney({
                   {item.durationLabel && (
                     <span className="shrink-0 text-[10px] text-cc-muted" data-testid="quest-journey-phase-duration">
                       {item.durationLabel}
+                    </span>
+                  )}
+                  {!item.durationLabel && item.durationUnavailable && (
+                    <span className="shrink-0 text-[10px] text-cc-muted" data-testid="quest-journey-phase-duration">
+                      duration unavailable
                     </span>
                   )}
                 </div>

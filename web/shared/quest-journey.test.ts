@@ -514,6 +514,7 @@ describe("Quest Journey phases", () => {
 
     expect(getQuestJourneyPhaseDurationMs(plan, 0, 181000)).toBe(60000);
     expect(getQuestJourneyPhaseDurationMs(plan, 1, 181000)).toBe(120000);
+    expect(getQuestJourneyPhaseDurationMs(plan, 1, 181000, { allowOpenEnded: false })).toBeUndefined();
     expect(getQuestJourneyPhaseDurationMs(plan, 2, 181000)).toBeUndefined();
     expect(getQuestJourneyTotalElapsedMs(plan, 181000)).toBe(180000);
     expect(formatQuestJourneyDuration(45_000)).toBe("45s");

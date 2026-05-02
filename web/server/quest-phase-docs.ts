@@ -319,6 +319,9 @@ function buildRunSnapshot(args: {
     const phasePosition = phaseIndex + 1;
     const previousSamePhase = args.phaseIds.slice(0, phaseIndex + 1).filter((candidate) => candidate === phaseId);
     const existingOccurrence = existing?.phaseOccurrences.find((occurrence) => occurrence.phaseIndex === phaseIndex);
+    const timing = phaseOccurrenceTiming(args.row, phaseIndex);
+    const startedAt = timing.startedAt ?? existingOccurrence?.startedAt;
+    const completedAt = timing.completedAt ?? existingOccurrence?.completedAt;
     return {
       occurrenceId: existingOccurrence?.occurrenceId ?? `${runId}:p${phasePosition}`,
       phaseId,
@@ -329,8 +332,8 @@ function buildRunSnapshot(args: {
       boardState: getQuestJourneyPhase(phaseId)?.boardState,
       ...(phaseIndex === args.activeIndex && args.authorSessionId ? { assigneeSessionId: args.authorSessionId } : {}),
       ...(typeof args.row.workerNum === "number" ? { assigneeSessionNum: args.row.workerNum } : {}),
-      ...(phaseIndex <= args.activeIndex ? { startedAt: existingOccurrence?.startedAt ?? args.row.createdAt } : {}),
-      ...(phaseIndex < args.activeIndex ? { completedAt: existingOccurrence?.completedAt ?? args.now } : {}),
+      ...(phaseIndex <= args.activeIndex && startedAt ? { startedAt } : {}),
+      ...(phaseIndex < args.activeIndex && completedAt ? { completedAt } : {}),
     } satisfies QuestPhaseOccurrence;
   });
   return {
@@ -347,6 +350,25 @@ function buildRunSnapshot(args: {
     updatedAt: args.now,
     ...(args.row.completedAt ? { completedAt: args.row.completedAt } : {}),
     phaseOccurrences,
+  };
+}
+
+function phaseOccurrenceTiming(row: BoardRow, phaseIndex: number): { startedAt?: number; completedAt?: number } {
+  const timing = row.journey?.phaseTimings?.[String(phaseIndex)];
+  const startedAt =
+    typeof timing?.startedAt === "number" && Number.isFinite(timing.startedAt) && timing.startedAt > 0
+      ? timing.startedAt
+      : undefined;
+  const completedAt =
+    startedAt !== undefined &&
+    typeof timing?.endedAt === "number" &&
+    Number.isFinite(timing.endedAt) &&
+    timing.endedAt >= startedAt
+      ? timing.endedAt
+      : undefined;
+  return {
+    ...(startedAt !== undefined ? { startedAt } : {}),
+    ...(completedAt !== undefined ? { completedAt } : {}),
   };
 }
 

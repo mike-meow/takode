@@ -1,4 +1,4 @@
-import { getQuestJourneyPhase } from "../../shared/quest-journey.js";
+import { formatQuestJourneyDuration, getQuestJourneyPhase } from "../../shared/quest-journey.js";
 import {
   phaseDocumentationPreview,
   type QuestPhaseDocumentationSummary,
@@ -20,8 +20,9 @@ export function QuestPhaseDocumentationTimeline({
   searchHighlight,
   sessionId,
 }: QuestPhaseDocumentationTimelineProps) {
-  const groups = summary.groups.filter((group) => group.entries.length > 0);
+  const groups = summary.groups.filter((group) => group.entries.length > 0 || group.phaseStatus !== "pending");
   if (groups.length === 0) return null;
+  const now = Date.now();
 
   return (
     <section
@@ -35,13 +36,14 @@ export function QuestPhaseDocumentationTimeline({
           </div>
         </div>
         <div className="shrink-0 text-[10px] text-cc-muted">
-          {groups.length} documented phase{groups.length === 1 ? "" : "s"}
+          {groups.length} phase{groups.length === 1 ? "" : "s"}
         </div>
       </div>
       <ol className="space-y-0">
         {groups.map((group, groupIndex) => {
           const phase = group.phaseId ? getQuestJourneyPhase(group.phaseId) : null;
           const hasNext = groupIndex < groups.length - 1;
+          const durationLabel = phaseDocumentationDurationLabel(group, now);
           return (
             <li
               key={group.key}
@@ -68,21 +70,31 @@ export function QuestPhaseDocumentationTimeline({
                   </span>
                   <span className="min-w-0 truncate text-xs font-semibold text-cc-fg">{group.displayLabel}</span>
                   {group.metaLabel && <span className="shrink-0 text-[10px] text-cc-muted">{group.metaLabel}</span>}
+                  {durationLabel && (
+                    <span
+                      className="shrink-0 text-[10px] text-cc-muted"
+                      data-testid="quest-phase-documentation-duration"
+                    >
+                      {durationLabel}
+                    </span>
+                  )}
                 </div>
-                <div className="ml-[1.375rem] mt-1 space-y-1.5">
-                  {group.entries.map((entry) => {
-                    const preview = entry.tldr?.trim() || compactText(phaseDocumentationPreview(entry));
-                    return (
-                      <PhaseDocumentationEntry
-                        key={entry.index}
-                        entry={entry}
-                        preview={preview}
-                        searchHighlight={searchHighlight}
-                        sessionId={sessionId}
-                      />
-                    );
-                  })}
-                </div>
+                {group.entries.length > 0 && (
+                  <div className="ml-[1.375rem] mt-1 space-y-1.5">
+                    {group.entries.map((entry) => {
+                      const preview = entry.tldr?.trim() || compactText(phaseDocumentationPreview(entry));
+                      return (
+                        <PhaseDocumentationEntry
+                          key={entry.index}
+                          entry={entry}
+                          preview={preview}
+                          searchHighlight={searchHighlight}
+                          sessionId={sessionId}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </li>
           );
@@ -90,6 +102,23 @@ export function QuestPhaseDocumentationTimeline({
       </ol>
     </section>
   );
+}
+
+function phaseDocumentationDurationLabel(
+  group: QuestPhaseDocumentationSummary["groups"][number],
+  now: number,
+): string | null {
+  if (!group.startedAt) {
+    return group.phaseStatus === "active" || group.phaseStatus === "completed" ? "duration unavailable" : null;
+  }
+  if (group.completedAt && group.completedAt >= group.startedAt) {
+    return formatQuestJourneyDuration(group.completedAt - group.startedAt);
+  }
+  if (group.phaseStatus === "active") {
+    return formatQuestJourneyDuration(now - group.startedAt);
+  }
+  if (group.phaseStatus === "completed") return "duration unavailable";
+  return null;
 }
 
 function PhaseDocumentationEntry({

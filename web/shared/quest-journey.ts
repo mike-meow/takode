@@ -231,6 +231,11 @@ export interface QuestJourneyPhaseTiming {
   endedAt?: number;
 }
 
+export interface QuestJourneyPhaseDurationOptions {
+  /** When true, an open timing uses `now` as the end point for active elapsed-so-far displays. */
+  allowOpenEnded?: boolean;
+}
+
 export interface QuestJourneyProposalPresentation {
   /** Drafts may exist on the board, but only presented plans are normal approval surfaces. */
   state: QuestJourneyPresentationState;
@@ -515,11 +520,13 @@ export function getQuestJourneyPhaseDurationMs(
   plan: Partial<QuestJourneyPlanState> | undefined,
   phaseIndex: number,
   now = Date.now(),
+  options: QuestJourneyPhaseDurationOptions = {},
 ): number | undefined {
   if (!Number.isInteger(phaseIndex) || phaseIndex < 0) return undefined;
   const timing = plan?.phaseTimings?.[String(phaseIndex)];
   if (!timing?.startedAt) return undefined;
-  const endedAt = timing.endedAt ?? now;
+  const endedAt = timing.endedAt ?? (options.allowOpenEnded === false ? undefined : now);
+  if (endedAt === undefined) return undefined;
   if (!Number.isFinite(endedAt) || endedAt < timing.startedAt) return undefined;
   return endedAt - timing.startedAt;
 }

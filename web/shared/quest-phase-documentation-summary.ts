@@ -16,12 +16,15 @@ export interface QuestPhaseDocumentationGroup {
   phaseLabel: string;
   displayLabel: string;
   metaLabel: string;
+  phaseStatus?: QuestPhaseOccurrence["status"];
   journeyRunId?: string;
   journeyRunOrdinal?: number;
   phaseOccurrenceId?: string;
   phaseIndex?: number;
   phasePosition?: number;
   phaseOccurrence?: number;
+  startedAt?: number;
+  completedAt?: number;
   scopeMatched: boolean;
   entries: IndexedQuestFeedbackEntry[];
 }
@@ -169,12 +172,15 @@ function groupForOccurrence(ref: OccurrenceRef, runCount: number): QuestPhaseDoc
       phasePosition: occurrence.phasePosition,
       scopeMatched: true,
     }),
+    phaseStatus: occurrence.status,
     journeyRunId: run.runId,
     journeyRunOrdinal: runOrdinal,
     phaseOccurrenceId: occurrence.occurrenceId,
     phaseIndex: occurrence.phaseIndex,
     phasePosition: occurrence.phasePosition,
     phaseOccurrence: occurrence.phaseOccurrence,
+    ...(occurrence.startedAt ? { startedAt: occurrence.startedAt } : {}),
+    ...(occurrence.completedAt ? { completedAt: occurrence.completedAt } : {}),
     scopeMatched: true,
     entries: [],
   };

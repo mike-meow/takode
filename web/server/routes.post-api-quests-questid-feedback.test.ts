@@ -994,6 +994,11 @@ describe("POST /api/quests/:questId/feedback", () => {
               phaseIds: ["alignment", "explore", "implement", "code-review"],
               activePhaseIndex: 2,
               currentPhaseId: "implement",
+              phaseTimings: {
+                "0": { startedAt: 100, endedAt: 200 },
+                "1": { startedAt: 200, endedAt: 500 },
+                "2": { startedAt: 500 },
+              },
             },
           },
         ],
@@ -1045,7 +1050,10 @@ describe("POST /api/quests/:questId/feedback", () => {
     expect(res.status).toBe(200);
     const patch = patchSpy.mock.calls[0]?.[1] as {
       feedback: Array<{ phaseId?: string; phasePosition?: number; tldr?: string; kind?: string }>;
-      journeyRuns?: Array<{ runId: string; phaseOccurrences: Array<{ occurrenceId: string }> }>;
+      journeyRuns?: Array<{
+        runId: string;
+        phaseOccurrences: Array<{ occurrenceId: string; startedAt?: number; completedAt?: number }>;
+      }>;
     };
     expect(patch.feedback[0]).toMatchObject({
       kind: "phase_summary",
@@ -1055,6 +1063,10 @@ describe("POST /api/quests/:questId/feedback", () => {
     });
     expect(patch.journeyRuns?.[0]?.runId).toBe("board-leader-1-10");
     expect(patch.journeyRuns?.[0]?.phaseOccurrences[2]?.occurrenceId).toBe("board-leader-1-10:p3");
+    expect(patch.journeyRuns?.[0]?.phaseOccurrences[0]).toMatchObject({ startedAt: 100, completedAt: 200 });
+    expect(patch.journeyRuns?.[0]?.phaseOccurrences[1]).toMatchObject({ startedAt: 200, completedAt: 500 });
+    expect(patch.journeyRuns?.[0]?.phaseOccurrences[2]).toMatchObject({ startedAt: 500 });
+    expect(patch.journeyRuns?.[0]?.phaseOccurrences[2]?.completedAt).toBeUndefined();
   });
 
   it("falls back to flat feedback with a warning when inferred board context is missing", async () => {

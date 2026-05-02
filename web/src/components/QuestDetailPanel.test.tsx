@@ -563,6 +563,7 @@ describe("QuestDetailPanel", () => {
   });
 
   it("shows phase TLDRs on the quest documentation timeline with full detail collapsed", async () => {
+    const now = Date.now();
     const quest = makeVerificationQuest({
       tldr: "Short quest summary.",
       journeyRuns: [
@@ -571,8 +572,9 @@ describe("QuestDetailPanel", () => {
           source: "board",
           phaseIds: ["alignment", "implement", "code-review", "implement"],
           status: "completed",
-          createdAt: Date.now() - 5000,
-          updatedAt: Date.now() - 1000,
+          createdAt: now - 240_000,
+          updatedAt: now - 10_000,
+          completedAt: now - 10_000,
           phaseOccurrences: [
             {
               occurrenceId: "run-1:p1",
@@ -581,6 +583,8 @@ describe("QuestDetailPanel", () => {
               phasePosition: 1,
               phaseOccurrence: 1,
               status: "completed",
+              startedAt: now - 240_000,
+              completedAt: now - 180_000,
             },
             {
               occurrenceId: "run-1:p2",
@@ -589,6 +593,8 @@ describe("QuestDetailPanel", () => {
               phasePosition: 2,
               phaseOccurrence: 1,
               status: "completed",
+              startedAt: now - 180_000,
+              completedAt: now - 120_000,
             },
             {
               occurrenceId: "run-1:p3",
@@ -597,6 +603,8 @@ describe("QuestDetailPanel", () => {
               phasePosition: 3,
               phaseOccurrence: 1,
               status: "completed",
+              startedAt: now - 120_000,
+              completedAt: now - 90_000,
             },
             {
               occurrenceId: "run-1:p4",
@@ -605,6 +613,8 @@ describe("QuestDetailPanel", () => {
               phasePosition: 4,
               phaseOccurrence: 2,
               status: "completed",
+              startedAt: now - 90_000,
+              completedAt: now - 10_000,
             },
           ],
         },
@@ -631,8 +641,14 @@ describe("QuestDetailPanel", () => {
     render(<QuestDetailPanel />);
 
     const timeline = screen.getByTestId("quest-phase-documentation-timeline");
+    const phaseGroups = within(timeline).getAllByTestId("quest-phase-documentation-group");
+    expect(phaseGroups).toHaveLength(4);
     expect(within(timeline).getByText("Implement #2")).toBeTruthy();
     expect(within(timeline).getByText("Second implementation TLDR.")).toBeTruthy();
+    expect(within(phaseGroups[2]!).getByText("Code Review")).toBeTruthy();
+    expect(within(phaseGroups[2]!).getByTestId("quest-phase-documentation-duration")).toHaveTextContent("30s");
+    expect(within(phaseGroups[2]!).queryByTestId("quest-phase-documentation-entry")).toBeNull();
+    expect(within(phaseGroups[3]!).getByTestId("quest-phase-documentation-duration")).toHaveTextContent("1m");
     expect(screen.getByText("Full second implementation detail.")).not.toBeVisible();
     expect(screen.getByText("Unscoped Feedback")).toBeTruthy();
     expect(screen.getByText("Flat feedback remains visible.")).toBeTruthy();
@@ -687,6 +703,9 @@ describe("QuestDetailPanel", () => {
     render(<QuestDetailPanel />);
 
     const timeline = screen.getByTestId("quest-phase-documentation-timeline");
+    expect(within(timeline).getByTestId("quest-phase-documentation-duration")).toHaveTextContent(
+      "duration unavailable",
+    );
     expect(within(timeline).queryByTestId("phase-note-image-thumbnails")).toBeNull();
 
     fireEvent.click(within(timeline).getByText("Full phase detail"));
