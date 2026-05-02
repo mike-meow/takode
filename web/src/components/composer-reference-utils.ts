@@ -1,4 +1,8 @@
-import type { ChatMessage, CodexAppReference, CodexSkillReference, SdkSessionInfo } from "../types.js";
+import type { ChatMessage, CodexAppReference, CodexSkillReference, QuestmasterTask, SdkSessionInfo } from "../types.js";
+
+export const AUTOCOMPLETE_RECENCY_MAX_RECENT_TURNS = 24;
+export const AUTOCOMPLETE_RECENCY_MAX_SCANNED_MESSAGES = 120;
+export const AUTOCOMPLETE_RECENCY_MAX_CHARS = 64_000;
 
 export interface CommandItem {
   name: string;
@@ -27,6 +31,12 @@ export interface ReferenceTriggerMatch {
   kind: "quest" | "session";
   query: string;
   replacementStart: number;
+}
+
+export interface QuestReferenceSuggestionsResult {
+  suggestions: ReferenceSuggestion[];
+  scannedQuestCount: number;
+  candidateCount: number;
 }
 
 export interface RecentAutocompleteBoosts {
@@ -185,6 +195,93 @@ function normalizeSkillNames(skillNames: Iterable<string>): Set<string> {
   return new Set(Array.from(skillNames, (skillName) => skillName.trim().toLowerCase()).filter(Boolean));
 }
 
+function normalizeAutocompleteThreadKey(threadKey: string | null | undefined): string {
+  const normalized = threadKey?.trim().toLowerCase();
+  return normalized || "main";
+}
+
+function isMainAutocompleteThread(threadKey: string): boolean {
+  return normalizeAutocompleteThreadKey(threadKey) === "main";
+}
+
+function isAllAutocompleteThread(threadKey: string): boolean {
+  return normalizeAutocompleteThreadKey(threadKey) === "all";
+}
+
+function messageAutocompleteRouteKeys(message: ChatMessage): Set<string> {
+  const keys = new Set<string>();
+  const add = (value: string | undefined) => {
+    const normalized = normalizeAutocompleteThreadKey(value);
+    if (!normalized || normalized === "main") return;
+    keys.add(normalized);
+  };
+
+  const metadata = message.metadata;
+  add(metadata?.threadKey);
+  add(metadata?.questId);
+  for (const ref of metadata?.threadRefs ?? []) {
+    if (ref.source === "backfill") continue;
+    add(ref.threadKey);
+    add(ref.questId);
+  }
+  return keys;
+}
+
+function messageMatchesAutocompleteThread(message: ChatMessage, threadKey: string): boolean {
+  const normalizedThreadKey = normalizeAutocompleteThreadKey(threadKey);
+  if (isAllAutocompleteThread(normalizedThreadKey)) return true;
+  const routeKeys = messageAutocompleteRouteKeys(message);
+  if (isMainAutocompleteThread(normalizedThreadKey)) return routeKeys.size === 0;
+  return routeKeys.has(normalizedThreadKey);
+}
+
+function compactAutocompleteContent(content: string, maxChars: number): string {
+  if (content.length <= maxChars) return content;
+  const headChars = Math.floor(maxChars / 2);
+  return `${content.slice(0, headChars)}\n${content.slice(content.length - (maxChars - headChars))}`;
+}
+
+export function selectBoundedRecentAutocompleteContents(
+  messages: readonly ChatMessage[],
+  {
+    threadKey = "main",
+    maxRecentTurns = AUTOCOMPLETE_RECENCY_MAX_RECENT_TURNS,
+    maxScannedMessages = AUTOCOMPLETE_RECENCY_MAX_SCANNED_MESSAGES,
+    maxChars = AUTOCOMPLETE_RECENCY_MAX_CHARS,
+  }: {
+    threadKey?: string;
+    maxRecentTurns?: number;
+    maxScannedMessages?: number;
+    maxChars?: number;
+  } = {},
+): string[] {
+  const selected: string[] = [];
+  let includedTurns = 0;
+  let includedChars = 0;
+  let scannedMessages = 0;
+
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (scannedMessages >= maxScannedMessages) break;
+    if (includedTurns >= maxRecentTurns) break;
+    if (includedChars >= maxChars) break;
+    scannedMessages += 1;
+
+    const message = messages[index];
+    if (!message || !messageMatchesAutocompleteThread(message, threadKey)) continue;
+    const rawContent = message.content ?? "";
+    if (!rawContent.trim()) continue;
+
+    const remainingChars = Math.max(0, maxChars - includedChars);
+    if (remainingChars === 0) break;
+    const content = compactAutocompleteContent(rawContent, remainingChars);
+    selected.push(content);
+    includedChars += content.length;
+    if (message.role === "user") includedTurns += 1;
+  }
+
+  return selected.reverse();
+}
+
 function cloneRecentAutocompleteBoosts(boosts: RecentAutocompleteBoosts): RecentAutocompleteBoosts {
   return {
     questBoosts: new Map(boosts.questBoosts),
@@ -217,6 +314,16 @@ export function computeRecentAutocompleteBoosts(
   messages: ChatMessage[],
   skillNames: Iterable<string> = [],
 ): RecentAutocompleteBoosts {
+  return computeRecentAutocompleteBoostsFromContents(
+    messages.map((message) => message?.content ?? "").filter(Boolean),
+    skillNames,
+  );
+}
+
+export function computeRecentAutocompleteBoostsFromContents(
+  contents: readonly string[],
+  skillNames: Iterable<string> = [],
+): RecentAutocompleteBoosts {
   const boosts: RecentAutocompleteBoosts = {
     questBoosts: new Map<string, number>(),
     sessionBoosts: new Map<number, number>(),
@@ -224,7 +331,6 @@ export function computeRecentAutocompleteBoosts(
     nextRecencyWeight: 1,
   };
   const normalizedSkillNames = normalizeSkillNames(skillNames);
-  const contents = messages.map((message) => message?.content ?? "").filter(Boolean);
 
   for (let index = contents.length - 1; index >= 0; index -= 1) {
     const content = contents[index]!;
@@ -244,6 +350,54 @@ export function computeRecentAutocompleteBoosts(
 
   boosts.nextRecencyWeight = contents.length + 1;
   return boosts;
+}
+
+function compareReferenceSuggestions(left: ReferenceSuggestion, right: ReferenceSuggestion, fullQuery: string): number {
+  const leftExact = Number(left.rawRef.toLowerCase() === fullQuery);
+  const rightExact = Number(right.rawRef.toLowerCase() === fullQuery);
+  if (leftExact !== rightExact) return rightExact - leftExact;
+  if (left.recentBoost !== right.recentBoost) return right.recentBoost - left.recentBoost;
+  return right.tieBreaker - left.tieBreaker;
+}
+
+export function buildQuestReferenceSuggestions(
+  quests: readonly QuestmasterTask[],
+  referenceQuery: string,
+  questBoosts: ReadonlyMap<string, number>,
+  limit = REFERENCE_MENU_LIMIT,
+): QuestReferenceSuggestionsResult {
+  const fullQuery = `q-${referenceQuery}`.toLowerCase();
+  const suggestions: ReferenceSuggestion[] = [];
+  let candidateCount = 0;
+
+  for (const quest of quests) {
+    const questId = quest.questId.toLowerCase();
+    if (referenceQuery !== "" && !questId.startsWith(fullQuery)) continue;
+    candidateCount += 1;
+    const suggestion: ReferenceSuggestion = {
+      key: quest.questId,
+      kind: "quest",
+      rawRef: quest.questId,
+      preview: quest.title,
+      insertText: quest.questId,
+      searchText: `${quest.questId} ${quest.title}`.toLowerCase(),
+      recentBoost: questBoosts.get(questId) ?? 0,
+      tieBreaker: Number.parseInt(quest.questId.replace(/^q-/, ""), 10) || 0,
+    };
+
+    const insertAt = suggestions.findIndex(
+      (existing) => compareReferenceSuggestions(suggestion, existing, fullQuery) < 0,
+    );
+    if (insertAt === -1) suggestions.push(suggestion);
+    else suggestions.splice(insertAt, 0, suggestion);
+    if (suggestions.length > limit) suggestions.pop();
+  }
+
+  return {
+    suggestions,
+    scannedQuestCount: quests.length,
+    candidateCount,
+  };
 }
 
 export function overlayCurrentAutocompleteBoosts(

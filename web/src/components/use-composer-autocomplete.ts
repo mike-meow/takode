@@ -13,6 +13,7 @@ import { api } from "../api.js";
 import { CODEX_LOCAL_SLASH_COMMANDS } from "../../shared/codex-slash-commands.js";
 import type { ChatMessage, CodexAppReference, CodexSkillReference, QuestmasterTask, SdkSessionInfo } from "../types.js";
 import { useStore } from "../store.js";
+import { recordFrontendPerfEntry } from "../utils/frontend-perf-recorder.js";
 import {
   findAutocompleteTokenEnd,
   isCaretInsideAutocompleteRange,
@@ -22,8 +23,10 @@ import {
 import {
   DOLLAR_QUERY_PATTERN,
   REFERENCE_MENU_LIMIT,
-  computeRecentAutocompleteBoosts,
+  buildQuestReferenceSuggestions,
+  computeRecentAutocompleteBoostsFromContents,
   overlayCurrentAutocompleteBoosts,
+  selectBoundedRecentAutocompleteContents,
   detectReferenceTrigger,
   getSessionSuggestionPreview,
   toAppMentionInsertText,
@@ -48,15 +51,21 @@ interface UseComposerAutocompleteArgs {
   setText: (text: string) => void;
   textareaRef: RefObject<HTMLTextAreaElement | null>;
   sessionId: string;
+  threadKey?: string;
   isCodex: boolean;
   isConnected: boolean;
   sessionView: AutocompleteSessionView;
-  messages: ChatMessage[];
 }
 
 const EMPTY_QUESTS: QuestmasterTask[] = [];
+const EMPTY_CHAT_MESSAGES: ChatMessage[] = [];
+const EMPTY_AUTOCOMPLETE_CONTENTS: string[] = [];
 const EMPTY_SDK_SESSIONS: SdkSessionInfo[] = [];
 const EMPTY_SESSION_NAMES = new Map<string, string>();
+
+function nowMs(): number {
+  return typeof performance !== "undefined" && typeof performance.now === "function" ? performance.now() : Date.now();
+}
 
 function closeMenuRef(ref: RefObject<HTMLDivElement | null>, target: EventTarget | null): boolean {
   return !!ref.current && !ref.current.contains(target as Node);
@@ -97,10 +106,10 @@ export function useComposerAutocomplete({
   setText,
   textareaRef,
   sessionId,
+  threadKey = "main",
   isCodex,
   isConnected,
   sessionView,
-  messages,
 }: UseComposerAutocompleteArgs) {
   const [slashMenuOpen, setSlashMenuOpen] = useState(false);
   const [slashMenuIndex, setSlashMenuIndex] = useState(0);
@@ -151,6 +160,14 @@ export function useComposerAutocomplete({
   );
   const sdkSessions = sessionReferenceData.sdkSessions;
   const sessionNames = sessionReferenceData.sessionNames;
+  const needsHistoryAutocomplete = slashMenuOpen || dollarMenuOpen || referenceMenuOpen;
+  const recentAutocompleteContents = useStore(
+    useShallow((s) =>
+      needsHistoryAutocomplete
+        ? selectBoundedRecentAutocompleteContents(s.messages.get(sessionId) ?? EMPTY_CHAT_MESSAGES, { threadKey })
+        : EMPTY_AUTOCOMPLETE_CONTENTS,
+    ),
+  );
 
   const closeAutocompleteMenus = useCallback(() => {
     setSlashMenuOpen(false);
@@ -280,10 +297,23 @@ export function useComposerAutocomplete({
     () => [...sessionView.skills, ...sessionView.skillMetadata.map((skill) => skill.name)],
     [sessionView.skillMetadata, sessionView.skills],
   );
-  const historyAutocompleteBoosts = useMemo(
-    () => computeRecentAutocompleteBoosts(messages, recencySkillNames),
-    [messages, recencySkillNames],
-  );
+  const historyAutocompleteBoosts = useMemo(() => {
+    const startedAt = nowMs();
+    const boosts = computeRecentAutocompleteBoostsFromContents(recentAutocompleteContents, recencySkillNames);
+    if (needsHistoryAutocomplete) {
+      recordFrontendPerfEntry({
+        kind: "composer_autocomplete",
+        timestamp: Date.now(),
+        sessionId,
+        threadKey,
+        phase: "recency",
+        durationMs: nowMs() - startedAt,
+        historyEntryCount: recentAutocompleteContents.length,
+        historyCharCount: recentAutocompleteContents.reduce((total, content) => total + content.length, 0),
+      });
+    }
+    return boosts;
+  }, [needsHistoryAutocomplete, recentAutocompleteContents, recencySkillNames, sessionId, threadKey]);
   const recentAutocompleteBoosts = useMemo(
     () => overlayCurrentAutocompleteBoosts(historyAutocompleteBoosts, text, recencySkillNames),
     [historyAutocompleteBoosts, recencySkillNames, text],
@@ -391,33 +421,28 @@ export function useComposerAutocomplete({
 
   const filteredReferenceSuggestions = useMemo<ReferenceSuggestion[]>(() => {
     if (!referenceMenuOpen || referenceKind == null) return [];
+    const startedAt = nowMs();
     if (referenceKind === "quest") {
-      const fullQuery = `q-${referenceQuery}`.toLowerCase();
-      return quests
-        .filter((quest) => referenceQuery === "" || quest.questId.toLowerCase().startsWith(fullQuery))
-        .map((quest) => ({
-          key: quest.questId,
-          kind: "quest" as const,
-          rawRef: quest.questId,
-          preview: quest.title,
-          insertText: quest.questId,
-          searchText: `${quest.questId} ${quest.title}`.toLowerCase(),
-          recentBoost: recentAutocompleteBoosts.questBoosts.get(quest.questId.toLowerCase()) ?? 0,
-          tieBreaker: Number.parseInt(quest.questId.replace(/^q-/, ""), 10) || 0,
-        }))
-        .sort((left, right) => {
-          const leftExact = Number(left.rawRef.toLowerCase() === fullQuery);
-          const rightExact = Number(right.rawRef.toLowerCase() === fullQuery);
-          if (leftExact !== rightExact) return rightExact - leftExact;
-          if (left.recentBoost !== right.recentBoost) return right.recentBoost - left.recentBoost;
-          return right.tieBreaker - left.tieBreaker;
-        })
-        .slice(0, REFERENCE_MENU_LIMIT);
+      const result = buildQuestReferenceSuggestions(quests, referenceQuery, recentAutocompleteBoosts.questBoosts);
+      recordFrontendPerfEntry({
+        kind: "composer_autocomplete",
+        timestamp: Date.now(),
+        sessionId,
+        threadKey,
+        phase: "reference_suggestions",
+        durationMs: nowMs() - startedAt,
+        referenceKind: "quest",
+        queryLength: referenceQuery.length,
+        scannedQuestCount: result.scannedQuestCount,
+        candidateCount: result.candidateCount,
+        suggestionCount: result.suggestions.length,
+      });
+      return result.suggestions;
     }
 
     const seenSessionNums = new Set<number>();
     const normalizedQuery = referenceQuery.toLowerCase();
-    return sdkSessions
+    const suggestions = sdkSessions
       .filter((session) => session.sessionNum != null)
       .filter((session) => {
         const sessionNum = session.sessionNum!;
@@ -449,7 +474,30 @@ export function useComposerAutocomplete({
         return right.tieBreaker - left.tieBreaker;
       })
       .slice(0, REFERENCE_MENU_LIMIT);
-  }, [quests, recentAutocompleteBoosts, referenceKind, referenceMenuOpen, referenceQuery, sdkSessions, sessionNames]);
+    recordFrontendPerfEntry({
+      kind: "composer_autocomplete",
+      timestamp: Date.now(),
+      sessionId,
+      threadKey,
+      phase: "reference_suggestions",
+      durationMs: nowMs() - startedAt,
+      referenceKind: "session",
+      queryLength: referenceQuery.length,
+      candidateCount: sdkSessions.length,
+      suggestionCount: suggestions.length,
+    });
+    return suggestions;
+  }, [
+    quests,
+    recentAutocompleteBoosts,
+    referenceKind,
+    referenceMenuOpen,
+    referenceQuery,
+    sdkSessions,
+    sessionId,
+    sessionNames,
+    threadKey,
+  ]);
 
   const detectReferenceQuery = useCallback(
     (inputText: string, cursorPos: number) => {
@@ -729,12 +777,22 @@ export function useComposerAutocomplete({
 
   const handleAutocompleteInput = useCallback(
     (inputText: string, cursorPos: number) => {
+      const startedAt = nowMs();
       detectMentionQuery(inputText, cursorPos);
       detectSlashQuery(inputText, cursorPos);
       detectDollarQuery(inputText, cursorPos);
       detectReferenceQuery(inputText, cursorPos);
+      recordFrontendPerfEntry({
+        kind: "composer_autocomplete",
+        timestamp: Date.now(),
+        sessionId,
+        threadKey,
+        phase: "input",
+        durationMs: nowMs() - startedAt,
+        inputLength: inputText.length,
+      });
     },
-    [detectDollarQuery, detectMentionQuery, detectReferenceQuery, detectSlashQuery],
+    [detectDollarQuery, detectMentionQuery, detectReferenceQuery, detectSlashQuery, sessionId, threadKey],
   );
 
   const handleAutocompleteSelectionChange = useCallback(

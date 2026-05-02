@@ -54,6 +54,22 @@ export type FrontendPerfEntry =
       timestamp: number;
       durationMs: number;
       name?: string;
+    }
+  | {
+      kind: "composer_autocomplete";
+      timestamp: number;
+      sessionId: string;
+      threadKey: string;
+      phase: "input" | "recency" | "reference_suggestions";
+      durationMs: number;
+      inputLength?: number;
+      referenceKind?: "quest" | "session";
+      queryLength?: number;
+      historyEntryCount?: number;
+      historyCharCount?: number;
+      scannedQuestCount?: number;
+      candidateCount?: number;
+      suggestionCount?: number;
     };
 
 export interface FrontendPerfDebugApi {

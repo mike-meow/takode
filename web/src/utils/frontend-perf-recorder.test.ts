@@ -43,4 +43,31 @@ describe("frontend perf recorder", () => {
       expect.objectContaining({ kind: "feed_render", sessionId: "s1", threadKey: "q-1" }),
     ]);
   });
+
+  it("records composer autocomplete diagnostics", () => {
+    recordFrontendPerfEntry({
+      kind: "composer_autocomplete",
+      timestamp: 1,
+      sessionId: "s1",
+      threadKey: "main",
+      phase: "reference_suggestions",
+      durationMs: 2,
+      referenceKind: "quest",
+      queryLength: 0,
+      historyEntryCount: 12,
+      historyCharCount: 345,
+      scannedQuestCount: 50,
+      candidateCount: 50,
+      suggestionCount: 8,
+    });
+
+    expect(window.__TAKODE_FRONTEND_PERF__?.entries()).toEqual([
+      expect.objectContaining({
+        kind: "composer_autocomplete",
+        phase: "reference_suggestions",
+        referenceKind: "quest",
+        scannedQuestCount: 50,
+      }),
+    ]);
+  });
 });

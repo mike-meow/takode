@@ -835,4 +835,37 @@ describe("Composer slash menu", () => {
     expect(suggestions).toHaveLength(2);
     expect(within(suggestions[0] as HTMLElement).getByText("/recap")).toBeTruthy();
   });
+
+  it("ranks quest autocomplete from bounded recent context for the current thread", async () => {
+    const quests = [
+      { id: "q-2-v1", questId: "q-2", title: "Main recent quest" } as QuestmasterTask,
+      { id: "q-999-v1", questId: "q-999", title: "Thread recent quest" } as QuestmasterTask,
+      { id: "q-1000-v1", questId: "q-1000", title: "Newest numeric quest" } as QuestmasterTask,
+    ];
+    const messages = [
+      makeMessage({ id: "m1", content: "Earlier main q-2" }),
+      makeMessage({
+        id: "m2",
+        content: "Thread-specific q-999",
+        metadata: { threadRefs: [{ threadKey: "q-999", questId: "q-999", source: "explicit" }] },
+      }),
+    ];
+
+    setupMockStore({ quests, messages });
+    const { container, rerender } = render(<Composer sessionId="s1" />);
+    const textarea = container.querySelector("textarea")! as HTMLTextAreaElement;
+
+    fireEvent.change(textarea, { target: { value: "approve q-", selectionStart: 10 } });
+    await waitFor(() => expect(container.querySelectorAll("[data-reference-index]").length).toBeGreaterThan(0));
+
+    let suggestions = Array.from(container.querySelectorAll("[data-reference-index]"));
+    expect(within(suggestions[0] as HTMLElement).getByText("q-2")).toBeTruthy();
+
+    rerender(<Composer sessionId="s1" threadKey="q-999" />);
+    fireEvent.change(textarea, { target: { value: "approve q-", selectionStart: 10 } });
+    await waitFor(() => expect(container.querySelectorAll("[data-reference-index]").length).toBeGreaterThan(0));
+
+    suggestions = Array.from(container.querySelectorAll("[data-reference-index]"));
+    expect(within(suggestions[0] as HTMLElement).getByText("q-999")).toBeTruthy();
+  });
 });

@@ -46,13 +46,7 @@ import {
 } from "../utils/vscode-context.js";
 import { isNarrowComposerLayout } from "../utils/layout.js";
 import { formatReplyContentForAssistant } from "../utils/reply-context.js";
-import type {
-  ChatMessage,
-  CodexAppReference,
-  CodexSkillReference,
-  ComposerDraftImage,
-  PendingUserUpload,
-} from "../types.js";
+import type { CodexAppReference, CodexSkillReference, ComposerDraftImage, PendingUserUpload } from "../types.js";
 import {
   abortPendingUserUpload,
   clearPendingUserUploadController,
@@ -64,7 +58,6 @@ export { ReplyChip } from "./ReplyChip.js";
 const EMPTY_STRING_ARRAY: string[] = [];
 const EMPTY_SKILL_REFERENCES: CodexSkillReference[] = [];
 const EMPTY_APP_REFERENCES: CodexAppReference[] = [];
-const EMPTY_CHAT_MESSAGES: ChatMessage[] = [];
 const EMPTY_PENDING_USER_UPLOADS: PendingUserUpload[] = [];
 const EMPTY_COMPOSER_IMAGES: ComposerDraftImage[] = [];
 
@@ -439,7 +432,6 @@ export function Composer({
     }),
   );
   const vscodeSelectionState = useStore((s) => s.vscodeSelectionContext);
-  const sessionMessages = useStore((s) => s.messages.get(sessionId) ?? EMPTY_CHAT_MESSAGES);
   const previewQuestIds = useStore(useShallow((s) => s.quests.map((quest) => quest.questId.toLowerCase())));
   const previewSessionNums = useStore(
     useShallow((s) =>
@@ -490,10 +482,10 @@ export function Composer({
     setText,
     textareaRef,
     sessionId,
+    threadKey,
     isCodex,
     isConnected,
     sessionView,
-    messages: sessionMessages,
   });
   const {
     slashMenuOpen,
