@@ -17,33 +17,44 @@ const APPLIED_UPDATE_ID_LIMIT = 200;
 
 const appliedUpdateIdsBySession = new Map<string, Set<string>>();
 
+type SafeThreadAttachmentUpdateEntry = ThreadAttachmentUpdate["updates"][number];
+
+interface SafeThreadAttachmentUpdate {
+  updateId: string;
+  affectedThreadKeys: string[];
+  updates: SafeThreadAttachmentUpdateEntry[];
+}
+
 export function applyThreadAttachmentUpdate(
   sessionId: string,
   update: ThreadAttachmentUpdate,
   deps: WsMessageHandlerDeps,
 ): void {
   const startedAt = perfNow();
-  const stats = threadAttachmentUpdateStats(update);
-  const recoveryReason = validateThreadAttachmentUpdate(update);
-  if (recoveryReason) {
-    invalidateThreadAttachmentWindows(sessionId, update.affectedThreadKeys ?? []);
+  const normalized = normalizeThreadAttachmentUpdate(update);
+  if (!normalized.ok) {
+    const affectedThreadKeys = normalized.affectedThreadKeys;
+    invalidateThreadAttachmentWindows(sessionId, affectedThreadKeys);
     requestLatestMainWindow(sessionId, deps);
-    requestAffectedThreadWindows(sessionId, update.affectedThreadKeys ?? [], deps);
+    const requestedThreadWindowCount = requestAffectedThreadWindows(sessionId, affectedThreadKeys, deps);
     recordFrontendPerfEntry({
       kind: "thread_attachment_update_apply",
       timestamp: Date.now(),
       sessionId,
-      ...stats,
+      ...normalized.stats,
       requestedHistoryWindowCount: 1,
-      requestedThreadWindowCount: threadWindowRequestCount(update.affectedThreadKeys ?? []),
+      requestedThreadWindowCount,
       durationMs: perfNow() - startedAt,
       ok: false,
-      recoveryReason,
+      recoveryReason: normalized.recoveryReason,
     });
     return;
   }
 
-  if (hasAppliedThreadAttachmentUpdate(sessionId, update.updateId)) {
+  const safeUpdate = normalized.update;
+  const stats = threadAttachmentUpdateStats(safeUpdate);
+
+  if (hasAppliedThreadAttachmentUpdate(sessionId, safeUpdate.updateId)) {
     recordFrontendPerfEntry({
       kind: "thread_attachment_update_apply",
       timestamp: Date.now(),
@@ -58,12 +69,12 @@ export function applyThreadAttachmentUpdate(
     return;
   }
 
-  rememberAppliedThreadAttachmentUpdate(sessionId, update.updateId);
-  invalidateThreadAttachmentWindows(sessionId, update.affectedThreadKeys);
-  patchLoadedThreadRefs(sessionId, update);
-  appendThreadAttachmentMarkers(sessionId, update);
+  rememberAppliedThreadAttachmentUpdate(sessionId, safeUpdate.updateId);
+  invalidateThreadAttachmentWindows(sessionId, safeUpdate.affectedThreadKeys);
+  patchLoadedThreadRefs(sessionId, safeUpdate);
+  appendThreadAttachmentMarkers(sessionId, safeUpdate);
   requestLatestMainWindow(sessionId, deps);
-  const requestedThreadWindowCount = requestAffectedThreadWindows(sessionId, update.affectedThreadKeys, deps);
+  const requestedThreadWindowCount = requestAffectedThreadWindows(sessionId, safeUpdate.affectedThreadKeys, deps);
 
   recordFrontendPerfEntry({
     kind: "thread_attachment_update_apply",
@@ -77,11 +88,52 @@ export function applyThreadAttachmentUpdate(
   });
 }
 
-function validateThreadAttachmentUpdate(update: ThreadAttachmentUpdate): string | null {
-  if (update.version !== 1) return "unsupported_version";
-  if (!update.updateId) return "missing_update_id";
-  if (!Array.isArray(update.updates)) return "missing_updates";
-  return null;
+function normalizeThreadAttachmentUpdate(update: ThreadAttachmentUpdate):
+  | { ok: true; update: SafeThreadAttachmentUpdate }
+  | {
+      ok: false;
+      recoveryReason: string;
+      affectedThreadKeys: string[];
+      stats: ReturnType<typeof malformedThreadAttachmentUpdateStats>;
+    } {
+  const raw = update as unknown as Record<string, unknown>;
+  const affectedThreadKeys = safeAffectedThreadKeys(raw);
+  const recovery = (recoveryReason: string) => ({
+    ok: false as const,
+    recoveryReason,
+    affectedThreadKeys,
+    stats: malformedThreadAttachmentUpdateStats(raw, affectedThreadKeys),
+  });
+
+  if (raw.version !== 1) return recovery("unsupported_version");
+  if (typeof raw.updateId !== "string" || !raw.updateId.trim()) return recovery("missing_update_id");
+  if (!Array.isArray(raw.affectedThreadKeys)) return recovery("invalid_affected_thread_keys");
+  if (affectedThreadKeys.length !== raw.affectedThreadKeys.length) return recovery("invalid_affected_thread_keys");
+  if (!Array.isArray(raw.updates)) return recovery("missing_updates");
+
+  for (const item of raw.updates) {
+    if (!isRecord(item)) return recovery("invalid_update_entry");
+    if (!Array.isArray(item.markers)) return recovery("invalid_markers");
+    if (!item.markers.every(isValidThreadAttachmentMarkerRecord)) return recovery("invalid_markers");
+    if (
+      !Array.isArray(item.markerHistoryIndices) ||
+      item.markerHistoryIndices.length !== item.markers.length ||
+      !item.markerHistoryIndices.every(isSafeHistoryIndex)
+    ) {
+      return recovery("invalid_marker_history_indices");
+    }
+    if (!Array.isArray(item.changedMessages)) return recovery("invalid_changed_messages");
+    if (!item.changedMessages.every(isValidChangedMessageRecord)) return recovery("invalid_changed_message_record");
+  }
+
+  return {
+    ok: true,
+    update: {
+      updateId: raw.updateId,
+      affectedThreadKeys,
+      updates: raw.updates as SafeThreadAttachmentUpdateEntry[],
+    },
+  };
 }
 
 function hasAppliedThreadAttachmentUpdate(sessionId: string, updateId: string): boolean {
@@ -110,7 +162,7 @@ function invalidateThreadAttachmentWindows(sessionId: string, affectedThreadKeys
   }
 }
 
-function patchLoadedThreadRefs(sessionId: string, update: ThreadAttachmentUpdate): void {
+function patchLoadedThreadRefs(sessionId: string, update: SafeThreadAttachmentUpdate): void {
   const store = useStore.getState();
   const messages = store.messages.get(sessionId) ?? [];
   for (const changed of update.updates.flatMap((item) => item.changedMessages)) {
@@ -136,7 +188,7 @@ function findLoadedMessage(
   );
 }
 
-function appendThreadAttachmentMarkers(sessionId: string, update: ThreadAttachmentUpdate): void {
+function appendThreadAttachmentMarkers(sessionId: string, update: SafeThreadAttachmentUpdate): void {
   const store = useStore.getState();
   for (const item of update.updates) {
     item.markers.forEach((marker, index) => {
@@ -195,19 +247,105 @@ function uniqueThreadKeys(threadKeys: string[]): string[] {
   return [...keys];
 }
 
-function threadAttachmentUpdateStats(update: ThreadAttachmentUpdate): {
+function threadAttachmentUpdateStats(update: SafeThreadAttachmentUpdate): {
   updateCount: number;
   markerCount: number;
   changedMessageCount: number;
   affectedThreadCount: number;
 } {
-  const updates = Array.isArray(update.updates) ? update.updates : [];
+  return {
+    updateCount: update.updates.length,
+    markerCount: update.updates.reduce((count, item) => count + item.markers.length, 0),
+    changedMessageCount: update.updates.reduce((count, item) => count + item.changedMessages.length, 0),
+    affectedThreadCount: update.affectedThreadKeys.length,
+  };
+}
+
+function malformedThreadAttachmentUpdateStats(
+  raw: Record<string, unknown>,
+  affectedThreadKeys: string[],
+): {
+  updateCount: number;
+  markerCount: number;
+  changedMessageCount: number;
+  affectedThreadCount: number;
+} {
+  const updates = Array.isArray(raw.updates) ? raw.updates.filter(isRecord) : [];
   return {
     updateCount: updates.length,
-    markerCount: updates.reduce((count, item) => count + item.markers.length, 0),
-    changedMessageCount: updates.reduce((count, item) => count + item.changedMessages.length, 0),
-    affectedThreadCount: update.affectedThreadKeys?.length ?? 0,
+    markerCount: updates.reduce((count, item) => count + (Array.isArray(item.markers) ? item.markers.length : 0), 0),
+    changedMessageCount: updates.reduce(
+      (count, item) => count + (Array.isArray(item.changedMessages) ? item.changedMessages.length : 0),
+      0,
+    ),
+    affectedThreadCount: affectedThreadKeys.length,
   };
+}
+
+function safeAffectedThreadKeys(raw: Record<string, unknown>): string[] {
+  const keys = new Set<string>();
+  addThreadKeyValues(keys, raw.affectedThreadKeys);
+  if (Array.isArray(raw.updates)) {
+    for (const item of raw.updates) {
+      if (!isRecord(item)) continue;
+      addRouteKeys(keys, item.target);
+      addRouteKeys(keys, item.source);
+      if (!Array.isArray(item.markers)) continue;
+      for (const marker of item.markers) addRouteKeys(keys, marker);
+    }
+  }
+  return [...keys];
+}
+
+function addRouteKeys(keys: Set<string>, value: unknown): void {
+  if (!isRecord(value)) return;
+  addThreadKeyValues(keys, [value.threadKey, value.questId]);
+}
+
+function addThreadKeyValues(keys: Set<string>, values: unknown): void {
+  if (!Array.isArray(values)) return;
+  for (const value of values) {
+    if (typeof value !== "string") continue;
+    const normalized = normalizeThreadKey(value);
+    if (normalized) keys.add(normalized);
+  }
+}
+
+function isValidChangedMessageRecord(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  if (!isSafeHistoryIndex(value.historyIndex)) return false;
+  if (typeof value.messageId !== "string" || !value.messageId.trim()) return false;
+  if (!Array.isArray(value.threadRefs)) return false;
+  return value.threadRefs.every(isValidThreadRefRecord);
+}
+
+function isValidThreadAttachmentMarkerRecord(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  if (value.type !== "thread_attachment_marker") return false;
+  if (typeof value.id !== "string" || !value.id.trim()) return false;
+  if (typeof value.markerKey !== "string" || !value.markerKey.trim()) return false;
+  if (typeof value.threadKey !== "string" || !value.threadKey.trim()) return false;
+  if (typeof value.timestamp !== "number" || !Number.isFinite(value.timestamp)) return false;
+  if (typeof value.attachedAt !== "number" || !Number.isFinite(value.attachedAt)) return false;
+  if (typeof value.attachedBy !== "string" || !value.attachedBy.trim()) return false;
+  if (!isSafeHistoryIndex(value.count)) return false;
+  if (!Array.isArray(value.messageIds) || !value.messageIds.every((item) => typeof item === "string")) return false;
+  if (!Array.isArray(value.messageIndices) || !value.messageIndices.every(isSafeHistoryIndex)) return false;
+  return Array.isArray(value.ranges) && value.ranges.every((item) => typeof item === "string");
+}
+
+function isValidThreadRefRecord(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  if (typeof value.threadKey !== "string" || !value.threadKey.trim()) return false;
+  return typeof value.source === "string" && value.source.trim().length > 0;
+}
+
+function isSafeHistoryIndex(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 function perfNow(): number {

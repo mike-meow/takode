@@ -167,6 +167,49 @@ function threadAttachmentUpdate(
   };
 }
 
+function setPatchSentinelMessages() {
+  useStore
+    .getState()
+    .setMessages("s1", [{ id: "u2", role: "user", content: "move me", timestamp: 1001, historyIndex: 1 }], {
+      frozenCount: 1,
+    });
+}
+
+async function expectMalformedRecovery(input: {
+  payload: Record<string, unknown>;
+  recoveryReason: string;
+  expectedSendCount: number;
+}) {
+  connectAndHydrateSession();
+  setPatchSentinelMessages();
+
+  expect(() => fireMessage(input.payload)).not.toThrow();
+
+  const messages = useStore.getState().messages.get("s1") ?? [];
+  expect(messages.find((message) => message.id === "u2")?.metadata?.threadRefs).toBeUndefined();
+  expect(messages.some((message) => message.id === "marker-1")).toBe(false);
+  expect(lastWs.send).toHaveBeenCalledTimes(input.expectedSendCount);
+  expect(JSON.parse(lastWs.send.mock.calls[0]![0])).toMatchObject({
+    type: "history_window_request",
+    from_turn: -1,
+    turn_count: HISTORY_WINDOW_SECTION_TURN_COUNT * HISTORY_WINDOW_VISIBLE_SECTION_COUNT,
+  });
+
+  const { getFrontendPerfEntries } = await import("./utils/frontend-perf-recorder.js");
+  expect(getFrontendPerfEntries()).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        kind: "thread_attachment_update_apply",
+        sessionId: "s1",
+        ok: false,
+        recoveryReason: input.recoveryReason,
+        requestedHistoryWindowCount: 1,
+        requestedThreadWindowCount: input.expectedSendCount - 1,
+      }),
+    ]),
+  );
+}
+
 describe("handleMessage: thread_attachment_update", () => {
   it("patches visible threadRefs, appends movement markers, invalidates windows, and requests bounded refreshes", async () => {
     connectAndHydrateSession();
@@ -273,11 +316,7 @@ describe("handleMessage: thread_attachment_update", () => {
 
   it("falls back to bounded refresh requests for unsupported update versions without local patching", async () => {
     connectAndHydrateSession();
-    useStore
-      .getState()
-      .setMessages("s1", [{ id: "u2", role: "user", content: "move me", timestamp: 1001, historyIndex: 1 }], {
-        frozenCount: 1,
-      });
+    setPatchSentinelMessages();
 
     fireMessage(threadAttachmentUpdate({ version: 999 as 1, updateId: "unsupported-update" }));
 
@@ -299,5 +338,92 @@ describe("handleMessage: thread_attachment_update", () => {
         }),
       ]),
     );
+  });
+
+  it("recovers without throwing for future-version payloads with malformed nested updates", async () => {
+    await expectMalformedRecovery({
+      payload: {
+        type: "thread_attachment_update",
+        version: 2,
+        updateId: "future-bad-update",
+        affectedThreadKeys: ["main"],
+        updates: [{}],
+      },
+      recoveryReason: "unsupported_version",
+      expectedSendCount: 1,
+    });
+  });
+
+  it.each([
+    {
+      name: "missing affectedThreadKeys",
+      overrides: { affectedThreadKeys: undefined },
+      recoveryReason: "invalid_affected_thread_keys",
+      expectedSendCount: 2,
+    },
+    {
+      name: "malformed updates[] entry",
+      overrides: { updates: [null] },
+      recoveryReason: "invalid_update_entry",
+      expectedSendCount: 2,
+    },
+    {
+      name: "missing markers array",
+      overrides: { updates: [{ target: { threadKey: "q-1087" }, changedMessages: [], markerHistoryIndices: [] }] },
+      recoveryReason: "invalid_markers",
+      expectedSendCount: 2,
+    },
+    {
+      name: "missing changedMessages array",
+      overrides: {
+        updates: [
+          {
+            target: { threadKey: "q-1087" },
+            markers: [],
+            markerHistoryIndices: [],
+          },
+        ],
+      },
+      recoveryReason: "invalid_changed_messages",
+      expectedSendCount: 2,
+    },
+    {
+      name: "invalid markerHistoryIndices",
+      overrides: {
+        updates: [
+          {
+            target: { threadKey: "q-1087" },
+            markers: [],
+            markerHistoryIndices: ["not-a-number"],
+            changedMessages: [],
+          },
+        ],
+      },
+      recoveryReason: "invalid_marker_history_indices",
+      expectedSendCount: 2,
+    },
+    {
+      name: "invalid changed-message record",
+      overrides: {
+        updates: [
+          {
+            target: { threadKey: "q-1087" },
+            markers: [],
+            markerHistoryIndices: [],
+            changedMessages: [{ historyIndex: 1, messageId: "u2", threadRefs: "bad" }],
+          },
+        ],
+      },
+      recoveryReason: "invalid_changed_message_record",
+      expectedSendCount: 2,
+    },
+  ])("recovers without throwing for malformed version-1 payloads: $name", async (testCase) => {
+    await expectMalformedRecovery({
+      payload: threadAttachmentUpdate(
+        testCase.overrides as Partial<Extract<BrowserIncomingMessage, { type: "thread_attachment_update" }>>,
+      ),
+      recoveryReason: testCase.recoveryReason,
+      expectedSendCount: testCase.expectedSendCount,
+    });
   });
 });
