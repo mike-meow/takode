@@ -324,6 +324,30 @@ describe("Quest Journey phase directory loading", () => {
     }
   });
 
+  it("seeds Outcome Review briefs with no-Port final debrief ownership guidance", async () => {
+    const companionHome = await makeCompanionHome();
+    await ensureBuiltInQuestJourneyPhaseData({ packageRoot: PACKAGE_ROOT, companionHome });
+
+    const phases = await loadBuiltInQuestJourneyPhases({ companionHome });
+    const outcomeReviewPhase = phases.find((phase) => phase.id === "outcome-review");
+
+    // q-1085 exposed the no-Port path: a zero-tracked-change artifact was
+    // accepted in Outcome Review, then completed without final debrief metadata.
+    expect(outcomeReviewPhase?.leaderBrief).toContain("final planned phase before a zero-tracked-change");
+    expect(outcomeReviewPhase?.leaderBrief).toContain("no-Port completion");
+    expect(outcomeReviewPhase?.leaderBrief).toContain("final debrief metadata is leader-owned");
+    expect(outcomeReviewPhase?.leaderBrief).toContain("Final debrief draft:");
+    expect(outcomeReviewPhase?.leaderBrief).toContain("Debrief TLDR draft:");
+    expect(outcomeReviewPhase?.leaderBrief).toContain("route a focused Bookkeeping phase");
+    expect(outcomeReviewPhase?.leaderBrief).toContain("Do not complete a non-cancelled quest without both");
+
+    expect(outcomeReviewPhase?.assigneeBrief).toContain("no-Port or zero-tracked-change outcome");
+    expect(outcomeReviewPhase?.assigneeBrief).toContain("Final debrief draft:");
+    expect(outcomeReviewPhase?.assigneeBrief).toContain("Debrief TLDR draft:");
+    expect(outcomeReviewPhase?.assigneeBrief).toContain("focused Bookkeeping phase is needed");
+    expect(outcomeReviewPhase?.assigneeBrief).toContain("before quest completion");
+  });
+
   it("builds a read-only phase catalog with source metadata and exact display paths", async () => {
     const companionHome = await makeCompanionHome();
     await ensureBuiltInQuestJourneyPhaseData({ packageRoot: PACKAGE_ROOT, companionHome });
