@@ -63,7 +63,7 @@ import {
   isTimedChatMessage,
 } from "./message-feed-utils.js";
 import { isSubagentToolName } from "../types.js";
-import { isAllThreadsKey, normalizeThreadKey } from "../utils/thread-projection.js";
+import { isAllThreadsKey, isMainThreadKey, normalizeThreadKey } from "../utils/thread-projection.js";
 import type { SessionAttentionRecord } from "../types.js";
 import { YarnBallDot, YarnBallSpinner, SleepingCat } from "./CatIcons.js";
 import { PawTrailAvatar, PawCounterContext, PawScrollProvider, HidePawContext } from "./PawTrail.js";
@@ -188,6 +188,8 @@ export function MessageFeed({
     if (isAllThreadsKey(normalizedThreadKey)) return false;
     return isLeaderSession;
   }, [isLeaderSession, normalizedThreadKey]);
+  const collapseLeaderThreadActivity =
+    isLeaderSession && !isMainThreadKey(normalizedThreadKey) && !isAllThreadsKey(normalizedThreadKey);
   const viewportKey = useMemo(() => getFeedViewportKey(sessionId, threadKey), [sessionId, threadKey]);
   const savedScrollPos = readSavedViewportPosition({
     sessionId,
@@ -610,7 +612,7 @@ export function MessageFeed({
   const { turnStates, toggleTurn } = useCollapsePolicy({
     sessionId,
     turns: visibleTurns,
-    leaderMode: false,
+    leaderMode: collapseLeaderThreadActivity,
   });
   const collapseLayoutSignature = useMemo(
     () => turnStates.map((state) => `${state.turnId}:${state.isActivityExpanded ? "1" : "0"}`).join("|"),
@@ -1815,7 +1817,7 @@ export function MessageFeed({
                   sections={visibleSections}
                   sessionId={sessionId}
                   currentThreadKey={threadKey}
-                  leaderMode={false}
+                  leaderMode={collapseLeaderThreadActivity}
                   isCodexSession={isCodexSession}
                   activeCodexTerminalIds={activeCodexTerminalIds}
                   onOpenCodexTerminal={setSelectedCodexTerminalId}

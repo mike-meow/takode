@@ -598,6 +598,46 @@ describe("MessageFeed - collapsed turns", () => {
     expect(screen.queryByText("Leader activity")).toBeNull();
   });
 
+  it("collapses the latest dense selected quest-thread turn for leader sessions", () => {
+    // Selected leader thread tabs can be one logical conversation item with many
+    // tool rows. Keep those rows unmounted by default until the user expands.
+    const sid = "test-leader-thread-dense-default-collapsed";
+    setStoreSdkSessionRole(sid, { isOrchestrator: true });
+    setStoreMessages(sid, [
+      makeMessage({
+        id: "u-q1128",
+        role: "user",
+        content: "Review the new input notification",
+        metadata: { threadRefs: [{ threadKey: "q-1128", questId: "q-1128", source: "explicit" }] },
+      }),
+      makeMessage({
+        id: "a-q1128-tool-1",
+        role: "assistant",
+        content: "",
+        contentBlocks: [
+          { type: "tool_use", id: "tu-q1128-1", name: "Bash", input: { command: "takode board promote q-1128" } },
+        ],
+        metadata: { threadRefs: [{ threadKey: "q-1128", questId: "q-1128", source: "explicit" }] },
+      }),
+      makeMessage({
+        id: "a-q1128-tool-2",
+        role: "assistant",
+        content: "",
+        contentBlocks: [
+          { type: "tool_use", id: "tu-q1128-2", name: "Bash", input: { command: "takode board note q-1128" } },
+        ],
+        metadata: { threadRefs: [{ threadKey: "q-1128", questId: "q-1128", source: "explicit" }] },
+      }),
+    ]);
+
+    render(<MessageFeed sessionId={sid} threadKey="q-1128" />);
+
+    expect(screen.getByText("Review the new input notification")).toBeTruthy();
+    expect(screen.getByText("Leader activity")).toBeTruthy();
+    expect(screen.queryByText("takode board promote q-1128")).toBeNull();
+    expect(screen.queryByText("takode board note q-1128")).toBeNull();
+  });
+
   it("keeps explicitly routed quest messages out of Main", () => {
     // Clean Main excludes messages with explicit non-main route metadata while
     // avoiding compact quest activity markers that look like Main activity.
