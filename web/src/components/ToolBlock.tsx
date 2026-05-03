@@ -448,7 +448,19 @@ const ToolBlockInner = memo(function ToolBlockInner({
   );
 });
 
-const INLINE_BOARD_FALLBACK_SUBCOMMANDS = new Set(["", "show", "display", "set", "add", "rm", "advance"]);
+const INLINE_BOARD_FALLBACK_SUBCOMMANDS = new Set([
+  "",
+  "show",
+  "display",
+  "set",
+  "add",
+  "rm",
+  "advance",
+  "propose",
+  "promote",
+  "note",
+  "present",
+]);
 
 interface TakodeBoardCommandMatch {
   canUseLiveBoardFallback: boolean;
@@ -462,8 +474,9 @@ export function parseTakodeBoardCommand(rawCommand: unknown): TakodeBoardCommand
   while ((match = commandMatcher.exec(command)) !== null) {
     const segmentStart = command.indexOf("takode", match.index);
     const segment = command.slice(segmentStart).split(/[;&|\n\r]/, 1)[0] ?? "";
-    const subcommand = (match[1] ?? "").toLowerCase();
-    const isHelp = subcommand === "help" || subcommand === "--help" || /\s--help(?:\s|$)/.test(segment);
+    const rawSubcommand = (match[1] ?? "").toLowerCase();
+    const isHelp = rawSubcommand === "help" || rawSubcommand === "--help" || /\s--help(?:\s|$)/.test(segment);
+    const subcommand = rawSubcommand.startsWith("--") ? "" : rawSubcommand;
     if (isHelp) return { canUseLiveBoardFallback: false };
     return { canUseLiveBoardFallback: INLINE_BOARD_FALLBACK_SUBCOMMANDS.has(subcommand) };
   }

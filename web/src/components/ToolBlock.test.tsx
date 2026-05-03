@@ -466,6 +466,19 @@ describe("ToolBlock", () => {
     );
   });
 
+  it("allows table-producing board mutation subcommands to use live board fallback", () => {
+    for (const command of [
+      "takode board propose q-412 --preset full-code",
+      "takode board promote q-412 --worker 5",
+      "takode board note q-412 2 --text done",
+      "takode board present q-412",
+      "quest show q-412 && takode board promote q-412",
+      "takode board --full",
+    ]) {
+      expect(parseTakodeBoardCommand(command)?.canUseLiveBoardFallback).toBe(true);
+    }
+  });
+
   it("does not render a board card for failed plain-text board commands", async () => {
     const errorOutput = "Error: invalid quest ID";
     const sessionResults = new Map();
