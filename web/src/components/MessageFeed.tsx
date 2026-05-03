@@ -21,6 +21,7 @@ import { ElapsedTimer, FeedStatusPill, PendingCodexInputList, PendingUserUploadL
 import { FeedFooter, TurnEntries } from "./MessageFeedEntries.js";
 import {
   SAVE_THREAD_VIEWPORT_EVENT,
+  type FeedViewportPosition,
   getFeedViewportKey,
   persistLeaderViewportPosition,
   readLeaderViewportPosition,
@@ -690,6 +691,25 @@ export function MessageFeed({
     [markProgrammaticScroll],
   );
 
+  const restoreSavedScrollPosition = useCallback(
+    (pos: FeedViewportPosition) => {
+      const el = containerRef.current;
+      if (!el) return false;
+      const nextTop =
+        el.scrollHeight === pos.scrollHeight
+          ? pos.scrollTop
+          : pos.scrollHeight > 0
+            ? pos.scrollTop * (el.scrollHeight / pos.scrollHeight)
+            : null;
+      if (nextTop == null || !Number.isFinite(nextTop)) return false;
+      markProgrammaticScroll(nextTop);
+      el.scrollTop = nextTop;
+      lastScrollTopRef.current = el.scrollTop;
+      return true;
+    },
+    [markProgrammaticScroll],
+  );
+
   const restoreFeedAnchor = useCallback(
     (anchor: FeedViewportAnchor) => {
       const container = containerRef.current;
@@ -1285,7 +1305,12 @@ export function MessageFeed({
       return;
     }
     if (pos && !pos.isAtBottom && pos.anchorTurnId) {
+      if (selectedFeedWindowEnabled && !activeThreadWindow) return;
       if (restoreTurnAnchor(pos.anchorTurnId!, pos.anchorOffsetTop ?? 0)) {
+        autoFollowEnabledRef.current = false;
+        isNearBottom.current = false;
+        setShowScrollButton(true);
+      } else if (restoreSavedScrollPosition(pos)) {
         autoFollowEnabledRef.current = false;
         isNearBottom.current = false;
         setShowScrollButton(true);
@@ -1293,17 +1318,10 @@ export function MessageFeed({
         scrollToBottom("auto");
       }
     } else if (pos && !pos.isAtBottom) {
-      const el = containerRef.current;
-      if (el) {
-        if (el.scrollHeight === pos.scrollHeight) {
-          el.scrollTop = pos.scrollTop;
-        } else if (pos.scrollHeight > 0) {
-          el.scrollTop = pos.scrollTop * (el.scrollHeight / pos.scrollHeight);
-        }
+      if (restoreSavedScrollPosition(pos)) {
         autoFollowEnabledRef.current = false;
         isNearBottom.current = false;
         setShowScrollButton(true);
-        lastScrollTopRef.current = el.scrollTop;
       }
     } else if (activeThreadWindow && hasNewerSections) {
       const el = containerRef.current;
@@ -1324,9 +1342,11 @@ export function MessageFeed({
     isLeaderSession,
     messages.length,
     normalizedThreadKey,
+    restoreSavedScrollPosition,
     restoreTurnAnchor,
     scrollToBottom,
     sectionWindowStart,
+    selectedFeedWindowEnabled,
     sessionId,
     showConversationLoading,
     viewportKey,

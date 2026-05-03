@@ -26,7 +26,7 @@ beforeAll(() => {
 });
 
 import { render, screen, waitFor } from "@testing-library/react";
-import type { ChatMessage } from "../types.js";
+import type { ChatMessage, ThreadWindowState } from "../types.js";
 
 vi.mock("react-markdown", () => ({
   default: ({ children }: { children: string }) => <div data-testid="markdown">{children}</div>,
@@ -86,6 +86,8 @@ vi.mock("../store.js", () => {
       backgroundAgentNotifs: new Map(),
       sessionNotifications: new Map(),
       sessionSearch: new Map(),
+      threadWindows: mockStoreValues.threadWindows ?? new Map(),
+      threadWindowMessages: mockStoreValues.threadWindowMessages ?? new Map(),
     };
     return selector(state);
   };
@@ -134,6 +136,21 @@ function setStoreMessages(sessionId: string, messages: ChatMessage[]) {
   mockStoreValues.messages = new Map([[sessionId, messages]]);
 }
 
+function makeThreadWindow(overrides: Partial<ThreadWindowState> = {}): ThreadWindowState {
+  return {
+    thread_key: "q-941",
+    from_item: 0,
+    item_count: 12,
+    total_items: 12,
+    has_older_items: false,
+    has_newer_items: false,
+    source_history_length: 12,
+    section_item_count: 6,
+    visible_item_count: 3,
+    ...overrides,
+  };
+}
+
 beforeEach(() => {
   mockScrollTo.mockClear();
   mockSetActiveTaskTurnId.mockClear();
@@ -144,6 +161,8 @@ beforeEach(() => {
   mockStoreValues.feedScrollPosition = new Map();
   mockStoreValues.sessions = new Map();
   mockStoreValues.sdkSessions = [];
+  mockStoreValues.threadWindows = new Map();
+  mockStoreValues.threadWindowMessages = new Map();
 });
 
 describe("MessageFeed thread viewport restoration", () => {
@@ -228,6 +247,91 @@ describe("MessageFeed thread viewport restoration", () => {
     } finally {
       if (originalScrollHeight) Object.defineProperty(HTMLDivElement.prototype, "scrollHeight", originalScrollHeight);
       else delete (HTMLDivElement.prototype as { scrollHeight?: unknown }).scrollHeight;
+      if (originalClientHeight) Object.defineProperty(HTMLDivElement.prototype, "clientHeight", originalClientHeight);
+      else delete (HTMLDivElement.prototype as { clientHeight?: unknown }).clientHeight;
+    }
+  });
+
+  it("waits for the selected thread window before restoring a persisted anchor", async () => {
+    // The selected tab can restore before its server-backed thread window has
+    // hydrated. Anchored viewport restore must wait so a pre-window render does
+    // not consume the saved state and leave the user at scrollTop=0.
+    const sid = "test-persisted-anchor-after-window";
+    const liveThreadMessage = makeMessage({
+      id: "live-q941",
+      role: "assistant",
+      content: "Live quest shell",
+      metadata: { threadRefs: [{ threadKey: "q-941", questId: "q-941", source: "explicit" }] },
+    });
+    const windowMessages = [
+      makeMessage({ id: "u-before", role: "user", content: "Earlier request", historyIndex: 1 }),
+      makeMessage({ id: "a-before", role: "assistant", content: "Earlier answer", historyIndex: 2 }),
+      makeMessage({ id: "u-anchor", role: "user", content: "Saved anchor request", historyIndex: 3 }),
+      makeMessage({ id: "a-anchor", role: "assistant", content: "Saved anchor answer", historyIndex: 4 }),
+    ];
+    setStoreMessages(sid, [liveThreadMessage]);
+    mockStoreValues.sessions = new Map([[sid, { isOrchestrator: true }]]);
+    persistLeaderViewportPosition(sid, "q-941", {
+      scrollTop: 1600,
+      scrollHeight: 5226,
+      isAtBottom: false,
+      anchorTurnId: "u-anchor",
+      anchorOffsetTop: -120,
+    });
+
+    const originalScrollHeight = Object.getOwnPropertyDescriptor(HTMLDivElement.prototype, "scrollHeight");
+    const originalScrollTop = Object.getOwnPropertyDescriptor(HTMLDivElement.prototype, "scrollTop");
+    const originalClientHeight = Object.getOwnPropertyDescriptor(HTMLDivElement.prototype, "clientHeight");
+    const originalRect = HTMLElement.prototype.getBoundingClientRect;
+    let scrollTopValue = 0;
+    Object.defineProperty(HTMLDivElement.prototype, "scrollHeight", {
+      configurable: true,
+      get() {
+        return this.classList.contains("overflow-y-auto") ? 5226 : 0;
+      },
+    });
+    Object.defineProperty(HTMLDivElement.prototype, "clientHeight", {
+      configurable: true,
+      get() {
+        return this.classList.contains("overflow-y-auto") ? 846 : 0;
+      },
+    });
+    Object.defineProperty(HTMLDivElement.prototype, "scrollTop", {
+      configurable: true,
+      get() {
+        return this.classList.contains("overflow-y-auto") ? scrollTopValue : 0;
+      },
+      set(value) {
+        scrollTopValue = value as number;
+      },
+    });
+    HTMLElement.prototype.getBoundingClientRect = function () {
+      if (this instanceof HTMLElement && this.dataset.turnId === "u-anchor") {
+        return DOMRect.fromRect({ x: 0, y: 1450, width: 600, height: 100 });
+      }
+      if (this instanceof HTMLDivElement && this.classList.contains("overflow-y-auto")) {
+        return DOMRect.fromRect({ x: 0, y: 0, width: 600, height: 846 });
+      }
+      return originalRect.call(this);
+    };
+
+    try {
+      const { rerender } = render(<MessageFeed sessionId={sid} threadKey="q-941" />);
+      expect(scrollTopValue).toBe(0);
+      expect(mockScrollTo).not.toHaveBeenCalled();
+
+      mockStoreValues.threadWindows = new Map([[sid, new Map([["q-941", makeThreadWindow()]])]]);
+      mockStoreValues.threadWindowMessages = new Map([[sid, new Map([["q-941", windowMessages]])]]);
+      rerender(<MessageFeed sessionId={sid} threadKey="q-941" />);
+
+      await waitFor(() => expect(scrollTopValue).toBe(1570));
+      expect(screen.getByText("Saved anchor request")).toBeTruthy();
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = originalRect;
+      if (originalScrollHeight) Object.defineProperty(HTMLDivElement.prototype, "scrollHeight", originalScrollHeight);
+      else delete (HTMLDivElement.prototype as { scrollHeight?: unknown }).scrollHeight;
+      if (originalScrollTop) Object.defineProperty(HTMLDivElement.prototype, "scrollTop", originalScrollTop);
+      else delete (HTMLDivElement.prototype as { scrollTop?: unknown }).scrollTop;
       if (originalClientHeight) Object.defineProperty(HTMLDivElement.prototype, "clientHeight", originalClientHeight);
       else delete (HTMLDivElement.prototype as { clientHeight?: unknown }).clientHeight;
     }
