@@ -123,6 +123,7 @@ export class CodexAdapter
   private suppressedTurnResultIds = new Set<string>();
   private toolRouterErrorByTurnId = new Map<string, string>();
   private handledWriteStdinRouterErrorByTurnId = new Map<string, string>();
+  private suppressedWriteStdinRouterCompletionByTurnId = new Map<string, string>();
   private connected = false;
   private initialized = false;
   private initFailed = false;
@@ -889,7 +890,6 @@ export class CodexAdapter
       this.currentTurnId = null;
       for (const resolve of this.turnEndResolvers.splice(0)) resolve();
       if (this.emitCompletedResultForHandledWriteStdinRouterError(expectedTurnId)) {
-        this.suppressedTurnResultIds.add(expectedTurnId);
         return true;
       }
       const routerError = this.toolRouterErrorByTurnId.get(expectedTurnId);
@@ -1153,7 +1153,6 @@ export class CodexAdapter
       this.currentTurnId = null;
       for (const resolve of this.turnEndResolvers.splice(0)) resolve();
       if (this.emitCompletedResultForHandledWriteStdinRouterError(staleTurnId)) {
-        this.suppressedTurnResultIds.add(staleTurnId);
         return;
       }
       const routerError = this.toolRouterErrorByTurnId.get(staleTurnId);
@@ -1186,10 +1185,23 @@ export class CodexAdapter
 
     if (turnId && this.suppressedTurnResultIds.delete(turnId)) {
       this.handledWriteStdinRouterErrorByTurnId.delete(turnId);
+      this.suppressedWriteStdinRouterCompletionByTurnId.delete(turnId);
       return;
     }
 
     if (turnId) {
+      const suppressedWriteStdinRouterError = this.suppressedWriteStdinRouterCompletionByTurnId.get(turnId);
+      if (suppressedWriteStdinRouterError) {
+        this.suppressedWriteStdinRouterCompletionByTurnId.delete(turnId);
+        this.handledWriteStdinRouterErrorByTurnId.delete(turnId);
+        if (
+          !turn?.error?.message ||
+          this.isSameWriteStdinRouterFailure(turn.error.message, suppressedWriteStdinRouterError)
+        ) {
+          return;
+        }
+      }
+
       const handledWriteStdinRouterError = this.handledWriteStdinRouterErrorByTurnId.get(turnId);
       if (
         handledWriteStdinRouterError &&
@@ -1217,7 +1229,9 @@ export class CodexAdapter
   }
 
   private emitCompletedResultForHandledWriteStdinRouterError(turnId: string): boolean {
-    if (!this.handledWriteStdinRouterErrorByTurnId.has(turnId)) return false;
+    const handledMessage = this.handledWriteStdinRouterErrorByTurnId.get(turnId);
+    if (!handledMessage) return false;
+    this.suppressedWriteStdinRouterCompletionByTurnId.set(turnId, handledMessage);
     this.handledWriteStdinRouterErrorByTurnId.delete(turnId);
     this.toolRouterErrorByTurnId.delete(turnId);
     this.emitTurnResult({

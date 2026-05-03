@@ -309,4 +309,97 @@ describe("CodexAdapter stale turn/steer recovery", () => {
 
     expect(emitted.filter((msg) => msg.type === "result")).toHaveLength(1);
   });
+
+  it("surfaces a different completion error after handled write_stdin stale-steer cleanup", async () => {
+    const emitted: BrowserIncomingMessage[] = [];
+    const steerFailed = vi.fn();
+    const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini", cwd: "/tmp" });
+    adapter.onBrowserMessage((msg) => emitted.push(msg));
+    adapter.onTurnSteerFailed(steerFailed);
+
+    await initializeAdapter(stdout);
+    await startActiveTurn(adapter, stdin, stdout, "turn_write_stdin_router_error");
+
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          item: {
+            id: "cmd_live",
+            type: "commandExecution",
+            command: ["sleep", "20"],
+          },
+        },
+      }) + "\n",
+    );
+    await tick();
+    stdout.push(
+      JSON.stringify({
+        method: "item/commandExecution/terminalInteraction",
+        params: {
+          itemId: "cmd_live",
+          processId: "13506",
+          stdin: "",
+        },
+      }) + "\n",
+    );
+    await tick();
+
+    const routerErrorMessage = "write_stdin failed: Unknown process id 13506";
+    stdout.push(
+      JSON.stringify({
+        method: "codex/event/error",
+        params: { msg: { message: routerErrorMessage } },
+      }) + "\n",
+    );
+    await tick();
+
+    adapter.sendBrowserMessage({
+      type: "codex_steer_pending",
+      pendingInputIds: ["pending-follow-up"],
+      expectedTurnId: "turn_write_stdin_router_error",
+      inputs: [{ content: "follow-up after write_stdin router failure" }],
+    });
+    await tick();
+
+    stdout.push(
+      JSON.stringify({
+        id: findLastRequestId(stdin, "turn/steer"),
+        error: { code: -32602, message: "no active turn to steer" },
+      }) + "\n",
+    );
+    await tick();
+
+    const cleanupResults = emitted.filter((msg) => msg.type === "result");
+    expect(cleanupResults).toHaveLength(1);
+    expect((cleanupResults[0] as { data: { is_error: boolean } }).data.is_error).toBe(false);
+    expect(emitted).not.toContainEqual(
+      expect.objectContaining({
+        type: "error",
+        message: expect.stringContaining("Failed to steer active Codex turn"),
+      }),
+    );
+
+    const realErrorMessage = "Codex turn failed after stale steer recovery";
+    stdout.push(
+      JSON.stringify({
+        method: "turn/completed",
+        params: {
+          turn: {
+            id: "turn_write_stdin_router_error",
+            status: "failed",
+            error: { message: realErrorMessage },
+          },
+        },
+      }) + "\n",
+    );
+    await tick();
+
+    const results = emitted.filter((msg) => msg.type === "result");
+    expect(results).toHaveLength(2);
+    const realErrorResult = results[1] as { data: { is_error: boolean; result?: string; codex_turn_id?: string } };
+    expect(realErrorResult.data.is_error).toBe(true);
+    expect(realErrorResult.data.result).toBe(realErrorMessage);
+    expect(realErrorResult.data.codex_turn_id).toBe("turn_write_stdin_router_error");
+  });
 });

@@ -931,6 +931,97 @@ describe("CodexAdapter", () => {
     expect(messages.filter((m) => m.type === "result")).toHaveLength(1);
   });
 
+  it("surfaces a different completion error after handled write_stdin idle cleanup", async () => {
+    const messages: BrowserIncomingMessage[] = [];
+    const adapter = new CodexAdapter(proc as never, "test-session", { model: "o4-mini" });
+    adapter.onBrowserMessage((msg) => messages.push(msg));
+
+    await tick();
+    await initializeAdapter(stdout);
+    stdout.push(JSON.stringify({ id: 3, result: { rateLimits: { primary: null, secondary: null } } }) + "\n");
+    await tick();
+
+    adapter.sendBrowserMessage({ type: "user_message", content: "Poll a terminal" });
+    await tick();
+    stdout.push(JSON.stringify({ id: 4, result: { turn: { id: "turn_write_stdin_then_real_error" } } }) + "\n");
+    await tick();
+
+    stdout.push(
+      JSON.stringify({
+        method: "item/started",
+        params: {
+          item: {
+            id: "cmd_live_real_error",
+            type: "commandExecution",
+            command: ["sleep", "20"],
+          },
+        },
+      }) + "\n",
+    );
+    await tick();
+    stdout.push(
+      JSON.stringify({
+        method: "item/commandExecution/terminalInteraction",
+        params: {
+          itemId: "cmd_live_real_error",
+          processId: "13506",
+          stdin: "",
+        },
+      }) + "\n",
+    );
+    await tick();
+
+    const routerErrorMessage = "write_stdin failed: Unknown process id 13506";
+    stdout.push(
+      JSON.stringify({
+        method: "codex/event/error",
+        params: { msg: { message: routerErrorMessage } },
+      }) + "\n",
+    );
+    await tick();
+
+    expect(
+      getToolResultBlocks(messages).some(
+        (block) =>
+          block.is_error === true && typeof block.content === "string" && block.content.includes(routerErrorMessage),
+      ),
+    ).toBe(true);
+
+    stdout.push(
+      JSON.stringify({
+        method: "thread/status/changed",
+        params: { threadId: "thr_123", status: { type: "idle" } },
+      }) + "\n",
+    );
+    await tick();
+
+    const cleanupResults = messages.filter((m) => m.type === "result");
+    expect(cleanupResults).toHaveLength(1);
+    expect((cleanupResults[0] as { data: { is_error: boolean } }).data.is_error).toBe(false);
+
+    const realErrorMessage = "Codex turn failed after terminal router drift";
+    stdout.push(
+      JSON.stringify({
+        method: "turn/completed",
+        params: {
+          turn: {
+            id: "turn_write_stdin_then_real_error",
+            status: "failed",
+            error: { message: realErrorMessage },
+          },
+        },
+      }) + "\n",
+    );
+    await tick();
+
+    const results = messages.filter((m) => m.type === "result");
+    expect(results).toHaveLength(2);
+    const realErrorResult = results[1] as { data: { is_error: boolean; result?: string; codex_turn_id?: string } };
+    expect(realErrorResult.data.is_error).toBe(true);
+    expect(realErrorResult.data.result).toBe(realErrorMessage);
+    expect(realErrorResult.data.codex_turn_id).toBe("turn_write_stdin_then_real_error");
+  });
+
   it("renders unmatched write_stdin router errors as non-disruptive diagnostic tool results", async () => {
     // A write_stdin router failure is only specific enough to close a
     // write_stdin tool when the adapter has seen a terminal interaction for
