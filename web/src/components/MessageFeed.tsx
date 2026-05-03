@@ -137,6 +137,22 @@ function getSavedViewportRestoreKey(viewportKey: string, pos: FeedViewportPositi
   ].join(":");
 }
 
+function readSavedViewportPosition({
+  sessionId,
+  viewportKey,
+  normalizedThreadKey,
+  isLeaderSession,
+}: {
+  sessionId: string;
+  viewportKey: string;
+  normalizedThreadKey: string;
+  isLeaderSession: boolean;
+}): FeedViewportPosition | null {
+  const memoryPosition = useStore.getState().feedScrollPosition.get(viewportKey) ?? null;
+  if (!isLeaderSession) return memoryPosition;
+  return readLeaderViewportPosition(sessionId, normalizedThreadKey) ?? memoryPosition;
+}
+
 // ─── Main Feed ───────────────────────────────────────────────────────────────
 
 export function MessageFeed({
@@ -172,10 +188,14 @@ export function MessageFeed({
     if (isAllThreadsKey(normalizedThreadKey)) return false;
     return isLeaderSession;
   }, [isLeaderSession, normalizedThreadKey]);
-  const savedScrollPos =
-    useStore.getState().feedScrollPosition.get(getFeedViewportKey(sessionId, threadKey)) ??
-    (isLeaderSession ? readLeaderViewportPosition(sessionId, normalizedThreadKey) : null);
-  const savedViewportRestoreKey = getSavedViewportRestoreKey(getFeedViewportKey(sessionId, threadKey), savedScrollPos);
+  const viewportKey = useMemo(() => getFeedViewportKey(sessionId, threadKey), [sessionId, threadKey]);
+  const savedScrollPos = readSavedViewportPosition({
+    sessionId,
+    viewportKey,
+    normalizedThreadKey,
+    isLeaderSession,
+  });
+  const savedViewportRestoreKey = getSavedViewportRestoreKey(viewportKey, savedScrollPos);
   const selectedFeedWindow = useStore((s) => s.threadWindows?.get(sessionId)?.get(normalizedThreadKey) ?? null);
   const selectedFeedWindowMessages = useStore(
     (s) => s.threadWindowMessages?.get(sessionId)?.get(normalizedThreadKey) ?? EMPTY_MESSAGES,
@@ -236,7 +256,6 @@ export function MessageFeed({
   const containerRef = useRef<HTMLDivElement>(null);
   const textSelection = useTextSelection(containerRef);
   const contentRootRef = useRef<HTMLDivElement>(null);
-  const viewportKey = useMemo(() => getFeedViewportKey(sessionId, threadKey), [sessionId, threadKey]);
   // Initialize isNearBottom from saved scroll position — if the user was scrolled
   // up when they left this session, don't auto-scroll to bottom on re-mount.
   const autoFollowEnabledRef = useRef(savedScrollPos ? savedScrollPos.isAtBottom : true);
@@ -1308,9 +1327,12 @@ export function MessageFeed({
   // where the feed appears at scrollTop=0 for one frame before jumping.
   useLayoutEffect(() => {
     if (showConversationLoading) return;
-    const pos =
-      useStore.getState().feedScrollPosition.get(viewportKey) ??
-      (isLeaderSession ? readLeaderViewportPosition(sessionId, normalizedThreadKey) : null);
+    const pos = readSavedViewportPosition({
+      sessionId,
+      viewportKey,
+      normalizedThreadKey,
+      isLeaderSession,
+    });
     const restoreKey = getSavedViewportRestoreKey(viewportKey, pos);
     if (restoredViewportKeyRef.current === restoreKey) return;
     if (messages.length === 0 && pos?.anchorTurnId) return;
