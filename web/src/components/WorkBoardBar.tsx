@@ -619,7 +619,7 @@ function ThreadTabRail({
 
   function tabTone({ selected, needsInput }: { selected: boolean; needsInput: boolean }): string {
     if (selected) {
-      return "relative z-10 -mb-px rounded-b-none border-violet-100/45 border-b-transparent bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(139,92,246,0.12))] text-white shadow-[0_-1px_0_rgba(221,214,254,0.78),0_0_0_1px_rgba(196,181,253,0.16),0_10px_20px_-16px_rgba(196,181,253,0.78),inset_0_1px_0_rgba(255,255,255,0.14)]";
+      return "relative z-10 -mb-px rounded-b-none border-violet-100/45 border-b-transparent bg-white/[0.055] text-white shadow-[0_-1px_0_rgba(221,214,254,0.78),0_0_0_1px_rgba(196,181,253,0.16),0_10px_20px_-16px_rgba(196,181,253,0.78),inset_0_1px_0_rgba(255,255,255,0.14)]";
     }
     return needsInput
       ? "border-amber-400/35 bg-amber-400/10 text-amber-100 hover:bg-amber-400/15"

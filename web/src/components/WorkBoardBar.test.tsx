@@ -638,6 +638,8 @@ describe("WorkBoardBar", () => {
     expect(mainTab).toHaveAttribute("aria-pressed", "true");
     expect(mainTab).toHaveAttribute("data-active-output", "true");
     expect(mainTab).toHaveClass("border-violet-100/45", "border-b-transparent", "text-white");
+    expect(mainTab).toHaveClass("bg-white/[0.055]");
+    expect(mainTab.className).not.toContain("rgba(139,92,246");
     expect(mainTab).toHaveClass("focus-visible:ring-violet-100/70");
     expect(mainTab).not.toHaveClass("border-amber-400/60", "border-cc-primary/70", "border-b-cc-bg");
     const activeMarker = within(mainTab).getByTestId("thread-tab-active-output-indicator");
@@ -696,6 +698,8 @@ describe("WorkBoardBar", () => {
     expect(within(selectedTab).getByTestId("thread-tab-select")).toHaveAttribute("aria-pressed", "true");
     expect(selectedTab).toHaveAttribute("data-active-output", "false");
     expect(selectedTab).toHaveClass("border-violet-100/45", "border-b-transparent", "text-white");
+    expect(selectedTab).toHaveClass("bg-white/[0.055]");
+    expect(selectedTab.className).not.toContain("rgba(139,92,246");
     expect(selectedTab).not.toHaveClass("border-amber-400/60", "border-cc-primary/70");
     expect(within(selectedTab).queryByTestId("thread-tab-active-output-indicator")).not.toBeInTheDocument();
   });
