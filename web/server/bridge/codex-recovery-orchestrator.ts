@@ -629,7 +629,13 @@ export function pokeStaleCodexPendingDelivery(
 
   const beforeDispatchCount = head.dispatchCount;
   const beforeStatus = head.status;
-  queueCodexPendingStartBatch(session, reason, deps);
+  if (head.status === "queued") {
+    clearStaleCodexCompactionState(session, `${reason}_stale_compaction`, deps);
+    deps.dispatchQueuedCodexTurns(session, reason);
+    rebuildQueuedCodexPendingStartBatch(session, deps);
+  } else {
+    queueCodexPendingStartBatch(session, reason, deps);
+  }
 
   const currentHead = deps.getCodexHeadTurn(session);
   const dispatchedStaleHead =

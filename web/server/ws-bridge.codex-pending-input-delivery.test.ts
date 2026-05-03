@@ -771,6 +771,63 @@ describe("Codex pending input delivery", () => {
     warnSpy.mockRestore();
   });
 
+  it("dispatches a stale queued pending-delivery head without absorbing the leader trigger", async () => {
+    const sid = "s-codex-stale-queued-leader-poke";
+    const adapter = makeCodexAdapterMock();
+    const relaunchCb = vi.fn();
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    bridge.onCLIRelaunchNeededCallback(relaunchCb);
+    bridge.attachCodexAdapter(sid, adapter as any);
+    emitCodexSessionReady(adapter, { cliSessionId: "thread-stale-queued-leader", model: "gpt-5.4", cwd: "/repo" });
+
+    const session = bridge.getSession(sid)!;
+    const staleHead = seedStaleCodexPendingDeliveryHead(session, { status: "queued" });
+    adapter.sendBrowserMessage.mockClear();
+
+    const delivery = bridge.injectUserMessage(sid, "new leader instruction after queued head", {
+      sessionId: "leader-session",
+      sessionLabel: "Leader",
+    });
+    await Promise.resolve();
+
+    expect(delivery).toBe("sent");
+    expect(relaunchCb).not.toHaveBeenCalled();
+    expect(adapter.sendBrowserMessage).toHaveBeenCalledTimes(1);
+    const retried = adapter.sendBrowserMessage.mock.calls[0]?.[0] as any;
+    expect(retried).toEqual(
+      expect.objectContaining({
+        type: "codex_start_pending",
+        pendingInputIds: ["old-input-1", "old-input-2"],
+      }),
+    );
+    expect(getCodexStartPendingInputs(retried).map((input) => input.content)).toEqual([
+      "old pending instruction one",
+      "old pending instruction two",
+    ]);
+    expect(
+      getCodexStartPendingInputs(retried).some((input) => input.content === "new leader instruction after queued head"),
+    ).toBe(false);
+    expect(staleHead.status).toBe("dispatched");
+    expect(staleHead.dispatchCount).toBe(1);
+    expect(session.pendingCodexInputs.map((input: any) => input.content)).toEqual([
+      "old pending instruction one",
+      "old pending instruction two",
+      "new leader instruction after queued head",
+    ]);
+    expect(session.pendingCodexInputs.map((input: any) => input.cancelable)).toEqual([false, false, true]);
+    expect(session.pendingCodexTurns[1]?.adapterMsg).toEqual(
+      expect.objectContaining({
+        type: "codex_start_pending",
+        pendingInputIds: [session.pendingCodexInputs[2]?.id],
+      }),
+    );
+    expect(getCodexStartPendingInputs(session.pendingCodexTurns[1]?.adapterMsg).map((input) => input.content)).toEqual([
+      "new leader instruction after queued head",
+    ]);
+    expect(session.pendingCodexTurns[1]?.status).toBe("queued");
+    warnSpy.mockRestore();
+  });
+
   it("uses the same stale pending-delivery poke for browser/user messages", async () => {
     const sid = "s-codex-stale-browser-poke";
     const browser = makeBrowserSocket(sid);
@@ -811,6 +868,60 @@ describe("Codex pending input delivery", () => {
     expect(session.pendingCodexInputs.map((input: any) => input.content)).toEqual([
       "old browser pending instruction",
       "new browser instruction",
+    ]);
+    warnSpy.mockRestore();
+  });
+
+  it("dispatches a stale queued pending-delivery head without absorbing the browser trigger", async () => {
+    const sid = "s-codex-stale-queued-browser-poke";
+    const browser = makeBrowserSocket(sid);
+    const adapter = makeCodexAdapterMock();
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    bridge.attachCodexAdapter(sid, adapter as any);
+    emitCodexSessionReady(adapter, { cliSessionId: "thread-stale-queued-browser", model: "gpt-5.4", cwd: "/repo" });
+    bridge.handleBrowserOpen(browser, sid);
+
+    const session = bridge.getSession(sid)!;
+    const staleHead = seedStaleCodexPendingDeliveryHead(session, {
+      status: "queued",
+      inputs: [{ id: "old-queued-browser-input", content: "old queued browser instruction" }],
+    });
+    adapter.sendBrowserMessage.mockClear();
+
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "new browser instruction after queued head",
+      }),
+    );
+    await Promise.resolve();
+
+    expect(adapter.sendBrowserMessage).toHaveBeenCalledTimes(1);
+    const retried = adapter.sendBrowserMessage.mock.calls[0]?.[0] as any;
+    expect(retried).toEqual(
+      expect.objectContaining({
+        type: "codex_start_pending",
+        pendingInputIds: ["old-queued-browser-input"],
+      }),
+    );
+    expect(getCodexStartPendingInputs(retried).map((input) => input.content)).toEqual([
+      "old queued browser instruction",
+    ]);
+    expect(
+      getCodexStartPendingInputs(retried).some(
+        (input) => input.content === "new browser instruction after queued head",
+      ),
+    ).toBe(false);
+    expect(staleHead.status).toBe("dispatched");
+    expect(staleHead.dispatchCount).toBe(1);
+    expect(session.pendingCodexInputs.map((input: any) => input.content)).toEqual([
+      "old queued browser instruction",
+      "new browser instruction after queued head",
+    ]);
+    expect(session.pendingCodexInputs.map((input: any) => input.cancelable)).toEqual([false, true]);
+    expect(getCodexStartPendingInputs(session.pendingCodexTurns[1]?.adapterMsg).map((input) => input.content)).toEqual([
+      "new browser instruction after queued head",
     ]);
     warnSpy.mockRestore();
   });
