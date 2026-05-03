@@ -3,11 +3,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // ─── Hoisted mocks ──────────────────────────────────────────────────────────
 
 const mockExecSync = vi.hoisted(() => vi.fn());
+const mockExecFileSync = vi.hoisted(() => vi.fn());
 const mockExistsSync = vi.hoisted(() => vi.fn((_path: string) => false));
 const mockReaddirSync = vi.hoisted(() => vi.fn((_path: string) => [] as string[]));
 const mockHomedir = vi.hoisted(() => vi.fn(() => "/home/testuser"));
 
-vi.mock("node:child_process", () => ({ execSync: mockExecSync }));
+vi.mock("node:child_process", () => ({ execFileSync: mockExecFileSync, execSync: mockExecSync }));
 
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
@@ -30,12 +31,14 @@ vi.mock("node:os", async (importOriginal) => {
 
 import {
   captureUserShellPath,
+  captureUserShellEnv,
   buildFallbackPath,
   getEnrichedPath,
   resolveBinary,
   getServicePath,
   expandTilde,
   _resetPathCache,
+  _resetShellEnvCache,
 } from "./path-resolver.js";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -45,6 +48,7 @@ const originalEnv = { ...process.env };
 beforeEach(() => {
   vi.clearAllMocks();
   _resetPathCache();
+  _resetShellEnvCache();
   process.env = { ...originalEnv };
 });
 
@@ -56,7 +60,7 @@ afterEach(() => {
 
 describe("captureUserShellPath", () => {
   it("extracts PATH from login shell output using sentinel markers", () => {
-    mockExecSync.mockReturnValueOnce(
+    mockExecFileSync.mockReturnValueOnce(
       "___PATH_START___/usr/bin:/home/testuser/.nvm/versions/node/v20/bin:/home/testuser/.cargo/bin___PATH_END___\n",
     );
 
@@ -65,7 +69,7 @@ describe("captureUserShellPath", () => {
   });
 
   it("handles noisy shell output (MOTD, warnings) before and after PATH", () => {
-    mockExecSync.mockReturnValueOnce(
+    mockExecFileSync.mockReturnValueOnce(
       "Last login: Mon Jan 1\nWelcome!\n___PATH_START___/usr/local/bin:/usr/bin___PATH_END___\nbye\n",
     );
 
@@ -74,7 +78,7 @@ describe("captureUserShellPath", () => {
   });
 
   it("falls back to buildFallbackPath when shell sourcing fails", () => {
-    mockExecSync.mockImplementationOnce(() => {
+    mockExecFileSync.mockImplementationOnce(() => {
       throw new Error("shell failed");
     });
     // buildFallbackPath needs existsSync to return true for some dirs
@@ -86,7 +90,7 @@ describe("captureUserShellPath", () => {
   });
 
   it("falls back when shell output contains no sentinel markers", () => {
-    mockExecSync.mockReturnValueOnce("some garbage output\n");
+    mockExecFileSync.mockReturnValueOnce("some garbage output\n");
     mockExistsSync.mockImplementation((p: string) => p === "/usr/bin");
 
     const result = captureUserShellPath();
@@ -96,20 +100,57 @@ describe("captureUserShellPath", () => {
 
   it("uses $SHELL env var for the shell command", () => {
     process.env.SHELL = "/bin/zsh";
-    mockExecSync.mockReturnValueOnce("___PATH_START___/usr/bin___PATH_END___\n");
+    mockExecFileSync.mockReturnValueOnce("___PATH_START___/usr/bin___PATH_END___\n");
 
     captureUserShellPath();
 
-    expect(mockExecSync).toHaveBeenCalledWith(expect.stringContaining("/bin/zsh"), expect.any(Object));
+    expect(mockExecFileSync).toHaveBeenCalledWith("/bin/zsh", expect.any(Array), expect.any(Object));
   });
 
   it("defaults to /bin/bash when $SHELL is not set", () => {
     delete process.env.SHELL;
-    mockExecSync.mockReturnValueOnce("___PATH_START___/usr/bin___PATH_END___\n");
+    mockExecFileSync.mockReturnValueOnce("___PATH_START___/usr/bin___PATH_END___\n");
 
     captureUserShellPath();
 
-    expect(mockExecSync).toHaveBeenCalledWith(expect.stringContaining("/bin/bash"), expect.any(Object));
+    expect(mockExecFileSync).toHaveBeenCalledWith("/bin/bash", expect.any(Array), expect.any(Object));
+  });
+
+  it("runs the login shell directly instead of through an intermediate shell", () => {
+    process.env.SHELL = "/bin/zsh";
+    mockExecFileSync.mockReturnValueOnce("___PATH_START___/usr/bin___PATH_END___\n");
+
+    captureUserShellPath();
+
+    // Regression coverage for q-52: using execSync with a shell command string
+    // let timed-out `zsh -lic ...` probes survive as orphaned PID-1 children.
+    expect(mockExecFileSync).toHaveBeenCalledWith(
+      "/bin/zsh",
+      ["-lic", 'echo "___PATH_START___$PATH___PATH_END___"'],
+      expect.objectContaining({ timeout: 10_000, killSignal: "SIGKILL" }),
+    );
+    expect(mockExecSync).not.toHaveBeenCalled();
+  });
+});
+
+// ─── captureUserShellEnv ────────────────────────────────────────────────────
+
+describe("captureUserShellEnv", () => {
+  it("runs the env capture shell directly instead of through an intermediate shell", () => {
+    process.env.SHELL = "/bin/zsh";
+    mockExecFileSync.mockReturnValueOnce("___ENV_LITELLM_API_KEY___=secret\n");
+
+    const result = captureUserShellEnv(["LITELLM_API_KEY"]);
+
+    // This protects the same process-ownership path as PATH capture, but for
+    // the one-time login-shell env probe used by Codex launcher setup.
+    expect(result).toEqual({ LITELLM_API_KEY: "secret" });
+    expect(mockExecFileSync).toHaveBeenCalledWith(
+      "/bin/zsh",
+      ["-lic", 'echo "___ENV_LITELLM_API_KEY___=${LITELLM_API_KEY:-}"'],
+      expect.objectContaining({ timeout: 10_000, killSignal: "SIGKILL" }),
+    );
+    expect(mockExecSync).not.toHaveBeenCalled();
   });
 });
 
@@ -197,12 +238,7 @@ describe("buildFallbackPath", () => {
 describe("getEnrichedPath", () => {
   it("merges user shell PATH with current process PATH", () => {
     process.env.PATH = "/usr/bin:/bin";
-    mockExecSync.mockImplementation((cmd: string) => {
-      if (typeof cmd === "string" && cmd.includes("-lic")) {
-        return "___PATH_START___/usr/bin:/home/testuser/.cargo/bin___PATH_END___\n";
-      }
-      return "";
-    });
+    mockExecFileSync.mockReturnValueOnce("___PATH_START___/usr/bin:/home/testuser/.cargo/bin___PATH_END___\n");
 
     const result = getEnrichedPath();
     expect(result).toContain("/home/testuser/.cargo/bin");
@@ -212,12 +248,9 @@ describe("getEnrichedPath", () => {
 
   it("deduplicates entries from both PATHs", () => {
     process.env.PATH = "/usr/bin:/bin:/usr/local/bin";
-    mockExecSync.mockImplementation((cmd: string) => {
-      if (typeof cmd === "string" && cmd.includes("-lic")) {
-        return "___PATH_START___/usr/bin:/usr/local/bin:/home/testuser/.volta/bin___PATH_END___\n";
-      }
-      return "";
-    });
+    mockExecFileSync.mockReturnValueOnce(
+      "___PATH_START___/usr/bin:/usr/local/bin:/home/testuser/.volta/bin___PATH_END___\n",
+    );
 
     const result = getEnrichedPath();
     const dirs = result.split(":");
@@ -228,31 +261,21 @@ describe("getEnrichedPath", () => {
 
   it("caches the result after first call", () => {
     process.env.PATH = "/usr/bin";
-    mockExecSync.mockImplementation((cmd: string) => {
-      if (typeof cmd === "string" && cmd.includes("-lic")) {
-        return "___PATH_START___/usr/bin___PATH_END___\n";
-      }
-      return "";
-    });
+    mockExecFileSync.mockReturnValueOnce("___PATH_START___/usr/bin___PATH_END___\n");
 
     const first = getEnrichedPath();
-    mockExecSync.mockClear();
+    mockExecFileSync.mockClear();
     const second = getEnrichedPath();
 
     expect(first).toBe(second);
-    // execSync should NOT be called again (result was cached)
-    expect(mockExecSync).not.toHaveBeenCalled();
+    // execFileSync should NOT be called again (result was cached)
+    expect(mockExecFileSync).not.toHaveBeenCalled();
   });
 
   it("gives user shell PATH precedence over process PATH", () => {
     // User's shell has /opt/homebrew/bin first, process PATH has /usr/bin first
     process.env.PATH = "/usr/bin:/bin";
-    mockExecSync.mockImplementation((cmd: string) => {
-      if (typeof cmd === "string" && cmd.includes("-lic")) {
-        return "___PATH_START___/opt/homebrew/bin:/usr/bin___PATH_END___\n";
-      }
-      return "";
-    });
+    mockExecFileSync.mockReturnValueOnce("___PATH_START___/opt/homebrew/bin:/usr/bin___PATH_END___\n");
 
     const result = getEnrichedPath();
     const dirs = result.split(":");
@@ -261,12 +284,7 @@ describe("getEnrichedPath", () => {
 
   it("always prefixes built-in shim directories", () => {
     process.env.PATH = "/usr/bin:/bin";
-    mockExecSync.mockImplementation((cmd: string) => {
-      if (typeof cmd === "string" && cmd.includes("-lic")) {
-        return "___PATH_START___/opt/homebrew/bin:/usr/bin___PATH_END___\n";
-      }
-      return "";
-    });
+    mockExecFileSync.mockReturnValueOnce("___PATH_START___/opt/homebrew/bin:/usr/bin___PATH_END___\n");
 
     const result = getEnrichedPath();
     const dirs = result.split(":");
@@ -277,12 +295,7 @@ describe("getEnrichedPath", () => {
 
   it("does not add server-specific wrapper dirs when serverId is provided", () => {
     process.env.PATH = "/usr/bin:/bin";
-    mockExecSync.mockImplementation((cmd: string) => {
-      if (typeof cmd === "string" && cmd.includes("-lic")) {
-        return "___PATH_START___/opt/homebrew/bin:/usr/bin___PATH_END___\n";
-      }
-      return "";
-    });
+    mockExecFileSync.mockReturnValueOnce("___PATH_START___/opt/homebrew/bin:/usr/bin___PATH_END___\n");
 
     const result = getEnrichedPath({ serverId: "server-a" });
     const dirs = result.split(":");
@@ -294,12 +307,9 @@ describe("getEnrichedPath", () => {
   it("reuses the same cached PATH regardless of serverId hints", () => {
     process.env.PATH = "/usr/bin";
     let callCount = 0;
-    mockExecSync.mockImplementation((cmd: string) => {
-      if (typeof cmd === "string" && cmd.includes("-lic")) {
-        callCount++;
-        return `___PATH_START___/usr/bin:/call-${callCount}___PATH_END___\n`;
-      }
-      return "";
+    mockExecFileSync.mockImplementation(() => {
+      callCount++;
+      return `___PATH_START___/usr/bin:/call-${callCount}___PATH_END___\n`;
     });
 
     const serverAFirst = getEnrichedPath({ serverId: "server-a" });
@@ -320,20 +330,16 @@ describe("resolveBinary", () => {
   beforeEach(() => {
     // Seed getEnrichedPath cache to avoid shell-sourcing side effects
     process.env.PATH = "/usr/bin:/bin";
-    mockExecSync.mockImplementation((cmd: string) => {
-      if (typeof cmd === "string" && cmd.includes("-lic")) {
-        return "___PATH_START___/usr/bin:/usr/local/bin___PATH_END___\n";
-      }
+    mockExecFileSync.mockReturnValue("___PATH_START___/usr/bin:/usr/local/bin___PATH_END___\n");
+    mockExecSync.mockImplementation(() => {
       throw new Error("not found");
     });
   });
 
   it("returns absolute path when binary is found via which", () => {
     _resetPathCache();
+    mockExecFileSync.mockReturnValueOnce("___PATH_START___/usr/bin___PATH_END___\n");
     mockExecSync.mockImplementation((cmd: string) => {
-      if (typeof cmd === "string" && cmd.includes("-lic")) {
-        return "___PATH_START___/usr/bin___PATH_END___\n";
-      }
       if (typeof cmd === "string" && cmd.startsWith("which claude")) {
         return "/home/testuser/.local/bin/claude\n";
       }
@@ -345,10 +351,8 @@ describe("resolveBinary", () => {
 
   it("returns null when binary is not found anywhere", () => {
     _resetPathCache();
-    mockExecSync.mockImplementation((cmd: string) => {
-      if (typeof cmd === "string" && cmd.includes("-lic")) {
-        return "___PATH_START___/usr/bin___PATH_END___\n";
-      }
+    mockExecFileSync.mockReturnValueOnce("___PATH_START___/usr/bin___PATH_END___\n");
+    mockExecSync.mockImplementation(() => {
       throw new Error("not found");
     });
 
@@ -357,10 +361,8 @@ describe("resolveBinary", () => {
 
   it("passes enriched PATH to which command", () => {
     _resetPathCache();
+    mockExecFileSync.mockReturnValueOnce("___PATH_START___/usr/bin:/home/testuser/.special/bin___PATH_END___\n");
     mockExecSync.mockImplementation((cmd: string, opts?: any) => {
-      if (typeof cmd === "string" && cmd.includes("-lic")) {
-        return "___PATH_START___/usr/bin:/home/testuser/.special/bin___PATH_END___\n";
-      }
       if (typeof cmd === "string" && cmd.startsWith("which")) {
         // Verify enriched PATH is passed in env
         expect(opts?.env?.PATH).toContain("/home/testuser/.special/bin");
@@ -388,12 +390,7 @@ describe("resolveBinary", () => {
 describe("getServicePath", () => {
   it("returns the same value as getEnrichedPath", () => {
     process.env.PATH = "/usr/bin";
-    mockExecSync.mockImplementation((cmd: string) => {
-      if (typeof cmd === "string" && cmd.includes("-lic")) {
-        return "___PATH_START___/usr/bin:/opt/homebrew/bin___PATH_END___\n";
-      }
-      return "";
-    });
+    mockExecFileSync.mockReturnValueOnce("___PATH_START___/usr/bin:/opt/homebrew/bin___PATH_END___\n");
 
     expect(getServicePath()).toBe(getEnrichedPath());
   });
@@ -438,12 +435,9 @@ describe("_resetPathCache", () => {
   it("clears the cached PATH so next call re-computes", () => {
     process.env.PATH = "/usr/bin";
     let callCount = 0;
-    mockExecSync.mockImplementation((cmd: string) => {
-      if (typeof cmd === "string" && cmd.includes("-lic")) {
-        callCount++;
-        return `___PATH_START___/usr/bin:/call-${callCount}___PATH_END___\n`;
-      }
-      return "";
+    mockExecFileSync.mockImplementation(() => {
+      callCount++;
+      return `___PATH_START___/usr/bin:/call-${callCount}___PATH_END___\n`;
     });
 
     const first = getEnrichedPath();
