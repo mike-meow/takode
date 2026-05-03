@@ -12,6 +12,7 @@ import { invalidateHistoryWindowCache, invalidateThreadWindowCache } from "./uti
 import { recordFrontendPerfEntry } from "./utils/frontend-perf-recorder.js";
 import { isAllThreadsKey, isMainThreadKey, normalizeThreadKey } from "./utils/thread-projection.js";
 import type { WsMessageHandlerDeps } from "./ws-handlers.js";
+import type { WsIncomingMessageContext } from "./ws-message-context.js";
 
 const APPLIED_UPDATE_ID_LIMIT = 200;
 
@@ -21,16 +22,25 @@ type SafeThreadAttachmentUpdateEntry = ThreadAttachmentUpdate["updates"][number]
 
 interface SafeThreadAttachmentUpdate {
   updateId: string;
+  historyLength: number;
   affectedThreadKeys: string[];
   updates: SafeThreadAttachmentUpdateEntry[];
+}
+
+interface ApplyThreadAttachmentUpdateOptions {
+  messageContext?: WsIncomingMessageContext;
 }
 
 export function applyThreadAttachmentUpdate(
   sessionId: string,
   update: ThreadAttachmentUpdate,
   deps: WsMessageHandlerDeps,
+  options: ApplyThreadAttachmentUpdateOptions = {},
 ): void {
   const startedAt = perfNow();
+  const context = options.messageContext;
+  const replayed = context?.source === "event_replay";
+  const coldBufferedReplay = context?.coldBufferedReplay === true;
   const normalized = normalizeThreadAttachmentUpdate(update);
   if (!normalized.ok) {
     const affectedThreadKeys = normalized.affectedThreadKeys;
@@ -47,12 +57,17 @@ export function applyThreadAttachmentUpdate(
       durationMs: perfNow() - startedAt,
       ok: false,
       recoveryReason: normalized.recoveryReason,
+      applicationMode: "refetch_only",
+      skippedLocalPatch: true,
+      replayed,
+      coldBufferedReplay,
     });
     return;
   }
 
   const safeUpdate = normalized.update;
   const stats = threadAttachmentUpdateStats(safeUpdate);
+  const baseCheck = classifyThreadAttachmentUpdateApplication(sessionId, safeUpdate, { coldBufferedReplay });
 
   if (hasAppliedThreadAttachmentUpdate(sessionId, safeUpdate.updateId)) {
     recordFrontendPerfEntry({
@@ -65,6 +80,35 @@ export function applyThreadAttachmentUpdate(
       durationMs: perfNow() - startedAt,
       ok: true,
       deduped: true,
+      applicationMode: "deduped",
+      replayed,
+      coldBufferedReplay,
+      updateHistoryLength: safeUpdate.historyLength,
+      knownAuthoritativeHistoryLength: baseCheck.knownAuthoritativeHistoryLength,
+    });
+    return;
+  }
+
+  if (baseCheck.mode === "refetch_only") {
+    invalidateThreadAttachmentWindows(sessionId, safeUpdate.affectedThreadKeys);
+    requestLatestMainWindow(sessionId, deps);
+    const requestedThreadWindowCount = requestAffectedThreadWindows(sessionId, safeUpdate.affectedThreadKeys, deps);
+    recordFrontendPerfEntry({
+      kind: "thread_attachment_update_apply",
+      timestamp: Date.now(),
+      sessionId,
+      ...stats,
+      requestedHistoryWindowCount: 1,
+      requestedThreadWindowCount,
+      durationMs: perfNow() - startedAt,
+      ok: true,
+      applicationMode: "refetch_only",
+      advisoryReason: baseCheck.reason,
+      skippedLocalPatch: true,
+      replayed,
+      coldBufferedReplay,
+      updateHistoryLength: safeUpdate.historyLength,
+      knownAuthoritativeHistoryLength: baseCheck.knownAuthoritativeHistoryLength,
     });
     return;
   }
@@ -85,6 +129,11 @@ export function applyThreadAttachmentUpdate(
     requestedThreadWindowCount,
     durationMs: perfNow() - startedAt,
     ok: true,
+    applicationMode: "patched",
+    replayed,
+    coldBufferedReplay,
+    updateHistoryLength: safeUpdate.historyLength,
+    knownAuthoritativeHistoryLength: baseCheck.knownAuthoritativeHistoryLength,
   });
 }
 
@@ -107,6 +156,7 @@ function normalizeThreadAttachmentUpdate(update: ThreadAttachmentUpdate):
 
   if (raw.version !== 1) return recovery("unsupported_version");
   if (typeof raw.updateId !== "string" || !raw.updateId.trim()) return recovery("missing_update_id");
+  if (!isSafeHistoryLength(raw.historyLength)) return recovery("invalid_history_length");
   if (!Array.isArray(raw.affectedThreadKeys)) return recovery("invalid_affected_thread_keys");
   if (affectedThreadKeys.length !== raw.affectedThreadKeys.length) return recovery("invalid_affected_thread_keys");
   if (!Array.isArray(raw.updates)) return recovery("missing_updates");
@@ -130,10 +180,90 @@ function normalizeThreadAttachmentUpdate(update: ThreadAttachmentUpdate):
     ok: true,
     update: {
       updateId: raw.updateId,
+      historyLength: raw.historyLength,
       affectedThreadKeys,
       updates: raw.updates as SafeThreadAttachmentUpdateEntry[],
     },
   };
+}
+
+function classifyThreadAttachmentUpdateApplication(
+  sessionId: string,
+  update: SafeThreadAttachmentUpdate,
+  input: { coldBufferedReplay: boolean },
+):
+  | { mode: "patched"; knownAuthoritativeHistoryLength?: number }
+  | { mode: "refetch_only"; reason: string; knownAuthoritativeHistoryLength?: number } {
+  const knownAuthoritativeHistoryLength = getKnownAuthoritativeHistoryLength(sessionId);
+  if (input.coldBufferedReplay) {
+    return {
+      mode: "refetch_only",
+      reason: "cold_buffered_replay_after_authoritative_sync",
+      knownAuthoritativeHistoryLength,
+    };
+  }
+  if (hasAuthoritativeAttachmentMarker(sessionId, update)) {
+    return { mode: "refetch_only", reason: "authoritative_marker_present", knownAuthoritativeHistoryLength };
+  }
+  if (typeof knownAuthoritativeHistoryLength === "number" && knownAuthoritativeHistoryLength >= update.historyLength) {
+    return { mode: "refetch_only", reason: "stale_or_already_advanced_history", knownAuthoritativeHistoryLength };
+  }
+  return { mode: "patched", knownAuthoritativeHistoryLength };
+}
+
+function getKnownAuthoritativeHistoryLength(sessionId: string): number | undefined {
+  const store = useStore.getState();
+  const candidates: number[] = [];
+  const projectionLength = store.leaderProjections.get(sessionId)?.sourceHistoryLength;
+  if (isSafeHistoryLength(projectionLength)) candidates.push(projectionLength);
+  for (const window of store.threadWindows.get(sessionId)?.values() ?? []) {
+    if (isSafeHistoryLength(window.source_history_length)) candidates.push(window.source_history_length);
+  }
+  const loadedHistoryLength = loadedMessagesHistoryLength(store.messages.get(sessionId) ?? []);
+  if (typeof loadedHistoryLength === "number") candidates.push(loadedHistoryLength);
+  return candidates.length > 0 ? Math.max(...candidates) : undefined;
+}
+
+function loadedMessagesHistoryLength(messages: ReadonlyArray<ChatMessage>): number | undefined {
+  let maxIndex = -1;
+  for (const message of messages) {
+    if (isSafeHistoryIndex(message.historyIndex)) maxIndex = Math.max(maxIndex, message.historyIndex);
+  }
+  return maxIndex >= 0 ? maxIndex + 1 : undefined;
+}
+
+function hasAuthoritativeAttachmentMarker(sessionId: string, update: SafeThreadAttachmentUpdate): boolean {
+  const markerKeys = threadAttachmentUpdateMarkerKeys(update);
+  if (markerKeys.size === 0) return false;
+  const store = useStore.getState();
+  if (messagesContainAttachmentMarker(store.messages.get(sessionId) ?? [], markerKeys)) return true;
+  for (const messages of store.threadWindowMessages.get(sessionId)?.values() ?? []) {
+    if (messagesContainAttachmentMarker(messages, markerKeys)) return true;
+  }
+  return false;
+}
+
+function messagesContainAttachmentMarker(
+  messages: ReadonlyArray<ChatMessage>,
+  markerKeys: ReadonlySet<string>,
+): boolean {
+  for (const message of messages) {
+    const marker = message.metadata?.threadAttachmentMarker;
+    if (!marker) continue;
+    if (markerKeys.has(marker.id) || markerKeys.has(marker.markerKey)) return true;
+  }
+  return false;
+}
+
+function threadAttachmentUpdateMarkerKeys(update: SafeThreadAttachmentUpdate): Set<string> {
+  const keys = new Set<string>();
+  for (const item of update.updates) {
+    for (const marker of item.markers) {
+      keys.add(marker.id);
+      keys.add(marker.markerKey);
+    }
+  }
+  return keys;
 }
 
 function hasAppliedThreadAttachmentUpdate(sessionId: string, updateId: string): boolean {
@@ -341,6 +471,10 @@ function isValidThreadRefRecord(value: unknown): boolean {
 }
 
 function isSafeHistoryIndex(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+function isSafeHistoryLength(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
 

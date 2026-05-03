@@ -2,6 +2,7 @@ import type { BrowserIncomingMessage, BrowserOutgoingMessage, SdkSessionInfo } f
 import { FEED_WINDOW_SYNC_VERSION } from "../shared/feed-window-sync.js";
 import { scopedGetItem, scopedSetItem } from "./utils/scoped-storage.js";
 import { recordFrontendPerfEntry } from "./utils/frontend-perf-recorder.js";
+import type { WsIncomingMessageContext } from "./ws-message-context.js";
 
 /** Heartbeat interval — send a ping every 30s to keep the connection alive */
 const HEARTBEAT_INTERVAL_MS = 30_000;
@@ -46,7 +47,7 @@ export interface WsTransportCallbacks {
   getFreshHistoryWindow?: (
     sessionId: string,
   ) => { sectionTurnCount: number; visibleSectionCount: number } | null | undefined;
-  onMessage: (sessionId: string, data: BrowserIncomingMessage) => void;
+  onMessage: (sessionId: string, data: BrowserIncomingMessage, context: WsIncomingMessageContext) => void;
   onConnecting?: (sessionId: string) => void;
   onConnected?: (sessionId: string) => void;
   onDisconnected?: (sessionId: string) => void;
@@ -292,7 +293,7 @@ export function createWsTransport(callbacks: WsTransportCallbacks): WsTransport 
           bufferedMessages.push(evt.message);
           continue;
         }
-        callbacks.onMessage(sessionId, evt.message);
+        callbacks.onMessage(sessionId, evt.message, { source: "event_replay", coldBufferedReplay: false });
       }
       if (bufferedMessages.length > 0) {
         const previous = coldSubscribeBufferedReplay.get(sessionId) ?? [];
@@ -331,12 +332,12 @@ export function createWsTransport(callbacks: WsTransportCallbacks): WsTransport 
       const bufferedReplay = coldSubscribeBufferedReplay.get(sessionId) ?? [];
       if (message.sessionStatus === "running") {
         for (const replayedMessage of bufferedReplay) {
-          callbacks.onMessage(sessionId, replayedMessage);
+          callbacks.onMessage(sessionId, replayedMessage, { source: "event_replay", coldBufferedReplay: true });
         }
       }
       clearColdSubscribeState(sessionId);
     }
-    callbacks.onMessage(sessionId, message);
+    callbacks.onMessage(sessionId, message, { source: "live" });
   }
 
   function scheduleReconnect(sessionId: string): void {

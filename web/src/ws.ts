@@ -3,8 +3,11 @@ import type { BrowserIncomingMessage, BrowserOutgoingMessage, McpServerConfig, S
 import { createWsTransport } from "./ws-transport.js";
 import { createWsMessageHandler, resolveSessionFilePath } from "./ws-handlers.js";
 import { HISTORY_WINDOW_SECTION_TURN_COUNT, HISTORY_WINDOW_VISIBLE_SECTION_COUNT } from "../shared/history-window.js";
+import type { WsIncomingMessageContext } from "./ws-message-context.js";
 
-let handleIncomingMessage: ((sessionId: string, data: BrowserIncomingMessage) => void) | null = null;
+let handleIncomingMessage:
+  | ((sessionId: string, data: BrowserIncomingMessage, context: WsIncomingMessageContext) => void)
+  | null = null;
 let pendingVsCodeSelectionUpdate: Extract<BrowserOutgoingMessage, { type: "vscode_selection_update" }> | null = null;
 
 const transport = createWsTransport({
@@ -50,8 +53,8 @@ const transport = createWsTransport({
     const sdkSession = store.sdkSessions.find((s) => s.sessionId === sessionId);
     return Boolean(sdkSession && !sdkSession.archived);
   },
-  onMessage: (sessionId, data) => {
-    handleIncomingMessage?.(sessionId, data);
+  onMessage: (sessionId, data, context) => {
+    handleIncomingMessage?.(sessionId, data, context);
   },
 });
 

@@ -95,6 +95,13 @@ export type FrontendPerfEntry =
       ok: boolean;
       deduped?: boolean;
       recoveryReason?: string;
+      applicationMode?: "patched" | "refetch_only" | "deduped";
+      advisoryReason?: string;
+      skippedLocalPatch?: boolean;
+      replayed?: boolean;
+      coldBufferedReplay?: boolean;
+      updateHistoryLength?: number;
+      knownAuthoritativeHistoryLength?: number;
     }
   | {
       kind: "tree_groups_update_apply";

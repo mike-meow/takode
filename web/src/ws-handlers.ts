@@ -28,6 +28,7 @@ import {
 import { FEED_WINDOW_SYNC_VERSION } from "../shared/feed-window-sync.js";
 import { recordFrontendPerfEntry } from "./utils/frontend-perf-recorder.js";
 import { applyThreadAttachmentUpdate } from "./thread-attachment-update-handler.js";
+import type { WsIncomingMessageContext } from "./ws-message-context.js";
 
 const taskCounters = new Map<string, number>();
 const pendingCliDisconnectTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -569,7 +570,12 @@ function requestUncachedThreadWindow(
   });
 }
 
-function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, deps: WsMessageHandlerDeps) {
+function handleParsedMessage(
+  sessionId: string,
+  data: BrowserIncomingMessage,
+  deps: WsMessageHandlerDeps,
+  context: WsIncomingMessageContext = { source: "live" },
+) {
   const store = useStore.getState();
 
   switch (data.type) {
@@ -725,7 +731,7 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
     }
 
     case "thread_attachment_update": {
-      applyThreadAttachmentUpdate(sessionId, data, deps);
+      applyThreadAttachmentUpdate(sessionId, data, deps, { messageContext: context });
       break;
     }
 
@@ -1820,7 +1826,7 @@ function handleParsedMessage(sessionId: string, data: BrowserIncomingMessage, de
 }
 
 export function createWsMessageHandler(deps: WsMessageHandlerDeps) {
-  return (sessionId: string, data: BrowserIncomingMessage) => {
-    handleParsedMessage(sessionId, data, deps);
+  return (sessionId: string, data: BrowserIncomingMessage, context?: WsIncomingMessageContext) => {
+    handleParsedMessage(sessionId, data, deps, context);
   };
 }

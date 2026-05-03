@@ -106,7 +106,7 @@ function makeSession(id: string): SessionState {
   };
 }
 
-function fireMessage(data: Record<string, unknown>) {
+function fireMessage(data: unknown) {
   lastWs.onmessage!({ data: JSON.stringify(data) });
 }
 
@@ -118,7 +118,7 @@ function connectAndHydrateSession() {
 
 function threadAttachmentUpdate(
   overrides: Partial<Extract<BrowserIncomingMessage, { type: "thread_attachment_update" }>> = {},
-) {
+): Extract<BrowserIncomingMessage, { type: "thread_attachment_update" }> {
   return {
     type: "thread_attachment_update",
     version: 1,
@@ -175,11 +175,7 @@ function setPatchSentinelMessages() {
     });
 }
 
-async function expectMalformedRecovery(input: {
-  payload: Record<string, unknown>;
-  recoveryReason: string;
-  expectedSendCount: number;
-}) {
+async function expectMalformedRecovery(input: { payload: unknown; recoveryReason: string; expectedSendCount: number }) {
   connectAndHydrateSession();
   setPatchSentinelMessages();
 
@@ -291,6 +287,128 @@ describe("handleMessage: thread_attachment_update", () => {
         }),
       ]),
     );
+  });
+
+  it("uses authoritative marker state as cross-reload idempotency and refetches without local mutation", async () => {
+    connectAndHydrateSession();
+    useStore.getState().setMessages(
+      "s1",
+      [
+        { id: "u2", role: "user", content: "move me", timestamp: 1001, historyIndex: 1 },
+        {
+          id: "marker-1",
+          role: "system",
+          content: "1 message moved to q-1087",
+          timestamp: 3000,
+          historyIndex: 42,
+          metadata: { threadAttachmentMarker: threadAttachmentUpdate().updates[0]!.markers[0]! },
+        },
+      ],
+      { frozenCount: 2 },
+    );
+
+    fireMessage(threadAttachmentUpdate());
+
+    const messages = useStore.getState().messages.get("s1") ?? [];
+    expect(messages.find((message) => message.id === "u2")?.metadata?.threadRefs).toBeUndefined();
+    expect(messages.filter((message) => message.id === "marker-1")).toHaveLength(1);
+    expect(lastWs.send).toHaveBeenCalledTimes(2);
+    const { getFrontendPerfEntries } = await import("./utils/frontend-perf-recorder.js");
+    expect(getFrontendPerfEntries()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "thread_attachment_update_apply",
+          applicationMode: "refetch_only",
+          advisoryReason: "authoritative_marker_present",
+          skippedLocalPatch: true,
+          requestedHistoryWindowCount: 1,
+          requestedThreadWindowCount: 1,
+        }),
+      ]),
+    );
+  });
+
+  it("refetches instead of patching stale updates after newer authoritative history", async () => {
+    connectAndHydrateSession();
+    useStore.getState().setMessages(
+      "s1",
+      [
+        { id: "u2", role: "user", content: "move me", timestamp: 1001, historyIndex: 1 },
+        { id: "newer", role: "assistant", content: "newer authoritative message", timestamp: 4000, historyIndex: 43 },
+      ],
+      { frozenCount: 2 },
+    );
+
+    fireMessage(threadAttachmentUpdate());
+
+    const messages = useStore.getState().messages.get("s1") ?? [];
+    expect(messages.find((message) => message.id === "u2")?.metadata?.threadRefs).toBeUndefined();
+    expect(messages.some((message) => message.id === "marker-1")).toBe(false);
+    expect(lastWs.send).toHaveBeenCalledTimes(2);
+    const { getFrontendPerfEntries } = await import("./utils/frontend-perf-recorder.js");
+    expect(getFrontendPerfEntries()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "thread_attachment_update_apply",
+          applicationMode: "refetch_only",
+          advisoryReason: "stale_or_already_advanced_history",
+          knownAuthoritativeHistoryLength: 44,
+        }),
+      ]),
+    );
+  });
+
+  it("invalidates and refreshes both source and target thread tabs for live safe updates", () => {
+    connectAndHydrateSession();
+    useStore
+      .getState()
+      .setMessages("s1", [{ id: "u2", role: "user", content: "move me", timestamp: 1001, historyIndex: 1 }], {
+        frozenCount: 1,
+      });
+    for (const threadKey of ["q-source", "q-1087"]) {
+      useStore.getState().setThreadWindow(
+        "s1",
+        threadKey,
+        {
+          thread_key: threadKey,
+          from_item: 0,
+          item_count: 1,
+          total_items: 1,
+          source_history_length: 42,
+          section_item_count: HISTORY_WINDOW_SECTION_TURN_COUNT,
+          visible_item_count: HISTORY_WINDOW_VISIBLE_SECTION_COUNT,
+        },
+        [],
+      );
+    }
+    const baseUpdate = threadAttachmentUpdate();
+
+    fireMessage(
+      threadAttachmentUpdate({
+        affectedThreadKeys: ["q-source", "q-1087"],
+        updates: [
+          {
+            ...baseUpdate.updates[0]!,
+            source: { threadKey: "q-source", questId: "q-source" },
+          },
+        ],
+      }),
+    );
+
+    expect(useStore.getState().threadWindows.get("s1")?.has("q-source")).toBeFalsy();
+    expect(useStore.getState().threadWindows.get("s1")?.has("q-1087")).toBeFalsy();
+    expect(lastWs.send).toHaveBeenCalledTimes(3);
+    expect(lastWs.send.mock.calls.map(([raw]) => JSON.parse(raw).type)).toEqual([
+      "history_window_request",
+      "thread_window_request",
+      "thread_window_request",
+    ]);
+    expect(
+      lastWs.send.mock.calls
+        .slice(1)
+        .map(([raw]) => JSON.parse(raw).thread_key)
+        .sort(),
+    ).toEqual(["q-1087", "q-source"]);
   });
 
   it("deduplicates repeated updates by updateId", () => {
