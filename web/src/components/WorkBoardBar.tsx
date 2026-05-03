@@ -584,7 +584,7 @@ function ThreadTabRail({
         strokeWidth="1.5"
         strokeLinecap="round"
         strokeLinejoin="round"
-        className="h-3 w-3 shrink-0 text-amber-400"
+        className="relative z-10 h-3 w-3 shrink-0 text-amber-400"
         aria-hidden="true"
         data-testid="thread-tab-needs-input-bell"
         data-active-output={activeOutput ? "true" : "false"}
@@ -595,13 +595,19 @@ function ThreadTabRail({
     );
   }
 
-  function ActiveOutputIndicator() {
+  function ActiveOutputIndicator({ overlapsNeedsInput }: { overlapsNeedsInput: boolean }) {
+    const dotClassName = overlapsNeedsInput
+      ? "absolute left-1.5 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-sky-50/95 shadow-[0_0_10px_rgba(224,242,254,0.86)] ring-1 ring-violet-100/80"
+      : "absolute left-1.5 top-1 h-1.5 w-1.5 rounded-full bg-sky-100 shadow-[0_0_8px_rgba(125,211,252,0.75)] ring-1 ring-violet-100/70";
+
     return (
       <span
-        className="pointer-events-none absolute inset-x-1 top-0 h-2"
+        className="pointer-events-none absolute inset-x-1 inset-y-0"
         aria-hidden="true"
         data-testid="thread-tab-active-output-indicator"
         data-reduced-motion-static="true"
+        data-dot-position="left"
+        data-overlaps-needs-input={overlapsNeedsInput ? "true" : "false"}
       >
         <span className="absolute inset-x-0 top-0 h-px overflow-hidden rounded-full bg-violet-100/30">
           <span
@@ -610,10 +616,7 @@ function ThreadTabRail({
             data-reduced-motion="animation-disabled"
           />
         </span>
-        <span
-          className="absolute right-0 top-1 h-1.5 w-1.5 rounded-full bg-sky-100 shadow-[0_0_8px_rgba(125,211,252,0.75)] ring-1 ring-violet-100/70"
-          data-testid="thread-tab-active-output-dot"
-        />
+        <span className={dotClassName} data-testid="thread-tab-active-output-dot" />
       </span>
     );
   }
@@ -742,7 +745,7 @@ function ThreadTabRail({
           data-min-label="Main Thread"
           aria-pressed={mainSelected}
         >
-          {mainActiveOutput && <ActiveOutputIndicator />}
+          {mainActiveOutput && <ActiveOutputIndicator overlapsNeedsInput={mainNeedsInput} />}
           {mainNeedsInput && <NeedsInputBell activeOutput={mainActiveOutput} />}
           <ActiveTitle activeOutput={mainActiveOutput}>
             <span className="min-w-0 truncate">Main Thread</span>
@@ -777,7 +780,7 @@ function ThreadTabRail({
               data-closable={tab.canClose ? "true" : "false"}
               data-has-quest-hover={hoverQuest ? "true" : "false"}
             >
-              {activeOutput && <ActiveOutputIndicator />}
+              {activeOutput && <ActiveOutputIndicator overlapsNeedsInput={tab.needsInput} />}
               <button
                 type="button"
                 onClick={() => openThread(tab.threadKey, tab.route)}
@@ -795,8 +798,10 @@ function ThreadTabRail({
                 <button
                   type="button"
                   aria-label={`Close ${displayQuestId ?? displayTitle}`}
-                  className={`inline-flex w-5 shrink-0 items-center justify-center border-l border-current/10 text-cc-muted transition-colors hover:bg-cc-hover hover:text-cc-fg focus-visible:opacity-100 ${
-                    selected ? "opacity-100" : "opacity-70 sm:opacity-0 sm:group-hover:opacity-100"
+                  className={`inline-flex shrink-0 items-center justify-center overflow-hidden border-l border-current/10 text-cc-muted transition-colors hover:bg-cc-hover hover:text-cc-fg focus-visible:w-5 focus-visible:border-l focus-visible:opacity-100 ${
+                    selected
+                      ? "w-5 opacity-100"
+                      : "w-5 opacity-70 sm:w-0 sm:border-l-0 sm:opacity-0 sm:group-hover:w-5 sm:group-hover:border-l sm:group-hover:opacity-100"
                   }`}
                   data-testid="thread-tab-close"
                   data-compact-close="true"

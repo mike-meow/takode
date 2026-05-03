@@ -164,10 +164,19 @@ describe("Playground", () => {
     expect(activeOutputTab).toHaveAttribute("data-active-output", "true");
     const activeOutputMarker = within(activeOutputTab!).getByTestId("thread-tab-active-output-indicator");
     expect(activeOutputMarker).toHaveAttribute("data-reduced-motion-static", "true");
+    expect(activeOutputMarker).toHaveAttribute("data-dot-position", "left");
+    expect(activeOutputMarker).toHaveAttribute("data-overlaps-needs-input", "true");
     expect(within(activeOutputMarker).getByTestId("thread-tab-active-output-glint")).toHaveClass(
       "thread-tab-output-glint",
     );
-    expect(within(activeOutputMarker).getByTestId("thread-tab-active-output-dot")).toBeTruthy();
+    expect(within(activeOutputMarker).getByTestId("thread-tab-active-output-dot")).toHaveClass(
+      "left-1.5",
+      "top-1/2",
+      "h-3",
+      "w-3",
+      "-translate-y-1/2",
+    );
+    expect(within(activeOutputTab!).getByTestId("thread-tab-needs-input-bell")).toHaveClass("relative", "z-10");
     expect(within(activeOutputTab!).getByTestId("thread-tab-title")).toHaveAttribute("data-active-output", "true");
     expect(within(activeOutputTab!).getByTestId("thread-tab-title").getAttribute("style") ?? "").not.toContain(
       "animation",
@@ -182,6 +191,11 @@ describe("Playground", () => {
     const completedTab = tabs.find((tab) => tab.getAttribute("data-thread-key") === "q-88");
     expect(completedTab).toHaveAttribute("data-closable", "true");
     expect(within(completedTab!).getByTestId("thread-tab-close")).toHaveAttribute("data-compact-close", "true");
+    expect(within(completedTab!).getByTestId("thread-tab-close")).toHaveClass(
+      "sm:w-0",
+      "sm:group-hover:w-5",
+      "focus-visible:w-5",
+    );
     expect(within(completedTab!).getByTestId("thread-tab-title")).toHaveAttribute(
       "data-title-color",
       "var(--color-cc-muted)",

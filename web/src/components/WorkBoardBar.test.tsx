@@ -734,11 +734,23 @@ describe("WorkBoardBar", () => {
     expect(selectedClose).toHaveAttribute("data-compact-close", "true");
     expect(selectedClose).toHaveAttribute("data-selected", "true");
     expect(selectedClose).toHaveClass("w-5", "opacity-100");
+    expect(selectedClose).not.toHaveClass("sm:w-0");
 
     const inactiveClose = within(tabs[1]).getByTestId("thread-tab-close");
     expect(inactiveClose).toHaveAttribute("data-compact-close", "true");
     expect(inactiveClose).toHaveAttribute("data-selected", "false");
-    expect(inactiveClose).toHaveClass("w-5", "sm:opacity-0", "sm:group-hover:opacity-100", "focus-visible:opacity-100");
+    expect(inactiveClose).toHaveClass(
+      "w-5",
+      "sm:w-0",
+      "sm:border-l-0",
+      "sm:opacity-0",
+      "sm:group-hover:w-5",
+      "sm:group-hover:border-l",
+      "sm:group-hover:opacity-100",
+      "focus-visible:w-5",
+      "focus-visible:border-l",
+      "focus-visible:opacity-100",
+    );
   });
 
   it("keeps selected Main as one connected surface while active output uses a separate marker", () => {
@@ -776,8 +788,18 @@ describe("WorkBoardBar", () => {
     expect(mainTab).not.toHaveClass("border-amber-400/60", "border-cc-primary/70", "border-b-cc-bg");
     const activeMarker = within(mainTab).getByTestId("thread-tab-active-output-indicator");
     expect(activeMarker).toHaveAttribute("data-reduced-motion-static", "true");
+    expect(activeMarker).toHaveAttribute("data-dot-position", "left");
+    expect(activeMarker).toHaveAttribute("data-overlaps-needs-input", "true");
     expect(within(activeMarker).getByTestId("thread-tab-active-output-glint")).toHaveClass("thread-tab-output-glint");
-    expect(within(activeMarker).getByTestId("thread-tab-active-output-dot")).toHaveClass("bg-sky-100");
+    expect(within(activeMarker).getByTestId("thread-tab-active-output-dot")).toHaveClass(
+      "left-1.5",
+      "top-1/2",
+      "h-3",
+      "w-3",
+      "-translate-y-1/2",
+      "bg-sky-50/95",
+    );
+    expect(within(mainTab).getByTestId("thread-tab-needs-input-bell")).toHaveClass("relative", "z-10");
     const mainTitle = within(mainTab).getByTestId("thread-tab-title");
     expect(mainTitle).toHaveAttribute("data-active-output", "true");
     expect(mainTitle.getAttribute("style") ?? "").not.toContain("animation");
@@ -1015,13 +1037,22 @@ describe("WorkBoardBar", () => {
     const needsInputTab = getAllByTestId("thread-tab").find((tab) => tab.getAttribute("data-thread-key") === "q-1")!;
     expect(needsInputTab).toHaveAttribute("data-active-output", "true");
     const activeMarker = within(needsInputTab).getByTestId("thread-tab-active-output-indicator");
+    expect(activeMarker).toHaveAttribute("data-dot-position", "left");
+    expect(activeMarker).toHaveAttribute("data-overlaps-needs-input", "true");
     expect(within(activeMarker).getByTestId("thread-tab-active-output-glint")).toHaveClass("thread-tab-output-glint");
-    expect(within(activeMarker).getByTestId("thread-tab-active-output-dot")).toBeInTheDocument();
+    expect(within(activeMarker).getByTestId("thread-tab-active-output-dot")).toHaveClass(
+      "left-1.5",
+      "top-1/2",
+      "h-3",
+      "w-3",
+      "-translate-y-1/2",
+    );
     expect(within(needsInputTab).queryByTestId("thread-tab-status-dot")).not.toBeInTheDocument();
     expect(within(needsInputTab).getByTestId("thread-tab-needs-input-bell")).toHaveAttribute(
       "data-active-output",
       "true",
     );
+    expect(within(needsInputTab).getByTestId("thread-tab-needs-input-bell")).toHaveClass("relative", "z-10");
     expect(within(needsInputTab).getByTestId("thread-tab-needs-input-bell")).not.toHaveClass("animate-pulse");
     const activeTitle = within(needsInputTab).getByTestId("thread-tab-title");
     expect(activeTitle).toHaveAttribute("data-active-output", "true");
@@ -1058,9 +1089,17 @@ describe("WorkBoardBar", () => {
     const marker = within(tab).getByTestId("thread-tab-active-output-indicator");
     const glint = within(marker).getByTestId("thread-tab-active-output-glint");
     expect(marker).toHaveAttribute("data-reduced-motion-static", "true");
+    expect(marker).toHaveAttribute("data-dot-position", "left");
+    expect(marker).toHaveAttribute("data-overlaps-needs-input", "false");
     expect(glint).toHaveAttribute("data-reduced-motion", "animation-disabled");
     expect(glint).toHaveClass("thread-tab-output-glint");
-    expect(within(marker).getByTestId("thread-tab-active-output-dot")).toBeInTheDocument();
+    expect(within(marker).getByTestId("thread-tab-active-output-dot")).toHaveClass(
+      "left-1.5",
+      "top-1",
+      "h-1.5",
+      "w-1.5",
+      "bg-sky-100",
+    );
   });
 
   it("embeds Main-owned needs-input state into the pinned Main tab without a duplicate chip", () => {
