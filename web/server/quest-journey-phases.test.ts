@@ -280,7 +280,11 @@ describe("Quest Journey phase directory loading", () => {
     expect(bookkeepingPhase?.leaderBrief).toContain(
       "final debrief metadata after port when the port worker could not reliably create it",
     );
+    expect(bookkeepingPhase?.leaderBrief).toContain("when Port is omitted");
+    expect(bookkeepingPhase?.leaderBrief).toContain("leader-owned completion after Outcome Review");
+    expect(bookkeepingPhase?.leaderBrief).toContain("both a final debrief and debrief TLDR");
     expect(bookkeepingPhase?.assigneeBrief).toContain("Do not duplicate normal phase documentation");
+    expect(bookkeepingPhase?.assigneeBrief).toContain("Completion remains incomplete until both are present");
   });
 
   it("seeds Port briefs with final debrief ownership guidance", async () => {
@@ -293,9 +297,12 @@ describe("Quest Journey phase directory loading", () => {
     // Port is the normal worktree completion path, so it must either create final
     // debrief metadata or hand back a draft without forcing generic Bookkeeping.
     expect(portPhase?.leaderBrief).toContain("Require final debrief ownership");
+    expect(portPhase?.leaderBrief).toContain("every completed non-cancelled quest needs final debrief metadata");
     expect(portPhase?.leaderBrief).toContain("`--debrief-file` and `--debrief-tldr-file`");
     expect(portPhase?.leaderBrief).toContain("focused Bookkeeping phase");
     expect(portPhase?.assigneeBrief).toContain("quest complete ... --debrief-file ... --debrief-tldr-file ...");
+    expect(portPhase?.assigneeBrief).toContain("every completed non-cancelled quest needs both fields");
+    expect(portPhase?.assigneeBrief).toContain("A Port handoff without submitted metadata or drafts is incomplete");
     expect(portPhase?.assigneeBrief).toContain("final debrief draft and debrief TLDR draft");
     expect(portPhase?.assigneeBrief).toContain("whether final debrief metadata was submitted or drafted");
   });

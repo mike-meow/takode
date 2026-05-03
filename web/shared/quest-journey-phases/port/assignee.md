@@ -6,8 +6,8 @@ Boundary:
 - Port the accepted tracked changes and report ordered synced SHAs from the main repo.
 - Run the required post-port verification after sync.
 - Do not invent port commentary for zero-tracked-change quests whose Journey omitted `port`.
-- If you are also performing the quest completion handoff for a nontrivial completed quest, include structured final debrief metadata with `quest complete ... --debrief-file ... --debrief-tldr-file ...`.
-- If you are not completing the quest, include a concise final debrief draft and debrief TLDR draft in your report, or state that a focused Bookkeeping phase is needed to record final debrief metadata.
+- If you are also performing the quest completion handoff, include structured final debrief metadata with `quest complete ... --debrief-file ... --debrief-tldr-file ...`; every completed non-cancelled quest needs both fields.
+- If you are not completing the quest, include a concise final debrief draft and debrief TLDR draft in your report, or state that a focused Bookkeeping phase is needed to record final debrief metadata. A Port handoff without submitted metadata or drafts is incomplete.
 
 Phase documentation:
 - Before reporting back, add or refresh a quest feedback entry documenting this phase when working on a quest. Prefer the phase-scoped primitive with current-phase inference: `quest feedback add q-N --text-file <body> --tldr-file <tldr> --kind phase-summary`.

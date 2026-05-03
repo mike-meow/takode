@@ -183,6 +183,9 @@ describe("buildInjectedSystemPromptForDebug", () => {
     expect(result).toContain("Provide only deltas the actor is unlikely to infer");
     expect(result).toContain("without spending scan space on incidental raw details");
     expect(result).toContain("Bookkeeping is for extra durable state");
+    expect(result).toContain("Every completed non-cancelled quest needs final debrief metadata");
+    expect(result).toContain("Completion without both a final debrief and debrief TLDR is incomplete");
+    expect(result).toContain("when Port is omitted or leader-owned completion follows Outcome Review");
     expect(result).toContain("final debrief metadata after port when the port worker could not reliably create it");
     expect(result).toContain("Port handoff must also settle final debrief ownership");
     expect(result).toContain("`Final debrief draft:`");

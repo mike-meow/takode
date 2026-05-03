@@ -59,6 +59,7 @@ describe("index startup skill registration", () => {
     // leader remembering generic bookkeeping to create the final debrief.
     expect(source).toContain("--debrief-file /tmp/final-debrief.md");
     expect(source).toContain("--debrief-tldr-file /tmp/final-debrief-tldr.md");
+    expect(source).toContain("Every completed non-cancelled quest needs both final debrief metadata");
     expect(source).toContain("Final debrief draft:");
     expect(source).toContain("Debrief TLDR draft:");
     expect(source).toContain("focused Bookkeeping phase for final debrief metadata");

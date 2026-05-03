@@ -203,6 +203,9 @@ describe("ensureQuestmasterIntegration", () => {
     expect(skill).toContain("Debrief TLDR draft:");
     expect(skill).toContain("focused Bookkeeping phase");
     expect(skill).toContain("Do not rely on log parsing or memory");
+    expect(skill).toContain("Every completed non-cancelled quest must include a final debrief and debrief TLDR");
+    expect(skill).toContain("Completion without both is incomplete in the workflow");
+    expect(skill).toContain("If Port is omitted");
     expect(skill).toContain("Do not leave commit info only in comments");
     expect(skill).toContain("one substantive quest-level prose summary");
     expect(skill).toContain("what changed, why it matters to the user or project, and what verification passed");
@@ -212,7 +215,7 @@ describe("ensureQuestmasterIntegration", () => {
     expect(skill).toContain("structured final debrief metadata");
     expect(skill).toContain("--debrief-file");
     expect(skill).toContain("--debrief-tldr-file");
-    expect(skill).toContain("If you complete a ported or multi-topic quest");
+    expect(skill).toContain("If you complete a quest");
     expect(skill).toContain("The debrief TLDR should stay higher level and self-contained");
     expect(skill).toContain("Routine SHAs, branch names, command lists, and verification mechanics belong in the body");
     expect(skill).toContain("Re-running the same summary-style feedback (`Summary:` or `Refreshed summary:`)");

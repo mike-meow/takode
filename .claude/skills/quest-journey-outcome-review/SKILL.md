@@ -15,6 +15,7 @@ Leader actions:
 - Keep the board row in `OUTCOME_REVIEWING`.
 - Treat this as an acceptance phase after the worker has usually produced the evidence first.
 - Require reviewers to judge phase documentation quality, not just presence: phase relevance, useful full detail, TLDR completeness where appropriate, and correct phase association when the primitive is available.
+- If Outcome Review is the final planned phase before a no-Port or zero-tracked-change completion, final debrief metadata is leader-owned: draft the final debrief plus debrief TLDR from accepted evidence, ask the reviewer for `Final debrief draft:` and `Debrief TLDR draft:`, or route focused Bookkeeping. Do not complete a non-cancelled quest without both fields.
 - Decide whether the result is sufficient, needs more approved runs, needs behavior/code changes, or requires a Journey revision.
 
 Reviewer-visible boundary:
@@ -22,6 +23,7 @@ Reviewer-visible boundary:
 - Judge whether the observed outcome satisfies the goal.
 - Do not collapse this into code quality review when the real question is outcome quality.
 - You may rerun only small bounded checks or repros needed for acceptance; do not become the primary experiment owner or repeated iteration loop.
+- If the leader asks for final completion support, include `Final debrief draft:` and `Debrief TLDR draft:` when they can be drafted reliably from accepted evidence; otherwise say a focused Bookkeeping phase is needed before completion.
 - Before reporting back, the reviewer should document the Outcome Review phase on the quest with evidence judged, acceptance or insufficiency rationale, bounded reruns, follow-up routing, and TLDR metadata. Prefer `quest feedback add q-N --text-file ... --tldr-file ... --kind review`; use explicit `--phase outcome-review` or occurrence flags if current-phase inference is unavailable.
 - The TLDR should preserve conclusions, decisions, evidence, blockers, risks, handoff facts, and phase-specific outcomes. Keep raw SHAs, branch names, exhaustive command lists, routine paths, and detailed verification mechanics in the full body unless central to understanding.
 - Apply a value filter: include facts future readers or sessions would actually need; avoid boilerplate, facts obvious from the final artifact, and substantial duplication across phases.

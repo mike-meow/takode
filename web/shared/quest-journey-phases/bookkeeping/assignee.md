@@ -5,6 +5,7 @@ You are updating durable shared external state.
 Boundary:
 - Refresh the specified quest records, stream updates, artifact locations, handoff facts, or superseded facts.
 - Use Bookkeeping for cross-phase or external durable state beyond normal phase notes: consolidated summaries, final debrief metadata after port when the port worker could not reliably create it, verification checklist reconciliation, external docs or links, superseded facts, notification cleanup, thread cleanup, or shared-state updates.
+- When Bookkeeping is assigned to finish completion metadata, produce or apply both the final debrief and debrief TLDR. Completion remains incomplete until both are present on the completed non-cancelled quest.
 - Keep the update precise and durable.
 - Do not duplicate normal phase documentation from the phase that produced the facts.
 - Do not expand this phase into unrelated implementation or review.

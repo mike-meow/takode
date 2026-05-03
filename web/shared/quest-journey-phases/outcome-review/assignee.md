@@ -25,6 +25,7 @@ Phase documentation:
 - When referencing repository files in quest feedback or phase documentation, prefer Takode file-link syntax such as `[QuestDetailPanel.tsx:42](file:web/src/components/QuestDetailPanel.tsx:42)`; standard Markdown file links are best-effort fallback only.
 - Document evidence judged, acceptance or insufficiency rationale, bounded reruns if any, and follow-up routing needs.
 - Review documentation quality, not just presence: it should be relevant to the phase, contain useful full detail, preserve major points in TLDR metadata when appropriate, and be correctly phase-associated when the phase-scoped primitive is available.
+- If the leader asked for final completion support because this is a no-Port or zero-tracked-change outcome, include `Final debrief draft:` and `Debrief TLDR draft:` in the report when you can draft them reliably from accepted evidence; otherwise state that a focused Bookkeeping phase is needed before quest completion.
 
 Deliverable:
 - Return an evidence-backed acceptance judgment or concrete insufficiency report, then stop.

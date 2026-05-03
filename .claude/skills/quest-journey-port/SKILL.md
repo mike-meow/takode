@@ -13,12 +13,13 @@ Leader actions:
 - Include the exact assignee brief path: `~/.companion/quest-journey-phases/port/assignee.md`.
 - Require the worker report to include `Synced SHAs: sha1,sha2` when sync completes.
 - Require the appropriate post-port verification gate.
-- Ensure final debrief ownership is explicit without adding generic leader bookkeeping: if the port worker completes a nontrivial quest, completion should use `--debrief-file` and `--debrief-tldr-file`; otherwise the worker should return a concise final debrief draft plus TLDR draft, or the leader should route a focused Bookkeeping phase when the debrief cannot be produced reliably from Port context.
+- Ensure final debrief ownership is explicit without adding generic leader bookkeeping: every completed non-cancelled quest needs final debrief metadata and debrief TLDR metadata. If the port worker completes the quest, completion must use `--debrief-file` and `--debrief-tldr-file`; otherwise the worker should return a concise final debrief draft plus TLDR draft, or the leader should route a focused Bookkeeping phase when the debrief cannot be produced reliably from Port context.
 - Keep the board row in `PORTING`.
 
 Worker-visible boundary:
 - The worker ports or syncs the accepted work and reports synced SHAs plus verification.
 - The worker should not invent port summaries for zero-tracked-change quests whose explicit Journey omitted `port`.
+- A Port handoff without either submitted final debrief metadata or a final debrief/TLDR draft is incomplete.
 - Before reporting back, the worker should document the Port phase on the quest with ordered synced SHAs, post-port verification, port anomalies, remaining sync risks, final debrief metadata status or draft, and TLDR metadata. Prefer `quest feedback add q-N --text-file ... --tldr-file ... --kind phase-summary`; use explicit `--phase port` or occurrence flags if current-phase inference is unavailable.
 - The TLDR should preserve conclusions, decisions, evidence, blockers, risks, handoff facts, and phase-specific outcomes. Keep raw SHAs, branch names, exhaustive command lists, routine paths, and detailed verification mechanics in the full body unless central to understanding.
 - Apply a value filter: include facts future readers or sessions would actually need; avoid boilerplate, facts obvious from the final artifact, and substantial duplication across phases.

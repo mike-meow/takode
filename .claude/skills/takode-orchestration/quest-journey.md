@@ -142,7 +142,8 @@ Rules:
 - **Alignment approval authorizes exactly one next phase.** For example: explore now, then stop and report back.
 - **Use `user-checkpoint` for explicit user participation.** Present findings, options, tradeoffs, and a recommendation; notify the user and wait; then revise the remaining Journey after the user answers. Do not use it as terminal closure, generic TBD, or optional leader-only indecision.
 - **Workers and reviewers document, report, then stop at phase boundaries.** They do not self-review, self-port, self-transition, or self-complete unless explicitly instructed.
-- **Porting requires an explicit instruction.** Port must also settle final debrief ownership: completion by the port worker for a nontrivial quest should use `--debrief-file` and `--debrief-tldr-file`; leader-controlled completion needs a `Final debrief draft:` plus `Debrief TLDR draft:` or a focused Bookkeeping phase if Port cannot reliably produce them.
+- **Porting requires an explicit instruction.** Port must also settle final debrief ownership: completion by the port worker should use `--debrief-file` and `--debrief-tldr-file`; leader-controlled completion needs a `Final debrief draft:` plus `Debrief TLDR draft:` or a focused Bookkeeping phase if Port cannot reliably produce them.
+- **Every completed non-cancelled quest needs final debrief metadata.** Completion without both a final debrief and debrief TLDR is incomplete. When Port is omitted, the leader owns this before completion: draft from accepted evidence, require the final phase actor to provide `Final debrief draft:` plus `Debrief TLDR draft:`, or route a focused Bookkeeping phase. After Outcome Review accepts a zero-tracked-change result, do not remove the row and complete the quest until that ownership is settled.
 
 ## Review Phases
 
@@ -173,6 +174,8 @@ Choose explicit phases that match the evidence you need and simply omit `port` w
 - `alignment -> mental-simulation`
 
 Advancing from the final planned phase removes the row from the board. Git-tracked docs, skills, prompts, templates, and other text-only edits still count as tracked-change work and should include `port`.
+
+Omitting `port` does not omit final debrief ownership. The leader must ensure the completed non-cancelled quest receives both final debrief metadata and debrief TLDR metadata through the final phase report, leader-authored completion metadata, or a focused Bookkeeping phase.
 
 ## Feedback Rework Loop
 

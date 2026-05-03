@@ -467,6 +467,9 @@ describe("getOrchestratorGuardrails", () => {
     expect(guardrails).toContain("Phase-note TLDRs should preserve conclusions, decisions, evidence, blockers, risks");
     expect(guardrails).toContain("raw SHAs, branch names, exhaustive command lists");
     expect(guardrails).toContain("use explicit `--phase`, `--phase-position`, `--phase-occurrence`");
+    expect(guardrails).toContain("Every completed non-cancelled quest needs final debrief metadata");
+    expect(guardrails).toContain("Completion without both a final debrief and debrief TLDR is incomplete");
+    expect(guardrails).toContain("leader-owned completion follows Outcome Review");
     expect(guardrails).toContain("final debrief metadata after port when the port worker could not reliably create it");
     expect(guardrails).toContain("Port handoff must also settle final debrief ownership");
     expect(guardrails).toContain("perform exactly the approved next phase, document the current phase on the quest");
