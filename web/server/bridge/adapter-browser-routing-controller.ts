@@ -201,6 +201,11 @@ export interface AdapterBrowserRoutingDeps {
   removePendingCodexInput: (session: AdapterBrowserRoutingSessionLike, id: string) => PendingCodexInput | null;
   clearQueuedTurnLifecycleEntries: (session: AdapterBrowserRoutingSessionLike) => void;
   queueCodexPendingStartBatch: (session: AdapterBrowserRoutingSessionLike, reason: string) => void;
+  pokeStaleCodexPendingDelivery: (
+    session: AdapterBrowserRoutingSessionLike,
+    reason: string,
+    options?: { triggeringInputId?: string },
+  ) => boolean;
   rebuildQueuedCodexPendingStartBatch: (session: AdapterBrowserRoutingSessionLike) => void;
   trySteerPendingCodexInputs: (session: AdapterBrowserRoutingSessionLike, reason: string) => boolean;
   sendToBrowser: (ws: unknown, msg: BrowserIncomingMessage) => void;
@@ -2002,8 +2007,8 @@ export function routeAdapterBrowserMessage(
     if (
       msg.type === "user_message" &&
       ingested &&
-      session.state.backend_state !== "broken" &&
-      !(session.backendType === "codex" && deps.isHerdEventSource(msg.agentSource))
+      session.backendType !== "codex" &&
+      session.state.backend_state !== "broken"
     ) {
       const interruptSource = ingested.wasGenerating
         ? msg.agentSource
@@ -2051,6 +2056,32 @@ export function routeAdapterBrowserMessage(
           ...(ingested.historyEntry.questId ? { questId: ingested.historyEntry.questId } : {}),
           ...(ingested.historyEntry.threadRefs ? { threadRefs: ingested.historyEntry.threadRefs } : {}),
         });
+      }
+      const currentTurnId = session.codexAdapter?.getCurrentTurnId() ?? null;
+      const isHerdEvent = deps.isHerdEventSource(msg.agentSource);
+      const deliveryReason = isHerdEvent ? "herd_event_message" : "browser_user_message";
+      if (!isHerdEvent && ingested.historyEntry.id) {
+        deps.pokeStaleCodexPendingDelivery(session, deliveryReason, {
+          triggeringInputId: ingested.historyEntry.id,
+        });
+      }
+      if (!isHerdEvent && session.state.backend_state !== "broken") {
+        const interruptSource = ingested.wasGenerating
+          ? msg.agentSource
+            ? isSystemSourceTag(msg.agentSource)
+              ? "system"
+              : "leader"
+            : "user"
+          : undefined;
+        pendingTurnTarget = deps.markRunningFromUserDispatch(
+          session,
+          "user_message",
+          interruptSource ?? null,
+          ingested.historyIndex >= 0 ? ingested.historyIndex : undefined,
+          activeTurnRouteFromIngestedUserMessage(ingested),
+        );
+      }
+      if (ingested.historyEntry.id) {
         emitUserMessageTakodeEvent(
           session,
           ingested,
@@ -2059,16 +2090,13 @@ export function routeAdapterBrowserMessage(
           session.codexAdapter?.getCurrentTurnId() ?? null,
         );
       }
-      const currentTurnId = session.codexAdapter?.getCurrentTurnId() ?? null;
-      const isHerdEvent = deps.isHerdEventSource(msg.agentSource);
-      const deliveryReason = isHerdEvent ? "herd_event_message" : "browser_user_message";
       if (currentTurnId && !isHerdEvent) {
         const steeredPending = deps.trySteerPendingCodexInputs(session, deliveryReason);
         if (!steeredPending) {
           deps.rebuildQueuedCodexPendingStartBatch(session);
         }
       } else {
-        if (!isHerdEvent && session.codexAdapter && !!ingested.wasGenerating && session.isGenerating) {
+        if (!isHerdEvent && session.codexAdapter && pendingTurnTarget === "queued" && session.isGenerating) {
           deps.rebuildQueuedCodexPendingStartBatch(session);
           deps.persistSession(session);
         } else {

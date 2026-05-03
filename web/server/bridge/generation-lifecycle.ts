@@ -87,6 +87,7 @@ export interface StuckWatchdogDeps<S extends StuckWatchdogSession> {
   backendConnected: (session: S) => boolean;
   markTurnInterrupted: (session: S, source: InterruptSource) => void;
   setGenerating: (session: S, generating: boolean, reason: string) => void;
+  pokeStaleCodexPendingDelivery?: (session: S, reason: string) => boolean;
 }
 
 export type UserDispatchTurnTarget = "current" | "queued";
@@ -436,6 +437,22 @@ export function runStuckSessionWatchdogSweep<S extends StuckWatchdogSession>(
             `backend_state=${session.state.backend_state})`,
         );
         deps.requestCodexAutoRecovery(session, "stuck_pending_delivery_watchdog");
+      }
+    }
+    if (
+      session.backendType === "codex" &&
+      session.pendingCodexInputs.length > 0 &&
+      session.codexAdapter &&
+      !session.isGenerating &&
+      session.state.backend_state !== "broken" &&
+      session.state.backend_state !== "recovering" &&
+      launcherInfo?.archived !== true &&
+      launcherInfo?.killedByIdleManager !== true
+    ) {
+      const oldestPending = session.pendingCodexInputs[0];
+      const pendingAge = now - oldestPending.timestamp;
+      if (pendingAge > deps.stuckPendingDeliveryMs) {
+        deps.pokeStaleCodexPendingDelivery?.(session, "stuck_pending_delivery_connected_watchdog");
       }
     }
 

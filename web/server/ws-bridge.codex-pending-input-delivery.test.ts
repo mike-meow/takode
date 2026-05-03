@@ -146,6 +146,9 @@ function makeCodexAdapterMock() {
     emitTurnSteerFailed: (pendingInputIds: string[]) => {
       onTurnSteerFailedCb?.(pendingInputIds);
     },
+    setCurrentTurnIdForTest: (turnId: string | null) => {
+      currentTurnId = turnId;
+    },
   };
 }
 
@@ -169,6 +172,55 @@ function getCodexStartPendingInputs(msg: any) {
   expect(msg?.type).toBe("codex_start_pending");
   expect(Array.isArray(msg?.inputs)).toBe(true);
   return msg.inputs as Array<{ content: string }>;
+}
+
+function seedStaleCodexPendingDeliveryHead(
+  session: any,
+  options: {
+    status?: "queued" | "backend_acknowledged";
+    inputs?: Array<{ id: string; content: string }>;
+  } = {},
+) {
+  const status = options.status ?? "backend_acknowledged";
+  const now = Date.now();
+  const inputs = options.inputs ?? [
+    { id: "old-input-1", content: "old pending instruction one" },
+    { id: "old-input-2", content: "old pending instruction two" },
+  ];
+  const pendingInputIds = inputs.map((input) => input.id);
+
+  session.pendingCodexInputs.push(
+    ...inputs.map((input) => ({
+      id: input.id,
+      content: input.content,
+      timestamp: now - 120_000,
+      cancelable: true,
+    })),
+  );
+
+  const turn = {
+    adapterMsg: {
+      type: "codex_start_pending",
+      pendingInputIds,
+      inputs: inputs.map((input) => ({ content: input.content })),
+    },
+    userMessageId: pendingInputIds[0],
+    pendingInputIds,
+    userContent: inputs.map((input) => input.content).join("\n\n"),
+    historyIndex: -1,
+    status,
+    dispatchCount: status === "queued" ? 0 : 1,
+    createdAt: now - 120_000,
+    updatedAt: now - 90_000,
+    acknowledgedAt: status === "backend_acknowledged" ? now - 90_000 : null,
+    turnTarget: status === "backend_acknowledged" ? "queued" : null,
+    lastError: null,
+    turnId: null,
+    disconnectedAt: status === "backend_acknowledged" ? now - 80_000 : null,
+    resumeConfirmedAt: null,
+  };
+  session.pendingCodexTurns.push(turn);
+  return turn;
 }
 
 function getNotificationTestDeps(bridge: WsBridge) {
@@ -666,5 +718,188 @@ describe("Codex pending input delivery", () => {
         pendingInputIds: ["pending-persisted-1"],
       }),
     );
+  });
+
+  it("pokes a stale acknowledged pending-delivery head before a leader-injected follow-up", async () => {
+    const sid = "s-codex-stale-leader-poke";
+    const adapter = makeCodexAdapterMock();
+    const relaunchCb = vi.fn();
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    bridge.onCLIRelaunchNeededCallback(relaunchCb);
+    bridge.attachCodexAdapter(sid, adapter as any);
+    emitCodexSessionReady(adapter, { cliSessionId: "thread-stale-leader", model: "gpt-5.4", cwd: "/repo" });
+
+    const session = bridge.getSession(sid)!;
+    const staleHead = seedStaleCodexPendingDeliveryHead(session);
+    adapter.sendBrowserMessage.mockClear();
+
+    const delivery = bridge.injectUserMessage(sid, "new leader instruction", {
+      sessionId: "leader-session",
+      sessionLabel: "Leader",
+    });
+    await Promise.resolve();
+
+    expect(delivery).toBe("sent");
+    expect(relaunchCb).not.toHaveBeenCalled();
+    expect(adapter.sendBrowserMessage).toHaveBeenCalledTimes(1);
+    const retried = adapter.sendBrowserMessage.mock.calls[0]?.[0] as any;
+    expect(retried).toEqual(
+      expect.objectContaining({
+        type: "codex_start_pending",
+        pendingInputIds: ["old-input-1", "old-input-2"],
+      }),
+    );
+    expect(getCodexStartPendingInputs(retried).map((input) => input.content)).toEqual([
+      "old pending instruction one",
+      "old pending instruction two",
+    ]);
+    expect(staleHead.status).toBe("dispatched");
+    expect(staleHead.dispatchCount).toBe(2);
+    expect(session.pendingCodexInputs.map((input: any) => input.content)).toEqual([
+      "old pending instruction one",
+      "old pending instruction two",
+      "new leader instruction",
+    ]);
+    expect(session.pendingCodexInputs.map((input: any) => input.cancelable)).toEqual([false, false, true]);
+    expect(session.pendingCodexTurns[1]?.adapterMsg).toEqual(
+      expect.objectContaining({
+        type: "codex_start_pending",
+        pendingInputIds: [session.pendingCodexInputs[2]?.id],
+      }),
+    );
+    expect(session.pendingCodexTurns[1]?.status).toBe("queued");
+    warnSpy.mockRestore();
+  });
+
+  it("uses the same stale pending-delivery poke for browser/user messages", async () => {
+    const sid = "s-codex-stale-browser-poke";
+    const browser = makeBrowserSocket(sid);
+    const adapter = makeCodexAdapterMock();
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    bridge.attachCodexAdapter(sid, adapter as any);
+    emitCodexSessionReady(adapter, { cliSessionId: "thread-stale-browser", model: "gpt-5.4", cwd: "/repo" });
+    bridge.handleBrowserOpen(browser, sid);
+
+    const session = bridge.getSession(sid)!;
+    const staleHead = seedStaleCodexPendingDeliveryHead(session, {
+      inputs: [{ id: "old-browser-input", content: "old browser pending instruction" }],
+    });
+    adapter.sendBrowserMessage.mockClear();
+
+    await bridge.handleBrowserMessage(
+      browser,
+      JSON.stringify({
+        type: "user_message",
+        content: "new browser instruction",
+      }),
+    );
+    await Promise.resolve();
+
+    expect(adapter.sendBrowserMessage).toHaveBeenCalledTimes(1);
+    const retried = adapter.sendBrowserMessage.mock.calls[0]?.[0] as any;
+    expect(retried).toEqual(
+      expect.objectContaining({
+        type: "codex_start_pending",
+        pendingInputIds: ["old-browser-input"],
+      }),
+    );
+    expect(getCodexStartPendingInputs(retried).map((input) => input.content)).toEqual([
+      "old browser pending instruction",
+    ]);
+    expect(staleHead.status).toBe("dispatched");
+    expect(staleHead.dispatchCount).toBe(2);
+    expect(session.pendingCodexInputs.map((input: any) => input.content)).toEqual([
+      "old browser pending instruction",
+      "new browser instruction",
+    ]);
+    warnSpy.mockRestore();
+  });
+
+  it("does not retry stale pending delivery while Codex reports an active current turn", async () => {
+    const sid = "s-codex-stale-current-turn";
+    const adapter = makeCodexAdapterMock();
+    bridge.attachCodexAdapter(sid, adapter as any);
+    emitCodexSessionReady(adapter, { cliSessionId: "thread-active-current", model: "gpt-5.4", cwd: "/repo" });
+
+    const session = bridge.getSession(sid)!;
+    const staleHead = seedStaleCodexPendingDeliveryHead(session);
+    adapter.setCurrentTurnIdForTest("turn-active");
+    adapter.sendBrowserMessage.mockClear();
+
+    bridge.injectUserMessage(sid, "follow-up for active turn", {
+      sessionId: "leader-session",
+      sessionLabel: "Leader",
+    });
+    await Promise.resolve();
+
+    const sentMessages = adapter.sendBrowserMessage.mock.calls.map((call: any[]) => call[0]);
+    expect(sentMessages).not.toContainEqual(
+      expect.objectContaining({
+        type: "codex_start_pending",
+        pendingInputIds: ["old-input-1", "old-input-2"],
+      }),
+    );
+    expect(sentMessages).toContainEqual(
+      expect.objectContaining({
+        type: "codex_steer_pending",
+        expectedTurnId: "turn-active",
+      }),
+    );
+    expect(staleHead.status).toBe("backend_acknowledged");
+    expect(staleHead.dispatchCount).toBe(1);
+  });
+
+  it("does not retry stale pending delivery while the session is actively generating", async () => {
+    const sid = "s-codex-stale-generating";
+    const adapter = makeCodexAdapterMock();
+    bridge.attachCodexAdapter(sid, adapter as any);
+    emitCodexSessionReady(adapter, { cliSessionId: "thread-active-generating", model: "gpt-5.4", cwd: "/repo" });
+
+    const session = bridge.getSession(sid)!;
+    const staleHead = seedStaleCodexPendingDeliveryHead(session);
+    session.isGenerating = true;
+    session.generationStartedAt = Date.now() - 1_000;
+    adapter.sendBrowserMessage.mockClear();
+
+    bridge.injectUserMessage(sid, "queued during active generation", {
+      sessionId: "leader-session",
+      sessionLabel: "Leader",
+    });
+    await Promise.resolve();
+
+    expect(adapter.sendBrowserMessage).not.toHaveBeenCalled();
+    expect(staleHead.status).toBe("backend_acknowledged");
+    expect(staleHead.dispatchCount).toBe(1);
+    expect(session.pendingCodexInputs.map((input: any) => input.content)).toEqual([
+      "old pending instruction one",
+      "old pending instruction two",
+      "queued during active generation",
+    ]);
+  });
+
+  it("leaves adapter-missing pending delivery on the existing relaunch path", async () => {
+    const sid = "s-codex-missing-adapter-still-recovers";
+    const relaunchCb = vi.fn();
+    bridge.onCLIRelaunchNeededCallback(relaunchCb);
+    bridge.setLauncher({
+      touchActivity: vi.fn(),
+      touchUserMessage: vi.fn(),
+      getSession: vi.fn(() => ({ backendType: "codex", state: "connected", killedByIdleManager: false })),
+    } as any);
+
+    const session = bridge.getOrCreateSession(sid, "codex");
+    session.state.backend_state = "connected";
+
+    const delivery = bridge.injectUserMessage(sid, "wake missing adapter", {
+      sessionId: "leader-session",
+      sessionLabel: "Leader",
+    });
+    await Promise.resolve();
+
+    expect(delivery).toBe("queued");
+    expect(relaunchCb).toHaveBeenCalledTimes(1);
+    expect(relaunchCb).toHaveBeenCalledWith(sid);
+    expect(session.state.backend_state).toBe("recovering");
+    expect(session.pendingCodexInputs.map((input: any) => input.content)).toContain("wake missing adapter");
   });
 });

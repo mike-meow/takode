@@ -92,6 +92,7 @@ function makeDeps(options: { isOrchestrator?: boolean } = {}): AdapterBrowserRou
     removePendingCodexInput: vi.fn(() => null),
     clearQueuedTurnLifecycleEntries: vi.fn(),
     queueCodexPendingStartBatch: vi.fn(),
+    pokeStaleCodexPendingDelivery: vi.fn(() => false),
     rebuildQueuedCodexPendingStartBatch: vi.fn(),
     trySteerPendingCodexInputs: vi.fn(() => false),
     sendToBrowser: vi.fn(),

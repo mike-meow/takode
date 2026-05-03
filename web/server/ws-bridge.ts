@@ -195,6 +195,7 @@ import {
   getPendingCodexInputsByIds as getPendingCodexInputsByIdsController,
   hydrateCodexResumedHistory as hydrateCodexResumedHistoryController,
   maybeFlushQueuedCodexMessages as maybeFlushQueuedCodexMessagesController,
+  pokeStaleCodexPendingDelivery as pokeStaleCodexPendingDeliveryController,
   queueCodexPendingStartBatch as queueCodexPendingStartBatchController,
   rearmRecoveredQueuedHeadTurn as rearmRecoveredQueuedHeadTurnController,
   registerCodexAdapterRecoveryLifecycle,
@@ -824,6 +825,8 @@ export class WsBridge {
         markTurnInterrupted: (session, source) => this.markTurnInterrupted(session as Session, source),
         setGenerating: (session, generating, reason) =>
           setGeneratingLifecycle(this.getGenerationLifecycleDeps(), session as Session, generating, reason),
+        pokeStaleCodexPendingDelivery: (session, reason) =>
+          pokeStaleCodexPendingDeliveryController(session as Session, reason, this.getCodexRecoveryOrchestratorDeps()),
       });
       this.sweepBoardStallWarnings(now);
       this.sweepBoardDispatchableWarnings(now);
@@ -2566,6 +2569,11 @@ export class WsBridge {
         replaceQueuedTurnLifecycleEntriesLifecycle(targetSession as Session, []),
       queueCodexPendingStartBatch: (targetSession: unknown, reason: string) =>
         queueCodexPendingStartBatchController(targetSession as Session, reason, codexRecoveryDeps),
+      pokeStaleCodexPendingDelivery: (
+        targetSession: unknown,
+        reason: string,
+        options?: { triggeringInputId?: string },
+      ) => pokeStaleCodexPendingDeliveryController(targetSession as Session, reason, codexRecoveryDeps, options),
       rebuildQueuedCodexPendingStartBatch: (targetSession: unknown) =>
         rebuildQueuedCodexPendingStartBatchController(targetSession as Session, codexRecoveryDeps),
       trySteerPendingCodexInputs: (targetSession: unknown, reason: string) =>

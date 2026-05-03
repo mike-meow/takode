@@ -342,6 +342,49 @@ describe("runStuckSessionWatchdogSweep", () => {
     expect(warnSpy).not.toHaveBeenCalled();
     expect(requestCodexAutoRecovery).not.toHaveBeenCalled();
   });
+
+  it("pokes stale connected-adapter pending delivery without relaunching", () => {
+    const session = makeStuckWatchdogSession({
+      pendingCodexInputs: [{ timestamp: 1 }],
+      codexAdapter: { isConnected: () => true },
+    });
+    const pokeStaleCodexPendingDelivery = vi.fn(() => true);
+    const requestCodexAutoRecovery = vi.fn();
+
+    runStuckSessionWatchdogSweep(
+      [session],
+      120_000,
+      makeStuckWatchdogDeps({
+        requestCodexAutoRecovery,
+        pokeStaleCodexPendingDelivery,
+        getLauncherSessionInfo: vi.fn(() => ({})),
+      }),
+    );
+
+    expect(pokeStaleCodexPendingDelivery).toHaveBeenCalledWith(session, "stuck_pending_delivery_connected_watchdog");
+    expect(requestCodexAutoRecovery).not.toHaveBeenCalled();
+  });
+
+  it("does not poke connected-adapter pending delivery while the session is generating", () => {
+    const session = makeStuckWatchdogSession({
+      isGenerating: true,
+      generationStartedAt: 1,
+      pendingCodexInputs: [{ timestamp: 1 }],
+      codexAdapter: { isConnected: () => true },
+    });
+    const pokeStaleCodexPendingDelivery = vi.fn(() => true);
+
+    runStuckSessionWatchdogSweep(
+      [session],
+      120_000,
+      makeStuckWatchdogDeps({
+        pokeStaleCodexPendingDelivery,
+        getLauncherSessionInfo: vi.fn(() => ({})),
+      }),
+    );
+
+    expect(pokeStaleCodexPendingDelivery).not.toHaveBeenCalled();
+  });
 });
 
 describe("RECOVERY_REASONS", () => {

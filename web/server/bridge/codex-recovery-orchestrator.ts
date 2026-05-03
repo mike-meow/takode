@@ -610,6 +610,53 @@ export function queueCodexPendingStartBatch(
   rebuildQueuedCodexPendingStartBatch(session, deps);
   deps.dispatchQueuedCodexTurns(session, reason);
 }
+
+export function pokeStaleCodexPendingDelivery(
+  session: CodexRecoveryOrchestratorSessionLike,
+  reason: string,
+  deps: CodexRecoveryOrchestratorDeps,
+  options: { triggeringInputId?: string } = {},
+): boolean {
+  const adapter = session.codexAdapter;
+  if (session.backendType !== "codex") return false;
+  if (session.pendingCodexInputs.length === 0) return false;
+  if (session.isGenerating) return false;
+  if (!adapter || session.state.backend_state !== "connected" || !adapter.isConnected()) return false;
+  if (adapter.getCurrentTurnId()) return false;
+
+  const head = deps.getCodexHeadTurn(session);
+  if (!isStaleCodexPendingDeliveryHead(head, options.triggeringInputId)) return false;
+
+  const beforeDispatchCount = head.dispatchCount;
+  const beforeStatus = head.status;
+  queueCodexPendingStartBatch(session, reason, deps);
+
+  const currentHead = deps.getCodexHeadTurn(session);
+  const dispatchedStaleHead =
+    currentHead === head &&
+    head.status === "dispatched" &&
+    (beforeStatus !== "dispatched" || head.dispatchCount > beforeDispatchCount);
+  if (dispatchedStaleHead && !session.isGenerating) {
+    deps.markRunningFromUserDispatch(session, `${reason}_stale_head_dispatched`, null);
+  }
+
+  console.warn(
+    `[ws-bridge] Poked stale Codex pending delivery for session ${sessionTag(session.id)} ` +
+      `(${reason}, head_status=${beforeStatus}, dispatched=${dispatchedStaleHead})`,
+  );
+  return true;
+}
+
+function isStaleCodexPendingDeliveryHead(
+  head: CodexOutboundTurn | null,
+  triggeringInputId: string | undefined,
+): head is CodexOutboundTurn {
+  if (!head) return false;
+  if (head.adapterMsg.type !== "codex_start_pending") return false;
+  const headInputIds = head.pendingInputIds ?? [head.userMessageId];
+  if (triggeringInputId && headInputIds.includes(triggeringInputId)) return false;
+  return head.status === "queued" || head.status === "backend_acknowledged";
+}
 export function trySteerPendingCodexInputs(
   session: CodexRecoveryOrchestratorSessionLike,
   reason: string,
