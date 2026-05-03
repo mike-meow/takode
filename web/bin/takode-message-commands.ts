@@ -11,6 +11,7 @@ import {
   dateKey,
   err,
   formatDate,
+  formatDurationSeconds,
   formatTime,
   formatTimeShort,
   parseFlags,
