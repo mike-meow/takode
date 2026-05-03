@@ -457,7 +457,7 @@ function upsertJourneyLifecycleAttentionRecord(
     },
     questId: row.questId,
     threadKey,
-    title: kind === "started" ? "Journey started" : "Finished",
+    title: kind === "started" ? "Journey started" : "Journey finished",
     summary: row.title ?? "",
     actionLabel: "Open",
     priority: kind === "started" ? "created" : "review",

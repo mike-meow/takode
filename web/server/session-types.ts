@@ -1164,6 +1164,7 @@ export interface SessionAttentionRecord {
   actionLabel: "Answer" | "Review" | "Unblock" | "Open" | "Jump";
   priority: SessionAttentionRecordPriority;
   state: SessionAttentionRecordState;
+  journeyLifecycleStatus?: "active" | "completed";
   createdAt: number;
   updatedAt: number;
   resolvedAt?: number;

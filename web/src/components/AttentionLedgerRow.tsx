@@ -35,6 +35,9 @@ export function AttentionLedgerRow({
   const isActive = record.state === "unresolved" || record.state === "seen" || record.state === "reopened";
   const isReview = record.priority === "review";
   const isJourneyLifecycle = record.type === "quest_journey_started" || record.type === "quest_completed_recent";
+  const isCompletedJourneyStart =
+    record.type === "quest_journey_started" && record.journeyLifecycleStatus === "completed";
+  const isJourneyFinished = record.type === "quest_completed_recent";
   const isThreadCreated = record.type === "quest_thread_created";
   const isNonActionEvent = record.type === "quest_journey_started" || isThreadCreated;
   const targetThread = normalizeThreadKey(record.route.threadKey || record.threadKey || MAIN_THREAD_KEY);
@@ -59,24 +62,30 @@ export function AttentionLedgerRow({
     scrollToRouteTarget();
   }, [currentThreadKey, onSelectThread, record.route.messageId, sessionId, targetThread]);
 
-  const statusClasses = isThreadCreated
-    ? "border-sky-400/25 bg-sky-400/10 text-sky-50 shadow-[inset_0_1px_0_rgba(125,211,252,0.08)]"
-    : record.type === "quest_journey_started"
-      ? "border-fuchsia-400/25 bg-fuchsia-400/10 text-fuchsia-50 shadow-[inset_0_1px_0_rgba(240,171,252,0.08)]"
-      : isActive
-        ? isReview
-          ? "border-emerald-500/25 bg-emerald-500/5 text-emerald-100"
-          : "border-amber-500/25 bg-amber-500/5 text-amber-100"
-        : "border-cc-border/70 bg-cc-card/35 text-cc-muted";
-  const iconClasses = isThreadCreated
-    ? "text-sky-300"
-    : record.type === "quest_journey_started"
-      ? "text-fuchsia-300"
-      : isActive
-        ? isReview
-          ? "text-emerald-300"
-          : "text-amber-300"
-        : "text-cc-muted/70";
+  const statusClasses =
+    isCompletedJourneyStart || isJourneyFinished
+      ? "border-cc-border/70 bg-cc-card/35 text-cc-muted"
+      : isThreadCreated
+        ? "border-sky-400/25 bg-sky-400/10 text-sky-50 shadow-[inset_0_1px_0_rgba(125,211,252,0.08)]"
+        : record.type === "quest_journey_started"
+          ? "border-fuchsia-400/25 bg-fuchsia-400/10 text-fuchsia-50 shadow-[inset_0_1px_0_rgba(240,171,252,0.08)]"
+          : isActive
+            ? isReview
+              ? "border-emerald-500/25 bg-emerald-500/5 text-emerald-100"
+              : "border-amber-500/25 bg-amber-500/5 text-amber-100"
+            : "border-cc-border/70 bg-cc-card/35 text-cc-muted";
+  const iconClasses =
+    isCompletedJourneyStart || isJourneyFinished
+      ? "text-cc-muted/80"
+      : isThreadCreated
+        ? "text-sky-300"
+        : record.type === "quest_journey_started"
+          ? "text-fuchsia-300"
+          : isActive
+            ? isReview
+              ? "text-emerald-300"
+              : "text-amber-300"
+            : "text-cc-muted/70";
   const stateLabel = STATE_LABELS[record.state];
   const summary = record.summary.trim();
   const showSummary = summary.length > 0 && summary !== record.title.trim();
@@ -95,10 +104,15 @@ export function AttentionLedgerRow({
       data-attention-state={record.state}
       data-attention-type={record.type}
       data-attention-event={isNonActionEvent ? "true" : "false"}
+      data-journey-lifecycle-status={record.journeyLifecycleStatus}
     >
       <div className="flex min-w-0 items-start gap-2.5">
         <span className={`mt-0.5 shrink-0 ${iconClasses}`} aria-hidden="true">
-          {isNonActionEvent ? <AttentionEventIcon type={record.type} /> : <AttentionStateIcon state={record.state} />}
+          {isNonActionEvent || isJourneyFinished ? (
+            <AttentionEventIcon type={record.type} lifecycleStatus={record.journeyLifecycleStatus} />
+          ) : (
+            <AttentionStateIcon state={record.state} />
+          )}
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
@@ -174,9 +188,22 @@ export function AttentionLedgerRow({
   );
 }
 
-function AttentionEventIcon({ type }: { type: AttentionRecord["type"] }) {
-  if (type === "quest_journey_started") {
+function AttentionEventIcon({
+  type,
+  lifecycleStatus,
+}: {
+  type: AttentionRecord["type"];
+  lifecycleStatus?: AttentionRecord["journeyLifecycleStatus"];
+}) {
+  if (type === "quest_journey_started" && lifecycleStatus !== "completed") {
     return <CatPawAvatar className="attention-paw-stamp h-4 w-4" />;
+  }
+  if (type === "quest_journey_started" || type === "quest_completed_recent") {
+    return (
+      <svg viewBox="0 0 16 16" fill="currentColor" className="h-4 w-4">
+        <path d="M8 1.5A6.5 6.5 0 1 0 8 14.5 6.5 6.5 0 0 0 8 1.5Zm3.15 5.1-3.75 3.75a.6.6 0 0 1-.85 0l-1.7-1.7a.6.6 0 1 1 .85-.85l1.27 1.27 3.33-3.32a.6.6 0 0 1 .85.85Z" />
+      </svg>
+    );
   }
   return (
     <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" className="h-4 w-4">

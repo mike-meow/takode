@@ -580,6 +580,46 @@ describe("ChatView backend banners", () => {
     expect(scope.getByTestId("mock-workboard-thread")).toHaveAttribute("data-thread-key", "q-941");
   });
 
+  it("opens leader thread tabs without recording Thread opened feed events", () => {
+    resetStore({
+      sessions: new Map([["s1", { backend_state: "connected", backend_error: null, isOrchestrator: true }]]),
+      sdkSessions: [{ sessionId: "s1", archived: false, isOrchestrator: true }],
+      messages: new Map([
+        [
+          "s1",
+          [
+            {
+              id: "m-q941",
+              role: "assistant",
+              content: "q-941 update",
+              timestamp: 2,
+              metadata: { threadRefs: [{ threadKey: "q-941", questId: "q-941", source: "explicit" }] },
+            },
+          ],
+        ],
+      ]),
+      quests: [{ questId: "q-941", title: "Freshly opened tab", status: "in_progress" }],
+    });
+
+    const view = render(<ChatView sessionId="s1" />);
+    const scope = within(view.container);
+
+    expect(scope.getByTestId("message-feed")).toHaveAttribute("data-additional-attention-count", "0");
+
+    fireEvent.click(scope.getByRole("button", { name: /q-941 freshly opened tab/i }));
+
+    expect(scope.getByTestId("work-board-bar")).toHaveAttribute("data-open-thread-keys", "q-941");
+    expect(scope.getByTestId("message-feed")).toHaveAttribute("data-additional-attention-count", "0");
+    expect(scope.getByTestId("message-feed")).toHaveAttribute("data-additional-attention-types", "");
+    expect(mockSendToSession).toHaveBeenCalledWith(
+      "s1",
+      expect.objectContaining({
+        type: "leader_thread_tabs_update",
+        operation: expect.objectContaining({ type: "open", threadKey: "q-941" }),
+      }),
+    );
+  });
+
   it("does not open or auto-select persisted attachment markers from initial history replay", async () => {
     resetStore({
       sessions: new Map([["s1", { backend_state: "connected", backend_error: null, isOrchestrator: true }]]),

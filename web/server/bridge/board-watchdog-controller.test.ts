@@ -336,7 +336,7 @@ describe("Quest Journey board phase timing", () => {
       type: "quest_completed_recent",
       questId: "q-1036",
       threadKey: "q-1036",
-      title: "Finished",
+      title: "Journey finished",
       summary: "Finish compact lifecycle cards",
       actionLabel: "Open",
       priority: "review",

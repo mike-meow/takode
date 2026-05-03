@@ -334,7 +334,7 @@ describe("MessageFeed - thread movement rows", () => {
     expect(onSelectThread).toHaveBeenCalledWith("q-941");
   });
 
-  it("merges moved-message summaries into matching thread-created ledger rows", () => {
+  it("keeps moved-message summaries as markers when thread-created ledger rows are hidden", () => {
     const sid = "test-thread-created-movement-summary";
     const onSelectThread = vi.fn();
     const markerA = movedMarker({
@@ -397,20 +397,11 @@ describe("MessageFeed - thread movement rows", () => {
 
     render(<MessageFeed sessionId={sid} onSelectThread={onSelectThread} />);
 
-    const row = screen.getByTestId("attention-ledger-row");
-    expect(row.getAttribute("data-attention-type")).toBe("quest_thread_created");
-    expectTextContent(row, "Thread opened");
-    expectTextContent(row, "3 messages moved to thread:q-972");
-    expect(screen.queryByTestId("thread-attachment-marker")).toBeNull();
-
-    fireEvent.click(within(row).getByRole("button", { name: "Details" }));
-    const details = within(row).getByTestId("attention-thread-movement-details");
-    expectTextContent(details, "2 messages moved to thread:q-972");
-    expectTextContent(details, "1 message moved to thread:q-972");
-    expectTextContent(details, "Ranges: 1-2");
-    expectTextContent(details, "Message ids: m3");
-
-    fireEvent.click(within(row).getByRole("button", { name: "Open thread:q-972" }));
+    expect(screen.queryByTestId("attention-ledger-row")).toBeNull();
+    expect(screen.queryByText("Thread opened")).toBeNull();
+    const marker = screen.getByTestId("thread-attachment-marker");
+    expectTextContent(marker, "3 messages moved to thread:q-972");
+    fireEvent.click(within(marker).getByRole("button", { name: "thread:q-972" }));
     expect(onSelectThread).toHaveBeenCalledWith("q-972");
   });
 

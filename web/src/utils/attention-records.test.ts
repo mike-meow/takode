@@ -70,7 +70,7 @@ describe("attention records", () => {
     expect(records[1]).toMatchObject({
       id: "notification:n-2",
       type: "quest_completed_recent",
-      title: "Finished",
+      title: "Journey finished",
       summary: "",
       actionLabel: "Open",
       priority: "review",
@@ -102,14 +102,14 @@ describe("attention records", () => {
 
     expect(records[0]).toMatchObject({
       type: "quest_completed_recent",
-      title: "Finished",
+      title: "Journey finished",
       summary: "Compact notification inbox copy",
       questId: "q-984",
     });
     expect(records[1]).toMatchObject({
       id: "notification:n-batch:q-1",
       type: "quest_completed_recent",
-      title: "Finished",
+      title: "Journey finished",
       summary: "2 quests finished",
       questId: "q-1",
       route: { threadKey: "q-1", questId: "q-1" },
@@ -355,6 +355,86 @@ describe("attention records", () => {
       ledgerEligible: false,
       chipEligible: false,
     });
+  });
+
+  it("marks only the matching completed Journey start as completed for repeated runs", () => {
+    const records = buildAttentionRecords({
+      leaderSessionId: "leader-1",
+      records: [
+        explicitRecord({
+          id: "started:first",
+          type: "quest_journey_started",
+          questId: "q-984",
+          threadKey: "q-984",
+          title: "Journey started",
+          priority: "created",
+          state: "resolved",
+          createdAt: 100,
+          updatedAt: 100,
+          route: { threadKey: "q-984", questId: "q-984" },
+          chipEligible: false,
+          dedupeKey: "started:first",
+        }),
+        explicitRecord({
+          id: "finished:first",
+          type: "quest_completed_recent",
+          questId: "q-984",
+          threadKey: "q-984",
+          title: "Finished",
+          priority: "review",
+          state: "unresolved",
+          createdAt: 200,
+          updatedAt: 200,
+          route: { threadKey: "q-984", questId: "q-984" },
+          chipEligible: false,
+          dedupeKey: "finished:first",
+        }),
+        explicitRecord({
+          id: "started:second",
+          type: "quest_journey_started",
+          questId: "q-984",
+          threadKey: "q-984",
+          title: "Journey started",
+          priority: "created",
+          state: "resolved",
+          createdAt: 300,
+          updatedAt: 300,
+          route: { threadKey: "q-984", questId: "q-984" },
+          chipEligible: false,
+          dedupeKey: "started:second",
+        }),
+      ],
+    });
+
+    expect(records.find((record) => record.id === "started:first")).toMatchObject({
+      journeyLifecycleStatus: "completed",
+    });
+    expect(records.find((record) => record.id === "finished:first")).toMatchObject({
+      title: "Journey finished",
+      journeyLifecycleStatus: "completed",
+    });
+    expect(records.find((record) => record.id === "started:second")).toMatchObject({
+      journeyLifecycleStatus: "active",
+    });
+  });
+
+  it("keeps persisted thread-open records out of the visible Main ledger", () => {
+    const threadOpened = explicitRecord({
+      id: "thread-opened:q-984",
+      type: "quest_thread_created",
+      source: { kind: "manual", id: "q-984", questId: "q-984", signature: "thread-opened" },
+      title: "Thread opened",
+      priority: "created",
+      state: "resolved",
+      chipEligible: false,
+      dedupeKey: "thread-opened:q-984",
+    });
+    const needsInput = explicitRecord({ id: "manual:needs-input", dedupeKey: "manual:needs-input" });
+
+    const records = buildAttentionRecords({ leaderSessionId: "leader-1", records: [threadOpened, needsInput] });
+
+    expect(records.map((record) => record.type)).toContain("quest_thread_created");
+    expect(selectMainLedgerRecords(records).map((record) => record.type)).toEqual(["needs_input"]);
   });
 
   it("does not turn hidden cross-thread activity markers into attention", () => {

@@ -1046,7 +1046,7 @@ describe("MessageFeed - collapsed turns", () => {
 
     const row = screen.getByTestId("attention-ledger-row");
     expect(row.getAttribute("data-attention-state")).toBe("resolved");
-    expect(screen.getByText("Finished")).toBeTruthy();
+    expect(screen.getByText("Journey finished")).toBeTruthy();
     expect(screen.queryByText(/ready for review/i)).toBeNull();
     expect(row.textContent).not.toContain("Needs attention");
     expect(row.textContent).not.toContain("Resolved");
@@ -1074,7 +1074,7 @@ describe("MessageFeed - collapsed turns", () => {
     render(<MessageFeed sessionId={sid} onSelectThread={onSelectThread} />);
 
     const row = screen.getByTestId("attention-ledger-row");
-    expect(row.textContent).toContain("Finished");
+    expect(row.textContent).toContain("Journey finished");
     expect(row.textContent).toContain("Compact notification cards");
     const questLink = within(row).getByRole("link", { name: "q-983" });
     expect(questLink.getAttribute("href")).toBe("#/?quest=q-983");
@@ -1130,9 +1130,8 @@ describe("MessageFeed - collapsed turns", () => {
     expect(screen.queryByRole("button", { name: "Open" })).toBeNull();
   });
 
-  it("renders thread-created ledger rows as non-action event chips", () => {
+  it("suppresses persisted thread-created ledger rows", () => {
     const sid = "test-main-attention-ledger-thread-created";
-    const onSelectThread = vi.fn();
     setStoreMessages(sid, [makeMessage({ id: "u-main", role: "user", content: "Coordinate active quests" })]);
     setStoreAttentionRecords(sid, [
       {
@@ -1157,18 +1156,10 @@ describe("MessageFeed - collapsed turns", () => {
       },
     ]);
 
-    render(<MessageFeed sessionId={sid} onSelectThread={onSelectThread} />);
+    render(<MessageFeed sessionId={sid} />);
 
-    const row = screen.getByTestId("attention-ledger-row");
-    expect(row.getAttribute("data-attention-type")).toBe("quest_thread_created");
-    expect(row.getAttribute("data-attention-event")).toBe("true");
-    expect(row.className).toContain("border-sky-400/25");
-    expect(row.textContent).toContain("Thread opened");
-    expect(within(row).getByRole("link", { name: "q-1034" })).toBeTruthy();
-    fireEvent.click(within(row).getByRole("button", { name: "Open thread:q-1034" }));
-    expect(onSelectThread).toHaveBeenCalledWith("q-1034");
-    expect(row.textContent).not.toContain("Resolved");
-    expect(screen.queryByRole("button", { name: "Open" })).toBeNull();
+    expect(screen.queryByTestId("attention-ledger-row")).toBeNull();
+    expect(screen.queryByText("Thread opened")).toBeNull();
   });
 
   it("renders server-authoritative attention lifecycle records from the live store", () => {

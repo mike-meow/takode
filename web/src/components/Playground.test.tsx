@@ -72,19 +72,15 @@ describe("Playground", () => {
     expect(screen.queryByText(/@to\(user\)/)).toBeNull();
   });
 
-  it("documents compact moved-message summaries on thread-opened rows", () => {
+  it("documents thread movement markers without Thread opened ledger rows", () => {
     render(<Playground />);
 
-    const threadOpened = screen
-      .getAllByTestId("attention-ledger-row")
-      .find(
-        (row) =>
-          row.getAttribute("data-attention-type") === "quest_thread_created" &&
-          row.textContent?.includes("2 messages moved to thread:q-964"),
-      );
-    expect(threadOpened).toBeTruthy();
-    expect(threadOpened).toHaveTextContent("Thread opened");
-    expect(threadOpened).toHaveTextContent("2 messages moved to thread:q-964");
+    expect(screen.queryByText("Thread opened")).toBeNull();
+    expect(
+      screen
+        .getAllByTestId("attention-ledger-row")
+        .some((row) => row.getAttribute("data-attention-type") === "quest_thread_created"),
+    ).toBe(false);
 
     const marker = screen.getAllByTestId("thread-system-marker-cluster")[0];
     expect(marker).toHaveTextContent("1 message moved to thread:q-961");

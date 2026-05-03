@@ -37,6 +37,7 @@ interface ReviewNotificationDisplay {
 }
 
 const ACTIVE_ATTENTION_STATES = new Set<AttentionRecord["state"]>(["unresolved", "seen", "reopened"]);
+const JOURNEY_FINISHED_TITLE = "Journey finished";
 const PRIORITY_ORDER = new Map<AttentionRecord["priority"], number>([
   ["needs_input", 0],
   ["review", 1],
@@ -83,12 +84,17 @@ export function buildAttentionRecords(input: BuildAttentionRecordsInput): Attent
   // separate review-unread source they should not create active attention.
   void input.completedBoardRows;
 
-  return [...records.values()].sort(compareAttentionRecordsChronologically);
+  return applyJourneyLifecyclePresentation([...records.values()].sort(compareAttentionRecordsChronologically));
 }
 
 export function selectMainLedgerRecords(records: ReadonlyArray<AttentionRecord>): AttentionRecord[] {
   return records
-    .filter((record) => record.ledgerEligible && !isRedundantActiveNeedsInputNotification(record))
+    .filter(
+      (record) =>
+        record.ledgerEligible &&
+        record.type !== "quest_thread_created" &&
+        !isRedundantActiveNeedsInputNotification(record),
+    )
     .sort(compareAttentionRecordsChronologically);
 }
 
@@ -190,7 +196,7 @@ function attentionRecordsFromNotification(
       },
       questId,
       threadKey,
-      title: "Finished",
+      title: JOURNEY_FINISHED_TITLE,
       summary: `${questIds.length} quests finished`,
       actionLabel: "Open",
       chipEligible: false,
@@ -255,14 +261,14 @@ function attentionRecordFromNotification(
 
 function reviewDisplayFromNotification(notification: SessionNotification): ReviewNotificationDisplay {
   const summary = notification.summary?.trim();
-  if (!summary) return { title: "Finished", summary: "", questIds: [] };
+  if (!summary) return { title: JOURNEY_FINISHED_TITLE, summary: "", questIds: [] };
 
   const single = summary.match(/^\s*(q-\d+)\s+(?:ready\s+for\s+review|finished)(?:\s*:\s*(.+?))?\s*$/i);
   if (single) {
     const questId = single[1].trim();
     const title = single[2]?.trim();
     return {
-      title: "Finished",
+      title: JOURNEY_FINISHED_TITLE,
       summary: title ?? "",
       kind: "journey_finished",
       questId,
@@ -387,9 +393,58 @@ function normalizeAttentionRecord(record: AttentionRecord, leaderSessionId: stri
     leaderSessionId: record.leaderSessionId || leaderSessionId,
     threadKey: route.threadKey,
     ...(route.questId ? { questId: route.questId } : {}),
+    ...(record.type === "quest_completed_recent" ? { title: JOURNEY_FINISHED_TITLE } : {}),
     route,
     dedupeKey: record.dedupeKey || record.id,
   };
+}
+
+function applyJourneyLifecyclePresentation(records: AttentionRecord[]): AttentionRecord[] {
+  const startsByQuest = new Map<string, AttentionRecord[]>();
+  const finishTimesByQuest = new Map<string, number[]>();
+
+  for (const record of records) {
+    if (!record.questId) continue;
+    const questId = record.questId.toLowerCase();
+    if (record.type === "quest_journey_started") {
+      const starts = startsByQuest.get(questId) ?? [];
+      starts.push(record);
+      startsByQuest.set(questId, starts);
+    }
+    if (record.type === "quest_completed_recent") {
+      const finishes = finishTimesByQuest.get(questId) ?? [];
+      finishes.push(record.createdAt);
+      finishTimesByQuest.set(questId, finishes);
+    }
+  }
+
+  for (const starts of startsByQuest.values()) {
+    starts.sort(compareAttentionRecordsChronologically);
+  }
+  for (const finishes of finishTimesByQuest.values()) {
+    finishes.sort((a, b) => a - b);
+  }
+
+  return records.map((record) => {
+    if (record.type === "quest_completed_recent") {
+      return { ...record, title: JOURNEY_FINISHED_TITLE, journeyLifecycleStatus: "completed" };
+    }
+    if (record.type !== "quest_journey_started" || !record.questId) return record;
+
+    const questId = record.questId.toLowerCase();
+    const starts = startsByQuest.get(questId) ?? [];
+    const startIndex = starts.findIndex((start) => start.id === record.id);
+    const nextStartAt = startIndex >= 0 ? starts[startIndex + 1]?.createdAt : undefined;
+    const finishTimes = finishTimesByQuest.get(questId) ?? [];
+    const hasMatchingFinish = finishTimes.some(
+      (finishedAt) => finishedAt >= record.createdAt && (nextStartAt === undefined || finishedAt < nextStartAt),
+    );
+
+    return {
+      ...record,
+      journeyLifecycleStatus: hasMatchingFinish ? "completed" : "active",
+    };
+  });
 }
 
 function routeForNotification(notification: SessionNotification, inferredQuestId?: string): AttentionRecord["route"] {
