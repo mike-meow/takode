@@ -65,10 +65,11 @@ export interface FeedMessageModel {
 export function buildFeedMessageModel(input: BuildFeedMessageModelInput): FeedMessageModel {
   const normalizedThreadKey = normalizeThreadKey(input.threadKey || "main");
   const retainedMessageIds = collectRetainedNotificationSourceMessageIds(input.sessionNotifications, input.threadKey);
+  const activeSelectedFeedWindow = input.selectedFeedWindowEnabled ? input.selectedFeedWindow : null;
   const messagesAvailableForDerivation = composeSelectedFeedMessages({
     allMessages: input.allMessages,
     historyLoading: input.historyLoading,
-    selectedFeedWindow: input.selectedFeedWindow,
+    selectedFeedWindow: activeSelectedFeedWindow,
     selectedFeedWindowEnabled: input.selectedFeedWindowEnabled,
     selectedFeedWindowMessages: input.selectedFeedWindowMessages,
     retainedMessageIds,
@@ -79,7 +80,7 @@ export function buildFeedMessageModel(input: BuildFeedMessageModelInput): FeedMe
     input.threadKey,
   );
   const baseMessages = input.projectThreadRoutes
-    ? filterProjectedMessagesForThread(messagesAvailableForProjection, input.threadKey, input.selectedFeedWindow)
+    ? filterProjectedMessagesForThread(messagesAvailableForProjection, input.threadKey, activeSelectedFeedWindow)
     : messagesAvailableForDerivation;
   const records =
     input.additionalAttentionRecords && input.additionalAttentionRecords.length > 0
