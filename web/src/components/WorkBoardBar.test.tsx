@@ -789,6 +789,7 @@ describe("WorkBoardBar", () => {
     const activeMarker = within(mainTab).getByTestId("thread-tab-active-output-indicator");
     expect(activeMarker).toHaveAttribute("data-reduced-motion-static", "true");
     expect(activeMarker).toHaveAttribute("data-dot-position", "left");
+    expect(activeMarker).toHaveAttribute("data-dot-lane", "bell-halo");
     expect(activeMarker).toHaveAttribute("data-overlaps-needs-input", "true");
     expect(activeMarker).toHaveAttribute("data-bell-center-offset", "14px");
     expect(activeMarker).toHaveAttribute("data-halo-center-offset", "14px");
@@ -1043,6 +1044,7 @@ describe("WorkBoardBar", () => {
     expect(needsInputTab).toHaveAttribute("data-active-output", "true");
     const activeMarker = within(needsInputTab).getByTestId("thread-tab-active-output-indicator");
     expect(activeMarker).toHaveAttribute("data-dot-position", "left");
+    expect(activeMarker).toHaveAttribute("data-dot-lane", "bell-halo");
     expect(activeMarker).toHaveAttribute("data-overlaps-needs-input", "true");
     expect(activeMarker).toHaveAttribute("data-bell-center-offset", "12px");
     expect(activeMarker).toHaveAttribute("data-halo-center-offset", "12px");
@@ -1100,6 +1102,7 @@ describe("WorkBoardBar", () => {
     const glint = within(marker).getByTestId("thread-tab-active-output-glint");
     expect(marker).toHaveAttribute("data-reduced-motion-static", "true");
     expect(marker).toHaveAttribute("data-dot-position", "left");
+    expect(marker).toHaveAttribute("data-dot-lane", "top-edge");
     expect(marker).toHaveAttribute("data-overlaps-needs-input", "false");
     expect(marker).toHaveAttribute("data-bell-center-offset", "");
     expect(marker).toHaveAttribute("data-halo-center-offset", "");
@@ -1110,11 +1113,37 @@ describe("WorkBoardBar", () => {
     expect(glint).toHaveClass("thread-tab-output-glint");
     expect(within(marker).getByTestId("thread-tab-active-output-dot")).toHaveClass(
       "left-2.5",
-      "top-1",
+      "top-0",
       "h-1.5",
       "w-1.5",
       "bg-sky-100",
     );
+  });
+
+  it("keeps the active output glint mounted across rail rerenders while active state continues", () => {
+    resetStore({
+      sdkSessions: [{ sessionId: "s1", isOrchestrator: true }],
+      sessionBoards: new Map([["s1", BOARD_DATA]]),
+      sessionStatus: new Map([["s1", "running"]]),
+      activeTurnRoutes: new Map([["s1", { threadKey: "q-1", questId: "q-1" }]]),
+    });
+
+    const view = render(<WorkBoardBar sessionId="s1" currentThreadKey="q-1" openThreadKeys={["q-1"]} />);
+    const tabBefore = view
+      .getAllByTestId("thread-tab")
+      .find((candidate) => candidate.getAttribute("data-thread-key") === "q-1")!;
+    const markerBefore = within(tabBefore).getByTestId("thread-tab-active-output-indicator");
+    const glintBefore = within(markerBefore).getByTestId("thread-tab-active-output-glint");
+
+    view.rerender(<WorkBoardBar sessionId="s1" currentThreadKey="q-1" openThreadKeys={["q-1"]} />);
+
+    const tabAfter = view
+      .getAllByTestId("thread-tab")
+      .find((candidate) => candidate.getAttribute("data-thread-key") === "q-1")!;
+    const markerAfter = within(tabAfter).getByTestId("thread-tab-active-output-indicator");
+    const glintAfter = within(markerAfter).getByTestId("thread-tab-active-output-glint");
+    expect(markerAfter).toBe(markerBefore);
+    expect(glintAfter).toBe(glintBefore);
   });
 
   it("embeds Main-owned needs-input state into the pinned Main tab without a duplicate chip", () => {
