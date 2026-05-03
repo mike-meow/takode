@@ -51,8 +51,13 @@ import {
 } from "../utils/thread-projection.js";
 import { requestThreadViewportSnapshot } from "../utils/thread-viewport.js";
 import { buildAttentionRecords } from "../utils/attention-records.js";
-import { scopedGetItem, scopedSetItem } from "../utils/scoped-storage.js";
 import { getQuestStatusTheme } from "../utils/quest-status-theme.js";
+import {
+  persistOpenThreadTabKeys,
+  placeOpenThreadTabKey,
+  readOpenThreadTabKeys,
+  shouldPersistOpenThreadTab,
+} from "../utils/leader-open-thread-tabs.js";
 import type {
   BoardRowSessionStatus,
   ChatMessage,
@@ -471,53 +476,8 @@ function markerMovesNewestUserMessage(
   return !!newestUserMessage && markerIncludesMessage(marker, newestUserMessage);
 }
 
-function openThreadTabsKey(sessionId: string): string {
-  return `cc-leader-open-thread-tabs:${sessionId}`;
-}
-
 function boardThreadKeySet(board: BoardRowData[]): Set<string> {
   return new Set(board.map((row) => normalizeThreadKey(row.questId)));
-}
-
-function shouldPersistOpenThreadTab(threadKey: string): boolean {
-  const normalized = normalizeThreadKey(threadKey);
-  return normalized !== "" && normalized !== MAIN_THREAD_KEY && normalized !== ALL_THREADS_KEY;
-}
-
-function normalizeOpenThreadTabKeys(threadKeys: ReadonlyArray<unknown>): string[] {
-  const seen = new Set<string>();
-  const result: string[] = [];
-  for (const value of threadKeys) {
-    if (typeof value !== "string") continue;
-    const key = normalizeThreadKey(value);
-    if (!shouldPersistOpenThreadTab(key) || seen.has(key)) continue;
-    seen.add(key);
-    result.push(key);
-  }
-  return result;
-}
-
-function placeOpenThreadTabKey(
-  existingThreadKeys: ReadonlyArray<string>,
-  threadKey: string,
-  placement: "first" | "last",
-): string[] {
-  const normalized = normalizeThreadKey(threadKey);
-  if (!shouldPersistOpenThreadTab(normalized)) return normalizeOpenThreadTabKeys(existingThreadKeys);
-  const withoutTarget = normalizeOpenThreadTabKeys(existingThreadKeys).filter((key) => key !== normalized);
-  return placement === "first" ? [normalized, ...withoutTarget] : [...withoutTarget, normalized];
-}
-
-function readOpenThreadTabKeys(sessionId: string): string[] {
-  if (typeof window === "undefined") return [];
-  const raw = scopedGetItem(openThreadTabsKey(sessionId));
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? normalizeOpenThreadTabKeys(parsed) : [];
-  } catch {
-    return [];
-  }
 }
 
 function threadOpenedEventSummary(threadKey: string, row?: LeaderThreadRow): string {
@@ -967,7 +927,7 @@ export function ChatView({
   }, [sessionId]);
 
   useEffect(() => {
-    scopedSetItem(openThreadTabsKey(sessionId), JSON.stringify(openThreadTabKeys));
+    persistOpenThreadTabKeys(sessionId, openThreadTabKeys);
   }, [openThreadTabKeys, sessionId]);
 
   useEffect(() => {
