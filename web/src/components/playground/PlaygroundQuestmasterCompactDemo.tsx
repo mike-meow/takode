@@ -71,6 +71,11 @@ export function PlaygroundQuestmasterCompactDemo() {
               { text: "Verify completed status copy", checked: false },
               { text: "Verify TLDR links render", checked: true },
             ],
+            relatedQuests: [
+              { questId: "q-801", kind: "follow_up_of" as const, explicit: true },
+              { questId: "q-803", kind: "has_follow_up" as const, explicit: true },
+              { questId: "q-804", kind: "referenced_by" as const, explicit: false },
+            ],
             debriefTldr: "This debrief is intentionally absent from compact title cells.",
             tags: ["ui", "questmaster"],
           },

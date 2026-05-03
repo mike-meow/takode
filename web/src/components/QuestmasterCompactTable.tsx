@@ -23,7 +23,6 @@ import type { QuestJourneyContext } from "../utils/quest-journey-context.js";
 import { QUEST_STATUS_THEME } from "../utils/quest-status-theme.js";
 import { getQuestJourneyPhaseForState, getQuestJourneyPresentation } from "../../shared/quest-journey.js";
 import { QuestHoverCard } from "./QuestHoverCard.js";
-import { QuestRelationshipLinks } from "./QuestRelationshipLinks.js";
 import { SessionNumChip } from "./SessionNumChip.js";
 
 const STATUS_SORT_RANK: Record<QuestStatus, number> = {
@@ -620,7 +619,6 @@ const CompactQuestRow = memo(function CompactQuestRow({
         {quest.tldr && (
           <QuestTldrSnippet text={quest.tldr} searchText={searchText} className="mt-0.5 max-w-[360px] text-[11px]" />
         )}
-        <QuestRelationshipLinks quest={quest} variant="inline" />
       </td>
       <td className="px-3 py-1.5 whitespace-nowrap align-middle">
         {questSessionId ? (
