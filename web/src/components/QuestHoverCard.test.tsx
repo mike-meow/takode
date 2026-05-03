@@ -33,7 +33,7 @@ describe("QuestHoverCard", () => {
       title: "Finish hover Journey",
       status: "done",
       description: "Completed quest with retained Journey metadata.",
-      tldr: "Compact hover cards should show the outcome before Journey details.",
+      tldr: "Compact hover cards should show the **outcome** before Journey details.\n\n- Keep it scannable.",
       createdAt: completedAt - 60_000,
       completedAt,
       verificationItems: [],
@@ -70,6 +70,8 @@ describe("QuestHoverCard", () => {
     expect(within(card).getByTestId("quest-hover-completed-at").textContent).toBe("Finished 2h ago");
     expect(tldr.textContent).toContain("Summary");
     expect(tldr.textContent).toContain("Compact hover cards should show the outcome before Journey details.");
+    expect(within(tldr).getByText("outcome").tagName).toBe("STRONG");
+    expect(within(tldr).getByText("Keep it scannable.").tagName).toBe("LI");
     expect(tldr.compareDocumentPosition(journey) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(journey).getByText("Completed Journey")).toBeTruthy();
   });
@@ -128,11 +130,16 @@ describe("QuestHoverCard", () => {
     render(<QuestHoverCard quest={quest} anchorRect={anchorRect()} onMouseEnter={() => {}} onMouseLeave={() => {}} />);
 
     const card = screen.getByTestId("quest-hover-card");
+    const participants = within(card).getByTestId("quest-hover-participants");
     const worker = within(card).getByRole("link", { name: "Worker #123 Auth Worker" });
     const reviewer = within(card).getByRole("link", { name: "Reviewer #8 Quest Reviewer" });
     const leader = within(card).getByRole("link", { name: "Leader #7 Quest Leader" });
 
     expect(card.style.width).toBe("560px");
+    expect(participants.contains(worker)).toBe(true);
+    expect(participants.contains(reviewer)).toBe(true);
+    expect(participants.contains(leader)).toBe(true);
+    expect(within(card).queryByText("Leader session")).toBeNull();
     expect(worker.getAttribute("href")).toBe("#/session/123");
     expect(worker.textContent).toContain("Worker");
     expect(worker.textContent).toContain("#123");

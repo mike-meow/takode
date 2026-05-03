@@ -600,6 +600,7 @@ export function MarkdownContent({
   searchHighlight,
   enableChatSelectionMenu = false,
   wrapLongContent = false,
+  className = "",
 }: {
   text: string;
   size?: "default" | "sm";
@@ -608,6 +609,7 @@ export function MarkdownContent({
   searchHighlight?: { query: string; mode: "strict" | "fuzzy"; isCurrent: boolean } | null;
   enableChatSelectionMenu?: boolean;
   wrapLongContent?: boolean;
+  className?: string;
 }) {
   const sizeClass =
     size === "sm"
@@ -637,7 +639,7 @@ export function MarkdownContent({
     <div
       className={`markdown-body ${sizeClass} text-cc-fg leading-relaxed overflow-hidden break-words ${
         wrapLongContent ? "min-w-0 max-w-full [overflow-wrap:anywhere]" : ""
-      }`}
+      } ${className}`}
       data-chat-selection-scope={enableChatSelectionMenu ? "true" : undefined}
     >
       <Markdown

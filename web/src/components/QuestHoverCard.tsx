@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef } from "react";
+import { useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import type { BoardParticipantStatus, BoardRowSessionStatus, QuestmasterTask } from "../types.js";
 import { getQuestStatusTheme } from "../utils/quest-status-theme.js";
@@ -17,6 +17,7 @@ import {
   QUEST_PARTICIPANT_SESSION_CLASS,
 } from "./quest-participant-chip-style.js";
 import { timeAgo } from "../utils/quest-helpers.js";
+import { MarkdownContent } from "./MarkdownContent.js";
 
 interface QuestHoverCardProps {
   quest: QuestmasterTask;
@@ -163,7 +164,13 @@ export function QuestHoverCard({ quest, anchorRect, onMouseEnter, onMouseLeave }
         {quest.tldr && (
           <div data-testid="quest-hover-tldr" className="mt-2 pt-2 border-t border-cc-border/50">
             <div className="text-[10px] uppercase tracking-wider text-cc-muted/60">Summary</div>
-            <p className="mt-1 text-[11px] leading-snug text-cc-muted break-words">{quest.tldr}</p>
+            <MarkdownContent
+              text={quest.tldr}
+              size="sm"
+              variant="conservative"
+              wrapLongContent
+              className="mt-1 text-[11px] leading-snug text-cc-muted [&_p]:mb-1.5 [&_p:last-child]:mb-0 [&_p]:text-cc-muted [&_li]:text-cc-muted [&_ul]:mb-1.5 [&_ol]:mb-1.5"
+            />
           </div>
         )}
         {journeyBoardRow?.journey && (
@@ -171,35 +178,16 @@ export function QuestHoverCard({ quest, anchorRect, onMouseEnter, onMouseLeave }
             <QuestJourneyPreviewCard journey={journeyBoardRow.journey} status={journeyStatus} />
           </div>
         )}
-        {workerParticipant && (
-          <ParticipantMetadataRow testId="quest-hover-worker-session" label="Worker" participant={workerParticipant} />
-        )}
-        {reviewerParticipant && (
-          <ParticipantMetadataRow
-            testId="quest-hover-reviewer-session"
-            label="Reviewer"
-            participant={reviewerParticipant}
-          />
-        )}
-        {showOwnerSession && ownerSessionId && (
-          <SessionMetadataRow
-            testId="quest-hover-owner-session"
-            label="Owner session"
-            sessionId={ownerSessionId}
-            sessionNum={ownerSessionNum}
-            sessionName={ownerSessionName}
-          />
-        )}
-        {leaderSessionId && leaderSessionId !== ownerSessionId && (
-          <SessionMetadataRow
-            testId="quest-hover-leader-session"
-            label="Leader session"
-            sessionId={leaderSessionId}
-            sessionNum={leaderSessionNum}
-            sessionName={leaderSessionName}
-            chipRole="Leader"
-          />
-        )}
+        <QuestHoverParticipants
+          workerParticipant={workerParticipant}
+          reviewerParticipant={reviewerParticipant}
+          ownerSessionId={showOwnerSession ? ownerSessionId : null}
+          ownerSessionNum={ownerSessionNum}
+          ownerSessionName={ownerSessionName}
+          leaderSessionId={leaderSessionId !== ownerSessionId ? leaderSessionId : null}
+          leaderSessionNum={leaderSessionNum}
+          leaderSessionName={leaderSessionName}
+        />
       </div>
     </div>,
     document.body,
@@ -221,55 +209,81 @@ function resolveWorkerParticipant(
   return { sessionId: row.worker, sessionNum: row.workerNum ?? null, status: "idle" };
 }
 
-function ParticipantMetadataRow({
-  testId,
-  label,
-  participant,
+function QuestHoverParticipants({
+  workerParticipant,
+  reviewerParticipant,
+  ownerSessionId,
+  ownerSessionNum,
+  ownerSessionName,
+  leaderSessionId,
+  leaderSessionNum,
+  leaderSessionName,
 }: {
-  testId: string;
-  label: string;
-  participant: BoardParticipantStatus;
+  workerParticipant: BoardParticipantStatus | null;
+  reviewerParticipant: BoardParticipantStatus | null;
+  ownerSessionId: string | null;
+  ownerSessionNum: number | null;
+  ownerSessionName?: string;
+  leaderSessionId: string | null;
+  leaderSessionNum: number | null;
+  leaderSessionName?: string;
 }) {
+  if (!workerParticipant && !reviewerParticipant && !ownerSessionId && !leaderSessionId) return null;
+
   return (
-    <div data-testid={testId} className="mt-2 pt-2 border-t border-cc-border/50">
-      <div className="text-[10px] uppercase tracking-wider text-cc-muted/60">{label}</div>
-      <QuestHoverSessionChip
-        role={label}
-        sessionId={participant.sessionId}
-        sessionNum={participant.sessionNum}
-        sessionName={participant.name}
-        status={participant.status}
-      />
+    <div
+      data-testid="quest-hover-participants"
+      className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-cc-border/50 pt-2"
+      aria-label="Quest participant sessions"
+    >
+      {workerParticipant && (
+        <QuestHoverParticipantSlot testId="quest-hover-worker-session">
+          <QuestHoverSessionChip
+            role="Worker"
+            sessionId={workerParticipant.sessionId}
+            sessionNum={workerParticipant.sessionNum}
+            sessionName={workerParticipant.name}
+            status={workerParticipant.status}
+          />
+        </QuestHoverParticipantSlot>
+      )}
+      {reviewerParticipant && (
+        <QuestHoverParticipantSlot testId="quest-hover-reviewer-session">
+          <QuestHoverSessionChip
+            role="Reviewer"
+            sessionId={reviewerParticipant.sessionId}
+            sessionNum={reviewerParticipant.sessionNum}
+            sessionName={reviewerParticipant.name}
+            status={reviewerParticipant.status}
+          />
+        </QuestHoverParticipantSlot>
+      )}
+      {ownerSessionId && (
+        <QuestHoverParticipantSlot testId="quest-hover-owner-session">
+          <QuestHoverSessionChip
+            role="Owner session"
+            sessionId={ownerSessionId}
+            sessionNum={ownerSessionNum}
+            sessionName={ownerSessionName}
+          />
+        </QuestHoverParticipantSlot>
+      )}
+      {leaderSessionId && (
+        <QuestHoverParticipantSlot testId="quest-hover-leader-session">
+          <QuestHoverSessionChip
+            role="Leader"
+            sessionId={leaderSessionId}
+            sessionNum={leaderSessionNum}
+            sessionName={leaderSessionName}
+          />
+        </QuestHoverParticipantSlot>
+      )}
     </div>
   );
 }
 
-function SessionMetadataRow({
-  testId,
-  label,
-  sessionId,
-  sessionNum,
-  sessionName,
-  chipRole,
-}: {
-  testId: string;
-  label: string;
-  sessionId: string;
-  sessionNum: number | null;
-  sessionName?: string;
-  chipRole?: string;
-}) {
-  return (
-    <div data-testid={testId} className="mt-2 pt-2 border-t border-cc-border/50">
-      <div className="text-[10px] uppercase tracking-wider text-cc-muted/60">{label}</div>
-      <QuestHoverSessionChip
-        role={chipRole ?? label}
-        sessionId={sessionId}
-        sessionNum={sessionNum}
-        sessionName={sessionName}
-      />
-    </div>
-  );
+function QuestHoverParticipantSlot({ testId, children }: { testId: string; children: ReactNode }) {
+  return <span data-testid={testId}>{children}</span>;
 }
 
 function QuestHoverSessionChip({
@@ -294,7 +308,7 @@ function QuestHoverSessionChip({
     <SessionInlineLink
       sessionId={sessionId}
       sessionNum={sessionNum}
-      className={`mt-1 ${QUEST_PARTICIPANT_CHIP_CLASS}`}
+      className={QUEST_PARTICIPANT_CHIP_CLASS}
       dataTestId="quest-hover-session-chip"
       ariaLabel={ariaLabel}
       title={`Open ${role.toLowerCase()} ${titleSession}`}
