@@ -25,7 +25,7 @@ beforeAll(() => {
   });
 });
 
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import type { ChatMessage } from "../types.js";
 
 vi.mock("react-markdown", () => ({
@@ -62,11 +62,11 @@ vi.mock("../store.js", () => {
       streamingPauseStartedAt: new Map(),
       sessionStatus: new Map(),
       sessionStuck: new Map(),
-      sessions: new Map(),
+      sessions: mockStoreValues.sessions ?? new Map(),
       toolProgress: new Map(),
       toolResults: new Map(),
       toolStartTimestamps: new Map(),
-      sdkSessions: [],
+      sdkSessions: mockStoreValues.sdkSessions ?? [],
       feedScrollPosition: mockStoreValues.feedScrollPosition ?? new Map(),
       turnActivityOverrides: new Map(),
       autoExpandedTurnIds: new Map(),
@@ -118,7 +118,7 @@ vi.mock("../store.js", () => {
   };
 });
 
-import { getFeedViewportKey } from "../utils/thread-viewport.js";
+import { getFeedViewportKey, persistLeaderViewportPosition } from "../utils/thread-viewport.js";
 import { MessageFeed } from "./MessageFeed.js";
 
 function makeMessage(overrides: Partial<ChatMessage> & { role: ChatMessage["role"] }): ChatMessage {
@@ -138,11 +138,101 @@ beforeEach(() => {
   mockScrollTo.mockClear();
   mockSetActiveTaskTurnId.mockClear();
   mockSetCollapsibleTurnIds.mockClear();
+  localStorage.clear();
+  localStorage.setItem("cc-server-id", "test-server");
   mockStoreValues.messages = new Map();
   mockStoreValues.feedScrollPosition = new Map();
+  mockStoreValues.sessions = new Map();
+  mockStoreValues.sdkSessions = [];
 });
 
 describe("MessageFeed thread viewport restoration", () => {
+  it("restores a browser-local persisted leader viewport when memory state is missing", async () => {
+    const sid = "test-persisted-leader-viewport";
+    setStoreMessages(sid, [
+      makeMessage({ id: "u-main-1", role: "user", content: "Main setup" }),
+      makeMessage({
+        id: "a-q941",
+        role: "assistant",
+        content: "Quest update",
+        metadata: { threadRefs: [{ threadKey: "q-941", questId: "q-941", source: "explicit" }] },
+      }),
+    ]);
+    mockStoreValues.sessions = new Map([[sid, { isOrchestrator: true }]]);
+    persistLeaderViewportPosition(sid, "q-941", {
+      scrollTop: 420,
+      scrollHeight: 1600,
+      isAtBottom: false,
+    });
+
+    const originalScrollHeight = Object.getOwnPropertyDescriptor(HTMLDivElement.prototype, "scrollHeight");
+    const originalScrollTop = Object.getOwnPropertyDescriptor(HTMLDivElement.prototype, "scrollTop");
+    let scrollTopValue = 0;
+    Object.defineProperty(HTMLDivElement.prototype, "scrollHeight", {
+      configurable: true,
+      get() {
+        return this.classList.contains("overflow-y-auto") ? 1600 : 0;
+      },
+    });
+    Object.defineProperty(HTMLDivElement.prototype, "scrollTop", {
+      configurable: true,
+      get() {
+        return this.classList.contains("overflow-y-auto") ? scrollTopValue : 0;
+      },
+      set(value) {
+        scrollTopValue = value as number;
+      },
+    });
+
+    try {
+      render(<MessageFeed sessionId={sid} threadKey="q-941" />);
+
+      await waitFor(() => expect(scrollTopValue).toBe(420));
+      expect(screen.queryByText("Main setup")).toBeNull();
+      expect(screen.getByText("Quest update")).toBeTruthy();
+    } finally {
+      if (originalScrollHeight) Object.defineProperty(HTMLDivElement.prototype, "scrollHeight", originalScrollHeight);
+      else delete (HTMLDivElement.prototype as { scrollHeight?: unknown }).scrollHeight;
+      if (originalScrollTop) Object.defineProperty(HTMLDivElement.prototype, "scrollTop", originalScrollTop);
+      else delete (HTMLDivElement.prototype as { scrollTop?: unknown }).scrollTop;
+    }
+  });
+
+  it("defaults missing leader viewport state to the latest bottom", () => {
+    const sid = "test-missing-leader-viewport-bottom";
+    setStoreMessages(sid, [
+      makeMessage({ id: "u-main-1", role: "user", content: "Main setup" }),
+      makeMessage({ id: "a-main-1", role: "assistant", content: "Main answer" }),
+    ]);
+    mockStoreValues.sessions = new Map([[sid, { isOrchestrator: true }]]);
+
+    const originalScrollHeight = Object.getOwnPropertyDescriptor(HTMLDivElement.prototype, "scrollHeight");
+    const originalClientHeight = Object.getOwnPropertyDescriptor(HTMLDivElement.prototype, "clientHeight");
+    Object.defineProperty(HTMLDivElement.prototype, "scrollHeight", {
+      configurable: true,
+      get() {
+        return this.classList.contains("overflow-y-auto") ? 1200 : 0;
+      },
+    });
+    Object.defineProperty(HTMLDivElement.prototype, "clientHeight", {
+      configurable: true,
+      get() {
+        return this.classList.contains("overflow-y-auto") ? 400 : 0;
+      },
+    });
+
+    try {
+      render(<MessageFeed sessionId={sid} threadKey="main" />);
+
+      expect(mockScrollTo).toHaveBeenCalledWith({ top: 788, behavior: "auto" });
+    } finally {
+      if (originalScrollHeight) Object.defineProperty(HTMLDivElement.prototype, "scrollHeight", originalScrollHeight);
+      else delete (HTMLDivElement.prototype as { scrollHeight?: unknown }).scrollHeight;
+      if (originalClientHeight) Object.defineProperty(HTMLDivElement.prototype, "clientHeight", originalClientHeight);
+      else delete (HTMLDivElement.prototype as { clientHeight?: unknown }).clientHeight;
+    }
+  });
+
   it("restores Main independently after visiting a short quest thread", () => {
     // Regression for q-976: a short quest projection must not leave Main at
     // the oldest messages when returning to the Main projection.

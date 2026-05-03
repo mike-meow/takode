@@ -3,6 +3,7 @@ import { fireEvent, render, waitFor, within } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import type { ReactNode } from "react";
 import type { LeaderOpenThreadTabsState } from "../../shared/leader-open-thread-tabs.js";
+import { persistLeaderSelectedThreadKey, readLeaderSelectedThreadKey } from "../utils/thread-viewport.js";
 
 interface MockStoreState {
   pendingPermissions: Map<string, Map<string, { tool_name?: string; request_id?: string }>>;
@@ -232,6 +233,76 @@ describe("ChatView leader open thread tabs", () => {
       type: "leader_thread_tabs_update",
       operation: { type: "close", threadKey: "q-941", closedAt: expect.any(Number) },
     });
+  });
+
+  it("persists a browser-local selected leader tab without writing open-tab localStorage", async () => {
+    resetStore({
+      sessions: leaderSession(leaderTabs(["q-941"])),
+      messages: new Map([["s1", [threadMessage("q-941", 2)]]]),
+      quests: [{ questId: "q-941", title: "Persisted selection", status: "in_progress" }],
+    });
+
+    const view = render(<ChatView sessionId="s1" hasThreadRoute={false} routeThreadKey={null} />);
+    const scope = within(view.container);
+
+    fireEvent.click(scope.getByRole("button", { name: /q-941 persisted selection/i }));
+
+    await waitFor(() => expect(scope.getByTestId("message-feed")).toHaveAttribute("data-thread-key", "q-941"));
+    expect(readLeaderSelectedThreadKey("s1")).toBe("q-941");
+    expect(localStorage.getItem("test-server:cc-leader-open-thread-tabs:s1")).toBeNull();
+  });
+
+  it("restores the browser-local selected leader tab when returning without an explicit thread route", async () => {
+    persistLeaderSelectedThreadKey("s1", "q-941");
+    resetStore({
+      sessions: leaderSession(leaderTabs(["q-941"])),
+      messages: new Map([["s1", [threadMessage("q-941", 2)]]]),
+      quests: [{ questId: "q-941", title: "Restore me", status: "in_progress" }],
+    });
+
+    const view = render(<ChatView sessionId="s1" hasThreadRoute={false} routeThreadKey={null} />);
+    const scope = within(view.container);
+
+    await waitFor(() => expect(scope.getByTestId("message-feed")).toHaveAttribute("data-thread-key", "q-941"));
+    expect(scope.getByTestId("work-board-bar")).toHaveAttribute("data-current-thread-key", "q-941");
+  });
+
+  it("falls back to Main when the browser-local selected tab is no longer server-open", async () => {
+    persistLeaderSelectedThreadKey("s1", "q-999");
+    resetStore({
+      sessions: leaderSession(leaderTabs(["q-941"], [{ threadKey: "q-999", closedAt: 10 }])),
+      messages: new Map([["s1", [threadMessage("q-941", 2), threadMessage("q-999", 3)]]]),
+      quests: [
+        { questId: "q-941", title: "Still open", status: "in_progress" },
+        { questId: "q-999", title: "Closed elsewhere", status: "in_progress" },
+      ],
+    });
+
+    const view = render(<ChatView sessionId="s1" hasThreadRoute={false} routeThreadKey={null} />);
+    const scope = within(view.container);
+
+    await waitFor(() => expect(scope.getByTestId("message-feed")).toHaveAttribute("data-thread-key", "main"));
+    expect(readLeaderSelectedThreadKey("s1")).toBe("main");
+    expect(scope.getByTestId("work-board-bar")).toHaveAttribute("data-open-thread-keys", "q-941");
+  });
+
+  it("lets an explicit thread route override browser-local selected tab restore", async () => {
+    persistLeaderSelectedThreadKey("s1", "q-941");
+    resetStore({
+      sessions: leaderSession(leaderTabs(["q-941", "q-777"])),
+      messages: new Map([["s1", [threadMessage("q-941", 2), threadMessage("q-777", 3)]]]),
+      quests: [
+        { questId: "q-941", title: "Stored tab", status: "in_progress" },
+        { questId: "q-777", title: "Routed tab", status: "in_progress" },
+      ],
+    });
+    window.location.hash = "#/session/s1?thread=q-777";
+
+    const view = render(<ChatView sessionId="s1" hasThreadRoute routeThreadKey="q-777" />);
+    const scope = within(view.container);
+
+    await waitFor(() => expect(scope.getByTestId("message-feed")).toHaveAttribute("data-thread-key", "q-777"));
+    expect(readLeaderSelectedThreadKey("s1")).toBe("q-777");
   });
 
   it("renders server-owned tabs and applies remote close updates from another browser", () => {

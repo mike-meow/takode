@@ -56,7 +56,11 @@ import {
   normalizeThreadKey,
   isThreadAttachmentMarkerMessage,
 } from "../utils/thread-projection.js";
-import { requestThreadViewportSnapshot } from "../utils/thread-viewport.js";
+import {
+  persistLeaderSelectedThreadKey,
+  readLeaderSelectedThreadKey,
+  requestThreadViewportSnapshot,
+} from "../utils/thread-viewport.js";
 import { buildAttentionRecords } from "../utils/attention-records.js";
 import { getQuestStatusTheme } from "../utils/quest-status-theme.js";
 import {
@@ -493,6 +497,26 @@ function isAvailableLeaderThread(threadKey: string, rows: LeaderThreadRow[]): bo
   return rows.some((row) => row.threadKey === normalized);
 }
 
+function restorableSelectedThreadKey({
+  threadKey,
+  authoritativeLeaderOpenThreadTabs,
+  openThreadTabKeys,
+  rows,
+}: {
+  threadKey: string | null;
+  authoritativeLeaderOpenThreadTabs: LeaderOpenThreadTabsState | null | undefined;
+  openThreadTabKeys: ReadonlyArray<string>;
+  rows: LeaderThreadRow[];
+}): string | null {
+  if (!threadKey) return null;
+  const normalized = normalizeThreadKey(threadKey);
+  if (normalized === MAIN_THREAD_KEY || normalized === ALL_THREADS_KEY) return normalized;
+  if (!shouldPersistOpenThreadTab(normalized)) return null;
+  if (openThreadTabKeys.includes(normalized)) return normalized;
+  if (authoritativeLeaderOpenThreadTabs) return null;
+  return isAvailableLeaderThread(normalized, rows) ? normalized : null;
+}
+
 function buildSessionQuestBannerRow({
   sessionId,
   claimedQuestId,
@@ -856,6 +880,9 @@ export function ChatView({
       const nextThreadKey = normalizeThreadKey(threadKey || MAIN_THREAD_KEY);
       lastManualThreadSelectionAtRef.current = Date.now();
       openThreadTab(nextThreadKey);
+      if (isLeaderSession && !preview) {
+        persistLeaderSelectedThreadKey(sessionId, nextThreadKey);
+      }
       if (nextThreadKey === normalizeThreadKey(selectedThreadKey)) return;
       requestThreadViewportSnapshot(sessionId);
       setSelectedThreadKey(nextThreadKey);
@@ -863,7 +890,7 @@ export function ChatView({
         navigateToSessionThread(sessionId, nextThreadKey);
       }
     },
-    [openThreadTab, preview, selectedThreadKey, sessionId],
+    [isLeaderSession, openThreadTab, preview, selectedThreadKey, sessionId],
   );
   const handleCloseThreadTab = useCallback(
     (threadKey: string, nextThreadKey = MAIN_THREAD_KEY) => {
@@ -948,8 +975,20 @@ export function ChatView({
     }
 
     if (!hasThreadRoute) {
-      if (selectedThreadKey !== MAIN_THREAD_KEY) {
-        setSelectedThreadKey(MAIN_THREAD_KEY);
+      const restoredThreadKey = restorableSelectedThreadKey({
+        threadKey: readLeaderSelectedThreadKey(sessionId),
+        authoritativeLeaderOpenThreadTabs,
+        openThreadTabKeys,
+        rows: navigationThreadRows,
+      });
+      const nextThreadKey = restoredThreadKey ?? MAIN_THREAD_KEY;
+      if (selectedThreadKey !== nextThreadKey) {
+        setSelectedThreadKey(nextThreadKey);
+      }
+      if (!restoredThreadKey) {
+        persistLeaderSelectedThreadKey(sessionId, MAIN_THREAD_KEY);
+      } else if (restoredThreadKey !== MAIN_THREAD_KEY) {
+        navigateToSessionThread(sessionId, restoredThreadKey, true);
       }
       return;
     }
@@ -968,6 +1007,7 @@ export function ChatView({
       if (selectedThreadKey !== nextThreadKey) {
         setSelectedThreadKey(nextThreadKey);
       }
+      persistLeaderSelectedThreadKey(sessionId, nextThreadKey);
       if (nextThreadKey === MAIN_THREAD_KEY && hasThreadRoute) {
         navigateToSessionThread(sessionId, MAIN_THREAD_KEY, true);
       }
@@ -978,13 +1018,16 @@ export function ChatView({
       if (selectedThreadKey !== MAIN_THREAD_KEY) {
         setSelectedThreadKey(MAIN_THREAD_KEY);
       }
+      persistLeaderSelectedThreadKey(sessionId, MAIN_THREAD_KEY);
       navigateToSessionThread(sessionId, MAIN_THREAD_KEY, true);
     }
   }, [
+    authoritativeLeaderOpenThreadTabs,
     hasKnownThreadSources,
     hasThreadRoute,
     historyLoading,
     isLeaderSession,
+    openThreadTabKeys,
     preview,
     routeSyncEnabled,
     routeThreadKey,
@@ -1067,6 +1110,9 @@ export function ChatView({
 
     if (nextSelectedThreadKey && nextSelectedThreadKey !== selectedThread) {
       requestThreadViewportSnapshot(sessionId);
+      if (!preview) {
+        persistLeaderSelectedThreadKey(sessionId, nextSelectedThreadKey);
+      }
       setSelectedThreadKey(nextSelectedThreadKey);
       if (!preview) {
         navigateToSessionThread(sessionId, nextSelectedThreadKey);

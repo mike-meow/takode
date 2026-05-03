@@ -19,7 +19,12 @@ import { CollapseFooter, TurnCollapseFooter } from "./CollapseFooter.js";
 import { api } from "../api.js";
 import { ElapsedTimer, FeedStatusPill, PendingCodexInputList, PendingUserUploadList } from "./MessageFeedStatus.js";
 import { FeedFooter, TurnEntries } from "./MessageFeedEntries.js";
-import { SAVE_THREAD_VIEWPORT_EVENT, getFeedViewportKey } from "../utils/thread-viewport.js";
+import {
+  SAVE_THREAD_VIEWPORT_EVENT,
+  getFeedViewportKey,
+  persistLeaderViewportPosition,
+  readLeaderViewportPosition,
+} from "../utils/thread-viewport.js";
 import {
   CodexTerminalInspector,
   LiveCodexTerminalStub,
@@ -144,13 +149,18 @@ export function MessageFeed({
   const allMessages = useStore((s) => s.messages.get(sessionId) ?? EMPTY_MESSAGES);
   const historyLoading = useStore((s) => s.historyLoading.get(sessionId) ?? false);
   const normalizedThreadKey = useMemo(() => normalizeThreadKey(threadKey || "main"), [threadKey]);
-  const selectedFeedWindowEnabled = useStore((s) => {
-    if (isAllThreadsKey(normalizedThreadKey)) return false;
-    return (
+  const isLeaderSession = useStore(
+    (s) =>
       s.sessions?.get(sessionId)?.isOrchestrator === true ||
-      s.sdkSessions?.some((sdk) => sdk.sessionId === sessionId && sdk.isOrchestrator === true) === true
-    );
-  });
+      s.sdkSessions?.some((sdk) => sdk.sessionId === sessionId && sdk.isOrchestrator === true) === true,
+  );
+  const selectedFeedWindowEnabled = useMemo(() => {
+    if (isAllThreadsKey(normalizedThreadKey)) return false;
+    return isLeaderSession;
+  }, [isLeaderSession, normalizedThreadKey]);
+  const savedScrollPos =
+    useStore.getState().feedScrollPosition.get(getFeedViewportKey(sessionId, threadKey)) ??
+    (isLeaderSession ? readLeaderViewportPosition(sessionId, normalizedThreadKey) : null);
   const selectedFeedWindow = useStore((s) => s.threadWindows?.get(sessionId)?.get(normalizedThreadKey) ?? null);
   const selectedFeedWindowMessages = useStore(
     (s) => s.threadWindowMessages?.get(sessionId)?.get(normalizedThreadKey) ?? EMPTY_MESSAGES,
@@ -214,7 +224,6 @@ export function MessageFeed({
   const viewportKey = useMemo(() => getFeedViewportKey(sessionId, threadKey), [sessionId, threadKey]);
   // Initialize isNearBottom from saved scroll position — if the user was scrolled
   // up when they left this session, don't auto-scroll to bottom on re-mount.
-  const savedScrollPos = useStore.getState().feedScrollPosition.get(viewportKey);
   const autoFollowEnabledRef = useRef(savedScrollPos ? savedScrollPos.isAtBottom : true);
   const isNearBottom = useRef(savedScrollPos ? savedScrollPos.isAtBottom : true);
   const lastScrollTopRef = useRef(savedScrollPos?.scrollTop ?? 0);
@@ -486,15 +495,19 @@ export function MessageFeed({
     const container = containerRef.current;
     if (!container) return;
     const anchor = findVisibleTurnAnchor(container);
-    useStore.getState().setFeedScrollPosition(viewportKey, {
+    const position = {
       scrollTop: container.scrollTop,
       scrollHeight: container.scrollHeight,
       isAtBottom: autoFollowEnabledRef.current && isNearBottom.current,
       anchorTurnId: anchor?.turnId ?? null,
       anchorOffsetTop: anchor?.offsetTop,
       lastSeenContentBottom: lastSeenContentBottomRef.current ?? getRealContentBottom(),
-    });
-  }, [findVisibleTurnAnchor, getRealContentBottom, viewportKey]);
+    };
+    useStore.getState().setFeedScrollPosition(viewportKey, position);
+    if (isLeaderSession) {
+      persistLeaderViewportPosition(sessionId, normalizedThreadKey, position);
+    }
+  }, [findVisibleTurnAnchor, getRealContentBottom, isLeaderSession, normalizedThreadKey, sessionId, viewportKey]);
 
   // Save scroll position on unmount. Uses useLayoutEffect so the cleanup runs
   // in the layout phase — BEFORE the new component's effects try to restore,
@@ -1262,7 +1275,9 @@ export function MessageFeed({
   useLayoutEffect(() => {
     if (restoredViewportKeyRef.current === viewportKey) return;
     if (showConversationLoading) return;
-    const pos = useStore.getState().feedScrollPosition.get(viewportKey);
+    const pos =
+      useStore.getState().feedScrollPosition.get(viewportKey) ??
+      (isLeaderSession ? readLeaderViewportPosition(sessionId, normalizedThreadKey) : null);
     if (messages.length === 0 && pos?.anchorTurnId) return;
     const desiredSectionWindowStart = pos?.anchorTurnId ? getSectionWindowStartForTurnId(pos.anchorTurnId) : null;
     if (desiredSectionWindowStart !== sectionWindowStart) {
@@ -1306,7 +1321,9 @@ export function MessageFeed({
     activeThreadWindow,
     getSectionWindowStartForTurnId,
     hasNewerSections,
+    isLeaderSession,
     messages.length,
+    normalizedThreadKey,
     restoreTurnAnchor,
     scrollToBottom,
     sectionWindowStart,
