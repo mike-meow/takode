@@ -211,6 +211,7 @@ function sdkSessionInfoEqual(a: SdkSessionInfo, b: SdkSessionInfo): boolean {
     a.numTurns === b.numTurns &&
     a.messageHistoryBytes === b.messageHistoryBytes &&
     a.codexRetainedPayloadBytes === b.codexRetainedPayloadBytes &&
+    a.codexLeaderRecycleThresholdTokens === b.codexLeaderRecycleThresholdTokens &&
     a.codexLeaderRecyclePending?.eventIndex === b.codexLeaderRecyclePending?.eventIndex &&
     a.codexLeaderRecyclePending?.trigger === b.codexLeaderRecyclePending?.trigger &&
     a.codexLeaderRecyclePending?.requestedAt === b.codexLeaderRecyclePending?.requestedAt &&

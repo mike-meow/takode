@@ -253,7 +253,7 @@ import {
   refreshWorktreeGitStateForSnapshot as refreshWorktreeGitStateForSnapshotController,
   recomputeDiffIfDirty as recomputeDiffIfDirtyController,
 } from "./bridge/session-git-state.js";
-import { getSettings } from "./settings-manager.js";
+import { getSettings, resolveCodexLeaderRecycleThresholdTokens } from "./settings-manager.js";
 import type {
   BackendAdapter,
   CompactRequestedAwareAdapter,
@@ -2329,11 +2329,7 @@ export class WsBridge {
       ...runtime,
       getCodexLeaderRecycleThresholdTokens: (modelId?: string) => {
         const settings = getSettings();
-        const normalizedModelId = typeof modelId === "string" ? modelId.trim() : "";
-        const override = normalizedModelId
-          ? settings.codexLeaderRecycleThresholdTokensByModel?.[normalizedModelId]
-          : undefined;
-        return typeof override === "number" && override >= 1 ? override : settings.codexLeaderRecycleThresholdTokens;
+        return resolveCodexLeaderRecycleThresholdTokens(settings, modelId);
       },
       getLauncherSessionInfo: (sessionId: string) => this.launcher?.getSession(sessionId),
       touchActivity: (sessionId: string) => this.launcher?.touchActivity(sessionId),

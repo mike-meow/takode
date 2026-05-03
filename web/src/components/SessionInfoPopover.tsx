@@ -10,7 +10,7 @@ import {
   usePersistedCollapse,
 } from "./TaskPanel.js";
 import { formatModel, getModelsForBackend, CODEX_REASONING_EFFORTS } from "../utils/backends.js";
-import { coalesceSessionViewModel } from "../utils/session-view-model.js";
+import { coalesceSessionViewModel, type SessionViewModel } from "../utils/session-view-model.js";
 import { navigateTo } from "../utils/navigation.js";
 import { sendToSession } from "../ws.js";
 import { SessionNumChip } from "./SessionNumChip.js";
@@ -34,8 +34,6 @@ export function SessionInfoPopover({ sessionId, onClose }: { sessionId: string; 
 
   // Stats
   const turns = sessionVm?.numTurns ?? 0;
-  const contextPercent = sessionVm?.contextUsedPercent ?? 0;
-  const contextWindow = sessionVm?.modelContextWindow ?? 0;
   const historyBytes = sessionVm?.messageHistoryBytes ?? 0;
   const codexRetainedPayloadBytes = sessionVm?.codexRetainedPayloadBytes ?? 0;
   const isCodexSession = backendType === "codex";
@@ -156,10 +154,13 @@ export function SessionInfoPopover({ sessionId, onClose }: { sessionId: string; 
 
   const backendLabel = backendType === "codex" ? "Codex" : "Claude";
   const hasGit = gitBranch || gitAhead > 0 || gitBehind > 0 || linesAdded > 0 || linesRemoved > 0;
-  const hasStats =
-    turns > 0 || contextPercent > 0 || contextWindow > 0 || historyBytes > 0 || codexRetainedPayloadBytes > 0;
   const effectiveSdkSessions = sdkSessions.length > 0 ? sdkSessions : (sdkSessionsFallback ?? []);
   const effectiveSdkSession = sdkSession ?? effectiveSdkSessions.find((x) => x.sessionId === sessionId);
+  const contextStats = getSessionInfoContextStats(sessionVm, effectiveSdkSession);
+  const contextPercent = contextStats.contextPercent;
+  const contextWindow = contextStats.contextWindow;
+  const hasStats =
+    turns > 0 || contextPercent > 0 || contextWindow > 0 || historyBytes > 0 || codexRetainedPayloadBytes > 0;
   const codexLeaderRecycleLineage = effectiveSdkSession?.codexLeaderRecycleLineage;
   const codexLeaderRecyclePending = effectiveSdkSession?.codexLeaderRecyclePending;
   const lifecycleEvents = session?.lifecycle_events ?? effectiveSdkSession?.sessionLifecycleEvents ?? [];
@@ -562,6 +563,36 @@ export function SessionInfoPopover({ sessionId, onClose }: { sessionId: string; 
       </div>
     </div>
   );
+}
+
+function getSessionInfoContextStats(
+  sessionVm: SessionViewModel | null,
+  effectiveSdkSession: SdkSessionInfo | undefined,
+): { contextPercent: number; contextWindow: number } {
+  const defaultStats = {
+    contextPercent: sessionVm?.contextUsedPercent ?? 0,
+    contextWindow: sessionVm?.modelContextWindow ?? 0,
+  };
+  const thresholdTokens =
+    positiveNumber(sessionVm?.codexLeaderRecycleThresholdTokens) ??
+    positiveNumber(effectiveSdkSession?.codexLeaderRecycleThresholdTokens);
+  if (!thresholdTokens) return defaultStats;
+  const isCodexLeader =
+    sessionVm?.backendType === "codex" &&
+    (sessionVm?.isOrchestrator === true || effectiveSdkSession?.isOrchestrator === true);
+  if (!isCodexLeader) return defaultStats;
+
+  const contextTokensUsed =
+    positiveNumber(sessionVm?.contextTokensUsed) ??
+    positiveNumber(effectiveSdkSession?.codexTokenDetails?.contextTokensUsed);
+  return {
+    contextPercent: contextTokensUsed ? (contextTokensUsed / thresholdTokens) * 100 : defaultStats.contextPercent,
+    contextWindow: thresholdTokens,
+  };
+}
+
+function positiveNumber(value: number | undefined): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
 function LifecycleEventRow({ event }: { event: SessionLifecycleEvent }) {

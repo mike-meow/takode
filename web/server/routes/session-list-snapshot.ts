@@ -6,7 +6,7 @@ import {
   summarizePendingPermissions,
   type NotificationStatusSnapshot,
 } from "../bridge/session-registry-controller.js";
-import { getSettings } from "../settings-manager.js";
+import { getSettings, resolveCodexLeaderRecycleThresholdTokens } from "../settings-manager.js";
 import type { TimerManager } from "../timer-manager.js";
 import type { WsBridge } from "../ws-bridge.js";
 import * as sessionNames from "../session-names.js";
@@ -29,7 +29,8 @@ export async function buildEnrichedSessionsSnapshot(
   const sessions = launcher.listSessions();
   const names = sessionNames.getAllNames();
   const pool = filterFn ? sessions.filter(filterFn) : sessions;
-  const heavyRepoModeEnabled = getSettings().heavyRepoModeEnabled;
+  const settings = getSettings();
+  const heavyRepoModeEnabled = settings.heavyRepoModeEnabled;
   return Promise.all(
     pool.map(async (session) => {
       let s = session;
@@ -76,8 +77,13 @@ export async function buildEnrichedSessionsSnapshot(
               pendingPermissionSummary: summarizePendingPermissions(currentBridgeSession),
             }
           : null;
+        const model = bridge?.model || safeSession.model;
         const cliConnected = wsBridge.isBackendConnected(s.sessionId);
         const effectiveState = cliConnected && currentBridgeSession?.isGenerating ? "running" : safeSession.state;
+        const codexLeaderRecycleThresholdTokens =
+          safeSession.backendType === "codex" && safeSession.isOrchestrator === true
+            ? resolveCodexLeaderRecycleThresholdTokens(settings, model)
+            : undefined;
         const gitAhead = bridge?.git_ahead || 0;
         const gitBehind = bridge?.git_behind || 0;
         return {
@@ -85,7 +91,7 @@ export async function buildEnrichedSessionsSnapshot(
           lastUserMessageAt,
           // Bridge model (from system.init) is more accurate than launcher model
           // (creation-time value, often empty for "default").
-          model: bridge?.model || safeSession.model,
+          model,
           state: effectiveState,
           sessionNum: launcher.getSessionNum(s.sessionId) ?? null,
           name: names[s.sessionId] ?? s.name,
@@ -101,6 +107,7 @@ export async function buildEnrichedSessionsSnapshot(
           messageHistoryBytes: bridge?.message_history_bytes || 0,
           codexRetainedPayloadBytes: bridge?.codex_retained_payload_bytes || 0,
           sessionLifecycleEvents: bridge?.lifecycle_events ?? [],
+          ...(codexLeaderRecycleThresholdTokens ? { codexLeaderRecycleThresholdTokens } : {}),
           ...(bridge?.codex_token_details ? { codexTokenDetails: bridge.codex_token_details } : {}),
           ...(bridge?.claude_token_details ? { claudeTokenDetails: bridge.claude_token_details } : {}),
           lastMessagePreview: currentBridgeSession?.lastUserMessage || "",

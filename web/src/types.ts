@@ -362,6 +362,8 @@ export interface SdkSessionInfo {
   codexRetainedPayloadBytes?: number;
   /** Last server-reported Codex token details for this session. */
   codexTokenDetails?: SessionState["codex_token_details"];
+  /** Resolved Codex leader recycle threshold for display-only effective context metrics. */
+  codexLeaderRecycleThresholdTokens?: number;
   /** Last server-reported Claude token details for this session. */
   claudeTokenDetails?: SessionState["claude_token_details"];
   /** Debug lifecycle events restored from server session state. */

@@ -18,8 +18,10 @@ interface MockStoreState {
       context_used_percent?: number;
       message_history_bytes?: number;
       codex_retained_payload_bytes?: number;
-      codex_token_details?: { modelContextWindow?: number };
+      codex_token_details?: { modelContextWindow?: number; contextTokensUsed?: number };
+      codex_leader_recycle_threshold_tokens?: number;
       claude_token_details?: { modelContextWindow?: number };
+      isOrchestrator?: boolean;
       lifecycle_events?: Array<{
         type: "compaction";
         id: string;
@@ -44,7 +46,8 @@ interface MockStoreState {
     cwd?: string;
     backendType?: "claude" | "codex" | "claude-sdk";
     contextUsedPercent?: number;
-    codexTokenDetails?: { modelContextWindow?: number };
+    codexTokenDetails?: { modelContextWindow?: number; contextTokensUsed?: number };
+    codexLeaderRecycleThresholdTokens?: number;
     claudeTokenDetails?: { modelContextWindow?: number };
     sessionLifecycleEvents?: Array<{
       type: "compaction";
@@ -461,6 +464,44 @@ describe("SessionInfoPopover", () => {
     expect(screen.getByText("258 K tokens")).toBeInTheDocument();
   });
 
+  it("uses the Codex leader recycle threshold as the effective context window", () => {
+    // Codex leader sessions intentionally use a large provider window to avoid
+    // provider auto-compaction; the UI should show the Takode recycle threshold
+    // and compute context usage against that threshold instead.
+    resetStore([]);
+    const session = storeState.sessions.get("s1");
+    if (!session) throw new Error("missing session fixture");
+    session.isOrchestrator = true;
+    session.context_used_percent = 6;
+    session.codex_token_details = { contextTokensUsed: 57_000, modelContextWindow: 950_000 };
+    session.codex_leader_recycle_threshold_tokens = 260_000;
+
+    render(<SessionInfoPopover sessionId="s1" onClose={() => {}} />);
+
+    expect(screen.getByText("22% context")).toBeInTheDocument();
+    expect(screen.getByText("260 K tokens")).toBeInTheDocument();
+    expect(screen.queryByText("6% context")).toBeNull();
+    expect(screen.queryByText("950 K tokens")).toBeNull();
+  });
+
+  it("keeps non-leader Codex sessions on provider context metrics", () => {
+    // The recycle threshold is leader-only metadata; a control Codex session
+    // should keep the server-reported context percent and model window.
+    resetStore([]);
+    const session = storeState.sessions.get("s1");
+    if (!session) throw new Error("missing session fixture");
+    session.context_used_percent = 6;
+    session.codex_token_details = { contextTokensUsed: 57_000, modelContextWindow: 950_000 };
+    session.codex_leader_recycle_threshold_tokens = 260_000;
+
+    render(<SessionInfoPopover sessionId="s1" onClose={() => {}} />);
+
+    expect(screen.getByText("6% context")).toBeInTheDocument();
+    expect(screen.getByText("950 K tokens")).toBeInTheDocument();
+    expect(screen.queryByText("22% context")).toBeNull();
+    expect(screen.queryByText("260 K tokens")).toBeNull();
+  });
+
   it("keeps non-Codex sessions on history wording and hides retained payload", () => {
     // Claude-family sessions should keep the generic history label and should
     // not render the Codex-only retained payload metric.
@@ -495,6 +536,28 @@ describe("SessionInfoPopover", () => {
 
     expect(screen.getByText("73% context")).toBeInTheDocument();
     expect(screen.getByText("258 K tokens")).toBeInTheDocument();
+  });
+
+  it("uses sdk session recycle threshold metadata for restored Codex leaders", () => {
+    resetStore([]);
+    storeState.sessions = new Map();
+    storeState.sdkSessions = [
+      {
+        sessionId: "s1",
+        cwd: "/repo",
+        backendType: "codex",
+        isOrchestrator: true,
+        contextUsedPercent: 6,
+        codexTokenDetails: { contextTokensUsed: 57_000, modelContextWindow: 950_000 },
+        codexLeaderRecycleThresholdTokens: 260_000,
+      },
+    ];
+
+    render(<SessionInfoPopover sessionId="s1" onClose={() => {}} />);
+
+    expect(screen.getByText("22% context")).toBeInTheDocument();
+    expect(screen.getByText("260 K tokens")).toBeInTheDocument();
+    expect(screen.queryByText("950 K tokens")).toBeNull();
   });
 
   it("shows Codex leader recycle lineage and pending recycle state", () => {

@@ -1069,6 +1069,8 @@ export interface SessionState {
     reasoningOutputTokens: number;
     modelContextWindow: number;
   };
+  /** Resolved Codex leader recycle threshold for display-only effective context metrics. */
+  codex_leader_recycle_threshold_tokens?: number;
   // Claude/CloudCode token details (forwarded from result.modelUsage)
   claude_token_details?: {
     inputTokens: number;

@@ -59,6 +59,20 @@ type CodexLeaderRecycleLauncherInfo = {
   };
 };
 
+function withCodexLeaderRecycleThreshold(
+  session: CodexBrowserMessageSessionLike,
+  patch: Record<string, unknown>,
+  deps: Pick<CodexAdapterBrowserMessageDeps, "getCodexLeaderRecycleThresholdTokens" | "getLauncherSessionInfo">,
+): Record<string, unknown> {
+  const launcherInfo = deps.getLauncherSessionInfo(session.id);
+  if (launcherInfo?.isOrchestrator !== true) return patch;
+  const modelId =
+    typeof patch.model === "string" ? patch.model : typeof session.state?.model === "string" ? session.state.model : "";
+  const thresholdTokens = deps.getCodexLeaderRecycleThresholdTokens(modelId);
+  if (thresholdTokens < 1) return patch;
+  return { ...patch, codex_leader_recycle_threshold_tokens: thresholdTokens };
+}
+
 function getLatestThresholdRecycleWatermark(
   launcherInfo: CodexLeaderRecycleLauncherInfo | null | undefined,
 ): number | null {
@@ -168,15 +182,18 @@ export async function handleCodexAdapterBrowserMessage(
 
   if (msg.type === "session_init") {
     const sanitized = deps.sanitizeCodexSessionPatch(msg.session as unknown as Record<string, unknown>);
-    session.state = { ...session.state, ...sanitized, backend_type: "codex" };
+    const enriched = withCodexLeaderRecycleThreshold(session, { ...sanitized, backend_type: "codex" }, deps);
+    session.state = { ...session.state, ...enriched };
     session.cliInitReceived = true;
     deps.refreshGitInfoThenRecomputeDiff(session, { notifyPoller: true });
     deps.persistSession(session);
+    outgoing = { ...msg, session: enriched as unknown as typeof msg.session } as BrowserIncomingMessage;
   } else if (msg.type === "session_update") {
     const sanitized = deps.sanitizeCodexSessionPatch(msg.session as unknown as Record<string, unknown>);
-    session.state = { ...session.state, ...sanitized, backend_type: "codex" };
-    outgoing = { ...msg, session: sanitized as unknown as typeof msg.session } as BrowserIncomingMessage;
-    deps.cacheSlashCommandState(session, sanitized);
+    const enriched = withCodexLeaderRecycleThreshold(session, { ...sanitized, backend_type: "codex" }, deps);
+    session.state = { ...session.state, ...enriched };
+    outgoing = { ...msg, session: enriched as unknown as typeof msg.session } as BrowserIncomingMessage;
+    deps.cacheSlashCommandState(session, enriched);
     deps.refreshGitInfoThenRecomputeDiff(session, { notifyPoller: true });
     const launcherInfo = deps.getLauncherSessionInfo(session.id);
     const recycleThresholdTokens = deps.getCodexLeaderRecycleThresholdTokens(session.state.model);

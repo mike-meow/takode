@@ -21,6 +21,8 @@ export interface SessionViewModel {
   totalCostUsd?: number;
   contextUsedPercent?: number;
   modelContextWindow?: number;
+  codexLeaderRecycleThresholdTokens?: number;
+  contextTokensUsed?: number;
   messageHistoryBytes?: number;
   codexRetainedPayloadBytes?: number;
   state?: SdkSessionInfo["state"];
@@ -62,11 +64,14 @@ export function toSessionViewModel(session: SessionState | SdkSessionInfo): Sess
       contextUsedPercent: session.context_used_percent,
       modelContextWindow:
         session.codex_token_details?.modelContextWindow ?? session.claude_token_details?.modelContextWindow,
+      codexLeaderRecycleThresholdTokens: session.codex_leader_recycle_threshold_tokens,
+      contextTokensUsed: session.codex_token_details?.contextTokensUsed,
       messageHistoryBytes: session.message_history_bytes,
       codexRetainedPayloadBytes: session.codex_retained_payload_bytes,
       claimedQuestStatus: session.claimedQuestStatus,
       claimedQuestVerificationInboxUnread: session.claimedQuestVerificationInboxUnread,
       askPermission: session.askPermission,
+      isOrchestrator: session.isOrchestrator,
     };
   }
 
@@ -88,6 +93,8 @@ export function toSessionViewModel(session: SessionState | SdkSessionInfo): Sess
     contextUsedPercent: session.contextUsedPercent,
     numTurns: session.numTurns,
     modelContextWindow: session.codexTokenDetails?.modelContextWindow ?? session.claudeTokenDetails?.modelContextWindow,
+    codexLeaderRecycleThresholdTokens: session.codexLeaderRecycleThresholdTokens,
+    contextTokensUsed: session.codexTokenDetails?.contextTokensUsed,
     messageHistoryBytes: session.messageHistoryBytes,
     codexRetainedPayloadBytes: session.codexRetainedPayloadBytes,
     state: session.state,

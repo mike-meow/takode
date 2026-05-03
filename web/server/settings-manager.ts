@@ -182,6 +182,20 @@ let settings: CompanionSettings = {
   codexLeaderRecycleThresholdTokensByModel: {},
   updatedAt: 0,
 };
+
+export function resolveCodexLeaderRecycleThresholdTokens(
+  settings: Pick<CompanionSettings, "codexLeaderRecycleThresholdTokens" | "codexLeaderRecycleThresholdTokensByModel">,
+  modelId?: string,
+): number {
+  const normalizedModelId = typeof modelId === "string" ? modelId.trim() : "";
+  const modelOverride = normalizedModelId
+    ? settings.codexLeaderRecycleThresholdTokensByModel?.[normalizedModelId]
+    : undefined;
+  return typeof modelOverride === "number" && modelOverride >= 1
+    ? modelOverride
+    : settings.codexLeaderRecycleThresholdTokens;
+}
+
 let secrets: CompanionSecrets = {
   namerOpenAIApiKey: "",
   transcriptionApiKey: "",
