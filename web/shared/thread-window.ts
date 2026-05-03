@@ -30,6 +30,11 @@ interface FeedItem {
   order: number;
 }
 
+interface ConversationRange {
+  startItem: number;
+  endItem: number;
+}
+
 type RouteTarget = { threadKey: string; questId?: string };
 
 export function normalizeSelectedFeedThreadKey(threadKey: string): string {
@@ -53,8 +58,9 @@ export function buildThreadWindowSync(input: BuildThreadWindowInput): {
     1,
     Math.floor(input.itemCount || getThreadWindowItemCount(visibleItemCount, sectionItemCount)),
   );
-  const items = buildFeedItems(input.messageHistory, threadKey);
-  const totalItems = items.length;
+  const items = buildThreadConversationItems(input.messageHistory, threadKey);
+  const ranges = buildConversationRanges(items);
+  const totalItems = ranges.length;
   const requestedFromItem = Math.floor(input.fromItem);
   const fromItem =
     totalItems === 0
@@ -63,10 +69,11 @@ export function buildThreadWindowSync(input: BuildThreadWindowInput): {
         ? Math.max(0, totalItems - requestedItemCount)
         : Math.max(0, Math.min(requestedFromItem, Math.max(0, totalItems - 1)));
   const endItem = Math.min(totalItems, fromItem + requestedItemCount);
-  const selectedItems = items.slice(fromItem, endItem);
+  const selectedItems = selectConversationItems(items, ranges.slice(fromItem, endItem));
   const entries = dedupeEntries(expandToolClosureItems(input.messageHistory, threadKey, selectedItems));
   const availability = deriveThreadWindowAvailability({
     items,
+    ranges,
     entries,
     fromItem,
     endItem,
@@ -89,6 +96,7 @@ export function buildThreadWindowSync(input: BuildThreadWindowInput): {
 
 function deriveThreadWindowAvailability(input: {
   items: FeedItem[];
+  ranges: ConversationRange[];
   entries: ThreadWindowEntry[];
   fromItem: number;
   endItem: number;
@@ -96,9 +104,9 @@ function deriveThreadWindowAvailability(input: {
   const fallback = deriveWindowAvailability({
     from: input.fromItem,
     count: Math.max(0, input.endItem - input.fromItem),
-    total: input.items.length,
+    total: input.ranges.length,
   });
-  if (input.items.length === 0 || input.entries.length === 0) return fallback;
+  if (input.ranges.length === 0 || input.items.length === 0 || input.entries.length === 0) return fallback;
 
   const itemIndexByKey = new Map<string, number>();
   input.items.forEach((item, index) => {
@@ -111,10 +119,23 @@ function deriveThreadWindowAvailability(input: {
     if (index !== undefined) representedItemIndexes.add(index);
   });
 
-  return {
-    has_older_items: input.items.some((_, index) => index < input.fromItem && !representedItemIndexes.has(index)),
-    has_newer_items: input.items.some((_, index) => index >= input.endItem && !representedItemIndexes.has(index)),
+  const hasUnrepresentedRangeItems = (range: ConversationRange) => {
+    for (let index = range.startItem; index < range.endItem; index++) {
+      if (!representedItemIndexes.has(index)) return true;
+    }
+    return false;
   };
+
+  return {
+    has_older_items: input.ranges.some((range, index) => index < input.fromItem && hasUnrepresentedRangeItems(range)),
+    has_newer_items: input.ranges.some((range, index) => index >= input.endItem && hasUnrepresentedRangeItems(range)),
+  };
+}
+
+function buildThreadConversationItems(messages: ReadonlyArray<BrowserIncomingMessage>, threadKey: string): FeedItem[] {
+  const items = buildFeedItems(messages, threadKey);
+  if (threadKey === ALL_THREADS_KEY) return items;
+  return dedupeFeedItems(addTurnClosingResults(items, messages));
 }
 
 function buildFeedItems(messages: ReadonlyArray<BrowserIncomingMessage>, threadKey: string): FeedItem[] {
@@ -210,6 +231,86 @@ function buildQuestThreadFeedItems(messages: ReadonlyArray<BrowserIncomingMessag
   return items;
 }
 
+function addTurnClosingResults(items: FeedItem[], messages: ReadonlyArray<BrowserIncomingMessage>): FeedItem[] {
+  if (items.length === 0) return items;
+
+  const includedIndexes = new Set(items.map((item) => item.order));
+  const additions: FeedItem[] = [];
+  for (const range of buildMessageTurnRanges(messages)) {
+    const endMessage = messages[range.endIndex];
+    if (endMessage?.type !== "result") continue;
+    let hasIncludedTurnContent = false;
+    for (let index = range.startIndex; index < range.endIndex; index++) {
+      if (includedIndexes.has(index)) {
+        hasIncludedTurnContent = true;
+        break;
+      }
+    }
+    if (!hasIncludedTurnContent || includedIndexes.has(range.endIndex)) continue;
+    additions.push({
+      order: range.endIndex,
+      entry: { message: endMessage, history_index: range.endIndex },
+    });
+  }
+
+  return additions.length === 0 ? items : [...items, ...additions];
+}
+
+function buildMessageTurnRanges(
+  messages: ReadonlyArray<BrowserIncomingMessage>,
+): Array<{ startIndex: number; endIndex: number }> {
+  const ranges: Array<{ startIndex: number; endIndex: number }> = [];
+  let startIndex = messages.length > 0 ? 0 : -1;
+
+  for (let index = 0; index < messages.length; index++) {
+    const message = messages[index];
+    if (message.type === "user_message") {
+      if (startIndex >= 0 && index > startIndex) {
+        ranges.push({ startIndex, endIndex: index - 1 });
+      }
+      startIndex = index;
+      continue;
+    }
+    if (message.type === "result" && startIndex >= 0) {
+      ranges.push({ startIndex, endIndex: index });
+      startIndex = index + 1;
+    }
+  }
+
+  if (startIndex >= 0 && startIndex < messages.length) {
+    ranges.push({ startIndex, endIndex: messages.length - 1 });
+  }
+  return ranges;
+}
+
+function buildConversationRanges(items: FeedItem[]): ConversationRange[] {
+  if (items.length === 0) return [];
+
+  const ranges: ConversationRange[] = [];
+  let startItem = 0;
+  for (let index = 0; index < items.length; index++) {
+    const message = items[index]?.entry.message;
+    if (message?.type === "user_message" && index > startItem) {
+      ranges.push({ startItem, endItem: index });
+      startItem = index;
+      continue;
+    }
+    if (message?.type === "result") {
+      ranges.push({ startItem, endItem: index + 1 });
+      startItem = index + 1;
+    }
+  }
+
+  if (startItem < items.length) {
+    ranges.push({ startItem, endItem: items.length });
+  }
+  return ranges;
+}
+
+function selectConversationItems(items: FeedItem[], ranges: ConversationRange[]): FeedItem[] {
+  return ranges.flatMap((range) => items.slice(range.startItem, range.endItem));
+}
+
 function expandToolClosureItems(
   messages: ReadonlyArray<BrowserIncomingMessage>,
   threadKey: string,
@@ -233,6 +334,18 @@ function expandToolClosureItems(
     expanded.push({ order: index, entry: { message, history_index: index } });
   });
   return expanded;
+}
+
+function dedupeFeedItems(items: FeedItem[]): FeedItem[] {
+  const seen = new Set<string>();
+  const deduped: FeedItem[] = [];
+  for (const item of items.sort((a, b) => a.order - b.order)) {
+    const key = entryKey(item.entry);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(item);
+  }
+  return deduped;
 }
 
 function dedupeEntries(items: FeedItem[]): ThreadWindowEntry[] {

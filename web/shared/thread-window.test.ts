@@ -83,13 +83,89 @@ describe("thread window hydration", () => {
     });
 
     expect(sync.threadKey).toBe("q-1");
-    expect(sync.window.total_items).toBe(3);
+    expect(sync.window.total_items).toBe(1);
+    expect(sync.window.item_count).toBe(1);
     expect(
       sync.entries.map((entry) => (entry.message.type === "assistant" ? entry.message.message.id : entry.message.id)),
     ).toEqual(["u2", "a3", "a4"]);
     expect(sync.entries.map((entry) => entry.history_index)).toEqual([1, 2, 3]);
     expect(sync.window.has_older_items).toBe(false);
     expect(sync.window.has_newer_items).toBe(false);
+  });
+
+  it("uses thread-local conversation turns as the quest window unit", () => {
+    const history = [
+      user("u1", "quest request", "q-1"),
+      assistant("a2", "small tool-only step", { threadKey: "q-1", toolUseId: "tool-1" }),
+      assistant("a3", "tool result follow-up", { parentToolUseId: "tool-1" }),
+      assistant("a4", "final answer", { threadKey: "q-1" }),
+      user("u5", "second quest request", "q-1"),
+      assistant("a6", "second answer", { threadKey: "q-1" }),
+    ];
+
+    const firstTurn = buildThreadWindowSync({
+      messageHistory: history,
+      threadKey: "q-1",
+      fromItem: 0,
+      itemCount: 1,
+      sectionItemCount: 1,
+      visibleItemCount: 1,
+    });
+
+    expect(firstTurn.window.total_items).toBe(2);
+    expect(firstTurn.window.item_count).toBe(1);
+    expect(firstTurn.entries.map((entry) => entry.history_index)).toEqual([0, 1, 2, 3]);
+    expect(firstTurn.window.has_older_items).toBe(false);
+    expect(firstTurn.window.has_newer_items).toBe(true);
+
+    const secondTurn = buildThreadWindowSync({
+      messageHistory: history,
+      threadKey: "q-1",
+      fromItem: 1,
+      itemCount: 1,
+      sectionItemCount: 1,
+      visibleItemCount: 1,
+    });
+
+    expect(secondTurn.window.total_items).toBe(2);
+    expect(secondTurn.entries.map((entry) => entry.history_index)).toEqual([4, 5]);
+    expect(secondTurn.window.has_older_items).toBe(true);
+    expect(secondTurn.window.has_newer_items).toBe(false);
+  });
+
+  it("replays routed turn results into the thread-local conversation state", () => {
+    const history = [
+      user("u1", "quest request", "q-1"),
+      assistant("a2", "quest work", { threadKey: "q-1" }),
+      {
+        type: "result",
+        data: {
+          type: "result",
+          subtype: "success",
+          is_error: false,
+          duration_ms: 1,
+          duration_api_ms: 1,
+          num_turns: 1,
+          session_id: "s1",
+          total_cost_usd: 0,
+          result: "done",
+        },
+      },
+      user("u4", "main follow-up"),
+    ] satisfies BrowserIncomingMessage[];
+
+    const sync = buildThreadWindowSync({
+      messageHistory: history,
+      threadKey: "q-1",
+      fromItem: 0,
+      itemCount: 1,
+      sectionItemCount: 1,
+      visibleItemCount: 1,
+    });
+
+    expect(sync.window.total_items).toBe(1);
+    expect(sync.entries.map((entry) => entry.message.type)).toEqual(["user_message", "assistant", "result"]);
+    expect(sync.entries.map((entry) => entry.history_index)).toEqual([0, 1, 2]);
   });
 
   it("expands tool closure context across requested quest window boundaries", () => {

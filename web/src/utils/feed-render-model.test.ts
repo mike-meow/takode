@@ -474,4 +474,50 @@ describe("feed render model builders", () => {
     expect(feedSync.items.map((item) => item.messageId)).toEqual(model.messages.map((message) => message.id));
     expect(feedSync.bounds).toMatchObject({ from: 0, count: 1, total: 1, sourceHistoryLength: 4 });
   });
+
+  it("treats selected-thread window messages as an already routed local conversation", () => {
+    const threadWindow = makeWindow({
+      thread_key: "q-1080",
+      from_item: 0,
+      item_count: 1,
+      total_items: 1,
+      source_history_length: 4,
+    });
+    const localThreadMessage = makeMessage({
+      id: "u-q1080",
+      role: "user",
+      content: "Selected thread request",
+      timestamp: 100,
+      historyIndex: 1,
+      metadata: {
+        threadKey: "q-1080",
+        questId: "q-1080",
+        threadRefs: [{ threadKey: "q-1080", questId: "q-1080", source: "explicit" }],
+      },
+    });
+    const localUnroutedResult = makeMessage({
+      id: "hist-result-2",
+      role: "system",
+      content: "Error: failed",
+      timestamp: 101,
+      historyIndex: 2,
+    });
+    const liveUnroutedTail = makeMessage({
+      id: "live-main-tail",
+      role: "assistant",
+      content: "Main live tail",
+      timestamp: 200,
+      historyIndex: 4,
+    });
+
+    const model = buildMessageModel({
+      threadKey: "q-1080",
+      allMessages: [liveUnroutedTail],
+      selectedFeedWindow: threadWindow,
+      selectedFeedWindowMessages: [localThreadMessage, localUnroutedResult],
+      sessionNotifications: [],
+    });
+
+    expect(model.messages.map((message) => message.id)).toEqual(["u-q1080", "hist-result-2"]);
+  });
 });

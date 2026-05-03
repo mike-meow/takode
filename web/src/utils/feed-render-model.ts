@@ -79,7 +79,7 @@ export function buildFeedMessageModel(input: BuildFeedMessageModelInput): FeedMe
     input.threadKey,
   );
   const baseMessages = input.projectThreadRoutes
-    ? filterMessagesForThread(messagesAvailableForProjection, input.threadKey)
+    ? filterProjectedMessagesForThread(messagesAvailableForProjection, input.threadKey, input.selectedFeedWindow)
     : messagesAvailableForDerivation;
   const records =
     input.additionalAttentionRecords && input.additionalAttentionRecords.length > 0
@@ -129,6 +129,26 @@ export function buildFeedMessageModel(input: BuildFeedMessageModelInput): FeedMe
     messages,
     visibleToolUseIds,
   };
+}
+
+function filterProjectedMessagesForThread(
+  messages: ChatMessage[],
+  threadKey: string,
+  selectedFeedWindow: ThreadWindowState | null,
+): ChatMessage[] {
+  if (!selectedFeedWindow || isAllThreadsKey(threadKey)) return filterMessagesForThread(messages, threadKey);
+
+  const threadLocalMessages: ChatMessage[] = [];
+  const liveMessages: ChatMessage[] = [];
+  for (const message of messages) {
+    if (typeof message.historyIndex === "number" && message.historyIndex < selectedFeedWindow.source_history_length) {
+      threadLocalMessages.push(message);
+      continue;
+    }
+    liveMessages.push(message);
+  }
+
+  return [...threadLocalMessages, ...filterMessagesForThread(liveMessages, threadKey)];
 }
 
 export interface BuildFeedWindowModelInput {
