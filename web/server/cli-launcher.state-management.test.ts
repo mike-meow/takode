@@ -378,6 +378,15 @@ afterAll(() => {
 // ─── launch ──────────────────────────────────────────────────────────────────
 
 describe("state management", () => {
+  it("resolves numeric session refs with optional # prefix", async () => {
+    await launcher.launch({ cwd: "/tmp" });
+    const sessionNum = launcher.getSessionNum("test-session-id");
+
+    expect(sessionNum).toBeDefined();
+    expect(launcher.resolveSessionId(String(sessionNum))).toBe("test-session-id");
+    expect(launcher.resolveSessionId(`#${sessionNum}`)).toBe("test-session-id");
+  });
+
   describe("markConnected", () => {
     it("sets state to connected", async () => {
       await launcher.launch({ cwd: "/tmp" });

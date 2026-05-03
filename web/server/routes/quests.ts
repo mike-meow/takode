@@ -152,9 +152,19 @@ function resolveClaimLeaderSessionId(
   return leaderSession?.isOrchestrator === true ? leaderSessionId : undefined;
 }
 
+function resolveSubmittedSessionId(
+  rawSessionId: unknown,
+  resolveId: RouteContext["resolveId"],
+): { raw: string; sessionId: string } {
+  const raw = typeof rawSessionId === "string" ? rawSessionId.trim() : "";
+  if (!raw) return { raw: "", sessionId: "" };
+  return { raw, sessionId: resolveId(raw) ?? "" };
+}
+
 export function createQuestRoutes(ctx: RouteContext) {
   const api = new Hono();
-  const { launcher, wsBridge, imageStore, authenticateCompanionCallerOptional, execCaptureStdoutAsync } = ctx;
+  const { launcher, wsBridge, imageStore, authenticateCompanionCallerOptional, execCaptureStdoutAsync, resolveId } =
+    ctx;
 
   const setClaimedQuest = (
     sessionId: string,
@@ -501,13 +511,22 @@ export function createQuestRoutes(ctx: RouteContext) {
     const auth = authenticateCompanionCallerOptional(c);
     if (auth && "response" in auth) return auth.response;
     const body = await c.req.json().catch(() => ({}));
-    const rawSessionId = body.sessionId as string | undefined;
-    const bodySessionId = typeof rawSessionId === "string" ? rawSessionId.trim() : "";
+    const bodySession = resolveSubmittedSessionId(body.sessionId, resolveId);
     const authSessionId = auth ? auth.callerId : "";
-    if (authSessionId && bodySessionId && bodySessionId !== authSessionId) {
+    if (bodySession.raw && !bodySession.sessionId) {
+      return c.json(
+        {
+          error:
+            `Unknown sessionId: ${bodySession.raw}. ` +
+            "Claim a quest from an active Companion session or choose a valid session in Questmaster.",
+        },
+        400,
+      );
+    }
+    if (authSessionId && bodySession.sessionId && bodySession.sessionId !== authSessionId) {
       return c.json({ error: "sessionId does not match authenticated caller" }, 403);
     }
-    const sessionId = bodySessionId || authSessionId;
+    const sessionId = bodySession.sessionId || authSessionId;
     if (!sessionId) {
       return c.json({ error: "sessionId is required (or provide Companion auth headers)" }, 400);
     }
@@ -582,14 +601,16 @@ export function createQuestRoutes(ctx: RouteContext) {
     const body = await c.req.json().catch(() => ({}));
     const items = body.verificationItems as import("../quest-types.js").QuestVerificationItem[] | undefined;
     if (!items || !Array.isArray(items)) return c.json({ error: "verificationItems array is required" }, 400);
-    const rawSessionId = body.sessionId as string | undefined;
-    const bodySessionId = typeof rawSessionId === "string" ? rawSessionId.trim() : "";
+    const bodySession = resolveSubmittedSessionId(body.sessionId, resolveId);
     const authSessionId = auth ? auth.callerId : "";
     const authIsOrchestrator = auth ? auth.caller.isOrchestrator : false;
-    if (authSessionId && bodySessionId && bodySessionId !== authSessionId && !authIsOrchestrator) {
+    if (bodySession.raw && !bodySession.sessionId) {
+      return c.json({ error: "sessionId does not belong to a known companion session" }, 400);
+    }
+    if (authSessionId && bodySession.sessionId && bodySession.sessionId !== authSessionId && !authIsOrchestrator) {
       return c.json({ error: "sessionId does not match authenticated caller" }, 403);
     }
-    const targetSessionId = bodySessionId;
+    const targetSessionId = bodySession.sessionId;
     if (targetSessionId && !launcher.getSession(targetSessionId)) {
       return c.json({ error: "sessionId does not belong to a known companion session" }, 400);
     }
@@ -735,12 +756,21 @@ export function createQuestRoutes(ctx: RouteContext) {
     const text = body.text;
     const tldr = normalizeTldr(body.tldr);
     const author = body.author === "agent" ? "agent" : "human";
-    const rawAuthorSessionId = typeof body.sessionId === "string" ? body.sessionId.trim() : "";
+    const bodySession = resolveSubmittedSessionId(body.sessionId, resolveId);
     const authSessionId = auth ? auth.callerId : "";
-    if (authSessionId && rawAuthorSessionId && rawAuthorSessionId !== authSessionId) {
+    if (bodySession.raw && !bodySession.sessionId) {
+      return c.json(
+        {
+          error:
+            `Unknown sessionId: ${bodySession.raw}. ` + "Agent feedback must include a valid Companion session ID.",
+        },
+        400,
+      );
+    }
+    if (authSessionId && bodySession.sessionId && bodySession.sessionId !== authSessionId) {
       return c.json({ error: "sessionId does not match authenticated caller" }, 403);
     }
-    const resolvedAuthorSessionId = rawAuthorSessionId || authSessionId;
+    const resolvedAuthorSessionId = bodySession.sessionId || authSessionId;
     if (author === "agent" && resolvedAuthorSessionId.length === 0) {
       return c.json({ error: "sessionId is required for agent feedback (or provide Companion auth headers)" }, 400);
     }

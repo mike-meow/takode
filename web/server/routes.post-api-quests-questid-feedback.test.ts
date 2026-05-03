@@ -887,6 +887,52 @@ describe("POST /api/quests/:questId/feedback", () => {
     expect(feedback[feedback.length - 1]?.authorSessionId).toBe("session-1");
   });
 
+  it("resolves numeric feedback sessionId before comparing to authenticated caller", async () => {
+    launcher.resolveSessionId.mockImplementation((ref: string) => (ref === "42" ? "session-1" : ref));
+    launcher.getSession.mockImplementation((sid: string) =>
+      sid === "session-1" ? { sessionId: "session-1", state: "running", cwd: "/test", archived: false } : undefined,
+    );
+    launcher.verifySessionAuthToken.mockImplementation(
+      (sid: string, token: string) => sid === "session-1" && token === "tok-1",
+    );
+    vi.spyOn(questStore, "getQuest").mockResolvedValueOnce({
+      id: "q-1-v3",
+      questId: "q-1",
+      version: 3,
+      title: "Quest",
+      createdAt: Date.now(),
+      status: "done",
+      description: "Needs verification",
+      sessionId: "session-1",
+      claimedAt: Date.now(),
+      verificationItems: [],
+      feedback: [],
+    } as any);
+    const patchSpy = vi.spyOn(questStore, "patchQuest").mockResolvedValueOnce({
+      id: "q-1-v3",
+      questId: "q-1",
+      version: 3,
+      title: "Quest",
+      createdAt: Date.now(),
+      status: "done",
+      description: "Needs verification",
+      sessionId: "session-1",
+      claimedAt: Date.now(),
+      verificationItems: [],
+      feedback: [{ author: "agent", authorSessionId: "session-1", text: "Addressed", ts: Date.now() }],
+    } as any);
+
+    const res = await app.request("/api/quests/q-1/feedback", {
+      method: "POST",
+      headers: companionAuthHeaders("session-1", "tok-1"),
+      body: JSON.stringify({ text: "Addressed", author: "agent", sessionId: "42" }),
+    });
+
+    expect(res.status).toBe(200);
+    const feedback = (patchSpy.mock.calls[0][1] as { feedback: Array<{ authorSessionId?: string }> }).feedback;
+    expect(feedback[feedback.length - 1]?.authorSessionId).toBe("session-1");
+  });
+
   it("returns 403 when feedback sessionId mismatches authenticated caller", async () => {
     launcher.getSession.mockImplementation((sid: string) =>
       sid === "session-1" ? { sessionId: "session-1", state: "running", cwd: "/test", archived: false } : undefined,

@@ -595,6 +595,7 @@ describe("Compaction recovery prompts", () => {
         permissionMode: "default",
       },
     });
+    (bridge.getSession("s1") as any).sessionNum = 42;
 
     // Mark session as orchestrator
     bridge.setLauncher({
@@ -615,9 +616,10 @@ describe("Compaction recovery prompts", () => {
     );
     expect(recoveryCalls).toHaveLength(1);
     expect(recoveryCalls[0][1]).toContain("/takode-orchestration");
-    expect(recoveryCalls[0][1]).toContain("takode leader-context-resume <your-session-number>");
+    expect(recoveryCalls[0][1]).toContain("takode leader-context-resume 42");
     expect(recoveryCalls[0][1]).toContain("takode board show");
-    expect(recoveryCalls[0][1]).toContain("takode scan <your-session-number>");
+    expect(recoveryCalls[0][1]).toContain("takode scan 42");
+    expect(recoveryCalls[0][1]).not.toContain("<your-session-number>");
     expect(recoveryCalls[0][1]).toContain("takode list");
     expect(recoveryCalls[0][1]).not.toContain("takode board show && takode list");
     expect(recoveryCalls[0][1]).toContain("recover enough earlier context");
@@ -804,6 +806,7 @@ describe("Compaction recovery prompts", () => {
         permissionMode: "default",
       },
     });
+    (bridge.getSession("s1") as any).sessionNum = 42;
 
     // Not an orchestrator
     bridge.setLauncher({
@@ -822,9 +825,10 @@ describe("Compaction recovery prompts", () => {
     );
     expect(recoveryCalls).toHaveLength(1);
     expect(recoveryCalls[0][1]).toContain("recover enough context from your own session history");
-    expect(recoveryCalls[0][1]).toContain("takode scan <your-session-number>");
-    expect(recoveryCalls[0][1]).toContain("takode peek <your-session-number>");
-    expect(recoveryCalls[0][1]).toContain("takode read <your-session-number>");
+    expect(recoveryCalls[0][1]).toContain("takode scan 42");
+    expect(recoveryCalls[0][1]).toContain("takode peek 42");
+    expect(recoveryCalls[0][1]).toContain("takode read 42");
+    expect(recoveryCalls[0][1]).not.toContain("<your-session-number>");
     expect(recoveryCalls[0][1]).toContain("Keep your current role");
     expect(recoveryCalls[0][1]).not.toContain("/takode-orchestration");
   });

@@ -286,6 +286,12 @@ export interface LaunchOptions {
  * Manages CLI backend processes (Claude Code via --sdk-url WebSocket,
  * or Codex via app-server stdio).
  */
+const knownSessionNums = new Map<string, number>();
+
+export function getKnownSessionNum(sessionId: string): number | undefined {
+  return knownSessionNums.get(sessionId);
+}
+
 export class CliLauncher {
   private sessions = new Map<string, SdkSessionInfo>();
   private processes = new Map<string, Subprocess>();
@@ -431,29 +437,35 @@ export class CliLauncher {
   /** Assign a monotonic integer ID to a session. */
   private assignSessionNum(sessionId: string): number {
     const existing = this.sessionNumMap.get(sessionId);
-    if (existing !== undefined) return existing;
+    if (existing !== undefined) {
+      knownSessionNums.set(sessionId, existing);
+      return existing;
+    }
     const num = this.nextSessionNum++;
     this.sessionNumMap.set(sessionId, num);
     this.sessionByNum.set(num, sessionId);
+    knownSessionNums.set(sessionId, num);
     return num;
   }
 
   /**
    * Resolve a session identifier to a full UUID.
-   * Accepts: integer session number, full UUID, or UUID prefix (min 4 chars).
+   * Accepts: integer session number, #N session number, full UUID, or UUID prefix (min 4 chars).
    * Returns null if no match found.
    */
   resolveSessionId(idOrNum: string): string | null {
+    const normalized = idOrNum.trim();
+    const numericRef = /^#\d+$/.test(normalized) ? normalized.slice(1) : normalized;
     // Try integer lookup first
-    const num = parseInt(idOrNum, 10);
-    if (!isNaN(num) && String(num) === idOrNum) {
+    const num = parseInt(numericRef, 10);
+    if (!isNaN(num) && String(num) === numericRef) {
       return this.sessionByNum.get(num) ?? null;
     }
     // Exact UUID match
-    if (this.sessions.has(idOrNum)) return idOrNum;
+    if (this.sessions.has(normalized)) return normalized;
     // Prefix match (min 4 chars to avoid ambiguity)
-    if (idOrNum.length >= 4) {
-      const lower = idOrNum.toLowerCase();
+    if (normalized.length >= 4) {
+      const lower = normalized.toLowerCase();
       let match: string | null = null;
       for (const uuid of this.sessions.keys()) {
         if (uuid.toLowerCase().startsWith(lower)) {
@@ -566,6 +578,7 @@ export class CliLauncher {
       if (info.sessionNum !== undefined && info.sessionNum !== null) {
         this.sessionNumMap.set(info.sessionId, info.sessionNum);
         this.sessionByNum.set(info.sessionNum, info.sessionId);
+        knownSessionNums.set(info.sessionId, info.sessionNum);
         if (info.sessionNum > maxNum) maxNum = info.sessionNum;
       }
     }
@@ -1862,6 +1875,7 @@ export class CliLauncher {
     this.sessions.delete(sessionId);
     this.processes.delete(sessionId);
     this.sessionEnvs.delete(sessionId);
+    knownSessionNums.delete(sessionId);
     this.persistState();
   }
 

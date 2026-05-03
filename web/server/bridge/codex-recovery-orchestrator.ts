@@ -20,7 +20,6 @@ import {
 } from "./adapter-browser-routing-needs-input-reminder.js";
 import { isRecoverableCodexInitError } from "../codex-adapter-utils.js";
 import { isActualHumanUserInput, isActualHumanUserMessage } from "../user-message-classification.js";
-import { LEADER_COMPACTION_RECOVERY_PROMPT } from "./compaction-recovery.js";
 import {
   armCodexFreshTurnRequirement as armCodexFreshTurnRequirementState,
   clearCodexFreshTurnRequirement as clearCodexFreshTurnRequirementState,
@@ -831,10 +830,7 @@ export function registerCodexAdapterRecoveryLifecycle(
     if (meta.cwd) session.state.cwd = meta.cwd;
     (session.state as any).backend_type = "codex";
     if (recyclePending) {
-      deps.injectUserMessage(session.id, LEADER_COMPACTION_RECOVERY_PROMPT, {
-        sessionId: "system",
-        sessionLabel: "System",
-      });
+      deps.injectCompactionRecovery(session);
       deps.completeCodexLeaderRecycle(session.id);
     }
     if (pendingRollback) {

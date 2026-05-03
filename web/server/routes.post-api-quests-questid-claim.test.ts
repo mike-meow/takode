@@ -584,6 +584,35 @@ describe("POST /api/quests/:questId/claim", () => {
     expect(questStore.claimQuest).toHaveBeenCalledWith("q-1", "session-2", expect.any(Object));
   });
 
+  it("resolves numeric body sessionId before comparing to authenticated caller", async () => {
+    vi.spyOn(questStore, "claimQuest").mockResolvedValueOnce({
+      id: "q-1-v3",
+      questId: "q-1",
+      title: "Quest",
+      status: "in_progress",
+      sessionId: "session-2",
+      createdAt: Date.now(),
+      claimedAt: Date.now(),
+      description: "Ready",
+    } as any);
+    launcher.resolveSessionId.mockImplementation((ref: string) => (ref === "42" ? "session-2" : ref));
+    launcher.getSession.mockImplementation((sid: string) =>
+      sid === "session-2" ? { sessionId: "session-2", state: "running", cwd: "/test", archived: false } : undefined,
+    );
+    launcher.verifySessionAuthToken.mockImplementation(
+      (sid: string, token: string) => sid === "session-2" && token === "tok-2",
+    );
+
+    const res = await app.request("/api/quests/q-1/claim", {
+      method: "POST",
+      headers: companionAuthHeaders("session-2", "tok-2"),
+      body: JSON.stringify({ sessionId: "42" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(questStore.claimQuest).toHaveBeenCalledWith("q-1", "session-2", expect.any(Object));
+  });
+
   it("returns 403 when body sessionId mismatches authenticated caller", async () => {
     launcher.getSession.mockImplementation((sid: string) =>
       sid === "session-2" ? { sessionId: "session-2", state: "running", cwd: "/test", archived: false } : undefined,
@@ -889,6 +918,49 @@ describe("POST /api/quests/:questId/complete", () => {
       headers: companionAuthHeaders("leader-1", "leader-token"),
       body: JSON.stringify({
         sessionId: "worker-1",
+        verificationItems: [{ text: "Verify handoff", checked: false }],
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(questStore.completeQuest).toHaveBeenCalledWith("q-1", [{ text: "Verify handoff", checked: false }], {
+      commitShas: undefined,
+      sessionId: "worker-1",
+    });
+  });
+
+  it("resolves numeric completion sessionId before leader authorization and lookup", async () => {
+    vi.spyOn(questStore, "completeQuest").mockResolvedValueOnce({
+      id: "q-1-v4",
+      questId: "q-1",
+      title: "Quest",
+      status: "done",
+      sessionId: "worker-1",
+      createdAt: Date.now(),
+      claimedAt: Date.now(),
+      description: "Ready",
+      verificationItems: [{ text: "Verify handoff", checked: false }],
+      verificationInboxUnread: true,
+    } as any);
+    launcher.resolveSessionId.mockImplementation((ref: string) => (ref === "42" ? "worker-1" : ref));
+    launcher.getSession.mockImplementation((sid: string) => {
+      if (sid === "leader-1") {
+        return { sessionId: "leader-1", state: "running", cwd: "/test", archived: false, isOrchestrator: true };
+      }
+      if (sid === "worker-1") {
+        return { sessionId: "worker-1", state: "running", cwd: "/test", archived: false };
+      }
+      return undefined;
+    });
+    launcher.verifySessionAuthToken.mockImplementation(
+      (sid: string, token: string) => sid === "leader-1" && token === "leader-token",
+    );
+
+    const res = await app.request("/api/quests/q-1/complete", {
+      method: "POST",
+      headers: companionAuthHeaders("leader-1", "leader-token"),
+      body: JSON.stringify({
+        sessionId: "42",
         verificationItems: [{ text: "Verify handoff", checked: false }],
       }),
     });
