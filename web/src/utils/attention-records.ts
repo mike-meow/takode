@@ -28,6 +28,7 @@ export interface BuildAttentionLedgerMessagesOptions {
   availableMessageIds?: ReadonlySet<string>;
   windowedMainFeed?: boolean;
   mainWindowFromTimestamp?: number;
+  mainWindowToTimestamp?: number;
 }
 
 interface ReviewNotificationDisplay {
@@ -91,7 +92,10 @@ export function buildAttentionRecords(input: BuildAttentionRecordsInput): Attent
 
 export function selectMainLedgerRecords(
   records: ReadonlyArray<AttentionRecord>,
-  options: Pick<BuildAttentionLedgerMessagesOptions, "windowedMainFeed" | "mainWindowFromTimestamp"> = {},
+  options: Pick<
+    BuildAttentionLedgerMessagesOptions,
+    "windowedMainFeed" | "mainWindowFromTimestamp" | "mainWindowToTimestamp"
+  > = {},
 ): AttentionRecord[] {
   const selected = records
     .filter(
@@ -106,7 +110,10 @@ export function selectMainLedgerRecords(
   return selected.filter(
     (record) =>
       isAttentionRecordActive(record) ||
-      (options.mainWindowFromTimestamp !== undefined && record.createdAt >= options.mainWindowFromTimestamp),
+      (options.mainWindowFromTimestamp !== undefined &&
+        options.mainWindowToTimestamp !== undefined &&
+        record.createdAt >= options.mainWindowFromTimestamp &&
+        record.createdAt <= options.mainWindowToTimestamp),
   );
 }
 

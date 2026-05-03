@@ -190,17 +190,24 @@ describe("feed render model builders", () => {
   });
 
   it("keeps windowed Main attention ledger rows bounded to active and visible-window records", () => {
-    const visibleTail = makeMessage({
-      id: "a-visible-tail",
+    const visibleWindowStart = makeMessage({
+      id: "a-visible-window-start",
       role: "assistant",
-      content: "Visible Main tail.",
+      content: "Visible Main window start.",
       timestamp: 1_000,
       historyIndex: 25,
     });
+    const visibleWindowEnd = makeMessage({
+      id: "a-visible-window-end",
+      role: "assistant",
+      content: "Visible Main window end.",
+      timestamp: 1_100,
+      historyIndex: 26,
+    });
 
     const model = buildMessageModel({
-      allMessages: [visibleTail],
-      selectedFeedWindowMessages: [visibleTail],
+      allMessages: [visibleWindowStart, visibleWindowEnd],
+      selectedFeedWindowMessages: [visibleWindowStart, visibleWindowEnd],
       sessionNotifications: [],
       sessionAttentionRecords: [
         makeAttentionRecord({
@@ -218,18 +225,25 @@ describe("feed render model builders", () => {
           title: "Old active item",
         }),
         makeAttentionRecord({
-          id: "recent-resolved",
+          id: "in-window-resolved",
           state: "resolved",
-          createdAt: 1_100,
-          updatedAt: 1_100,
-          title: "Recent resolved item",
+          createdAt: 1_050,
+          updatedAt: 1_050,
+          title: "In-window resolved item",
+        }),
+        makeAttentionRecord({
+          id: "after-window-resolved",
+          state: "resolved",
+          createdAt: 5_000,
+          updatedAt: 5_000,
+          title: "After-window resolved item",
         }),
       ],
     });
 
     expect(model.attentionLedgerMessages.map((message) => message.metadata?.attentionRecord?.id)).toEqual([
       "old-active",
-      "recent-resolved",
+      "in-window-resolved",
     ]);
   });
 

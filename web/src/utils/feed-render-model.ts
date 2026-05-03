@@ -109,13 +109,15 @@ export function buildFeedMessageModel(input: BuildFeedMessageModelInput): FeedMe
     input.selectedFeedWindow && input.selectedFeedWindowMessages.length > 0
       ? input.selectedFeedWindowMessages
       : visibleBaseMessages;
+  const mainWindowTimestampRange = isWindowedMainFeed ? messageTimestampRange(mainWindowTimestampMessages) : null;
   const attentionLedgerMessages = buildAttentionLedgerMessages(
     attentionRecordsWithThreadMovement,
     normalizedThreadKey,
     {
       availableMessageIds: baseMessageIds,
       windowedMainFeed: isWindowedMainFeed,
-      mainWindowFromTimestamp: isWindowedMainFeed ? earliestMessageTimestamp(mainWindowTimestampMessages) : undefined,
+      mainWindowFromTimestamp: mainWindowTimestampRange?.from,
+      mainWindowToTimestamp: mainWindowTimestampRange?.to,
     },
   );
   const messages = mergeChronologicalMessages(visibleBaseMessages, attentionLedgerMessages);
@@ -139,13 +141,16 @@ export function buildFeedMessageModel(input: BuildFeedMessageModelInput): FeedMe
   };
 }
 
-function earliestMessageTimestamp(messages: ReadonlyArray<ChatMessage>): number | undefined {
-  let earliest: number | undefined;
+function messageTimestampRange(messages: ReadonlyArray<ChatMessage>): { from: number; to: number } | null {
+  let from: number | undefined;
+  let to: number | undefined;
   for (const message of messages) {
     if (!Number.isFinite(message.timestamp)) continue;
-    earliest = earliest === undefined ? message.timestamp : Math.min(earliest, message.timestamp);
+    from = from === undefined ? message.timestamp : Math.min(from, message.timestamp);
+    to = to === undefined ? message.timestamp : Math.max(to, message.timestamp);
   }
-  return earliest;
+  if (from === undefined || to === undefined) return null;
+  return { from, to };
 }
 
 function filterProjectedMessagesForThread(
