@@ -955,6 +955,33 @@ describe("Board block registration", () => {
   });
 });
 
+// ─── Collapsible turn registration ────────────────────────────────────────
+
+describe("Collapsible turn registration", () => {
+  it("setCollapsibleTurnIds is a no-op when derived turn IDs are unchanged", () => {
+    useStore.getState().setCollapsibleTurnIds("s1", ["turn-1", "turn-2"]);
+    const previousMap = useStore.getState().collapsibleTurnIds;
+
+    // MessageFeed derives a fresh array on render; identical contents should not churn store subscribers.
+    useStore.getState().setCollapsibleTurnIds("s1", ["turn-1", "turn-2"]);
+
+    expect(useStore.getState().collapsibleTurnIds).toBe(previousMap);
+  });
+
+  it("setCollapsibleTurnIds removes empty registrations without writing on cold empty feeds", () => {
+    const initialMap = useStore.getState().collapsibleTurnIds;
+
+    useStore.getState().setCollapsibleTurnIds("s1", []);
+
+    expect(useStore.getState().collapsibleTurnIds).toBe(initialMap);
+
+    useStore.getState().setCollapsibleTurnIds("s1", ["turn-1"]);
+    useStore.getState().setCollapsibleTurnIds("s1", []);
+
+    expect(useStore.getState().collapsibleTurnIds.has("s1")).toBe(false);
+  });
+});
+
 // ─── Turn activity overrides ───────────────────────────────────────────────
 
 describe("Turn activity overrides", () => {

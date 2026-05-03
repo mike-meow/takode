@@ -1874,8 +1874,11 @@ export const useStore = create<AppState>((set, get) => ({
 
   setCollapsibleTurnIds: (sessionId, turnIds) =>
     set((s) => {
+      const previous = s.collapsibleTurnIds.get(sessionId);
+      if ((previous === undefined && turnIds.length === 0) || stringArrayEqual(previous, turnIds)) return s;
       const collapsibleTurnIds = new Map(s.collapsibleTurnIds);
-      collapsibleTurnIds.set(sessionId, turnIds);
+      if (turnIds.length === 0) collapsibleTurnIds.delete(sessionId);
+      else collapsibleTurnIds.set(sessionId, turnIds);
       return { collapsibleTurnIds };
     }),
 
