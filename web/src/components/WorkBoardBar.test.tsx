@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, fireEvent, within, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { boardSummary } from "./WorkBoardBar.js";
@@ -233,6 +233,11 @@ beforeEach(() => {
   resetStore();
   localStorage.clear();
   localStorage.setItem("cc-server-id", "test-server");
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  localStorage.clear();
 });
 
 describe("WorkBoardBar", () => {
@@ -1343,6 +1348,96 @@ describe("WorkBoardBar", () => {
     view.rerender(<WorkBoardBar sessionId="s1" onSelectThread={vi.fn()} threadRows={threadRows} />);
     expect(view.getByTestId("workboard-other-threads-toggle")).toHaveAttribute("aria-expanded", "true");
     expect(view.getByTestId("workboard-other-threads-content")).toHaveTextContent("Off-board thread");
+  });
+
+  it("keeps Work Board expansion state in memory when scoped localStorage writes hit quota", () => {
+    resetStore({
+      sdkSessions: [{ sessionId: "s1", isOrchestrator: true }],
+      sessionBoards: new Map([["s1", BOARD_DATA]]),
+    });
+    // Simulate the reported browser condition: the tiny preference write fails
+    // because overall localStorage quota is already exhausted.
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const originalSetItem = Storage.prototype.setItem;
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(function setItem(this: Storage, key, value) {
+      const storageKey = String(key);
+      if (
+        storageKey.includes("cc-work-board-expanded") ||
+        storageKey.includes("cc-work-board-other-threads-expanded")
+      ) {
+        throw new DOMException("Quota exceeded", "QuotaExceededError");
+      }
+      return originalSetItem.call(this, key, value);
+    });
+
+    const threadRows = [{ threadKey: "q-99", questId: "q-99", title: "Off-board thread", messageCount: 2 }];
+    const view = render(<WorkBoardBar sessionId="s1" onSelectThread={vi.fn()} threadRows={threadRows} />);
+
+    fireEvent.click(view.getByTestId("workboard-summary-button"));
+    expect(view.getByTestId("board-table")).toBeInTheDocument();
+
+    fireEvent.click(view.getByTestId("workboard-other-threads-toggle"));
+    expect(view.getByTestId("workboard-other-threads-toggle")).toHaveAttribute("aria-expanded", "true");
+    expect(view.getByTestId("workboard-other-threads-content")).toHaveTextContent("Off-board thread");
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining("Could not persist Work Board storage value"),
+      expect.any(DOMException),
+    );
+  });
+
+  it("falls back to collapsed Work Board state when scoped localStorage reads fail", () => {
+    resetStore({
+      sdkSessions: [{ sessionId: "s1", isOrchestrator: true }],
+      sessionBoards: new Map([["s1", BOARD_DATA]]),
+    });
+    // Some browsers can throw on storage reads in restricted/quota states; the
+    // Work Board should render collapsed instead of tripping the error boundary.
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const originalGetItem = Storage.prototype.getItem;
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(function getItem(this: Storage, key) {
+      const storageKey = String(key);
+      if (
+        storageKey.includes("cc-work-board-expanded") ||
+        storageKey.includes("cc-work-board-other-threads-expanded")
+      ) {
+        throw new DOMException("Read failed", "SecurityError");
+      }
+      return originalGetItem.call(this, key);
+    });
+
+    const threadRows = [{ threadKey: "q-99", questId: "q-99", title: "Off-board thread", messageCount: 2 }];
+    const view = render(<WorkBoardBar sessionId="s1" onSelectThread={vi.fn()} threadRows={threadRows} />);
+
+    expect(view.queryByTestId("board-table")).not.toBeInTheDocument();
+    fireEvent.click(view.getByTestId("workboard-summary-button"));
+    expect(view.getByTestId("workboard-other-threads-toggle")).toHaveAttribute("aria-expanded", "false");
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining("Could not read Work Board storage value"),
+      expect.any(DOMException),
+    );
+  });
+
+  it("ignores oversized legacy Work Board boolean storage values", () => {
+    resetStore({
+      sdkSessions: [{ sessionId: "s1", isOrchestrator: true }],
+      sessionBoards: new Map([["s1", BOARD_DATA]]),
+    });
+    // These keys are boolean hints, so legacy values larger than the expected
+    // "1"/"0" shape are discarded rather than trusted.
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    localStorage.setItem(scopedKey("cc-work-board-expanded:s1"), "1".repeat(128));
+    localStorage.setItem(scopedKey("cc-work-board-other-threads-expanded:s1"), "1".repeat(128));
+
+    const threadRows = [{ threadKey: "q-99", questId: "q-99", title: "Off-board thread", messageCount: 2 }];
+    const view = render(<WorkBoardBar sessionId="s1" onSelectThread={vi.fn()} threadRows={threadRows} />);
+
+    expect(view.queryByTestId("board-table")).not.toBeInTheDocument();
+    fireEvent.click(view.getByTestId("workboard-summary-button"));
+    expect(view.getByTestId("workboard-other-threads-toggle")).toHaveAttribute("aria-expanded", "false");
+    expect(console.warn).toHaveBeenCalledWith(
+      expect.stringContaining("Ignoring oversized Work Board storage value"),
+      expect.objectContaining({ length: 128 }),
+    );
   });
 
   it("filters expanded board and off-board history lookup by query", () => {

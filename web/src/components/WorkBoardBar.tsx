@@ -41,6 +41,7 @@ export interface BoardSummarySegment {
 
 const DONE_THREAD_TITLE_COLOR = "var(--color-cc-muted)";
 const QUEUED_THREAD_TITLE_COLOR = "var(--color-cc-fg)";
+const MAX_WORK_BOARD_BOOLEAN_STORAGE_CHARS = 8;
 
 /**
  * Build a compact status summary for the collapsed board bar.
@@ -77,13 +78,40 @@ function workBoardOtherThreadsExpandedKey(sessionId: string): string {
 }
 
 function readExpandedState(sessionId: string): boolean {
-  if (typeof window === "undefined") return false;
-  return scopedGetItem(workBoardExpandedKey(sessionId)) === "1";
+  return readWorkBoardBooleanState(workBoardExpandedKey(sessionId));
 }
 
 function readOtherThreadsExpandedState(sessionId: string): boolean {
+  return readWorkBoardBooleanState(workBoardOtherThreadsExpandedKey(sessionId));
+}
+
+function readWorkBoardBooleanState(storageKey: string): boolean {
   if (typeof window === "undefined") return false;
-  return scopedGetItem(workBoardOtherThreadsExpandedKey(sessionId)) === "1";
+  try {
+    const value = scopedGetItem(storageKey);
+    if (!value) return false;
+    if (value.length > MAX_WORK_BOARD_BOOLEAN_STORAGE_CHARS) {
+      warnWorkBoardStorage("Ignoring oversized Work Board storage value.", { storageKey, length: value.length });
+      return false;
+    }
+    return value === "1";
+  } catch (error) {
+    warnWorkBoardStorage("Could not read Work Board storage value; using collapsed state.", error);
+    return false;
+  }
+}
+
+function persistWorkBoardBooleanState(storageKey: string, value: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    scopedSetItem(storageKey, value ? "1" : "0");
+  } catch (error) {
+    warnWorkBoardStorage("Could not persist Work Board storage value; continuing in memory.", error);
+  }
+}
+
+function warnWorkBoardStorage(message: string, error: unknown): void {
+  console.warn(`[takode] ${message}`, error);
 }
 
 function normalizeThreadKey(threadKey: string): string {
@@ -840,11 +868,11 @@ export function WorkBoardBar({
   }, [sessionId]);
 
   useEffect(() => {
-    scopedSetItem(workBoardExpandedKey(sessionId), expanded ? "1" : "0");
+    persistWorkBoardBooleanState(workBoardExpandedKey(sessionId), expanded);
   }, [sessionId, expanded]);
 
   useEffect(() => {
-    scopedSetItem(workBoardOtherThreadsExpandedKey(sessionId), otherThreadsExpanded ? "1" : "0");
+    persistWorkBoardBooleanState(workBoardOtherThreadsExpandedKey(sessionId), otherThreadsExpanded);
   }, [sessionId, otherThreadsExpanded]);
 
   // Close on Escape
