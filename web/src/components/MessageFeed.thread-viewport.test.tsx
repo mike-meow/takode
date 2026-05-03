@@ -598,6 +598,115 @@ describe("MessageFeed thread viewport restoration", () => {
     }
   });
 
+  it("reapplies selected-thread anchors when the scroll container is replaced", async () => {
+    // Browser validation for session return showed the durable anchor restore
+    // ran, then the final visible feed was a fresh top-positioned container. The
+    // restore latch must track which DOM container received the saved viewport,
+    // not only the saved viewport signature.
+    const sid = "test-windowed-thread-anchor-after-container-replace";
+    const windowMessages = Array.from({ length: 12 }, (_, index) =>
+      makeMessage({
+        id: `u-${index + 1}`,
+        role: index % 2 === 0 ? "user" : "assistant",
+        content: index === 6 ? "Saved anchor request" : `Thread item ${index + 1}`,
+        historyIndex: index + 1,
+      }),
+    );
+    setStoreMessages(sid, []);
+    mockStoreValues.sessions = new Map([[sid, { isOrchestrator: true }]]);
+    mockStoreValues.threadWindows = new Map([
+      [
+        sid,
+        new Map([
+          [
+            "q-941",
+            makeThreadWindow({
+              item_count: 12,
+              total_items: 12,
+              visible_item_count: 12,
+              section_item_count: 2,
+            }),
+          ],
+        ]),
+      ],
+    ]);
+    mockStoreValues.threadWindowMessages = new Map([[sid, new Map([["q-941", windowMessages]])]]);
+    persistLeaderViewportPosition(sid, "q-941", {
+      scrollTop: 1600,
+      scrollHeight: 5226,
+      isAtBottom: false,
+      anchorTurnId: "u-7",
+      anchorOffsetTop: -120,
+    });
+
+    const originalScrollHeight = Object.getOwnPropertyDescriptor(HTMLDivElement.prototype, "scrollHeight");
+    const originalScrollTop = Object.getOwnPropertyDescriptor(HTMLDivElement.prototype, "scrollTop");
+    const originalClientHeight = Object.getOwnPropertyDescriptor(HTMLDivElement.prototype, "clientHeight");
+    const originalRect = HTMLElement.prototype.getBoundingClientRect;
+    const scrollTopByElement = new WeakMap<HTMLDivElement, number>();
+    Object.defineProperty(HTMLDivElement.prototype, "scrollHeight", {
+      configurable: true,
+      get() {
+        return this.classList.contains("overflow-y-auto") ? 5226 : 0;
+      },
+    });
+    Object.defineProperty(HTMLDivElement.prototype, "clientHeight", {
+      configurable: true,
+      get() {
+        return this.classList.contains("overflow-y-auto") ? 846 : 0;
+      },
+    });
+    Object.defineProperty(HTMLDivElement.prototype, "scrollTop", {
+      configurable: true,
+      get() {
+        return this.classList.contains("overflow-y-auto") ? (scrollTopByElement.get(this) ?? 0) : 0;
+      },
+      set(value) {
+        if (this.classList.contains("overflow-y-auto")) {
+          scrollTopByElement.set(this, value as number);
+        }
+      },
+    });
+    HTMLElement.prototype.getBoundingClientRect = function () {
+      if (this instanceof HTMLElement && this.dataset.turnId === "u-7") {
+        return DOMRect.fromRect({ x: 0, y: 1450, width: 600, height: 100 });
+      }
+      if (this instanceof HTMLDivElement && this.classList.contains("overflow-y-auto")) {
+        return DOMRect.fromRect({ x: 0, y: 0, width: 600, height: 846 });
+      }
+      return originalRect.call(this);
+    };
+
+    try {
+      const { rerender } = render(<MessageFeed sessionId={sid} threadKey="q-941" sectionTurnCount={2} />);
+
+      await waitFor(() => expect(screen.getByTestId("message-feed-scroll-container").scrollTop).toBe(1570));
+      const restoredContainer = screen.getByTestId("message-feed-scroll-container");
+
+      mockStoreValues.threadWindowMessages = new Map([[sid, new Map([["q-941", []]])]]);
+      rerender(<MessageFeed sessionId={sid} threadKey="q-941" sectionTurnCount={2} />);
+      expect(screen.queryByTestId("message-feed-scroll-container")).toBeNull();
+
+      mockStoreValues.threadWindowMessages = new Map([[sid, new Map([["q-941", windowMessages]])]]);
+      rerender(<MessageFeed sessionId={sid} threadKey="q-941" sectionTurnCount={2} />);
+
+      await waitFor(() => {
+        const replacementContainer = screen.getByTestId("message-feed-scroll-container");
+        expect(replacementContainer).not.toBe(restoredContainer);
+        expect(replacementContainer.scrollTop).toBe(1570);
+      });
+      expect(screen.getByText("Saved anchor request")).toBeTruthy();
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = originalRect;
+      if (originalScrollHeight) Object.defineProperty(HTMLDivElement.prototype, "scrollHeight", originalScrollHeight);
+      else delete (HTMLDivElement.prototype as { scrollHeight?: unknown }).scrollHeight;
+      if (originalScrollTop) Object.defineProperty(HTMLDivElement.prototype, "scrollTop", originalScrollTop);
+      else delete (HTMLDivElement.prototype as { scrollTop?: unknown }).scrollTop;
+      if (originalClientHeight) Object.defineProperty(HTMLDivElement.prototype, "clientHeight", originalClientHeight);
+      else delete (HTMLDivElement.prototype as { clientHeight?: unknown }).clientHeight;
+    }
+  });
+
   it("restores Main independently after visiting a short quest thread", () => {
     // Regression for q-976: a short quest projection must not leave Main at
     // the oldest messages when returning to the Main projection.

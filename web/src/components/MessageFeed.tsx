@@ -282,7 +282,7 @@ export function MessageFeed({
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const isTouch = useMemo(() => isTouchDevice(), []);
   const taskTurnOffsetsRef = useRef<TurnOffsetIndex[]>([]);
-  const restoredViewportKeyRef = useRef<string | null>(null);
+  const restoredViewportRef = useRef<{ key: string; container: HTMLDivElement | null } | null>(null);
   const overlayViewportRef = useRef<HTMLDivElement>(null);
   const lastViewportAnchorRef = useRef<{
     viewportKey: string;
@@ -1334,7 +1334,9 @@ export function MessageFeed({
       isLeaderSession,
     });
     const restoreKey = getSavedViewportRestoreKey(viewportKey, pos);
-    if (restoredViewportKeyRef.current === restoreKey) return;
+    const restoredViewport = restoredViewportRef.current;
+    const container = containerRef.current;
+    if (restoredViewport?.key === restoreKey && restoredViewport.container === container) return;
     if (messages.length === 0 && pos?.anchorTurnId) return;
     const desiredSectionWindowStart =
       !isWindowedFeed && pos?.anchorTurnId ? getSectionWindowStartForTurnId(pos.anchorTurnId) : null;
@@ -1372,7 +1374,7 @@ export function MessageFeed({
     } else {
       scrollToBottom("auto");
     }
-    restoredViewportKeyRef.current = restoreKey;
+    restoredViewportRef.current = { key: restoreKey, container: containerRef.current };
   }, [
     activeThreadWindow,
     getSectionWindowStartForTurnId,
