@@ -12,6 +12,7 @@ Leader actions:
 - Keep the board row in `USER_CHECKPOINTING`.
 - Present the user-visible checkpoint with findings, options, tradeoffs, and a recommendation.
 - After the user-visible text exists, call `takode notify needs-input` with a short summary and wait for the user answer.
+- Do not end the turn after publishing a checkpoint prompt until the `needs-input` notification exists and, for quest board rows waiting on that answer, the row is linked with `takode board set q-N --wait-for-input <id>`. Treat a visible checkpoint question without notification state as incomplete setup.
 - After the user responds, revise the remaining Journey and continue with the approved next phase.
 - If the next action is obvious without user input, skip `user-checkpoint` and revise the Journey directly.
 
