@@ -487,10 +487,6 @@ function markerMovesNewestUserMessage(
   return !!newestUserMessage && markerIncludesMessage(marker, newestUserMessage);
 }
 
-function boardThreadKeySet(board: BoardRowData[]): Set<string> {
-  return new Set(board.map((row) => normalizeThreadKey(row.questId)));
-}
-
 function isAvailableLeaderThread(threadKey: string, rows: LeaderThreadRow[]): boolean {
   const normalized = normalizeThreadKey(threadKey);
   if (normalized === MAIN_THREAD_KEY || normalized === ALL_THREADS_KEY) return true;
@@ -847,8 +843,6 @@ export function ChatView({
     },
     [authoritativeLeaderOpenThreadTabs, sendLeaderThreadTabUpdate],
   );
-  const previousActiveBoardThreadKeysRef = useRef<Set<string> | null>(null);
-  const recentlyInactiveBoardThreadKeysRef = useRef<Set<string>>(new Set());
   const lastManualThreadSelectionAtRef = useRef(0);
   const initializedAttachmentMarkerKeysRef = useRef(false);
   const baselineAttachmentMarkersAfterHistoryLoadRef = useRef(false);
@@ -886,8 +880,6 @@ export function ChatView({
     baselineAttachmentMarkersAfterHistoryLoadRef.current = false;
     observedAttachmentMarkerKeysRef.current = new Set();
     lastManualThreadSelectionAtRef.current = 0;
-    previousActiveBoardThreadKeysRef.current = null;
-    recentlyInactiveBoardThreadKeysRef.current = new Set();
   }, [sessionId]);
 
   useEffect(() => {
@@ -933,38 +925,6 @@ export function ChatView({
       migratedAt: Date.now(),
     });
   }, [authoritativeLeaderOpenThreadTabs, isLeaderSession, preview, sendLeaderThreadTabUpdate, sessionId]);
-
-  useEffect(() => {
-    if (!isLeaderSession || preview) return;
-    const currentActiveKeys = boardThreadKeySet(activeBoard);
-    const previousActiveKeys = previousActiveBoardThreadKeysRef.current;
-    previousActiveBoardThreadKeysRef.current = currentActiveKeys;
-    if (!previousActiveKeys) return;
-
-    const recentlyInactiveKeys = recentlyInactiveBoardThreadKeysRef.current;
-    for (const key of previousActiveKeys) {
-      if (!currentActiveKeys.has(key)) recentlyInactiveKeys.add(key);
-    }
-    for (const key of currentActiveKeys) {
-      recentlyInactiveKeys.delete(key);
-    }
-
-    const completedKeys = boardThreadKeySet(completedBoard);
-    const selectedThread = normalizeThreadKey(selectedThreadKey || MAIN_THREAD_KEY);
-    const completedInactiveKeys = [...recentlyInactiveKeys].filter((key) => completedKeys.has(key));
-    for (const key of completedInactiveKeys) {
-      recentlyInactiveKeys.delete(key);
-    }
-
-    const newlyCompletedKeys = completedInactiveKeys.filter((key) => key !== selectedThread);
-    if (newlyCompletedKeys.length === 0) return;
-
-    const newlyCompleted = new Set(newlyCompletedKeys);
-    const nextOpenThreadTabKeys = openThreadTabKeysRef.current.filter((key) => !newlyCompleted.has(key));
-    openThreadTabKeysRef.current = nextOpenThreadTabKeys;
-    setOpenThreadTabKeys(nextOpenThreadTabKeys);
-    sendLeaderThreadTabUpdate({ type: "auto_close", threadKeys: newlyCompletedKeys });
-  }, [activeBoard, completedBoard, isLeaderSession, preview, selectedThreadKey, sendLeaderThreadTabUpdate]);
 
   useEffect(() => {
     if (!routeSyncEnabled || preview) return;

@@ -34,10 +34,6 @@ export type LeaderThreadTabUpdate =
       type: "close";
       threadKey: string;
       closedAt?: number;
-    }
-  | {
-      type: "auto_close";
-      threadKeys: string[];
     };
 
 export function shouldPersistLeaderThreadTab(threadKey: string): boolean {
@@ -157,15 +153,6 @@ export function applyLeaderThreadTabUpdate(
         orderedOpenThreadKeys: state.orderedOpenThreadKeys.filter((key) => key !== threadKey),
         closedThreadTombstones: upsertClosedThreadTombstone(state.closedThreadTombstones, { threadKey, closedAt }),
         updatedAt: closedAt,
-      };
-    }
-    case "auto_close": {
-      const keys = new Set(normalizeLeaderOpenThreadKeys(update.threadKeys));
-      if (keys.size === 0) return state;
-      return {
-        ...state,
-        orderedOpenThreadKeys: state.orderedOpenThreadKeys.filter((key) => !keys.has(key)),
-        updatedAt: now,
       };
     }
   }

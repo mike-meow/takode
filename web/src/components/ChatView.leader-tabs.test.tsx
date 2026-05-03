@@ -303,7 +303,7 @@ describe("ChatView leader open thread tabs", () => {
     );
   });
 
-  it("auto-closes completed inactive tabs without adding user-close tombstones", async () => {
+  it("keeps leader tabs open when their quests complete or finish a Journey", () => {
     resetStore({
       sessions: leaderSession(leaderTabs(["q-941", "q-777"])),
       sessionBoards: new Map([
@@ -330,17 +330,24 @@ describe("ChatView leader open thread tabs", () => {
       ["s1", [{ questId: "q-777", status: "IMPLEMENTING", title: "Still active", updatedAt: 4 }]],
     ]);
     mockState.sessionCompletedBoards = new Map([
-      ["s1", [{ questId: "q-941", status: "DONE", title: "Completing tab", updatedAt: 5, completedAt: 5 }]],
+      [
+        "s1",
+        [
+          {
+            questId: "q-941",
+            status: "DONE",
+            title: "Completing tab",
+            updatedAt: 5,
+            completedAt: 5,
+            journey: { mode: "completed", phaseIds: ["alignment", "implement", "port"] },
+          },
+        ],
+      ],
     ]);
     view.rerender(<ChatView sessionId="s1" />);
 
-    await waitFor(() => {
-      expect(scope.getByTestId("work-board-bar")).toHaveAttribute("data-open-thread-keys", "q-777");
-    });
-    expect(mockSendToSession).toHaveBeenCalledWith("s1", {
-      type: "leader_thread_tabs_update",
-      operation: { type: "auto_close", threadKeys: ["q-941"] },
-    });
+    expect(scope.getByTestId("work-board-bar")).toHaveAttribute("data-open-thread-keys", "q-941,q-777");
+    expect(mockSendToSession).not.toHaveBeenCalled();
   });
 
   it("opens fresh server-created candidates but suppresses candidates older than a user close", async () => {
