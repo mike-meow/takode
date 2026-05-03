@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 import {
   formatQuestJourneyDuration,
   getQuestJourneyCurrentPhaseIndex,
@@ -11,6 +11,11 @@ import {
 type JourneyVariant = "horizontal" | "compact" | "vertical";
 type JourneyPresentationMode = "active" | "completed" | "proposed";
 type PhaseState = "proposed" | "completed" | "current" | "upcoming" | "finished";
+type OmittedPhaseDirection = "earlier" | "later";
+
+type VerticalJourneyDisplayItem =
+  | { kind: "phase"; item: PhaseItem }
+  | { kind: "omitted"; direction: OmittedPhaseDirection; count: number; expanded: boolean };
 
 interface PhaseItem {
   phase: QuestJourneyPhase;
@@ -24,6 +29,9 @@ interface PhaseItem {
 
 const MUTED_DOT_CLASS = "border-cc-muted/35 bg-cc-muted/15";
 const MUTED_LABEL_CLASS = "text-cc-muted/65";
+const VERTICAL_JOURNEY_PHASES_BEFORE = 5;
+const VERTICAL_JOURNEY_PHASES_AFTER = 10;
+const VERTICAL_JOURNEY_VISIBLE_LIMIT = VERTICAL_JOURNEY_PHASES_BEFORE + VERTICAL_JOURNEY_PHASES_AFTER + 1;
 
 function colorWithAlpha(hex: string, alpha: number): string {
   const value = hex.replace("#", "");
@@ -152,6 +160,57 @@ function journeyTimelineLabel(mode: JourneyPresentationMode): string {
   return "Active Journey";
 }
 
+function getVerticalJourneyAnchorIndex(items: PhaseItem[]): number {
+  const currentIndex = items.findIndex((item) => item.state === "current");
+  return currentIndex >= 0 ? currentIndex : items.length - 1;
+}
+
+function getVerticalJourneyWindow(items: PhaseItem[]): {
+  earlierItems: PhaseItem[];
+  visibleItems: PhaseItem[];
+  laterItems: PhaseItem[];
+} {
+  if (items.length <= VERTICAL_JOURNEY_VISIBLE_LIMIT) {
+    return { earlierItems: [], visibleItems: items, laterItems: [] };
+  }
+
+  const anchorIndex = getVerticalJourneyAnchorIndex(items);
+  const startIndex = Math.max(0, anchorIndex - VERTICAL_JOURNEY_PHASES_BEFORE);
+  const endIndex = Math.min(items.length - 1, anchorIndex + VERTICAL_JOURNEY_PHASES_AFTER);
+
+  return {
+    earlierItems: items.slice(0, startIndex),
+    visibleItems: items.slice(startIndex, endIndex + 1),
+    laterItems: items.slice(endIndex + 1),
+  };
+}
+
+function getVerticalJourneyDisplayItems({
+  earlierItems,
+  visibleItems,
+  laterItems,
+  showEarlier,
+  showLater,
+}: {
+  earlierItems: PhaseItem[];
+  visibleItems: PhaseItem[];
+  laterItems: PhaseItem[];
+  showEarlier: boolean;
+  showLater: boolean;
+}): VerticalJourneyDisplayItem[] {
+  return [
+    ...(showEarlier ? earlierItems.map((item) => ({ kind: "phase" as const, item })) : []),
+    ...(earlierItems.length > 0
+      ? [{ kind: "omitted" as const, direction: "earlier" as const, count: earlierItems.length, expanded: showEarlier }]
+      : []),
+    ...visibleItems.map((item) => ({ kind: "phase" as const, item })),
+    ...(laterItems.length > 0
+      ? [{ kind: "omitted" as const, direction: "later" as const, count: laterItems.length, expanded: showLater }]
+      : []),
+    ...(showLater ? laterItems.map((item) => ({ kind: "phase" as const, item })) : []),
+  ];
+}
+
 export function QuestJourneyCompactSummary({
   journey,
   status,
@@ -261,15 +320,23 @@ function VerticalJourney({
   journey,
   status,
   className,
-  now,
 }: {
   items: PhaseItem[];
   journey: QuestJourneyPlanState;
   status?: string | null;
   className?: string;
-  now: number;
 }) {
+  const [showEarlier, setShowEarlier] = useState(false);
+  const [showLater, setShowLater] = useState(false);
   const mode = getJourneyPresentationMode(journey, status);
+  const { earlierItems, visibleItems, laterItems } = getVerticalJourneyWindow(items);
+  const displayItems = getVerticalJourneyDisplayItems({
+    earlierItems,
+    visibleItems,
+    laterItems,
+    showEarlier,
+    showLater,
+  });
   const totalElapsedMs = items.reduce((total, item) => total + (item.durationMs ?? 0), 0);
   const unavailableDurationCount = items.filter((item) => item.durationUnavailable).length;
   const totalElapsedLabel =
@@ -295,8 +362,42 @@ function VerticalJourney({
         </div>
       </div>
       <ol className="min-w-0 max-w-full space-y-0" data-testid="quest-journey-detail-list">
-        {items.map((item, index) => {
-          const hasNext = index < items.length - 1;
+        {displayItems.map((displayItem, index) => {
+          const hasNext = index < displayItems.length - 1;
+          if (displayItem.kind === "omitted") {
+            const isEarlier = displayItem.direction === "earlier";
+            const expanded = displayItem.expanded;
+            const label = `${expanded ? "Hide" : "Show"} ${displayItem.count} ${isEarlier ? "earlier" : "later"} phase${displayItem.count === 1 ? "" : "s"}`;
+            return (
+              <li
+                key={`omitted-${displayItem.direction}`}
+                className="grid min-w-0 grid-cols-[16px_minmax(0,1fr)] gap-x-2"
+                data-omitted-direction={displayItem.direction}
+                data-omitted-count={displayItem.count}
+                data-testid="quest-journey-omitted-phases"
+              >
+                <div className="flex flex-col items-center">
+                  <span
+                    className="mt-1 h-1.5 w-1.5 rounded-full border border-cc-muted/35 bg-cc-muted/15"
+                    aria-hidden="true"
+                  />
+                  {hasNext && <span className="mt-0.5 w-px flex-1 bg-cc-muted/20" aria-hidden="true" />}
+                </div>
+                <div className={hasNext ? "min-w-0 pb-1.5" : "min-w-0 pb-0"}>
+                  <button
+                    type="button"
+                    aria-expanded={expanded}
+                    onClick={() => (isEarlier ? setShowEarlier(!showEarlier) : setShowLater(!showLater))}
+                    className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-full border border-dashed border-cc-border/70 bg-cc-hover/20 px-2 py-0.5 text-[10px] text-cc-muted transition-colors hover:border-cc-muted/50 hover:bg-cc-hover hover:text-cc-fg"
+                  >
+                    <span className="truncate">{label}</span>
+                  </button>
+                </div>
+              </li>
+            );
+          }
+
+          const item = displayItem.item;
           const purpose = phasePurpose(item);
           return (
             <li
@@ -344,11 +445,6 @@ function VerticalJourney({
                       {item.durationLabel}
                     </span>
                   )}
-                  {!item.durationLabel && item.durationUnavailable && (
-                    <span className="shrink-0 text-[10px] text-cc-muted" data-testid="quest-journey-phase-duration">
-                      duration unavailable
-                    </span>
-                  )}
                 </div>
                 {purpose && (
                   <div
@@ -392,7 +488,7 @@ export function QuestJourneyTimeline({
     return <QuestJourneyCompactSummary journey={journey} status={status} className={className} showNotes={showNotes} />;
   }
   if (resolvedVariant === "vertical") {
-    return <VerticalJourney items={items} journey={journey} status={status} className={className} now={now} />;
+    return <VerticalJourney items={items} journey={journey} status={status} className={className} />;
   }
   return <HorizontalJourney items={items} journey={journey} status={status} compact={compact} className={className} />;
 }

@@ -1,11 +1,28 @@
 import { useEffect } from "react";
+import type { QuestJourneyPhaseId } from "../../../shared/quest-journey.js";
 import { useStore } from "../../store.js";
 import { QuestmasterPage } from "../QuestmasterPage.js";
+
+const JOURNEY_PHASE_CYCLE: QuestJourneyPhaseId[] = [
+  "alignment",
+  "explore",
+  "implement",
+  "code-review",
+  "user-checkpoint",
+  "port",
+  "execute",
+  "outcome-review",
+];
+
+function buildLongJourneyPhaseIds(): QuestJourneyPhaseId[] {
+  return Array.from({ length: 38 }, (_, index) => JOURNEY_PHASE_CYCLE[index % JOURNEY_PHASE_CYCLE.length]);
+}
 
 export function PlaygroundQuestmasterCompactDemo() {
   useEffect(() => {
     useStore.setState((state) => {
       const now = Date.now();
+      const longJourneyPhaseIds = buildLongJourneyPhaseIds();
       const quests = state.quests.filter((quest) => !["q-901", "q-902"].includes(quest.questId));
       const sessionBoards = new Map(state.sessionBoards);
       const leaderBoard = (sessionBoards.get("playground-questmaster-leader") ?? []).filter(
@@ -21,9 +38,13 @@ export function PlaygroundQuestmasterCompactDemo() {
           updatedAt: now - 15_000,
           journey: {
             mode: "active",
-            phaseIds: ["alignment", "implement", "code-review"],
-            currentPhaseId: "implement",
-            activePhaseIndex: 1,
+            phaseIds: longJourneyPhaseIds,
+            currentPhaseId: longJourneyPhaseIds[20],
+            activePhaseIndex: 20,
+            phaseNotes: {
+              "15": "Visible clamp boundary note in the default hover window.",
+              "31": "Later phase note appears after expanding omitted phases.",
+            },
           },
         },
         ...leaderBoard,
@@ -60,7 +81,7 @@ export function PlaygroundQuestmasterCompactDemo() {
             title: "Active Journey phase appears in Status",
             status: "in_progress" as const,
             description: "Active Journey rows show the current phase in Status.",
-            tldr: "Hover the `Implement` status to inspect the Quest Journey preview.",
+            tldr: "Hover the active status to inspect a long Quest Journey preview clamped around the current phase.",
             createdAt: now - 240_000,
             statusChangedAt: now - 180_000,
             updatedAt: now - 15_000,

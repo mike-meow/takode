@@ -208,6 +208,10 @@ describe("Playground", () => {
   it("documents compact quest-thread banners without chip note counts and with tap previews", () => {
     render(<Playground />);
 
+    expect(screen.getAllByText(/long Quest Journey preview clamped around the current phase/).length).toBeGreaterThan(
+      0,
+    );
+
     const banner = screen.getAllByTestId("quest-thread-banner")[0];
     expect(banner).toHaveClass("py-1");
     expect(within(banner).getByTestId("quest-thread-meta-strip")).toHaveClass("flex-[1_1_auto]");

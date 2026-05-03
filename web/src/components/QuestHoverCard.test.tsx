@@ -1,8 +1,20 @@
 // @vitest-environment jsdom
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useStore } from "../store.js";
+import type { QuestJourneyPhaseId } from "../../shared/quest-journey.js";
 import type { QuestmasterTask } from "../types.js";
 import { QuestHoverCard } from "./QuestHoverCard.js";
+
+const PHASE_CYCLE: QuestJourneyPhaseId[] = [
+  "alignment",
+  "explore",
+  "implement",
+  "code-review",
+  "user-checkpoint",
+  "port",
+  "execute",
+  "outcome-review",
+];
 
 function anchorRect(): DOMRect {
   return {
@@ -74,6 +86,61 @@ describe("QuestHoverCard", () => {
     expect(within(tldr).getByText("Keep it scannable.").tagName).toBe("LI");
     expect(tldr.compareDocumentPosition(journey) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(journey).getByText("Completed Journey")).toBeTruthy();
+  });
+
+  it("clamps long Journey previews around the current phase with inline expansion", () => {
+    const phaseIds = Array.from({ length: 38 }, (_, index) => PHASE_CYCLE[index % PHASE_CYCLE.length]);
+    const quest: QuestmasterTask = {
+      id: "q-1095-v1",
+      questId: "q-1095",
+      version: 1,
+      title: "Collapse long Journey previews",
+      status: "in_progress",
+      description: "Long Journey previews should not dominate the hover panel.",
+      createdAt: 1,
+      sessionId: "worker-long",
+      claimedAt: 1,
+    };
+    useStore.setState((state) => ({
+      ...state,
+      sessionBoards: new Map([
+        [
+          "leader-long",
+          [
+            {
+              questId: "q-1095",
+              title: "Collapse long Journey previews",
+              status: "USER_CHECKPOINTING",
+              updatedAt: 2,
+              journey: {
+                mode: "active",
+                phaseIds,
+                currentPhaseId: phaseIds[20],
+                activePhaseIndex: 20,
+                phaseNotes: {
+                  "14": "Hidden hover note",
+                  "15": "Visible hover boundary note",
+                  "30": "Visible later hover boundary note",
+                },
+              },
+            },
+          ],
+        ],
+      ]),
+    }));
+
+    render(<QuestHoverCard quest={quest} anchorRect={anchorRect()} onMouseEnter={() => {}} onMouseLeave={() => {}} />);
+
+    const journey = within(screen.getByTestId("quest-hover-card")).getByTestId("quest-hover-journey");
+    const visibleIndexes = Array.from(journey.querySelectorAll("li[data-phase-index]")).map((row) =>
+      Number(row.getAttribute("data-phase-index")),
+    );
+    expect(visibleIndexes).toEqual(Array.from({ length: 16 }, (_, index) => index + 15));
+    expect(within(journey).getByRole("button", { name: "Show 15 earlier phases" })).toBeTruthy();
+    expect(within(journey).getByRole("button", { name: "Show 7 later phases" })).toBeTruthy();
+    expect(within(journey).getByText("Visible hover boundary note")).toBeTruthy();
+    expect(within(journey).getByText("Visible later hover boundary note")).toBeTruthy();
+    expect(within(journey).queryByText("Hidden hover note")).toBeNull();
   });
 
   it("uses whole-chip session links for worker, reviewer, and leader participants", async () => {

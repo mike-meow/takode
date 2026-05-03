@@ -55,6 +55,18 @@ vi.mock("./quest-rework.js", () => ({
 import { QuestDetailPanel } from "./QuestDetailPanel.js";
 import { NotificationChip } from "./NotificationChip.js";
 import type { QuestmasterTask, QuestVerificationItem } from "../types.js";
+import type { QuestJourneyPhaseId } from "../../shared/quest-journey.js";
+
+const JOURNEY_PHASE_CYCLE: QuestJourneyPhaseId[] = [
+  "alignment",
+  "explore",
+  "implement",
+  "code-review",
+  "user-checkpoint",
+  "port",
+  "execute",
+  "outcome-review",
+];
 
 // Minimal quest fixtures for testing
 function makeVerificationQuest(overrides?: Partial<QuestmasterTask>): QuestmasterTask {
@@ -203,6 +215,53 @@ describe("QuestDetailPanel", () => {
     expect(within(timeline).getByText("current")).toBeInTheDocument();
     expect(within(timeline).getByText("Code Review").closest("li")).toHaveAttribute("data-phase-color", "violet");
     expect(screen.getByTestId("quest-detail-journey-section").parentElement).toHaveClass("overflow-y-auto");
+  });
+
+  it("clamps long embedded Quest View Journey details and keeps hidden phases expandable", () => {
+    const phaseIds = Array.from({ length: 38 }, (_, index) => JOURNEY_PHASE_CYCLE[index % JOURNEY_PHASE_CYCLE.length]);
+    const quest = makeVerificationQuest({ questId: "q-1095", status: "in_progress" });
+    useStore.setState({
+      quests: [quest],
+      questOverlayId: "q-1095",
+      sessionBoards: new Map([
+        [
+          "leader-1",
+          [
+            {
+              questId: "q-1095",
+              status: "USER_CHECKPOINTING",
+              updatedAt: 1,
+              journey: {
+                mode: "active",
+                phaseIds,
+                currentPhaseId: phaseIds[20],
+                activePhaseIndex: 20,
+                phaseNotes: {
+                  "14": "Hidden embedded boundary note",
+                  "15": "Visible embedded boundary note",
+                },
+              },
+            },
+          ],
+        ],
+      ]),
+    });
+
+    render(<QuestDetailPanel />);
+
+    const section = screen.getByTestId("quest-detail-journey-section");
+    const timeline = within(section).getByTestId("quest-journey-timeline");
+    const visibleIndexes = Array.from(timeline.querySelectorAll("li[data-phase-index]")).map((row) =>
+      Number(row.getAttribute("data-phase-index")),
+    );
+    expect(visibleIndexes).toEqual(Array.from({ length: 16 }, (_, index) => index + 15));
+    expect(within(timeline).getByRole("button", { name: "Show 15 earlier phases" })).toBeInTheDocument();
+    expect(within(timeline).getByRole("button", { name: "Show 7 later phases" })).toBeInTheDocument();
+    expect(within(timeline).getByText("Visible embedded boundary note")).toBeInTheDocument();
+    expect(within(timeline).queryByText("Hidden embedded boundary note")).toBeNull();
+
+    fireEvent.click(within(timeline).getByRole("button", { name: "Show 15 earlier phases" }));
+    expect(within(timeline).getByText("Hidden embedded boundary note")).toBeInTheDocument();
   });
 
   it("shows proposed board Journeys as preview details without current phase semantics", () => {
