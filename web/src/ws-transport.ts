@@ -528,6 +528,7 @@ export function createWsTransport(callbacks: WsTransportCallbacks): WsTransport 
         case "set_model":
         case "set_codex_reasoning_effort":
         case "set_permission_mode":
+        case "leader_thread_tabs_update":
         case "mcp_get_status":
         case "mcp_toggle":
         case "mcp_reconnect":
