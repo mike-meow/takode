@@ -633,4 +633,125 @@ describe("takode board output modes", () => {
       server.close();
     }
   });
+
+  it("keeps compact final advance output useful when the completed row leaves the active board", async () => {
+    const server = createServer((req, res) => {
+      const method = req.method || "";
+      const url = req.url || "";
+
+      if (method === "GET" && url === "/api/takode/me") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ sessionId: "leader-board-advance-final", isOrchestrator: true }));
+        return;
+      }
+
+      if (method === "POST" && url === "/api/sessions/leader-board-advance-final/board/q-12/advance") {
+        // Final Journey advancement removes q-12 from the active board, so the
+        // compact path must rely on the mutation summary instead of a row table.
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            removed: true,
+            previousState: "PORTING",
+            newState: "DONE",
+            completedCount: 1,
+            board: [
+              {
+                questId: "q-13",
+                title: "Unrelated active row",
+                status: "IMPLEMENTING",
+                createdAt: 3,
+                updatedAt: 4,
+              },
+            ],
+            rowSessionStatuses: {},
+          }),
+        );
+        return;
+      }
+
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    });
+
+    server.listen(0);
+    await once(server, "listening");
+    const port = (server.address() as AddressInfo).port;
+
+    try {
+      const result = await runTakode(["board", "advance", "q-12", "--port", String(port)], {
+        ...process.env,
+        COMPANION_SESSION_ID: "leader-board-advance-final",
+        COMPANION_AUTH_TOKEN: "auth-board-advance-final",
+      });
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("q-12: completed (moved to history)");
+      expect(result.stdout).not.toContain("changed: q-12");
+      expect(result.stdout).not.toContain("q-13");
+      expect(result.stdout).not.toContain("Unrelated active row");
+      expect(result.stdout).not.toContain("QUEST");
+    } finally {
+      server.close();
+    }
+  });
+
+  it("keeps compact board rm output focused when the removed row leaves the active board", async () => {
+    const server = createServer((req, res) => {
+      const method = req.method || "";
+      const url = req.url || "";
+
+      if (method === "GET" && url === "/api/takode/me") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ sessionId: "leader-board-remove", isOrchestrator: true }));
+        return;
+      }
+
+      if (method === "DELETE" && url === "/api/sessions/leader-board-remove/board/q-12") {
+        // Removed rows are intentionally absent from the returned active board;
+        // compact output should acknowledge removal without dumping unrelated rows.
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            completedCount: 0,
+            board: [
+              {
+                questId: "q-13",
+                title: "Unrelated active row",
+                status: "CODE_REVIEWING",
+                createdAt: 3,
+                updatedAt: 4,
+              },
+            ],
+            rowSessionStatuses: {},
+          }),
+        );
+        return;
+      }
+
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "not found" }));
+    });
+
+    server.listen(0);
+    await once(server, "listening");
+    const port = (server.address() as AddressInfo).port;
+
+    try {
+      const result = await runTakode(["board", "rm", "q-12", "--port", String(port)], {
+        ...process.env,
+        COMPANION_SESSION_ID: "leader-board-remove",
+        COMPANION_AUTH_TOKEN: "auth-board-remove",
+      });
+
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("removed q-12");
+      expect(result.stdout).not.toContain("changed: q-12");
+      expect(result.stdout).not.toContain("q-13");
+      expect(result.stdout).not.toContain("Unrelated active row");
+      expect(result.stdout).not.toContain("QUEST");
+    } finally {
+      server.close();
+    }
+  });
 });
