@@ -232,6 +232,25 @@ describe("SessionItem archive confirmation copy", () => {
     expect(onConfirmArchive).toHaveBeenCalledTimes(1);
     expect(onConfirmArchiveHerdMembers).toHaveBeenCalledTimes(1);
   });
+
+  it("preserves the worktree warning for leader archive choices", () => {
+    renderSessionItem({
+      session: makeSession({ isOrchestrator: true, isWorktree: true }),
+      archiveConfirmation: {
+        sessionId: "s1",
+        kind: "leader",
+        activeWorkerCount: 2,
+        leaderArchiveDestructiveTarget: "worktree",
+      },
+      onConfirmArchive: vi.fn(),
+      onConfirmArchiveHerdMembers: vi.fn(),
+      onCancelArchive: vi.fn(),
+    });
+
+    expect(screen.getByText(/delete this leader's worktree/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Archive Leader Only" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Archive Leader + Herd" })).toBeInTheDocument();
+  });
 });
 
 describe("SessionItem archived worktree cleanup status", () => {

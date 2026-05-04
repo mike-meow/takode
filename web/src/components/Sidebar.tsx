@@ -646,8 +646,14 @@ export function Sidebar() {
       if (isWorktree || isContainerized || activeWorkerCount > 0) {
         setArchiveConfirmation({
           sessionId,
-          kind: isWorktree ? "worktree" : isContainerized ? "container" : "leader",
+          kind: activeWorkerCount > 0 ? "leader" : isWorktree ? "worktree" : "container",
           activeWorkerCount: activeWorkerCount > 0 ? activeWorkerCount : undefined,
+          leaderArchiveDestructiveTarget:
+            activeWorkerCount > 0 && isWorktree
+              ? "worktree"
+              : activeWorkerCount > 0 && isContainerized
+                ? "container"
+                : undefined,
         });
         return;
       }

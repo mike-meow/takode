@@ -1132,6 +1132,76 @@ describe("Sidebar", { timeout: 10000 }, () => {
     expect(mockApi.archiveSession).not.toHaveBeenCalled();
   });
 
+  it("leader worktree archive still offers herd choices and preserves the worktree warning", async () => {
+    // Covers the overlapping state from review feedback: a leader can also be a worktree session.
+    const leader = makeSession("leader-1", { model: "leader-session", is_worktree: true });
+    const worker = makeSession("worker-1", { model: "worker-session" });
+    const leaderSdk = makeSdkSession("leader-1", {
+      model: "leader-session",
+      isOrchestrator: true,
+      isWorktree: true,
+      createdAt: 2_000,
+    });
+    const workerSdk = makeSdkSession("worker-1", { model: "worker-session", herdedBy: "leader-1", createdAt: 1_000 });
+    mockState = createMockState({
+      sessions: new Map([
+        ["leader-1", leader],
+        ["worker-1", worker],
+      ]),
+      sdkSessions: [leaderSdk, workerSdk],
+    });
+
+    render(<Sidebar />);
+    const leaderButton = screen.getByText("leader-session").closest("button")!;
+    const row = leaderButton.parentElement as HTMLElement;
+
+    fireEvent.click(within(row).getByTitle("Archive session"));
+
+    expect(screen.getByText(/delete this leader's worktree/i)).toBeInTheDocument();
+    expect(within(row).getByRole("button", { name: "Archive Leader Only" })).toBeInTheDocument();
+    fireEvent.click(within(row).getByRole("button", { name: "Archive Leader + Herd" }));
+
+    await waitFor(() => {
+      expect(mockApi.archiveGroup).toHaveBeenCalledWith("leader-1");
+    });
+    expect(mockApi.archiveSession).not.toHaveBeenCalled();
+  });
+
+  it("leader container archive still offers herd choices and preserves the container warning", async () => {
+    // Covers the parallel container overlap so container cleanup warnings do not mask herd choices.
+    const leader = makeSession("leader-1", { model: "leader-session", is_containerized: true });
+    const worker = makeSession("worker-1", { model: "worker-session" });
+    const leaderSdk = makeSdkSession("leader-1", {
+      model: "leader-session",
+      isOrchestrator: true,
+      containerId: "container-1",
+      createdAt: 2_000,
+    });
+    const workerSdk = makeSdkSession("worker-1", { model: "worker-session", herdedBy: "leader-1", createdAt: 1_000 });
+    mockState = createMockState({
+      sessions: new Map([
+        ["leader-1", leader],
+        ["worker-1", worker],
+      ]),
+      sdkSessions: [leaderSdk, workerSdk],
+    });
+
+    render(<Sidebar />);
+    const leaderButton = screen.getByText("leader-session").closest("button")!;
+    const row = leaderButton.parentElement as HTMLElement;
+
+    fireEvent.click(within(row).getByTitle("Archive session"));
+
+    expect(screen.getByText(/remove this leader's container/i)).toBeInTheDocument();
+    expect(within(row).getByRole("button", { name: "Archive Leader + Herd" })).toBeInTheDocument();
+    fireEvent.click(within(row).getByRole("button", { name: "Archive Leader Only" }));
+
+    await waitFor(() => {
+      expect(mockApi.archiveSession).toHaveBeenCalledWith("leader-1", { force: true });
+    });
+    expect(mockApi.archiveGroup).not.toHaveBeenCalled();
+  });
+
   it("leader swipe archive requires confirmation instead of archiving immediately", () => {
     const leader = makeSession("leader-1", { model: "leader-session" });
     const worker = makeSession("worker-1", { model: "worker-session" });

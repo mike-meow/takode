@@ -15,6 +15,7 @@ export interface ArchiveConfirmationState {
   sessionId: string;
   kind: "worktree" | "container" | "leader";
   activeWorkerCount?: number;
+  leaderArchiveDestructiveTarget?: "worktree" | "container";
 }
 
 /** Shared status count type used for worker summaries and group headers. */
@@ -923,6 +924,20 @@ export function SessionItem({
                       {archiveConfirmation.activeWorkerCount === 1 ? "" : "s"}
                     </strong>
                     .
+                    {archiveConfirmation.leaderArchiveDestructiveTarget === "worktree" && (
+                      <>
+                        {" "}
+                        Either choice will <strong>delete this leader&apos;s worktree</strong> and any uncommitted
+                        changes.
+                      </>
+                    )}
+                    {archiveConfirmation.leaderArchiveDestructiveTarget === "container" && (
+                      <>
+                        {" "}
+                        Either choice will <strong>remove this leader&apos;s container</strong> and any uncommitted
+                        changes.
+                      </>
+                    )}
                   </>
                 ) : (
                   <>
