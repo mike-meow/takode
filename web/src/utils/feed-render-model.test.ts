@@ -459,7 +459,7 @@ describe("feed render model builders", () => {
     expect(model.messages.map((message) => message.id)).toEqual(["m-main", "m-attached"]);
   });
 
-  it("keeps selected-window Main attachment source messages visible without replaying routed quest rows", () => {
+  it("uses server-retained selected-window Main attachment sources without rendering marker rows", () => {
     const attached = makeMessage({
       id: "m-attached",
       role: "assistant",
@@ -500,7 +500,7 @@ describe("feed render model builders", () => {
 
     const model = buildMessageModel({
       allMessages: [attached, questOnly, marker, tail],
-      selectedFeedWindowMessages: [marker, tail],
+      selectedFeedWindowMessages: [attached, tail],
       sessionNotifications: [],
     });
 

@@ -70,7 +70,11 @@ export function buildThreadWindowSync(input: BuildThreadWindowInput): {
         : Math.max(0, Math.min(requestedFromItem, Math.max(0, totalItems - 1)));
   const endItem = Math.min(totalItems, fromItem + requestedItemCount);
   const selectedItems = selectConversationItems(items, ranges.slice(fromItem, endItem));
-  const entries = dedupeEntries(expandToolClosureItems(input.messageHistory, threadKey, selectedItems));
+  const sourceExpandedItems =
+    threadKey === MAIN_THREAD_KEY
+      ? expandMainAttachmentSourceItems(input.messageHistory, items, selectedItems)
+      : selectedItems;
+  const entries = dedupeEntries(expandToolClosureItems(input.messageHistory, threadKey, sourceExpandedItems));
   const availability = deriveThreadWindowAvailability({
     items,
     ranges,
@@ -345,6 +349,63 @@ function buildConversationRanges(items: FeedItem[]): ConversationRange[] {
 
 function selectConversationItems(items: FeedItem[], ranges: ConversationRange[]): FeedItem[] {
   return ranges.flatMap((range) => items.slice(range.startItem, range.endItem));
+}
+
+function expandMainAttachmentSourceItems(
+  messages: ReadonlyArray<BrowserIncomingMessage>,
+  allItems: FeedItem[],
+  selectedItems: FeedItem[],
+): FeedItem[] {
+  if (selectedItems.length === 0) return selectedItems;
+
+  const relevantMarkers = collectSelectedMainAttachmentMarkers(messages, allItems, selectedItems);
+  if (relevantMarkers.length === 0) return selectedItems;
+
+  const sourceIds = new Set<string>();
+  for (const marker of relevantMarkers) {
+    for (const messageId of marker.messageIds) sourceIds.add(messageId);
+  }
+  if (sourceIds.size === 0) return selectedItems;
+
+  const expanded = [...selectedItems];
+  messages.forEach((message, index) => {
+    if (!sourceIds.has(rawMessageId(message, index))) return;
+    if (!isMainAttachmentSourceMessage(message)) return;
+    expanded.push({ order: index, entry: { message, history_index: index } });
+  });
+  return expanded;
+}
+
+function collectSelectedMainAttachmentMarkers(
+  messages: ReadonlyArray<BrowserIncomingMessage>,
+  allItems: FeedItem[],
+  selectedItems: FeedItem[],
+) {
+  const selectedKeys = new Set(selectedItems.map((item) => entryKey(item.entry)));
+  const selectedItemIndexes: number[] = [];
+  allItems.forEach((item, index) => {
+    if (selectedKeys.has(entryKey(item.entry))) selectedItemIndexes.push(index);
+  });
+  if (selectedItemIndexes.length === 0) return [];
+
+  const selectedSpans = selectedItemIndexes.map((itemIndex) => {
+    const previousItemOrder = allItems[itemIndex - 1]?.order ?? -1;
+    return { afterOrder: previousItemOrder, throughOrder: allItems[itemIndex]!.order };
+  });
+
+  return messages.filter((message, index) => {
+    if (message.type !== "thread_attachment_marker") return false;
+    const sourceKey = message.sourceThreadKey ?? message.sourceQuestId;
+    if (sourceKey && normalizeSelectedFeedThreadKey(sourceKey) !== MAIN_THREAD_KEY) return false;
+    return selectedSpans.some((span) => index > span.afterOrder && index <= span.throughOrder);
+  }) as Array<Extract<BrowserIncomingMessage, { type: "thread_attachment_marker" }>>;
+}
+
+function isMainAttachmentSourceMessage(message: BrowserIncomingMessage): boolean {
+  if (hasExplicitNonMainRoute(message)) return false;
+  return (message.threadRefs ?? []).some((ref) => {
+    return ref.source === "backfill" && normalizeSelectedFeedThreadKey(ref.threadKey) !== MAIN_THREAD_KEY;
+  });
 }
 
 function expandToolClosureItems(

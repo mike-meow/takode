@@ -340,6 +340,39 @@ describe("thread window hydration", () => {
     expect(sync.entries.map((entry) => entry.message.type)).toEqual(["user_message", "user_message", "user_message"]);
   });
 
+  it("retains Main attachment sources for a latest window without hydrating marker rows", () => {
+    const attachedMain = {
+      ...user("u2", "old Main context attached to q-1"),
+      threadRefs: [{ threadKey: "q-1", questId: "q-1", source: "backfill" as const }],
+    };
+    const futureQuestOnly = user("u3", "future q-1-only reply", "q-1");
+    const marker = attachmentMarker({
+      id: "marker-q1-late",
+      timestamp: 4,
+      messageIds: ["u2", "u3"],
+      messageIndices: [1, 2],
+      ranges: ["1-2"],
+      count: 2,
+      firstMessageId: "u2",
+      firstMessageIndex: 1,
+    });
+    const history = [user("u1", "main request"), attachedMain, futureQuestOnly, marker, user("u5", "main follow-up")];
+
+    const sync = buildThreadWindowSync({
+      messageHistory: history,
+      threadKey: "main",
+      fromItem: -1,
+      itemCount: 1,
+      sectionItemCount: 1,
+      visibleItemCount: 1,
+    });
+
+    expect(sync.entries.map((entry) => entry.history_index)).toEqual([1, 4]);
+    expect(sync.entries.map((entry) => entry.message.type)).toEqual(["user_message", "user_message"]);
+    expect(sync.entries.some((entry) => entry.message.type === "thread_attachment_marker")).toBe(false);
+    expect(sync.entries.some((entry) => entry.message.type === "cross_thread_activity_marker")).toBe(false);
+  });
+
   it("keeps source quest messages visible without rendering source attachment markers", () => {
     const sourceMessage = {
       ...user("u2", "source quest context", "q-2"),
