@@ -296,6 +296,40 @@ describe("leader_thread_tabs_update", () => {
     expect(deps.broadcastToBrowsers).toHaveBeenCalledTimes(1);
   });
 
+  it("persists reordered tabs while preserving server-open keys omitted by stale clients", () => {
+    const session = makeSession({
+      state: {
+        permissionMode: "default",
+        isOrchestrator: true,
+        leaderOpenThreadTabs: {
+          version: 1,
+          orderedOpenThreadKeys: ["q-1", "q-2", "q-3"],
+          closedThreadTombstones: [],
+          updatedAt: 1,
+        },
+      } as any,
+    });
+    const deps = makeInjectDeps();
+
+    const handled = handleBrowserProtocolMessage(
+      session,
+      {
+        type: "leader_thread_tabs_update",
+        operation: { type: "reorder", orderedOpenThreadKeys: ["q-3", "q-1"] },
+        client_msg_id: "tabs-reorder-1",
+      },
+      undefined,
+      deps,
+    );
+
+    expect(handled).toBe(true);
+    expect(session.state.leaderOpenThreadTabs?.orderedOpenThreadKeys).toEqual(["q-3", "q-1", "q-2"]);
+    expect(deps.broadcastToBrowsers).toHaveBeenCalledWith(session, {
+      type: "session_update",
+      session: { leaderOpenThreadTabs: session.state.leaderOpenThreadTabs },
+    });
+  });
+
   it("ignores stale or unsupported tab operations without mutating server state", () => {
     const serverState = {
       version: 1 as const,

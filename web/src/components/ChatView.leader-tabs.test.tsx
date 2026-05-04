@@ -144,6 +144,7 @@ vi.mock("./WorkBoardBar.js", () => ({
     openThreadKeys = [],
     closedThreadKeys = [],
     onCloseThreadTab,
+    onReorderThreadTabs,
     threadRows = [],
   }: {
     currentThreadKey?: string;
@@ -151,6 +152,7 @@ vi.mock("./WorkBoardBar.js", () => ({
     openThreadKeys?: string[];
     closedThreadKeys?: string[];
     onCloseThreadTab?: (threadKey: string, nextThreadKey?: string) => void;
+    onReorderThreadTabs?: (orderedThreadKeys: string[]) => void;
     threadRows?: Array<{ threadKey: string; questId?: string; title: string }>;
   }) => (
     <div
@@ -183,6 +185,15 @@ vi.mock("./WorkBoardBar.js", () => ({
             Close {threadKey}
           </button>
         ))}
+      {onReorderThreadTabs && (
+        <button
+          type="button"
+          data-testid="mock-workboard-reorder-tabs"
+          onClick={() => onReorderThreadTabs([...openThreadKeys].reverse())}
+        >
+          Reorder tabs
+        </button>
+      )}
     </div>
   ),
 }));
@@ -348,6 +359,62 @@ describe("ChatView leader open thread tabs", () => {
 
     expect(scope.getByTestId("work-board-bar")).toHaveAttribute("data-open-thread-keys", "q-777");
     expect(scope.getByTestId("work-board-bar")).toHaveAttribute("data-closed-thread-keys", "q-941");
+  });
+
+  it("sends manual reorder operations without changing selected tab or viewport ownership", () => {
+    resetStore({
+      sessions: leaderSession(leaderTabs(["q-941", "q-777", "q-555"])),
+      messages: new Map([["s1", [threadMessage("q-941", 2), threadMessage("q-777", 3), threadMessage("q-555", 4)]]]),
+      quests: [
+        { questId: "q-941", title: "First tab", status: "in_progress" },
+        { questId: "q-777", title: "Second tab", status: "in_progress" },
+        { questId: "q-555", title: "Third tab", status: "in_progress" },
+      ],
+    });
+
+    const view = render(<ChatView sessionId="s1" />);
+    const scope = within(view.container);
+    fireEvent.click(scope.getByRole("button", { name: /q-777 second tab/i }));
+    mockSendToSession.mockClear();
+
+    fireEvent.click(scope.getByTestId("mock-workboard-reorder-tabs"));
+
+    expect(scope.getByTestId("work-board-bar")).toHaveAttribute("data-open-thread-keys", "q-555,q-777,q-941");
+    expect(scope.getByTestId("message-feed")).toHaveAttribute("data-thread-key", "q-777");
+    expect(mockSendToSession).toHaveBeenCalledWith("s1", {
+      type: "leader_thread_tabs_update",
+      operation: { type: "reorder", orderedOpenThreadKeys: ["q-555", "q-777", "q-941"] },
+    });
+
+    mockState.sessions = leaderSession(leaderTabs(["q-555", "q-777", "q-941"]));
+    view.rerender(<ChatView sessionId="s1" />);
+    expect(scope.getByTestId("work-board-bar")).toHaveAttribute("data-open-thread-keys", "q-555,q-777,q-941");
+  });
+
+  it("keeps newly opened tabs immediately after Main without reordering existing manual order", () => {
+    resetStore({
+      sessions: leaderSession(leaderTabs(["q-941", "q-777"])),
+      messages: new Map([["s1", [threadMessage("q-941", 2), threadMessage("q-777", 3), threadMessage("q-555", 4)]]]),
+      quests: [
+        { questId: "q-941", title: "First tab", status: "in_progress" },
+        { questId: "q-777", title: "Second tab", status: "in_progress" },
+        { questId: "q-555", title: "New tab", status: "in_progress" },
+      ],
+    });
+
+    const view = render(<ChatView sessionId="s1" />);
+    const scope = within(view.container);
+    fireEvent.click(scope.getByTestId("mock-workboard-reorder-tabs"));
+    expect(scope.getByTestId("work-board-bar")).toHaveAttribute("data-open-thread-keys", "q-777,q-941");
+    mockSendToSession.mockClear();
+
+    fireEvent.click(scope.getByRole("button", { name: /q-555 new tab/i }));
+
+    expect(scope.getByTestId("work-board-bar")).toHaveAttribute("data-open-thread-keys", "q-555,q-777,q-941");
+    expect(mockSendToSession).toHaveBeenCalledWith("s1", {
+      type: "leader_thread_tabs_update",
+      operation: { type: "open", threadKey: "q-555", placement: "first", source: "user" },
+    });
   });
 
   it("migrates valid legacy localStorage only when no server state exists", async () => {

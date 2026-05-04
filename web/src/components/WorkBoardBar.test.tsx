@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, fireEvent, within, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
-import { boardSummary } from "./WorkBoardBar.js";
+import { boardSummary, reorderThreadTabsAfterDrag } from "./WorkBoardBar.js";
 import type { BoardRowData } from "./BoardTable.js";
 import { scopedKey } from "../utils/scoped-storage.js";
 import { getQuestJourneyPhaseForState } from "../../shared/quest-journey.js";
@@ -107,6 +107,14 @@ describe("boardSummary", () => {
   it("falls back to the raw status label for unknown states", () => {
     const board: BoardRowData[] = [{ questId: "q-1", status: "CUSTOM_STATUS", updatedAt: 1 }];
     expect(boardSummary(board, 0)).toEqual([{ text: "1 CUSTOM_STATUS", className: "text-cc-fg/80" }]);
+  });
+});
+
+describe("reorderThreadTabsAfterDrag", () => {
+  it("reorders sortable thread keys and ignores Main or unknown drag targets", () => {
+    expect(reorderThreadTabsAfterDrag(["q-1", "q-2", "q-3"], "q-3", "q-1")).toEqual(["q-3", "q-1", "q-2"]);
+    expect(reorderThreadTabsAfterDrag(["q-1", "q-2"], "main", "q-2")).toEqual(["q-1", "q-2"]);
+    expect(reorderThreadTabsAfterDrag(["q-1", "q-2"], "q-1", "q-missing")).toEqual(["q-1", "q-2"]);
   });
 });
 
@@ -1336,6 +1344,39 @@ describe("WorkBoardBar", () => {
 
     fireEvent.click(getByLabelText("Close q-99"));
     expect(onCloseThreadTab).toHaveBeenCalledWith("q-99", "main");
+  });
+
+  it("only exposes drag handles for server-open quest/thread tabs", () => {
+    resetStore({
+      sdkSessions: [{ sessionId: "s1", isOrchestrator: true }],
+      sessionBoards: new Map([
+        ["s1", [{ questId: "q-2", status: "IMPLEMENTING", title: "Auto surfaced", updatedAt: 2 }]],
+      ]),
+      quests: [
+        { questId: "q-1", title: "Open tab", status: "in_progress" } as QuestmasterTask,
+        { questId: "q-2", title: "Auto surfaced", status: "in_progress" } as QuestmasterTask,
+      ],
+    });
+
+    const { getByTestId, getAllByTestId } = render(
+      <WorkBoardBar
+        sessionId="s1"
+        openThreadKeys={["q-1"]}
+        onReorderThreadTabs={vi.fn()}
+        threadRows={[
+          { threadKey: "q-1", questId: "q-1", title: "Open tab" },
+          { threadKey: "q-2", questId: "q-2", title: "Auto surfaced" },
+        ]}
+      />,
+    );
+
+    expect(getByTestId("thread-main-tab")).not.toHaveAttribute("data-reorderable", "true");
+    const openTab = getAllByTestId("thread-tab").find((tab) => tab.getAttribute("data-thread-key") === "q-1")!;
+    const surfacedTab = getAllByTestId("thread-tab").find((tab) => tab.getAttribute("data-thread-key") === "q-2")!;
+    expect(openTab).toHaveAttribute("data-reorderable", "true");
+    expect(within(openTab).getByTestId("thread-tab-drag-handle")).toHaveAccessibleName("Reorder q-1");
+    expect(surfacedTab).toHaveAttribute("data-reorderable", "false");
+    expect(within(surfacedTab).queryByTestId("thread-tab-drag-handle")).toBeNull();
   });
 
   it("passes the right-hand visible tab as the active close fallback for persisted tabs", () => {

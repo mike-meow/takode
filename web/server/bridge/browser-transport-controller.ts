@@ -497,7 +497,7 @@ function isObsoleteLeaderThreadTabOperation(
   operation: Extract<BrowserOutgoingMessage, { type: "leader_thread_tabs_update" }>["operation"] | { type?: unknown },
 ): boolean {
   if (!operation || typeof operation !== "object") return true;
-  return operation.type === "auto_close" || !["migrate", "open", "close"].includes(String(operation.type));
+  return operation.type === "auto_close" || !["migrate", "open", "close", "reorder"].includes(String(operation.type));
 }
 
 function statesEqual(

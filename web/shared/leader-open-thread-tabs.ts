@@ -36,6 +36,10 @@ export type LeaderThreadTabUpdate =
       closedAt?: number;
     }
   | {
+      type: "reorder";
+      orderedOpenThreadKeys: string[];
+    }
+  | {
       /**
        * Legacy browser operation removed from the product model. Keep it as a
        * runtime no-op so stale clients cannot clear authoritative server state.
@@ -110,6 +114,17 @@ export function placeLeaderOpenThreadTabKey(
     : normalizeLeaderOpenThreadKeys(nextKeys.slice(-MAX_LEADER_OPEN_THREAD_TABS));
 }
 
+export function reorderLeaderOpenThreadKeys(
+  existingThreadKeys: ReadonlyArray<string>,
+  requestedOrder: ReadonlyArray<unknown>,
+): string[] {
+  const existing = normalizeLeaderOpenThreadKeys(existingThreadKeys);
+  const existingSet = new Set(existing);
+  const requested = normalizeLeaderOpenThreadKeys(requestedOrder).filter((key) => existingSet.has(key));
+  const requestedSet = new Set(requested);
+  return [...requested, ...existing.filter((key) => !requestedSet.has(key))];
+}
+
 export function canServerCandidateOpenThread(
   state: LeaderOpenThreadTabsState | undefined,
   threadKey: string,
@@ -174,10 +189,27 @@ export function applyLeaderThreadTabUpdate(
         updatedAt: closedAt,
       };
     }
+    case "reorder": {
+      if (!existingState || !Array.isArray(record.orderedOpenThreadKeys)) return existingState;
+      const orderedOpenThreadKeys = reorderLeaderOpenThreadKeys(
+        existingState.orderedOpenThreadKeys,
+        record.orderedOpenThreadKeys,
+      );
+      if (arraysEqual(existingState.orderedOpenThreadKeys, orderedOpenThreadKeys)) return existingState;
+      return {
+        ...existingState,
+        orderedOpenThreadKeys,
+        updatedAt: now,
+      };
+    }
     case "auto_close":
     default:
       return existingState;
   }
+}
+
+function arraysEqual(left: ReadonlyArray<string>, right: ReadonlyArray<string>): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }
 
 function normalizeClosedThreadTombstones(candidate: ReadonlyArray<unknown>): LeaderClosedThreadTombstone[] {

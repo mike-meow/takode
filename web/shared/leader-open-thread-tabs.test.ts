@@ -7,6 +7,7 @@ import {
   MAX_LEADER_OPEN_THREAD_TABS,
   normalizeLeaderOpenThreadKeys,
   normalizeLeaderOpenThreadTabsState,
+  reorderLeaderOpenThreadKeys,
 } from "./leader-open-thread-tabs.js";
 
 describe("leader open thread tab state", () => {
@@ -41,6 +42,48 @@ describe("leader open thread tab state", () => {
     expect(applyLeaderThreadTabUpdate(state, { type: "auto_close", threadKeys: ["q-1"] }, 20)).toEqual(state);
     expect(applyLeaderThreadTabUpdate(state, { type: "unknown_operation" }, 20)).toEqual(state);
     expect(applyLeaderThreadTabUpdate(undefined, { type: "unknown_operation" }, 20)).toBeUndefined();
+  });
+
+  it("reorders existing server-open tabs without changing tombstones", () => {
+    const state = {
+      ...createLeaderOpenThreadTabsState(10),
+      orderedOpenThreadKeys: ["q-1", "q-2", "q-3"],
+      closedThreadTombstones: [{ threadKey: "q-9", closedAt: 9 }],
+    };
+
+    const next = applyLeaderThreadTabUpdate(state, { type: "reorder", orderedOpenThreadKeys: ["q-3", "q-1"] }, 20);
+
+    expect(next.orderedOpenThreadKeys).toEqual(["q-3", "q-1", "q-2"]);
+    expect(next.closedThreadTombstones).toEqual([{ threadKey: "q-9", closedAt: 9 }]);
+    expect(next.updatedAt).toBe(20);
+  });
+
+  it("treats stale reorder payloads as order hints rather than close instructions", () => {
+    expect(reorderLeaderOpenThreadKeys(["q-1", "q-2", "q-3"], ["q-3", "q-4", "q-1", "main"])).toEqual([
+      "q-3",
+      "q-1",
+      "q-2",
+    ]);
+
+    const state = {
+      ...createLeaderOpenThreadTabsState(10),
+      orderedOpenThreadKeys: ["q-1", "q-2", "q-3"],
+    };
+    const next = applyLeaderThreadTabUpdate(state, { type: "reorder", orderedOpenThreadKeys: ["q-3"] }, 20);
+
+    expect(next.orderedOpenThreadKeys).toEqual(["q-3", "q-1", "q-2"]);
+  });
+
+  it("keeps new first-position opens ahead of a manually reordered existing order", () => {
+    const reordered = applyLeaderThreadTabUpdate(
+      { ...createLeaderOpenThreadTabsState(10), orderedOpenThreadKeys: ["q-1", "q-2", "q-3"] },
+      { type: "reorder", orderedOpenThreadKeys: ["q-3", "q-1", "q-2"] },
+      20,
+    );
+
+    const opened = applyLeaderThreadTabUpdate(reordered, { type: "open", threadKey: "q-4", placement: "first" }, 30);
+
+    expect(opened.orderedOpenThreadKeys).toEqual(["q-4", "q-3", "q-1", "q-2"]);
   });
 
   it("preserves user closes as bounded tombstones and explicit user opens remove them", () => {

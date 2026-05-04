@@ -72,6 +72,7 @@ import {
 import {
   canServerCandidateOpenThread,
   normalizeLeaderOpenThreadTabsState,
+  reorderLeaderOpenThreadKeys,
   type LeaderOpenThreadTabsState,
   type LeaderThreadTabUpdate,
 } from "../../shared/leader-open-thread-tabs.js";
@@ -949,6 +950,16 @@ export function ChatView({
     },
     [handleSelectThread, selectedThreadKey, sendLeaderThreadTabUpdate],
   );
+  const handleReorderThreadTabs = useCallback(
+    (orderedThreadKeys: string[]) => {
+      const nextOpenThreadTabKeys = reorderLeaderOpenThreadKeys(openThreadTabKeysRef.current, orderedThreadKeys);
+      if (stringArraysEqual(openThreadTabKeysRef.current, nextOpenThreadTabKeys)) return;
+      openThreadTabKeysRef.current = nextOpenThreadTabKeys;
+      setOpenThreadTabKeys(nextOpenThreadTabKeys);
+      sendLeaderThreadTabUpdate({ type: "reorder", orderedOpenThreadKeys: nextOpenThreadTabKeys });
+    },
+    [sendLeaderThreadTabUpdate],
+  );
 
   useEffect(() => {
     initializedAttachmentMarkerKeysRef.current = false;
@@ -1334,6 +1345,7 @@ export function ChatView({
           openThreadKeys={isLeaderSession ? openThreadTabKeys : undefined}
           closedThreadKeys={isLeaderSession ? closedThreadTabKeys : undefined}
           onCloseThreadTab={isLeaderSession ? handleCloseThreadTab : undefined}
+          onReorderThreadTabs={isLeaderSession ? handleReorderThreadTabs : undefined}
           threadRows={isLeaderSession ? workBoardThreadRows : undefined}
           attentionRecords={isLeaderSession ? attentionRecords : undefined}
         />
