@@ -179,6 +179,54 @@ describe("attention records", () => {
     expect(selectAttentionChipRecords(records).map((record) => record.state)).toEqual(["reopened", "seen"]);
   });
 
+  it("bounds active Main ledger records to the selected window when windowed", () => {
+    const records = buildAttentionRecords({
+      leaderSessionId: "leader-1",
+      records: [
+        explicitRecord({
+          id: "manual:old-review",
+          type: "review_ready",
+          priority: "review",
+          createdAt: 100,
+          updatedAt: 100,
+          dedupeKey: "manual:old-review",
+        }),
+        explicitRecord({
+          id: "manual:in-window-review",
+          type: "review_ready",
+          priority: "review",
+          createdAt: 250,
+          updatedAt: 250,
+          dedupeKey: "manual:in-window-review",
+        }),
+        explicitRecord({
+          id: "manual:old-needs-input",
+          type: "needs_input",
+          priority: "needs_input",
+          createdAt: 150,
+          updatedAt: 150,
+          dedupeKey: "manual:old-needs-input",
+        }),
+        explicitRecord({
+          id: "manual:in-window-needs-input",
+          type: "needs_input",
+          priority: "needs_input",
+          createdAt: 300,
+          updatedAt: 300,
+          dedupeKey: "manual:in-window-needs-input",
+        }),
+      ],
+    });
+
+    expect(
+      selectMainLedgerRecords(records, {
+        windowedMainFeed: true,
+        mainWindowFromTimestamp: 200,
+        mainWindowToTimestamp: 350,
+      }).map((record) => record.id),
+    ).toEqual(["manual:in-window-review", "manual:in-window-needs-input"]);
+  });
+
   it("creates a low-priority rework milestone from routed quest-thread user feedback", () => {
     // Mirrors the Mental Simulation scenario from #1132 msg 9248: routed user
     // feedback saying the result needs fixing should surface in Main as a

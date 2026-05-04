@@ -106,19 +106,11 @@ export function selectMainLedgerRecords(
     )
     .sort(compareAttentionRecordsChronologically);
   if (!options.windowedMainFeed) return selected;
+  const fromTimestamp = options.mainWindowFromTimestamp;
+  const toTimestamp = options.mainWindowToTimestamp;
+  if (fromTimestamp === undefined || toTimestamp === undefined) return [];
 
-  return selected.filter(
-    (record) =>
-      (isAttentionRecordActive(record) && shouldRenderActiveRecordOutsideMainWindow(record)) ||
-      (options.mainWindowFromTimestamp !== undefined &&
-        options.mainWindowToTimestamp !== undefined &&
-        record.createdAt >= options.mainWindowFromTimestamp &&
-        record.createdAt <= options.mainWindowToTimestamp),
-  );
-}
-
-function shouldRenderActiveRecordOutsideMainWindow(record: AttentionRecord): boolean {
-  return record.type !== "quest_completed_recent";
+  return selected.filter((record) => record.createdAt >= fromTimestamp && record.createdAt <= toTimestamp);
 }
 
 export function selectAttentionChipRecords(records: ReadonlyArray<AttentionRecord>): AttentionRecord[] {

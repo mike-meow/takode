@@ -43,6 +43,24 @@ function makeWindow(overrides: Partial<ThreadWindowState> = {}): ThreadWindowSta
   };
 }
 
+function makeRawUserMessage(overrides: {
+  id: string;
+  content: string;
+  timestamp: number;
+  threadKey?: string;
+}): BrowserIncomingMessage {
+  return {
+    type: "user_message",
+    id: overrides.id,
+    content: overrides.content,
+    timestamp: overrides.timestamp,
+    ...(overrides.threadKey ? { threadKey: overrides.threadKey, questId: overrides.threadKey } : {}),
+    ...(overrides.threadKey
+      ? { threadRefs: [{ threadKey: overrides.threadKey, questId: overrides.threadKey, source: "explicit" as const }] }
+      : {}),
+  };
+}
+
 function makeAttentionRecord(overrides: Partial<SessionAttentionRecord> & { id: string }): SessionAttentionRecord {
   const createdAt = overrides.createdAt ?? 1;
   return {
@@ -243,47 +261,75 @@ describe("feed render model builders", () => {
     expect(model.attentionLedgerMessages).toHaveLength(0);
   });
 
-  it("keeps windowed Main attention ledger rows bounded to active and visible-window records", () => {
-    const visibleWindowStart = makeMessage({
-      id: "a-visible-window-start",
-      role: "assistant",
+  it("keeps windowed Main attention ledger rows bounded to producer-selected window timestamps", () => {
+    const rawWindowStart = makeRawUserMessage({
+      id: "u-visible-window-start",
       content: "Visible Main window start.",
       timestamp: 1_000,
-      historyIndex: 25,
     });
-    const visibleWindowEnd = makeMessage({
-      id: "a-visible-window-end",
-      role: "assistant",
+    const rawWindowEnd = makeRawUserMessage({
+      id: "u-visible-window-end",
       content: "Visible Main window end.",
       timestamp: 1_100,
-      historyIndex: 26,
     });
+    const window = makeWindow({
+      from_item: 25,
+      item_count: 2,
+      total_items: 60,
+      source_history_length: 60,
+    });
+    const feedSync = buildThreadFeedWindowSync({
+      threadKey: "main",
+      entries: [
+        { message: rawWindowStart, history_index: 25 },
+        { message: rawWindowEnd, history_index: 26 },
+      ],
+      window,
+    });
+    const selectedFeedWindowMessages = [
+      ...normalizeHistoryMessageToChatMessages(rawWindowStart, 25),
+      ...normalizeHistoryMessageToChatMessages(rawWindowEnd, 26),
+    ];
 
     const model = buildMessageModel({
-      allMessages: [visibleWindowStart, visibleWindowEnd],
-      selectedFeedWindowMessages: [visibleWindowStart, visibleWindowEnd],
+      allMessages: [],
+      selectedFeedWindow: window,
+      selectedFeedWindowMessages,
       sessionNotifications: [],
       sessionAttentionRecords: [
         makeAttentionRecord({
-          id: "old-resolved",
-          state: "resolved",
+          id: "old-active-review",
+          state: "unresolved",
           createdAt: 100,
           updatedAt: 100,
-          title: "Old resolved item",
+          title: "Old active review item",
         }),
         makeAttentionRecord({
-          id: "old-active",
+          id: "old-active-needs-input",
+          type: "needs_input",
+          priority: "needs_input",
           state: "unresolved",
           createdAt: 200,
           updatedAt: 200,
-          title: "Old active item",
+          title: "Old active needs-input item",
+          actionLabel: "Answer",
         }),
         makeAttentionRecord({
-          id: "in-window-resolved",
-          state: "resolved",
+          id: "in-window-review",
+          state: "unresolved",
           createdAt: 1_050,
           updatedAt: 1_050,
-          title: "In-window resolved item",
+          title: "In-window review item",
+        }),
+        makeAttentionRecord({
+          id: "in-window-needs-input",
+          type: "needs_input",
+          priority: "needs_input",
+          state: "unresolved",
+          createdAt: 1_075,
+          updatedAt: 1_075,
+          title: "In-window needs-input item",
+          actionLabel: "Answer",
         }),
         makeAttentionRecord({
           id: "after-window-resolved",
@@ -295,9 +341,16 @@ describe("feed render model builders", () => {
       ],
     });
 
+    expect(feedSync.items.map((item) => item.messageId)).toEqual(["u-visible-window-start", "u-visible-window-end"]);
     expect(model.attentionLedgerMessages.map((message) => message.metadata?.attentionRecord?.id)).toEqual([
-      "old-active",
-      "in-window-resolved",
+      "in-window-review",
+      "in-window-needs-input",
+    ]);
+    expect(model.messages.map((message) => message.id)).toEqual([
+      "u-visible-window-start",
+      "attention-ledger:in-window-review",
+      "attention-ledger:in-window-needs-input",
+      "u-visible-window-end",
     ]);
   });
 
@@ -363,7 +416,7 @@ describe("feed render model builders", () => {
     ]);
   });
 
-  it("does not render stale inactive Main ledger rows before the selected window arrives", () => {
+  it("does not render Main ledger rows before selected-window timestamp bounds arrive", () => {
     const model = buildMessageModel({
       allMessages: [],
       selectedFeedWindow: null,
@@ -387,9 +440,7 @@ describe("feed render model builders", () => {
       ],
     });
 
-    expect(model.attentionLedgerMessages.map((message) => message.metadata?.attentionRecord?.id)).toEqual([
-      "old-active",
-    ]);
+    expect(model.attentionLedgerMessages).toHaveLength(0);
   });
 
   it("does not derive cold Main ledger bounds from retained or live visible messages", () => {
@@ -431,14 +482,8 @@ describe("feed render model builders", () => {
       ],
     });
 
-    expect(model.attentionLedgerMessages.map((message) => message.metadata?.attentionRecord?.id)).toEqual([
-      "cold-start-active",
-    ]);
-    expect(model.messages.map((message) => message.id)).toEqual([
-      "attention-ledger:cold-start-active",
-      "a-retained-main-source",
-      "a-live-main-message",
-    ]);
+    expect(model.attentionLedgerMessages).toHaveLength(0);
+    expect(model.messages.map((message) => message.id)).toEqual(["a-retained-main-source", "a-live-main-message"]);
   });
 
   it("does not leak routed quest notification sources into the Main feed model", () => {
