@@ -10,19 +10,21 @@ type ModelOnlyReminderViewModel = {
 };
 
 export function ThreadRoutingReminderView({ reminder }: { reminder: ThreadRoutingReminderViewModel }) {
-  return <ModelOnlyReminderView reminder={reminder} accent="sky" />;
+  return <ModelOnlyReminderView reminder={reminder} accent="sky" icon="route" />;
 }
 
 export function QuestThreadReminderView({ reminder }: { reminder: QuestThreadReminderViewModel }) {
-  return <ModelOnlyReminderView reminder={reminder} accent="amber" />;
+  return <ModelOnlyReminderView reminder={reminder} accent="amber" icon="link" />;
 }
 
 function ModelOnlyReminderView({
   reminder,
   accent,
+  icon,
 }: {
   reminder: ModelOnlyReminderViewModel;
   accent: "amber" | "sky";
+  icon: "link" | "route";
 }) {
   const [expanded, setExpanded] = useState(false);
   const accentClass = accent === "sky" ? "text-sky-300/80" : "text-amber-200/80";
@@ -44,15 +46,7 @@ function ModelOnlyReminderView({
         >
           <path d="M6 4l4 4-4 4" />
         </svg>
-        <svg viewBox="0 0 16 16" fill="none" className={`h-3.5 w-3.5 shrink-0 ${accentClass}`} aria-hidden="true">
-          <path
-            d="M3 4.5h5.5c2.5 0 4.5 2 4.5 4.5v2M10.5 8.5L13 11l-2.5 2.5"
-            stroke="currentColor"
-            strokeWidth="1.4"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
+        <ModelOnlyReminderIcon icon={icon} className={`h-3.5 w-3.5 shrink-0 ${accentClass}`} />
         <span className="min-w-0 flex-1 truncate text-[12px] font-medium leading-snug text-cc-muted">
           {reminder.title}
         </span>
@@ -69,6 +63,56 @@ function ModelOnlyReminderView({
         </div>
       )}
     </div>
+  );
+}
+
+function ModelOnlyReminderIcon({ icon, className }: { icon: "link" | "route"; className: string }) {
+  if (icon === "link") {
+    return (
+      <svg
+        viewBox="0 0 16 16"
+        fill="none"
+        className={className}
+        aria-hidden="true"
+        data-testid="model-only-reminder-icon"
+        data-icon-kind="link"
+      >
+        <path
+          d="M6.85 4.45l.75-.75a3 3 0 014.25 4.25l-1.7 1.7a3 3 0 01-4.25 0"
+          stroke="currentColor"
+          strokeWidth="1.35"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M9.15 11.55l-.75.75a3 3 0 01-4.25-4.25l1.7-1.7a3 3 0 014.25 0"
+          stroke="currentColor"
+          strokeWidth="1.35"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <path d="M6.45 9.55l3.1-3.1" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+      data-testid="model-only-reminder-icon"
+      data-icon-kind="route"
+    >
+      <path
+        d="M3 4.5h5.5c2.5 0 4.5 2 4.5 4.5v2M10.5 8.5L13 11l-2.5 2.5"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 

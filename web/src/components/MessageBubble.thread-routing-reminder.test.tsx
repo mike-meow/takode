@@ -81,6 +81,7 @@ describe("MessageBubble thread-routing reminder messages", () => {
     render(<MessageBubble message={makeThreadRoutingReminderMessage()} sessionId="thread-routing-reminder-session" />);
 
     expect(screen.getByText("Thread routing reminder")).toBeTruthy();
+    expect(screen.getByTestId("model-only-reminder-icon").getAttribute("data-icon-kind")).toBe("route");
     expect(screen.getByText("model-only")).toBeTruthy();
     expect(screen.queryByText(/Missing thread marker/)).toBeNull();
     expect(screen.queryByText(/Resend user-visible leader text/)).toBeNull();
@@ -97,6 +98,7 @@ describe("MessageBubble thread-routing reminder messages", () => {
     render(<MessageBubble message={makeQuestThreadReminderMessage()} sessionId="quest-thread-reminder-session" />);
 
     expect(screen.getByText("Quest thread reminder")).toBeTruthy();
+    expect(screen.getByTestId("model-only-reminder-icon").getAttribute("data-icon-kind")).toBe("link");
     expect(screen.getByText("model-only")).toBeTruthy();
     expect(screen.queryByText(/attach any prior messages that clearly belong to q-1025/)).toBeNull();
     expect(screen.queryByTestId("markdown")).toBeNull();
