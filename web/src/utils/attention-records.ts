@@ -94,7 +94,7 @@ export function selectMainLedgerRecords(
   records: ReadonlyArray<AttentionRecord>,
   options: Pick<
     BuildAttentionLedgerMessagesOptions,
-    "windowedMainFeed" | "mainWindowFromTimestamp" | "mainWindowToTimestamp"
+    "availableMessageIds" | "windowedMainFeed" | "mainWindowFromTimestamp" | "mainWindowToTimestamp"
   > = {},
 ): AttentionRecord[] {
   const selected = records
@@ -102,7 +102,7 @@ export function selectMainLedgerRecords(
       (record) =>
         record.ledgerEligible &&
         record.type !== "quest_thread_created" &&
-        !isRedundantActiveNeedsInputNotification(record),
+        !isRedundantActiveNotification(record, options.availableMessageIds),
     )
     .sort(compareAttentionRecordsChronologically);
   if (!options.windowedMainFeed) return selected;
@@ -127,13 +127,12 @@ export function isAttentionRecordActive(record: Pick<AttentionRecord, "state">):
   return ACTIVE_ATTENTION_STATES.has(record.state);
 }
 
-function isRedundantActiveNeedsInputNotification(record: AttentionRecord): boolean {
-  return (
-    record.source.kind === "notification" &&
-    record.priority === "needs_input" &&
-    record.type === "needs_input" &&
-    isAttentionRecordActive(record)
-  );
+function isRedundantActiveNotification(record: AttentionRecord, availableMessageIds?: ReadonlySet<string>): boolean {
+  if (record.source.kind !== "notification" || !isAttentionRecordActive(record)) return false;
+  if (record.priority === "needs_input" && record.type === "needs_input") return true;
+
+  const anchoredMessageId = record.route.messageId || record.source.messageId || null;
+  return !!anchoredMessageId && availableMessageIds?.has(anchoredMessageId) === true;
 }
 
 export function isAttentionLedgerMessage(message: ChatMessage): boolean {

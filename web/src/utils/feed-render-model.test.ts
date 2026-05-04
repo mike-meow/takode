@@ -155,6 +155,39 @@ describe("feed render model builders", () => {
     expect(model.attentionLedgerMessages).toHaveLength(0);
   });
 
+  it("keeps an active Main review notification source as a normal feed event", () => {
+    const reviewSource = makeMessage({
+      id: "a-review-ready",
+      role: "assistant",
+      content: "q-1130 is ready for review.",
+      timestamp: 100,
+      historyIndex: 4,
+    });
+    const tail = makeMessage({
+      id: "a-tail",
+      role: "assistant",
+      content: "Visible tail message.",
+      timestamp: 200,
+      historyIndex: 25,
+    });
+
+    const model = buildMessageModel({
+      allMessages: [reviewSource, tail],
+      selectedFeedWindowMessages: [tail],
+      sessionNotifications: [
+        makeNotification({
+          id: "n-review",
+          category: "review",
+          messageId: reviewSource.id,
+          summary: "q-1130 ready for review",
+        }),
+      ],
+    });
+
+    expect(model.messages.map((message) => message.id)).toEqual(["a-review-ready", "a-tail"]);
+    expect(model.attentionLedgerMessages).toHaveLength(0);
+  });
+
   it("keeps an active Main notification source visible when Main opens before its selected window arrives", () => {
     const proposal = makeMessage({
       id: "a-main-checkpoint",
@@ -424,6 +457,54 @@ describe("feed render model builders", () => {
     });
 
     expect(model.messages.map((message) => message.id)).toEqual(["m-main", "m-attached"]);
+  });
+
+  it("keeps selected-window Main attachment source messages visible without replaying routed quest rows", () => {
+    const attached = makeMessage({
+      id: "m-attached",
+      role: "assistant",
+      content: "Main context attached to q-941 from outside the selected window",
+      timestamp: 100,
+      historyIndex: 4,
+      metadata: { threadRefs: [{ threadKey: "q-941", questId: "q-941", source: "backfill" }] },
+    });
+    const questOnly = makeMessage({
+      id: "m-quest-only",
+      role: "assistant",
+      content: "Future q-941-only response",
+      timestamp: 120,
+      historyIndex: 5,
+      metadata: { threadRefs: [{ threadKey: "q-941", questId: "q-941", source: "explicit" }] },
+    });
+    const marker = makeMessage({
+      id: "marker-q941",
+      role: "system",
+      content: "2 messages moved to q-941",
+      timestamp: 300,
+      historyIndex: 25,
+      metadata: {
+        threadAttachmentMarker: makeAttachmentMarker({
+          messageIds: [attached.id, questOnly.id],
+          firstMessageId: attached.id,
+          count: 2,
+        }),
+      },
+    });
+    const tail = makeMessage({
+      id: "a-visible-tail",
+      role: "assistant",
+      content: "Visible Main tail",
+      timestamp: 400,
+      historyIndex: 26,
+    });
+
+    const model = buildMessageModel({
+      allMessages: [attached, questOnly, marker, tail],
+      selectedFeedWindowMessages: [marker, tail],
+      sessionNotifications: [],
+    });
+
+    expect(model.messages.map((message) => message.id)).toEqual(["m-attached", "a-visible-tail"]);
   });
 
   it("keeps source and destination quest membership without rendering source attachment markers", () => {

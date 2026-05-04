@@ -177,14 +177,46 @@ export function collectRetainedNotificationSourceMessageIds(
   return new Set(notificationSourceRoutesByMessageId(notifications, normalizedThreadKey).keys());
 }
 
+export function collectRetainedMainAttachmentSourceMessageIds(
+  windowMessages: ReadonlyArray<ChatMessage>,
+  sourceMessages: ReadonlyArray<ChatMessage>,
+): Set<string> {
+  const markerMessageIds = new Set<string>();
+  for (const message of windowMessages) {
+    const marker = message.metadata?.threadAttachmentMarker;
+    if (!marker) continue;
+    const sourceKey = marker.sourceThreadKey ?? marker.sourceQuestId;
+    if (sourceKey && !isMainThreadKey(sourceKey)) continue;
+    for (const messageId of marker.messageIds) {
+      markerMessageIds.add(messageId);
+    }
+  }
+  if (markerMessageIds.size === 0) return markerMessageIds;
+
+  const retained = new Set<string>();
+  for (const message of sourceMessages) {
+    if (!markerMessageIds.has(message.id)) continue;
+    if (!isMainAttachmentSourceMessage(message)) continue;
+    retained.add(message.id);
+  }
+  return retained;
+}
+
 function mainNotificationSourceMessageIds(notifications: ReadonlyArray<SessionNotification>): Set<string> {
   const ids = new Set<string>();
   for (const notification of notifications) {
-    if (notification.done || notification.category !== "needs-input" || !notification.messageId) continue;
+    if (notification.done || !notification.messageId) continue;
     if (routeFromNotification(notification)) continue;
     ids.add(notification.messageId);
   }
   return ids;
+}
+
+function isMainAttachmentSourceMessage(message: ChatMessage): boolean {
+  if (hasExplicitNonMainRoute(message)) return false;
+  return (message.metadata?.threadRefs ?? []).some((ref) => {
+    return ref.source === "backfill" && !isMainThreadKey(ref.threadKey);
+  });
 }
 
 function notificationSourceRoutesByMessageId(

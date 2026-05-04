@@ -218,8 +218,9 @@ describe("MessageFeed duplicate rendering regression", () => {
 
     render(<MessageFeed sessionId={sid} />);
 
-    expect(screen.getAllByTestId("attention-ledger-row")).toHaveLength(1);
+    expect(screen.queryByTestId("attention-ledger-row")).toBeNull();
     expect(screen.getAllByRole("button", { name: /Mark as reviewed|Mark as not reviewed/ })).toHaveLength(1);
+    expect(screen.getAllByText("q-568 single rich chip")).toHaveLength(1);
     expect(screen.queryByText("Ready for review")).toBeNull();
   });
 
@@ -258,8 +259,9 @@ describe("MessageFeed duplicate rendering regression", () => {
 
     render(<MessageFeed sessionId={sid} />);
 
-    expect(screen.getAllByTestId("attention-ledger-row")).toHaveLength(1);
+    expect(screen.queryByTestId("attention-ledger-row")).toBeNull();
     expect(screen.getAllByRole("button", { name: /Mark as reviewed|Mark as not reviewed/ })).toHaveLength(1);
+    expect(screen.getAllByText("q-568 single rich chip")).toHaveLength(1);
     expect(screen.queryByText("Ready for review")).toBeNull();
   });
 

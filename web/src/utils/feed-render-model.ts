@@ -23,6 +23,7 @@ import {
 } from "./attention-records.js";
 import {
   collectMessageToolUseIds,
+  collectRetainedMainAttachmentSourceMessageIds,
   collectRetainedNotificationSourceMessageIds,
   filterMessagesForThread,
   isAllThreadsKey,
@@ -64,8 +65,15 @@ export interface FeedMessageModel {
 
 export function buildFeedMessageModel(input: BuildFeedMessageModelInput): FeedMessageModel {
   const normalizedThreadKey = normalizeThreadKey(input.threadKey || "main");
-  const retainedMessageIds = collectRetainedNotificationSourceMessageIds(input.sessionNotifications, input.threadKey);
   const activeSelectedFeedWindow = input.selectedFeedWindowEnabled ? input.selectedFeedWindow : null;
+  const retainedMessageIds = collectRetainedMessageIds({
+    normalizedThreadKey,
+    notifications: input.sessionNotifications,
+    threadKey: input.threadKey,
+    selectedFeedWindow: activeSelectedFeedWindow,
+    selectedFeedWindowMessages: input.selectedFeedWindowMessages,
+    allMessages: input.allMessages,
+  });
   const messagesAvailableForDerivation = composeSelectedFeedMessages({
     allMessages: input.allMessages,
     historyLoading: input.historyLoading,
@@ -136,6 +144,26 @@ export function buildFeedMessageModel(input: BuildFeedMessageModelInput): FeedMe
     messages,
     visibleToolUseIds,
   };
+}
+
+function collectRetainedMessageIds(input: {
+  normalizedThreadKey: string;
+  notifications: ReadonlyArray<SessionNotification> | undefined;
+  threadKey: string;
+  selectedFeedWindow: ThreadWindowState | null;
+  selectedFeedWindowMessages: ReadonlyArray<ChatMessage>;
+  allMessages: ReadonlyArray<ChatMessage>;
+}): Set<string> {
+  const retained = collectRetainedNotificationSourceMessageIds(input.notifications, input.threadKey);
+  if (isMainThreadKey(input.normalizedThreadKey) && input.selectedFeedWindow) {
+    for (const messageId of collectRetainedMainAttachmentSourceMessageIds(
+      input.selectedFeedWindowMessages,
+      input.allMessages,
+    )) {
+      retained.add(messageId);
+    }
+  }
+  return retained;
 }
 
 function messageTimestampRange(messages: ReadonlyArray<ChatMessage>): { from: number; to: number } | null {
