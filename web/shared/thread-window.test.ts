@@ -74,7 +74,7 @@ function transitionMarker(overrides: {
     timestamp: 3,
     markerKey: `thread-transition:${overrides.sourceThreadKey}->${overrides.threadKey}:0`,
     sourceThreadKey: overrides.sourceThreadKey,
-    sourceQuestId: overrides.sourceThreadKey,
+    ...(overrides.sourceThreadKey === "main" ? {} : { sourceQuestId: overrides.sourceThreadKey }),
     threadKey: overrides.threadKey,
     questId: overrides.threadKey,
     transitionedAt: 3,
@@ -518,6 +518,64 @@ describe("thread window hydration", () => {
       unrelatedPair,
       history[3],
     ]);
+    expect(thirdThreadSync.entries).toEqual([]);
+  });
+
+  it("keeps Main-origin route-switch handoffs visible in the Main source window", () => {
+    const mainToDestination = transitionMarker({
+      id: "transition-main-q948",
+      sourceThreadKey: "main",
+      threadKey: "q-948",
+    });
+    const unrelatedPair = transitionMarker({
+      id: "transition-q950-q951",
+      sourceThreadKey: "q-950",
+      threadKey: "q-951",
+    });
+    const history = [
+      user("u1", "Please work on q-948"),
+      assistant("a2", "Checking context", { toolUseId: "tool-view-image" }),
+      toolResultPreview("tool-view-image", "Viewed screenshot"),
+      mainToDestination,
+      assistant("a5", "Continuing in the quest thread", { threadKey: "q-948" }),
+      unrelatedPair,
+    ];
+
+    const mainSync = buildThreadWindowSync({
+      messageHistory: history,
+      threadKey: "main",
+      fromItem: 0,
+      itemCount: 10,
+      sectionItemCount: 5,
+      visibleItemCount: 2,
+    });
+    const destinationSync = buildThreadWindowSync({
+      messageHistory: history,
+      threadKey: "q-948",
+      fromItem: 0,
+      itemCount: 10,
+      sectionItemCount: 5,
+      visibleItemCount: 2,
+    });
+    const thirdThreadSync = buildThreadWindowSync({
+      messageHistory: history,
+      threadKey: "q-949",
+      fromItem: 0,
+      itemCount: 10,
+      sectionItemCount: 5,
+      visibleItemCount: 2,
+    });
+
+    // This mirrors the producer-owned Main window shape for the production
+    // feedback: a Main request can do local tool work before moving output into
+    // a quest tab, and Main still needs the durable handoff marker.
+    expect(mainSync.entries.map((entry) => entry.message)).toEqual([
+      history[0],
+      history[1],
+      history[2],
+      mainToDestination,
+    ]);
+    expect(destinationSync.entries.map((entry) => entry.message)).toEqual([mainToDestination, history[4]]);
     expect(thirdThreadSync.entries).toEqual([]);
   });
 

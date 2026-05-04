@@ -295,6 +295,60 @@ describe("assistant-message-controller", () => {
     expect(session.messageHistory[2]).toMatchObject({ type: "thread_transition_marker" });
   });
 
+  it("persists Main-origin transition markers after a Main request routes into a quest thread", () => {
+    // Production can route a Main request through one or more Main tool rows
+    // before the leader starts writing in the quest thread. Main still needs a
+    // source-visible handoff marker so the original tab does not look stalled.
+    const session = makeSession();
+    session.state.isOrchestrator = true;
+    session.messageHistory.push({
+      type: "user_message",
+      id: "main-request",
+      content: "Please work on q-948",
+      timestamp: 1,
+    });
+    session.messageHistory.push({
+      type: "assistant",
+      parent_tool_use_id: null,
+      message: {
+        id: "main-tool-use",
+        content: [{ type: "tool_use", id: "tool-view-image", name: "View", input: { file_path: "screenshot.png" } }],
+      } as any,
+    });
+    session.messageHistory.push({
+      type: "tool_result_preview",
+      previews: [
+        {
+          tool_use_id: "tool-view-image",
+          content: "viewed screenshot",
+          is_error: false,
+          total_size: 17,
+          is_truncated: false,
+        },
+      ],
+    });
+    const broadcasts: BrowserIncomingMessage[] = [];
+
+    handleAssistantMessage(session, makeAssistant([{ type: "text", text: "[thread:q-948]\nContinuing there" }]), {
+      hasAssistantReplay: () => false,
+      broadcastToBrowsers: (_session, msg) => broadcasts.push(msg),
+      persistSession: () => {},
+    });
+
+    expect(broadcasts).toHaveLength(2);
+    expect(broadcasts[0]).toMatchObject({
+      type: "thread_transition_marker",
+      sourceThreadKey: "main",
+      threadKey: "q-948",
+      questId: "q-948",
+      reason: "route_switch",
+      sourceMessageIndex: 0,
+    });
+    expect(broadcasts[0]).not.toHaveProperty("sourceQuestId");
+    expect(broadcasts[1]).toMatchObject({ type: "assistant", threadKey: "q-948", questId: "q-948" });
+    expect(session.messageHistory[3]).toMatchObject({ type: "thread_transition_marker", sourceThreadKey: "main" });
+  });
+
   it("does not infer source-thread transition markers across Main assistant boundaries", () => {
     const session = makeSession();
     session.state.isOrchestrator = true;

@@ -9,6 +9,7 @@ import type {
 import type { Turn } from "../hooks/use-feed-model.js";
 import { buildFeedMessageModel, buildFeedWindowModel } from "./feed-render-model.js";
 import { buildThreadFeedWindowSync } from "../../shared/feed-window-sync.js";
+import { buildThreadWindowSync } from "../../shared/thread-window.js";
 import { normalizeHistoryMessageToChatMessages } from "./history-message-normalization.js";
 
 function makeMessage(overrides: Partial<ChatMessage> & { id: string; role: ChatMessage["role"] }): ChatMessage {
@@ -97,7 +98,7 @@ function makeTransitionMarker(overrides: {
     timestamp: 300,
     markerKey: `thread-transition:${overrides.sourceThreadKey}->${overrides.threadKey}:0`,
     sourceThreadKey: overrides.sourceThreadKey,
-    sourceQuestId: overrides.sourceThreadKey,
+    ...(overrides.sourceThreadKey === "main" ? {} : { sourceQuestId: overrides.sourceThreadKey }),
     threadKey: overrides.threadKey,
     questId: overrides.threadKey,
     transitionedAt: 300,
@@ -897,5 +898,107 @@ describe("feed render model builders", () => {
 
     expect(feedSync.items.map((item) => item.messageId)).toEqual(["transition-q1139-q1141", "transition-q1141-q1135"]);
     expect(model.messages.map((message) => message.id)).toEqual(["transition-q1139-q1141"]);
+  });
+
+  it("projects producer-shaped Main-origin handoff markers in the Main selected window", () => {
+    const mainToDestination = makeTransitionMarker({
+      id: "transition-main-q948",
+      sourceThreadKey: "main",
+      threadKey: "q-948",
+    });
+    const unrelatedPair = makeTransitionMarker({
+      id: "transition-q950-q951",
+      sourceThreadKey: "q-950",
+      threadKey: "q-951",
+    });
+    const history: BrowserIncomingMessage[] = [
+      {
+        type: "user_message",
+        id: "main-request",
+        content: "Please work on q-948",
+        timestamp: 100,
+      },
+      {
+        type: "assistant",
+        parent_tool_use_id: null,
+        timestamp: 110,
+        message: {
+          id: "main-tool-use",
+          type: "message",
+          role: "assistant",
+          model: "claude",
+          content: [{ type: "tool_use", id: "tool-view-image", name: "View", input: { file_path: "screenshot.png" } }],
+          stop_reason: "end_turn",
+          usage: { input_tokens: 1, output_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+      },
+      {
+        type: "tool_result_preview",
+        previews: [
+          {
+            tool_use_id: "tool-view-image",
+            content: "viewed screenshot",
+            is_error: false,
+            total_size: 17,
+            is_truncated: false,
+          },
+        ],
+      },
+      mainToDestination,
+      {
+        type: "assistant",
+        parent_tool_use_id: null,
+        timestamp: 130,
+        threadKey: "q-948",
+        questId: "q-948",
+        threadRefs: [{ threadKey: "q-948", questId: "q-948", source: "explicit" }],
+        message: {
+          id: "destination-output",
+          type: "message",
+          role: "assistant",
+          model: "claude",
+          content: [{ type: "text", text: "Continuing in q-948" }],
+          stop_reason: "end_turn",
+          usage: { input_tokens: 1, output_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+        },
+      },
+      unrelatedPair,
+    ];
+    const sync = buildThreadWindowSync({
+      messageHistory: history,
+      threadKey: "main",
+      fromItem: 0,
+      itemCount: 10,
+      sectionItemCount: 5,
+      visibleItemCount: 2,
+    });
+    const selectedFeedWindowMessages = sync.entries.flatMap((entry) =>
+      normalizeHistoryMessageToChatMessages(entry.message, entry.history_index),
+    );
+
+    const model = buildMessageModel({
+      threadKey: "main",
+      allMessages: [],
+      selectedFeedWindow: sync.window,
+      selectedFeedWindowMessages,
+      sessionNotifications: [],
+    });
+
+    expect(sync.entries.map((entry) => (entry.message as { id?: string }).id)).toEqual([
+      "main-request",
+      undefined,
+      undefined,
+      "transition-main-q948",
+    ]);
+    expect(model.messages.map((message) => message.id)).toEqual([
+      "main-request",
+      "main-tool-use",
+      "transition-main-q948",
+    ]);
+    expect(model.messages.map((message) => message.content)).toContain("Work continued from Main to thread:q-948");
+    expect(model.messages.map((message) => message.content)).not.toContain("Continuing in q-948");
+    expect(model.messages.map((message) => message.content)).not.toContain(
+      "Work continued from thread:q-950 to thread:q-951",
+    );
   });
 });

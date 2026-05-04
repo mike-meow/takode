@@ -206,7 +206,7 @@ export function appendThreadTransitionMarkerForRouteSwitch(
 ): ThreadTransitionMarker | null {
   if (!destinationRoute || !isQuestThreadKey(destinationRoute.threadKey)) return null;
 
-  const source = findPreviousQuestRoute(history);
+  const source = findPreviousTransitionSourceRoute(history);
   if (!source || sameThreadRoute(source.route, destinationRoute)) return null;
 
   const markerKey = `thread-transition:${source.route.threadKey}->${destinationRoute.threadKey}:${source.index}`;
@@ -247,31 +247,52 @@ export function compactIndexRanges(indices: number[]): string[] {
   return ranges;
 }
 
-function findPreviousQuestRoute(
+function findPreviousTransitionSourceRoute(
   history: BrowserIncomingMessage[],
 ): { route: ThreadRouteMetadata; index: number } | null {
+  let crossedMainAssistantBoundary = false;
+
   for (let index = history.length - 1; index >= 0; index--) {
     const entry = history[index];
     if (!entry || entry.type === "thread_transition_marker") continue;
     const route = routeFromHistoryEntry(entry);
     if (route) {
+      if (routeKey(route) === "main") return { route: { threadKey: "main" }, index };
+      if (crossedMainAssistantBoundary) return null;
       if (!isQuestThreadKey(route.threadKey)) return null;
       return { route, index };
     }
-    if (isImplicitMainRouteBoundary(entry)) return null;
+    if (isImplicitMainHandoffSource(entry)) return { route: { threadKey: "main" }, index };
+    if (isImplicitMainAssistantBoundary(entry)) {
+      crossedMainAssistantBoundary = true;
+      continue;
+    }
+    if (isCompletedTurnBoundary(entry)) return null;
   }
   return null;
 }
 
-function isImplicitMainRouteBoundary(entry: BrowserIncomingMessage): boolean {
+function isImplicitMainHandoffSource(entry: BrowserIncomingMessage): boolean {
   switch (entry.type) {
-    case "assistant":
     case "user_message":
     case "leader_user_message":
       return true;
     default:
       return false;
   }
+}
+
+function isImplicitMainAssistantBoundary(entry: BrowserIncomingMessage): boolean {
+  switch (entry.type) {
+    case "assistant":
+      return true;
+    default:
+      return false;
+  }
+}
+
+function isCompletedTurnBoundary(entry: BrowserIncomingMessage): boolean {
+  return entry.type === "result";
 }
 
 function hasThreadTransitionMarker(history: BrowserIncomingMessage[], markerKey: string): boolean {
