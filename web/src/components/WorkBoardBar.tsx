@@ -646,32 +646,15 @@ function buildOpenThreadTabs({
   return tabs;
 }
 
-function ActiveOutputIndicator({
-  overlapsNeedsInput,
-  bellCenterOffset,
-}: {
-  overlapsNeedsInput: boolean;
-  bellCenterOffset?: "12px" | "14px";
-}) {
-  const dotClassName =
-    overlapsNeedsInput && bellCenterOffset === "14px"
-      ? "absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-sky-50/95 shadow-[0_0_10px_rgba(224,242,254,0.86)] ring-1 ring-violet-100/80"
-      : overlapsNeedsInput
-        ? "absolute left-1.5 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-sky-50/95 shadow-[0_0_10px_rgba(224,242,254,0.86)] ring-1 ring-violet-100/80"
-        : "absolute left-2.5 top-0 h-1.5 w-1.5 rounded-full bg-sky-100 shadow-[0_0_8px_rgba(125,211,252,0.75)] ring-1 ring-violet-100/70";
-  const haloCenterOffset = overlapsNeedsInput ? bellCenterOffset : undefined;
-
+function ActiveOutputIndicator() {
   return (
     <span
       className="pointer-events-none absolute inset-0"
       aria-hidden="true"
       data-testid="thread-tab-active-output-indicator"
       data-reduced-motion-static="true"
-      data-dot-position="left"
-      data-dot-lane={overlapsNeedsInput ? "bell-halo" : "top-edge"}
-      data-overlaps-needs-input={overlapsNeedsInput ? "true" : "false"}
-      data-bell-center-offset={bellCenterOffset ?? ""}
-      data-halo-center-offset={haloCenterOffset ?? ""}
+      data-dot-position="stripe-origin"
+      data-stripe-origin="top-left"
     >
       <span
         className="absolute inset-x-1 top-0 h-px overflow-hidden rounded-full bg-violet-100/30"
@@ -683,7 +666,10 @@ function ActiveOutputIndicator({
           data-reduced-motion="animation-disabled"
         />
       </span>
-      <span className={dotClassName} data-testid="thread-tab-active-output-dot" />
+      <span
+        className="absolute left-1 top-0 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-sky-50/95 shadow-[0_0_9px_rgba(224,242,254,0.78)] ring-1 ring-violet-100/75"
+        data-testid="thread-tab-active-output-dot"
+      />
     </span>
   );
 }
@@ -869,12 +855,7 @@ function ThreadTabRail({
           data-min-label="Main Thread"
           aria-pressed={mainSelected}
         >
-          {mainActiveOutput && (
-            <ActiveOutputIndicator
-              overlapsNeedsInput={mainNeedsInput}
-              bellCenterOffset={mainNeedsInput ? "14px" : undefined}
-            />
-          )}
+          {mainActiveOutput && <ActiveOutputIndicator />}
           {mainNeedsInput && <NeedsInputBell activeOutput={mainActiveOutput} />}
           <ActiveTitle activeOutput={mainActiveOutput}>
             <span className="min-w-0 truncate">Main Thread</span>
@@ -904,12 +885,7 @@ function ThreadTabRail({
                 isDragging: boolean;
               }) => (
                 <>
-                  {activeOutput && (
-                    <ActiveOutputIndicator
-                      overlapsNeedsInput={tab.needsInput}
-                      bellCenterOffset={tab.needsInput ? "12px" : undefined}
-                    />
-                  )}
+                  {activeOutput && <ActiveOutputIndicator />}
                   <button
                     type="button"
                     onClick={() => openThread(tab.threadKey, tab.route)}

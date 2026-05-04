@@ -238,6 +238,27 @@ function attentionRecord(overrides: Partial<SessionAttentionRecord> = {}): Sessi
   };
 }
 
+function expectStripeOriginActiveOutputMarker(container: HTMLElement) {
+  const marker = within(container).getByTestId("thread-tab-active-output-indicator");
+  expect(marker).toHaveAttribute("data-reduced-motion-static", "true");
+  expect(marker).toHaveAttribute("data-dot-position", "stripe-origin");
+  expect(marker).toHaveAttribute("data-stripe-origin", "top-left");
+  expect(marker).not.toHaveAttribute("data-dot-lane");
+  expect(marker).not.toHaveAttribute("data-overlaps-needs-input");
+  expect(marker).not.toHaveAttribute("data-bell-center-offset");
+  expect(marker).not.toHaveAttribute("data-halo-center-offset");
+  expect(marker).toHaveClass("inset-0");
+  expect(marker).not.toHaveClass("inset-x-1");
+
+  const glintTrack = within(marker).getByTestId("thread-tab-active-output-glint-track");
+  expect(glintTrack).toHaveClass("inset-x-1", "top-0", "h-px");
+  const glint = within(marker).getByTestId("thread-tab-active-output-glint");
+  expect(glint).toHaveClass("thread-tab-output-glint");
+  const dot = within(marker).getByTestId("thread-tab-active-output-dot");
+  expect(dot).toHaveClass("left-1", "top-0", "h-2", "w-2", "-translate-x-1/2", "-translate-y-1/2", "bg-sky-50/95");
+  return { marker, glintTrack, glint, dot };
+}
+
 beforeEach(() => {
   resetStore();
   localStorage.clear();
@@ -874,25 +895,7 @@ describe("WorkBoardBar", () => {
     expect(mainTab.className).not.toContain("rgba(139,92,246");
     expect(mainTab).toHaveClass("focus-visible:ring-violet-100/70");
     expect(mainTab).not.toHaveClass("border-amber-400/60", "border-cc-primary/70", "border-b-cc-bg");
-    const activeMarker = within(mainTab).getByTestId("thread-tab-active-output-indicator");
-    expect(activeMarker).toHaveAttribute("data-reduced-motion-static", "true");
-    expect(activeMarker).toHaveAttribute("data-dot-position", "left");
-    expect(activeMarker).toHaveAttribute("data-dot-lane", "bell-halo");
-    expect(activeMarker).toHaveAttribute("data-overlaps-needs-input", "true");
-    expect(activeMarker).toHaveAttribute("data-bell-center-offset", "14px");
-    expect(activeMarker).toHaveAttribute("data-halo-center-offset", "14px");
-    expect(activeMarker).toHaveClass("inset-0");
-    expect(activeMarker).not.toHaveClass("inset-x-1");
-    expect(within(activeMarker).getByTestId("thread-tab-active-output-glint-track")).toHaveClass("inset-x-1");
-    expect(within(activeMarker).getByTestId("thread-tab-active-output-glint")).toHaveClass("thread-tab-output-glint");
-    expect(within(activeMarker).getByTestId("thread-tab-active-output-dot")).toHaveClass(
-      "left-2",
-      "top-1/2",
-      "h-3",
-      "w-3",
-      "-translate-y-1/2",
-      "bg-sky-50/95",
-    );
+    expectStripeOriginActiveOutputMarker(mainTab);
     expect(within(mainTab).getByTestId("thread-tab-needs-input-bell")).toHaveClass("relative", "z-10");
     const mainTitle = within(mainTab).getByTestId("thread-tab-title");
     expect(mainTitle).toHaveAttribute("data-active-output", "true");
@@ -1119,7 +1122,7 @@ describe("WorkBoardBar", () => {
       activeTurnRoutes: new Map([["s1", { threadKey: "q-1", questId: "q-1" }]]),
     });
 
-    const { getAllByTestId } = render(
+    const withBellView = render(
       <WorkBoardBar
         sessionId="s1"
         currentThreadKey="q-1"
@@ -1128,32 +1131,16 @@ describe("WorkBoardBar", () => {
       />,
     );
 
-    const needsInputTab = getAllByTestId("thread-tab").find((tab) => tab.getAttribute("data-thread-key") === "q-1")!;
+    const needsInputTab = withBellView
+      .getAllByTestId("thread-tab")
+      .find((tab) => tab.getAttribute("data-thread-key") === "q-1")!;
     expect(needsInputTab).toHaveAttribute("data-active-output", "true");
-    const activeMarker = within(needsInputTab).getByTestId("thread-tab-active-output-indicator");
-    expect(activeMarker).toHaveAttribute("data-dot-position", "left");
-    expect(activeMarker).toHaveAttribute("data-dot-lane", "bell-halo");
-    expect(activeMarker).toHaveAttribute("data-overlaps-needs-input", "true");
-    expect(activeMarker).toHaveAttribute("data-bell-center-offset", "12px");
-    expect(activeMarker).toHaveAttribute("data-halo-center-offset", "12px");
-    expect(activeMarker).toHaveClass("inset-0");
-    expect(activeMarker).not.toHaveClass("inset-x-1");
-    expect(within(activeMarker).getByTestId("thread-tab-active-output-glint-track")).toHaveClass("inset-x-1");
-    expect(within(activeMarker).getByTestId("thread-tab-active-output-glint")).toHaveClass("thread-tab-output-glint");
-    expect(within(activeMarker).getByTestId("thread-tab-active-output-dot")).toHaveClass(
-      "left-1.5",
-      "top-1/2",
-      "h-3",
-      "w-3",
-      "-translate-y-1/2",
-    );
+    const { dot: needsInputDot } = expectStripeOriginActiveOutputMarker(needsInputTab);
     expect(within(needsInputTab).queryByTestId("thread-tab-status-dot")).not.toBeInTheDocument();
-    expect(within(needsInputTab).getByTestId("thread-tab-needs-input-bell")).toHaveAttribute(
-      "data-active-output",
-      "true",
-    );
-    expect(within(needsInputTab).getByTestId("thread-tab-needs-input-bell")).toHaveClass("relative", "z-10");
-    expect(within(needsInputTab).getByTestId("thread-tab-needs-input-bell")).not.toHaveClass("animate-pulse");
+    const bell = within(needsInputTab).getByTestId("thread-tab-needs-input-bell");
+    expect(bell).toHaveAttribute("data-active-output", "true");
+    expect(bell).toHaveClass("relative", "z-10");
+    expect(bell).not.toHaveClass("animate-pulse");
     const activeTitle = within(needsInputTab).getByTestId("thread-tab-title");
     expect(activeTitle).toHaveAttribute("data-active-output", "true");
     expect(activeTitle).toHaveStyle({
@@ -1164,15 +1151,33 @@ describe("WorkBoardBar", () => {
     expect(activeTitle).not.toHaveClass("bg-sky-400/10");
     expect(activeTitle).not.toHaveClass("text-sky-100");
 
-    const inactiveTitle = getAllByTestId("thread-tab-title").find(
-      (title) => title.closest("[data-thread-key]")?.getAttribute("data-thread-key") === "q-2",
-    )!;
+    const inactiveTitle = withBellView
+      .getAllByTestId("thread-tab-title")
+      .find((title) => title.closest("[data-thread-key]")?.getAttribute("data-thread-key") === "q-2")!;
     expect(inactiveTitle).toBeTruthy();
     expect(inactiveTitle).toHaveAttribute("data-active-output", "false");
     expect(inactiveTitle.getAttribute("style") ?? "").not.toContain("animation");
-    const inactiveTab = getAllByTestId("thread-tab").find((tab) => tab.getAttribute("data-thread-key") === "q-2")!;
+    const inactiveTab = withBellView
+      .getAllByTestId("thread-tab")
+      .find((tab) => tab.getAttribute("data-thread-key") === "q-2")!;
     expect(inactiveTab).toHaveAttribute("data-active-output", "false");
     expect(within(inactiveTab).queryByTestId("thread-tab-active-output-indicator")).not.toBeInTheDocument();
+    withBellView.unmount();
+
+    resetStore({
+      sdkSessions: [{ sessionId: "s1", isOrchestrator: true }],
+      sessionBoards: new Map([["s1", BOARD_DATA]]),
+      sessionStatus: new Map([["s1", "running"]]),
+      activeTurnRoutes: new Map([["s1", { threadKey: "q-1", questId: "q-1" }]]),
+    });
+
+    const noBellView = render(<WorkBoardBar sessionId="s1" currentThreadKey="q-1" openThreadKeys={["q-1"]} />);
+    const noBellTab = noBellView
+      .getAllByTestId("thread-tab")
+      .find((tab) => tab.getAttribute("data-thread-key") === "q-1")!;
+    const { dot: noBellDot } = expectStripeOriginActiveOutputMarker(noBellTab);
+    expect(noBellDot.className).toBe(needsInputDot.className);
+    expect(within(noBellTab).queryByTestId("thread-tab-needs-input-bell")).not.toBeInTheDocument();
   });
 
   it("marks the output glint as reduced-motion-disabled while keeping the static marker contract", () => {
@@ -1186,26 +1191,8 @@ describe("WorkBoardBar", () => {
     const { getAllByTestId } = render(<WorkBoardBar sessionId="s1" currentThreadKey="q-1" openThreadKeys={["q-1"]} />);
 
     const tab = getAllByTestId("thread-tab").find((candidate) => candidate.getAttribute("data-thread-key") === "q-1")!;
-    const marker = within(tab).getByTestId("thread-tab-active-output-indicator");
-    const glint = within(marker).getByTestId("thread-tab-active-output-glint");
-    expect(marker).toHaveAttribute("data-reduced-motion-static", "true");
-    expect(marker).toHaveAttribute("data-dot-position", "left");
-    expect(marker).toHaveAttribute("data-dot-lane", "top-edge");
-    expect(marker).toHaveAttribute("data-overlaps-needs-input", "false");
-    expect(marker).toHaveAttribute("data-bell-center-offset", "");
-    expect(marker).toHaveAttribute("data-halo-center-offset", "");
-    expect(marker).toHaveClass("inset-0");
-    expect(marker).not.toHaveClass("inset-x-1");
-    expect(within(marker).getByTestId("thread-tab-active-output-glint-track")).toHaveClass("inset-x-1");
+    const { glint } = expectStripeOriginActiveOutputMarker(tab);
     expect(glint).toHaveAttribute("data-reduced-motion", "animation-disabled");
-    expect(glint).toHaveClass("thread-tab-output-glint");
-    expect(within(marker).getByTestId("thread-tab-active-output-dot")).toHaveClass(
-      "left-2.5",
-      "top-0",
-      "h-1.5",
-      "w-1.5",
-      "bg-sky-100",
-    );
   });
 
   it("keeps the active output glint mounted across rail rerenders while active state continues", () => {
