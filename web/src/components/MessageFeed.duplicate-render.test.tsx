@@ -103,6 +103,9 @@ vi.mock("../store.js", () => {
     keepTurnExpanded: vi.fn(),
     clearBottomAlignOnNextUserMessage: vi.fn(),
     setComposerDraft: vi.fn(),
+    requestScrollToMessage: vi.fn(),
+    setExpandAllInTurn: vi.fn(),
+    openQuestOverlay: vi.fn(),
     removePendingUserUpload: vi.fn(),
     updatePendingUserUpload: vi.fn(),
     focusComposer: vi.fn(),
@@ -121,7 +124,7 @@ vi.mock("../store.js", () => {
 });
 
 import { render, screen } from "@testing-library/react";
-import type { ChatMessage } from "../types.js";
+import type { ChatMessage, SessionAttentionRecord } from "../types.js";
 import { MessageFeed } from "./MessageFeed.js";
 
 function makeMessage(overrides: Partial<ChatMessage> & { id: string; role: ChatMessage["role"] }): ChatMessage {
@@ -138,6 +141,31 @@ function setStoreMessages(sessionId: string, messages: ChatMessage[]) {
 
 function setStoreNotifications(sessionId: string, notifications: Array<Record<string, unknown>>) {
   mockStoreValues.sessionNotifications = new Map([[sessionId, notifications]]);
+}
+
+function makeJourneyFinishedRecord(overrides: Partial<SessionAttentionRecord> = {}): SessionAttentionRecord {
+  const createdAt = overrides.createdAt ?? Date.now();
+  return {
+    id: "notification:n-journey-finished",
+    leaderSessionId: "leader-1",
+    type: "quest_completed_recent",
+    source: { kind: "notification", id: "n-journey-finished", questId: "q-1151" },
+    questId: "q-1151",
+    threadKey: "q-1151",
+    title: "Journey finished",
+    summary: "Keep Journey chips anchored",
+    actionLabel: "Open",
+    priority: "review",
+    state: "unresolved",
+    createdAt,
+    updatedAt: createdAt,
+    route: { threadKey: "q-1151", questId: "q-1151" },
+    chipEligible: false,
+    ledgerEligible: true,
+    dedupeKey: "notification:n-journey-finished",
+    journeyLifecycleStatus: "completed",
+    ...overrides,
+  };
 }
 
 describe("MessageFeed duplicate rendering regression", () => {
@@ -176,6 +204,49 @@ describe("MessageFeed duplicate rendering regression", () => {
 
     expect(screen.getAllByText("q-514 is complete and q-521 is unblocked.")).toHaveLength(1);
     expect(screen.getAllByText("q-521 can be dispatched now")).toHaveLength(1);
+  });
+
+  it("keeps a Journey-finished chip in chronological order inside a collapsed turn", () => {
+    const sid = "test-collapsed-journey-finished-order";
+    setStoreMessages(sid, [
+      makeMessage({ id: "u1", role: "user", content: "Coordinate the Journey" }),
+      makeMessage({
+        id: "a-before",
+        role: "assistant",
+        content: "Priority update before the Journey finished",
+        notification: { category: "review", timestamp: Date.now(), summary: "q-1150 ready for review" },
+      }),
+      makeMessage({ id: "a-private-before", role: "assistant", content: "Hidden private activity before finish" }),
+      makeMessage({
+        id: "journey-finished",
+        role: "system",
+        content: "Open: Journey finished",
+        variant: "info",
+        metadata: { attentionRecord: makeJourneyFinishedRecord() },
+      }),
+      makeMessage({ id: "a-private-after", role: "assistant", content: "Hidden private activity after finish" }),
+      makeMessage({ id: "a-after", role: "assistant", content: "Visible final update after the Journey finished" }),
+      makeMessage({ id: "u2", role: "user", content: "Next request" }),
+    ]);
+
+    render(<MessageFeed sessionId={sid} />);
+
+    const before = screen.getByText("Priority update before the Journey finished");
+    const journey = screen.getByText("Journey finished");
+    const after = screen.getByText("Visible final update after the Journey finished");
+    const collapsedCard = after.closest(".rounded-xl");
+
+    expect(collapsedCard).toBeTruthy();
+    expect(before.closest(".rounded-xl")).toBe(collapsedCard);
+    expect(journey.closest(".rounded-xl")).toBe(collapsedCard);
+    expect(screen.queryByText("Hidden private activity before finish")).toBeNull();
+    expect(screen.queryByText("Hidden private activity after finish")).toBeNull();
+
+    const text = collapsedCard?.textContent ?? "";
+    expect(text.indexOf("Priority update before the Journey finished")).toBeLessThan(text.indexOf("Journey finished"));
+    expect(text.indexOf("Journey finished")).toBeLessThan(
+      text.indexOf("Visible final update after the Journey finished"),
+    );
   });
 
   it("renders a tool-only notification-bearing assistant as one rich review banner", () => {

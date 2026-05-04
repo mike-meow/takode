@@ -922,6 +922,69 @@ const CollapsedActivityBar = memo(function CollapsedActivityBar({
   );
 });
 
+function CollapsedTurnRows({
+  turn,
+  sessionId,
+  currentThreadKey,
+  durationMs,
+  leaderMode,
+  minuteBoundaryLabels,
+  isCodexSession,
+  activeCodexTerminalIds,
+  onOpenCodexTerminal,
+  onSelectThread,
+  onExpand,
+}: {
+  turn: Turn;
+  sessionId: string;
+  currentThreadKey: string;
+  durationMs: number | null;
+  leaderMode: boolean;
+  minuteBoundaryLabels: Map<string, string>;
+  isCodexSession: boolean;
+  activeCodexTerminalIds: Set<string>;
+  onOpenCodexTerminal: (toolUseId: string) => void;
+  onSelectThread?: (threadKey: string) => void;
+  onExpand: () => void;
+}) {
+  const collapsedEntries = turn.collapsedEntries ?? [];
+  const activityRowCount = collapsedEntries.filter((row) => row.kind === "activity").length;
+  return (
+    <>
+      {collapsedEntries.map((row) => {
+        if (row.kind === "activity") {
+          return (
+            <CollapsedActivityBar
+              key={row.key}
+              stats={row.stats}
+              durationMs={activityRowCount === 1 ? durationMs : null}
+              leaderMode={leaderMode}
+              onClick={onExpand}
+            />
+          );
+        }
+
+        return (
+          <div key={row.key} className="px-3 py-2">
+            <HidePawContext.Provider value={true}>
+              <FeedEntries
+                entries={[row.entry]}
+                sessionId={sessionId}
+                currentThreadKey={currentThreadKey}
+                minuteBoundaryLabels={minuteBoundaryLabels}
+                isCodexSession={isCodexSession}
+                activeCodexTerminalIds={activeCodexTerminalIds}
+                onOpenCodexTerminal={onOpenCodexTerminal}
+                onSelectThread={onSelectThread}
+              />
+            </HidePawContext.Provider>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
 function TurnCollapseBar({
   stats,
   durationMs,
@@ -1597,20 +1660,10 @@ export const TurnEntries = memo(function TurnEntries({
                             onSelectThread={onSelectThread}
                           />
                         )}
-                        {(turn.agentEntries.length > 0 ||
-                          turn.responseEntry ||
-                          turn.notificationEntries.length > 0) && (
+                        {((turn.collapsedEntries?.length ?? 0) > 0 || turn.subConclusions.length > 0) && (
                           <div className="flex items-start gap-3">
                             <PawTrailAvatar />
                             <div className="flex-1 min-w-0 rounded-xl border border-cc-border/20 bg-cc-card/20 overflow-hidden">
-                              {turn.agentEntries.length > 0 && (
-                                <CollapsedActivityBar
-                                  stats={turn.stats}
-                                  durationMs={turnSummaryDuration}
-                                  leaderMode={leaderMode}
-                                  onClick={() => toggleTurn(turn.id)}
-                                />
-                              )}
                               {turn.subConclusions.length > 0 && (
                                 <div className="px-3 pt-2 space-y-1.5">
                                   <HidePawContext.Provider value={true}>
@@ -1629,37 +1682,19 @@ export const TurnEntries = memo(function TurnEntries({
                                   </HidePawContext.Provider>
                                 </div>
                               )}
-                              {turn.notificationEntries.length > 0 && (
-                                <div className="px-3 pt-2">
-                                  <HidePawContext.Provider value={true}>
-                                    <FeedEntries
-                                      entries={turn.notificationEntries}
-                                      sessionId={sessionId}
-                                      currentThreadKey={currentThreadKey}
-                                      minuteBoundaryLabels={minuteBoundaryLabels}
-                                      isCodexSession={isCodexSession}
-                                      activeCodexTerminalIds={activeCodexTerminalIds}
-                                      onOpenCodexTerminal={onOpenCodexTerminal}
-                                      onSelectThread={onSelectThread}
-                                    />
-                                  </HidePawContext.Provider>
-                                </div>
-                              )}
-                              {turn.responseEntry && (
-                                <div className="px-3 py-2.5">
-                                  <HidePawContext.Provider value={true}>
-                                    <FeedEntries
-                                      entries={[turn.responseEntry]}
-                                      sessionId={sessionId}
-                                      currentThreadKey={currentThreadKey}
-                                      isCodexSession={isCodexSession}
-                                      activeCodexTerminalIds={activeCodexTerminalIds}
-                                      onOpenCodexTerminal={onOpenCodexTerminal}
-                                      onSelectThread={onSelectThread}
-                                    />
-                                  </HidePawContext.Provider>
-                                </div>
-                              )}
+                              <CollapsedTurnRows
+                                turn={turn}
+                                sessionId={sessionId}
+                                currentThreadKey={currentThreadKey}
+                                durationMs={turnSummaryDuration}
+                                leaderMode={leaderMode}
+                                minuteBoundaryLabels={minuteBoundaryLabels}
+                                isCodexSession={isCodexSession}
+                                activeCodexTerminalIds={activeCodexTerminalIds}
+                                onOpenCodexTerminal={onOpenCodexTerminal}
+                                onSelectThread={onSelectThread}
+                                onExpand={() => toggleTurn(turn.id)}
+                              />
                             </div>
                           </div>
                         )}

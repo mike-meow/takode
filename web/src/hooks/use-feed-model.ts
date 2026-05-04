@@ -346,6 +346,10 @@ export interface SubConclusion {
   herdSummary: string;
 }
 
+export type CollapsedTurnEntry =
+  | { kind: "activity"; key: string; stats: TurnStats }
+  | { kind: "entry"; key: string; entry: FeedEntry };
+
 export interface Turn {
   id: string;
   userEntry: FeedEntry | null;
@@ -357,6 +361,8 @@ export interface Turn {
   responseEntry: FeedEntry | null;
   /** Sub-conclusions: assistant messages that precede herd events, shown in collapsed view */
   subConclusions: SubConclusion[];
+  /** Chronological collapsed-turn projection of hidden activity and priority entries. */
+  collapsedEntries?: CollapsedTurnEntry[];
   stats: TurnStats;
 }
 
@@ -436,6 +442,7 @@ function countEntryStats(entries: FeedEntry[]): {
  *  quest_submitted currently remains a system entry under this classifier. */
 function isSystemEntry(entry: FeedEntry): boolean {
   if (entry.kind !== "message" || entry.msg.role !== "system") return false;
+  if (entry.msg.metadata?.attentionRecord) return false;
   if (entry.msg.variant === "denied" || entry.msg.variant === "approved" || entry.msg.variant === "quest_claimed")
     return false;
   return true;
@@ -541,11 +548,49 @@ function entryIsCollapsedVisible(
 ): boolean {
   return (
     entry.kind === "message" &&
-    entry.msg.role === "assistant" &&
-    (entry.msg.notification != null ||
-      anchoredNotificationMessageIds?.has(entry.msg.id) === true ||
-      (leaderMode && entry.msg.metadata?.leaderUserMessage === true))
+    ((entry.msg.role === "assistant" &&
+      (entry.msg.notification != null ||
+        anchoredNotificationMessageIds?.has(entry.msg.id) === true ||
+        (leaderMode && entry.msg.metadata?.leaderUserMessage === true))) ||
+      entry.msg.metadata?.attentionRecord != null)
   );
+}
+
+function buildCollapsedTurnEntries(entries: FeedEntry[], visibleEntryKeys: ReadonlySet<string>): CollapsedTurnEntry[] {
+  const collapsedEntries: CollapsedTurnEntry[] = [];
+  let hiddenStartKey: string | null = null;
+  let hiddenEntries: FeedEntry[] = [];
+
+  const flushHiddenActivity = () => {
+    if (hiddenStartKey === null || hiddenEntries.length === 0) return;
+    const stats = countEntryStats(hiddenEntries);
+    collapsedEntries.push({
+      kind: "activity",
+      key: `activity:${hiddenStartKey}:${hiddenEntries.length}`,
+      stats: {
+        messageCount: stats.messages,
+        toolCount: stats.tools,
+        subagentCount: stats.subagents,
+        herdEventCount: stats.herdEvents,
+      },
+    });
+    hiddenStartKey = null;
+    hiddenEntries = [];
+  };
+
+  for (const entry of entries) {
+    const key = getEntryId(entry);
+    if (visibleEntryKeys.has(key)) {
+      flushHiddenActivity();
+      collapsedEntries.push({ kind: "entry", key: `entry:${key}`, entry });
+      continue;
+    }
+    hiddenStartKey ??= key;
+    hiddenEntries.push(entry);
+  }
+
+  flushHiddenActivity();
+  return collapsedEntries;
 }
 
 /** Build a Turn from accumulated entries */
@@ -557,27 +602,24 @@ function makeTurn(
   anchoredNotificationMessageIds?: ReadonlySet<string>,
 ): Turn {
   // Separate system messages (always visible) from collapsible agent activity
-  const agentEntries: FeedEntry[] = [];
+  const rawAgentEntries: FeedEntry[] = [];
   const systemEntries: FeedEntry[] = [];
   for (const e of entries) {
     if (isSystemEntry(e)) {
       systemEntries.push(e);
     } else {
-      agentEntries.push(e);
+      rawAgentEntries.push(e);
     }
   }
 
   // Count stats on ALL agent entries before extracting the response
-  const s = countEntryStats(agentEntries);
+  const s = countEntryStats(rawAgentEntries);
 
   // Extract messages with notification chips -- always visible like systemEntries.
-  // Splice in reverse to avoid index shifting. Done before responseEntry extraction
-  // so a notification message isn't accidentally chosen as the response preview.
   const notificationEntries: FeedEntry[] = [];
-  for (let i = agentEntries.length - 1; i >= 0; i--) {
-    const e = agentEntries[i];
+  for (const e of rawAgentEntries) {
     if (entryIsCollapsedVisible(e, leaderMode, anchoredNotificationMessageIds)) {
-      notificationEntries.unshift(agentEntries.splice(i, 1)[0]);
+      notificationEntries.push(e);
     }
   }
 
@@ -588,23 +630,29 @@ function makeTurn(
   // not affect which message becomes the collapsed preview.
   let responseEntry: FeedEntry | null = null;
   if (!leaderMode) {
-    for (let i = agentEntries.length - 1; i >= 0; i--) {
-      const e = agentEntries[i];
+    const notificationEntryKeys = new Set(notificationEntries.map(getEntryId));
+    for (let i = rawAgentEntries.length - 1; i >= 0; i--) {
+      const e = rawAgentEntries[i];
+      if (notificationEntryKeys.has(getEntryId(e))) continue;
       if (e.kind === "message" && e.msg.role === "assistant" && e.msg.content?.trim()) {
         responseEntry = e;
-        agentEntries.splice(i, 1);
         break;
       }
     }
   }
 
+  const collapsedVisibleEntryKeys = new Set<string>();
   const collapsedVisibleMessageIds = new Set<string>();
   for (const entry of notificationEntries) {
+    collapsedVisibleEntryKeys.add(getEntryId(entry));
     if (entry.kind === "message") collapsedVisibleMessageIds.add(entry.msg.id);
   }
-  if (responseEntry?.kind === "message") {
-    collapsedVisibleMessageIds.add(responseEntry.msg.id);
+  if (responseEntry) {
+    collapsedVisibleEntryKeys.add(getEntryId(responseEntry));
+    if (responseEntry.kind === "message") collapsedVisibleMessageIds.add(responseEntry.msg.id);
   }
+  const agentEntries = rawAgentEntries.filter((entry) => !collapsedVisibleEntryKeys.has(getEntryId(entry)));
+  const collapsedEntries = buildCollapsedTurnEntries(rawAgentEntries, collapsedVisibleEntryKeys);
 
   // Extract sub-conclusions for normal sessions only. In leader sessions,
   // ordinary assistant text is private activity and should not be promoted
@@ -629,6 +677,7 @@ function makeTurn(
     notificationEntries,
     responseEntry,
     subConclusions,
+    collapsedEntries,
     stats: {
       // Subtract responseEntry and notificationEntries; remaining count reflects
       // messages still inside the collapsible agent activity section.

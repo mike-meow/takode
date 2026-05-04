@@ -109,12 +109,16 @@ export function selectMainLedgerRecords(
 
   return selected.filter(
     (record) =>
-      isAttentionRecordActive(record) ||
+      (isAttentionRecordActive(record) && shouldRenderActiveRecordOutsideMainWindow(record)) ||
       (options.mainWindowFromTimestamp !== undefined &&
         options.mainWindowToTimestamp !== undefined &&
         record.createdAt >= options.mainWindowFromTimestamp &&
         record.createdAt <= options.mainWindowToTimestamp),
   );
+}
+
+function shouldRenderActiveRecordOutsideMainWindow(record: AttentionRecord): boolean {
+  return record.type !== "quest_completed_recent";
 }
 
 export function selectAttentionChipRecords(records: ReadonlyArray<AttentionRecord>): AttentionRecord[] {

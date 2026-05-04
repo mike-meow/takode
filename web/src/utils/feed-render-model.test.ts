@@ -19,7 +19,7 @@ function makeMessage(overrides: Partial<ChatMessage> & { id: string; role: ChatM
   };
 }
 
-function makeNotification(overrides: Partial<SessionNotification> & { id: string; messageId: string }) {
+function makeNotification(overrides: Partial<SessionNotification> & { id: string; messageId: string | null }) {
   return {
     category: "needs-input" as const,
     timestamp: 1,
@@ -297,6 +297,68 @@ describe("feed render model builders", () => {
     expect(model.attentionLedgerMessages.map((message) => message.metadata?.attentionRecord?.id)).toEqual([
       "old-active",
       "in-window-resolved",
+    ]);
+  });
+
+  it("keeps active Journey-finished ledger rows anchored to the selected Main window", () => {
+    const olderWindowStart = makeMessage({
+      id: "a-older-window-start",
+      role: "assistant",
+      content: "Older Main window start.",
+      timestamp: 1_000,
+      historyIndex: 25,
+    });
+    const olderWindowEnd = makeMessage({
+      id: "a-older-window-end",
+      role: "assistant",
+      content: "Older Main window end.",
+      timestamp: 1_100,
+      historyIndex: 26,
+    });
+    const journeyWindowStart = makeMessage({
+      id: "a-journey-window-start",
+      role: "assistant",
+      content: "Journey window start.",
+      timestamp: 4_900,
+      historyIndex: 50,
+    });
+    const journeyWindowEnd = makeMessage({
+      id: "a-journey-window-end",
+      role: "assistant",
+      content: "Journey window end.",
+      timestamp: 5_100,
+      historyIndex: 51,
+    });
+    const journeyFinished = makeNotification({
+      id: "n-journey-finished",
+      category: "review",
+      messageId: null,
+      summary: "q-1151 finished: Keep Journey chips anchored",
+      timestamp: 5_000,
+      threadKey: "q-1151",
+      questId: "q-1151",
+    });
+
+    const olderModel = buildMessageModel({
+      allMessages: [olderWindowStart, olderWindowEnd],
+      selectedFeedWindowMessages: [olderWindowStart, olderWindowEnd],
+      sessionNotifications: [journeyFinished],
+    });
+    const journeyModel = buildMessageModel({
+      allMessages: [journeyWindowStart, journeyWindowEnd],
+      selectedFeedWindowMessages: [journeyWindowStart, journeyWindowEnd],
+      sessionNotifications: [journeyFinished],
+    });
+
+    expect(olderModel.attentionLedgerMessages).toHaveLength(0);
+    expect(olderModel.messages.map((message) => message.id)).toEqual(["a-older-window-start", "a-older-window-end"]);
+    expect(journeyModel.attentionLedgerMessages.map((message) => message.id)).toEqual([
+      "attention-ledger:notification:n-journey-finished",
+    ]);
+    expect(journeyModel.messages.map((message) => message.id)).toEqual([
+      "a-journey-window-start",
+      "attention-ledger:notification:n-journey-finished",
+      "a-journey-window-end",
     ]);
   });
 

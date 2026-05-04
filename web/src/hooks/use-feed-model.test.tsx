@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { renderHook } from "@testing-library/react";
-import type { ChatMessage } from "../types.js";
+import type { ChatMessage, SessionAttentionRecord } from "../types.js";
 import { buildFeedModel, useFeedModel, summarizeHerdEvents } from "./use-feed-model.js";
 
 function makeMessage(overrides: Partial<ChatMessage> & { id: string; role: ChatMessage["role"] }): ChatMessage {
@@ -39,9 +39,44 @@ function makeInjectedUserMessage(
   });
 }
 
+function makeJourneyFinishedRecord(overrides: Partial<SessionAttentionRecord> = {}): SessionAttentionRecord {
+  const createdAt = overrides.createdAt ?? 4;
+  return {
+    id: "notification:n-journey-finished",
+    leaderSessionId: "leader-1",
+    type: "quest_completed_recent",
+    source: { kind: "notification", id: "n-journey-finished", questId: "q-1151" },
+    questId: "q-1151",
+    threadKey: "q-1151",
+    title: "Journey finished",
+    summary: "Keep Journey chips anchored",
+    actionLabel: "Open",
+    priority: "review",
+    state: "unresolved",
+    createdAt,
+    updatedAt: createdAt,
+    route: { threadKey: "q-1151", questId: "q-1151" },
+    chipEligible: false,
+    ledgerEligible: true,
+    dedupeKey: "notification:n-journey-finished",
+    journeyLifecycleStatus: "completed",
+    ...overrides,
+  };
+}
+
 /** Helper to extract the message IDs from a turn's entries. */
 function entryIds(entries: { kind: string; msg?: { id: string } }[]): string[] {
   return entries.filter((e) => e.kind === "message").map((e) => (e as { msg: { id: string } }).msg.id);
+}
+
+function collapsedEntryIds(turn: {
+  collapsedEntries?: NonNullable<ReturnType<typeof buildFeedModel>["turns"][number]["collapsedEntries"]>;
+}): string[] {
+  return (turn.collapsedEntries ?? []).map((entry) => {
+    if (entry.kind === "activity") return "activity";
+    if (entry.entry.kind === "message") return entry.entry.msg.id;
+    return entry.entry.kind;
+  });
 }
 
 describe("leader mode raw deprecated tags", () => {
@@ -179,6 +214,50 @@ describe("leader mode collapsed preview without deprecated metadata", () => {
     expect(entryIds(turn.notificationEntries)).toEqual(["a-visible"]);
     expect(entryIds(turn.agentEntries)).toContain("a-private");
     expect(turn.stats.messageCount).toBe(1);
+  });
+
+  it("keeps Journey-finished ledger rows in chronological collapsed-turn order", () => {
+    const messages: ChatMessage[] = [
+      makeMessage({ id: "u1", role: "user", content: "coordinate Journey work", timestamp: 1 }),
+      makeMessage({
+        id: "a-visible-before",
+        role: "assistant",
+        content: "Visible leader update before the Journey finishes.",
+        timestamp: 2,
+        metadata: { leaderUserMessage: true },
+      }),
+      makeMessage({ id: "a-private-before", role: "assistant", content: "private work before finish", timestamp: 3 }),
+      makeMessage({
+        id: "journey-finished",
+        role: "system",
+        content: "Open: Journey finished",
+        timestamp: 4,
+        variant: "info",
+        metadata: { attentionRecord: makeJourneyFinishedRecord({ createdAt: 4, updatedAt: 4 }) },
+      }),
+      makeMessage({ id: "a-private-after", role: "assistant", content: "private work after finish", timestamp: 5 }),
+      makeMessage({
+        id: "a-visible-after",
+        role: "assistant",
+        content: "Visible leader update after the Journey finishes.",
+        timestamp: 6,
+        metadata: { leaderUserMessage: true },
+      }),
+    ];
+
+    const model = buildFeedModel(messages, true);
+    const turn = model.turns[0];
+
+    expect(entryIds(turn.systemEntries)).not.toContain("journey-finished");
+    expect(entryIds(turn.notificationEntries)).toEqual(["a-visible-before", "journey-finished", "a-visible-after"]);
+    expect(collapsedEntryIds(turn)).toEqual([
+      "a-visible-before",
+      "activity",
+      "journey-finished",
+      "activity",
+      "a-visible-after",
+    ]);
+    expect(entryIds(turn.agentEntries)).toEqual(["a-private-before", "a-private-after"]);
   });
 });
 
