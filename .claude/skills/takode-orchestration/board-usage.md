@@ -53,6 +53,8 @@ Promote an existing proposed Journey into active execution without redefining it
 
 Promotion does not require a separate `takode board present` step; the leader may approve the Journey in prose, then promote the board-owned row before dispatch.
 
+When promoting into `QUEUED`, `--wait-for` accepts one comma-separated value containing every blocker, for example `--wait-for q-1143,q-1139` or `--wait-for q-1143,#12,free-worker`.
+
 ### `takode board note <quest-id> <phase-position> [--text "note" | --clear] [--full|--verbose]`
 
 Add or clear one lightweight free-form note for a specific phase occurrence. Phase positions are 1-based in the CLI, so repeated phases can carry different notes.
@@ -61,10 +63,11 @@ Add or clear one lightweight free-form note for a specific phase occurrence. Pha
 
 Add or update a row.
 
-- `--wait-for` marks what the row is blocked on:
+- `--wait-for` marks what a `QUEUED` row is blocked on. It accepts one comma-separated value containing one or more blockers, for example `--wait-for q-1143,q-1139` or `--wait-for q-1143,#12,free-worker`:
   - `q-N` for another quest to clear
   - `#N` for a specific session to become reusable
-  - `free-worker` when the only blocker is herd worker-slot capacity
+  - `free-worker` when herd worker-slot capacity must clear
+- A row with multiple `--wait-for` blockers remains queued until every listed quest, session, or capacity blocker is clear. Use the comma-separated form directly instead of retargeting the row from one blocker to the next.
 - `--wait-for-input` links an active row to same-session `needs-input` notification IDs when the quest is intentionally paused on a human answer
 - `--clear-wait-for-input` removes that intentional human-input hold and resolves the linked notification(s)
 - `--phases` assembles the row's Journey from built-in phase IDs; repeated phases are allowed
@@ -98,6 +101,8 @@ Examples:
   `takode board set q-12 --worker 5 --phases alignment,mental-simulation --preset design-validation`
 - Revise the remaining Journey:
   `takode board set q-12 --phases alignment,implement,outcome-review,code-review,port --preset cli-rollout`
+- Queue a row on multiple blockers:
+  `takode board set q-12 --status QUEUED --wait-for q-1143,#12,free-worker`
 - Add a note to the second `code-review` occurrence in a rework loop:
   `takode board note q-12 5 --text "inspect only the follow-up diff"`
 

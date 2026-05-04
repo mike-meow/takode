@@ -409,6 +409,8 @@ takode board advance <quest-id>
 takode board rm <quest-id> [<quest-id> ...]
 ```
 
+For queued rows, `--wait-for` accepts one comma-separated value containing multiple blockers, such as `--wait-for q-1143,q-1139` or `--wait-for q-1143,#12,free-worker`. Use that directly when multiple quest, session, or capacity blockers apply.
+
 ## Session Identification
 
 Commands accept multiple formats:

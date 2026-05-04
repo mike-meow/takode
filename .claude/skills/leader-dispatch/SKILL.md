@@ -18,7 +18,7 @@ This skill covers leader discipline and the step-by-step dispatch process. Invok
 - **User feedback on completed quests triggers a full rework cycle.** When a user reports issues with a completed quest, record the feedback, set the quest back to `refined`, and dispatch with a full Quest Journey. Never treat feedback fixes as "quick patches" that skip phases. See quest-journey.md in /takode-orchestration.
 - **Fresh human feedback overrides stale in-flight work.** If new human feedback lands while the quest is still on the board or while an older review/port turn is still completing, treat that feedback as the new source of truth. Reset the board row to the earliest valid phase for the fresh rework cycle, then stop or ignore stale completion from the older scope instead of letting it advance the quest.
 - **Dispatch immediately when capacity exists.** When a quest is refined and ready, check your herd count before saying "I'll dispatch later." If you have open slots, dispatch now. Don't defer without a concrete reason (e.g., waiting for user input, worker with better context is about to free up).
-- **Do not treat reclaimable completed workers as real capacity blockers.** When a quest is `QUEUED`, compare the active board to the herd. If it has no unresolved `--wait-for` blocker and the only thing keeping worker slots at `5/5` is completed or off-board work sitting in `needs_verification`, archive one of those completed workers and dispatch immediately. Alternatively, if the work would significantly benefit from the context of an existing busy worker, keep it queued only with an explicit `--wait-for #N` or `--wait-for q-N` dependency.
+- **Do not treat reclaimable completed workers as real capacity blockers.** When a quest is `QUEUED`, compare the active board to the herd. If it has no unresolved `--wait-for` blocker and the only thing keeping worker slots at `5/5` is completed or off-board work sitting in `needs_verification`, archive one of those completed workers and dispatch immediately. Alternatively, if the work would significantly benefit from the context of an existing busy worker, keep it queued only with an explicit `--wait-for #N`, `--wait-for q-N`, or comma-separated `--wait-for q-N,#N,free-worker` dependency set.
 - **Fresh worker by default.** Reuse is the exception, not the default. Do not reuse a worker just because it is idle, disconnected, or already available.
 - **`/confirm` is instruction-scoped.** If the user invokes `/confirm` about one instruction, only that instruction is gated. Do not treat `/confirm` as a blanket pause on unrelated active quests or ongoing orchestration duties.
 
@@ -64,7 +64,7 @@ When a proposal includes multiple non-standard phase notes, format them as bulle
 The scheduling/orchestration plan must state at least:
 - which worker you expect to use, or that you will spawn fresh
 - whether you will dispatch immediately after approval or keep the quest `QUEUED`
-- if `QUEUED`, the exact `--wait-for` reason: `q-N`, `#N`, or `free-worker`
+- if `QUEUED`, the exact `--wait-for` reason: `q-N`, `#N`, `free-worker`, or one comma-separated value such as `q-N,#N,free-worker` when multiple blockers apply
 - if worker-slot capacity is tight, whether you will archive a reclaimable completed worker before dispatching
 
 Do not present only the phase list and silently decide the worker or queueing mechanics later. The user is approving both the phase plan and the intended dispatch/queueing approach.
@@ -137,11 +137,14 @@ When doing that inspection yourself, prefer the plain-text CLI output first. Rea
 **Queue** only with an explicit reason. Add the quest to the board yourself as `QUEUED` with:
 - `--wait-for #N` when you intentionally want a specific busy worker's context later
 - `--wait-for q-N` when another queued/active quest must clear first
-- `--wait-for free-worker` when the only blocker is herd worker-slot capacity
+- `--wait-for free-worker` when herd worker-slot capacity must clear
+- one comma-separated `--wait-for` value when multiple blockers apply, such as `--wait-for q-1143,q-1139` or `--wait-for q-1143,#12,free-worker`
+
+When a queued row has multiple dependency, capacity, or session blockers, record them all in that single comma-separated value. Do not model multi-blocker waits by serially changing the row from one `--wait-for` blocker to another after each blocker clears.
 
 Do not ask workers to "queue" work, and do not leave a `QUEUED` row without `--wait-for`.
 
-Do not leave a quest in `QUEUED` just because `takode list` says `Worker slots used: 5/5`. First distinguish active worker slots (quests still on the active board) from reclaimable completed workers. If the quest is otherwise ready and only reclaimable completed workers are consuming capacity, archive one and dispatch now. Otherwise, if you truly need to wait on capacity, make that explicit with `--wait-for free-worker`. If the work would significantly benefit from the context of an existing busy worker, keep it queued only with an explicit `--wait-for #N` or `--wait-for q-N` dependency.
+Do not leave a quest in `QUEUED` just because `takode list` says `Worker slots used: 5/5`. First distinguish active worker slots (quests still on the active board) from reclaimable completed workers. If the quest is otherwise ready and only reclaimable completed workers are consuming capacity, archive one and dispatch now. Otherwise, if you truly need to wait on capacity, make that explicit with `--wait-for free-worker`. If capacity is only one of several blockers, include it with the others, for example `--wait-for q-1143,#12,free-worker`. If the work would significantly benefit from the context of an existing busy worker, keep it queued only with an explicit `--wait-for #N`, `--wait-for q-N`, or comma-separated dependency set.
 
 **Spawn fresh** when there is no strong context advantage for reuse, or when the context can be recovered safely from artifacts and history. Point the new worker to relevant quests or past sessions for context:
 
