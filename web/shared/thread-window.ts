@@ -156,9 +156,12 @@ function buildMainFeedItems(messages: ReadonlyArray<BrowserIncomingMessage>): Fe
   let hiddenRun: Array<{ message: BrowserIncomingMessage; index: number }> = [];
   let hiddenRunRoute: RouteTarget | null = null;
 
-  const flushHiddenRun = () => {
+  const flushHiddenRun = (throughIndex?: number) => {
     if (!hiddenRunRoute || hiddenRun.length === 0) return;
-    if (!isQuestThreadKey(hiddenRunRoute.threadKey)) {
+    const attachAuditItem = buildMainThreadAttachAuditItem(hiddenRun, hiddenRunRoute, messages, throughIndex);
+    if (attachAuditItem) {
+      items.push(attachAuditItem);
+    } else if (!isQuestThreadKey(hiddenRunRoute.threadKey)) {
       items.push(buildCrossThreadActivityItem(hiddenRun, hiddenRunRoute));
     }
     hiddenRun = [];
@@ -176,7 +179,7 @@ function buildMainFeedItems(messages: ReadonlyArray<BrowserIncomingMessage>): Fe
       }
     }
     if (message.type === "thread_attachment_marker") {
-      flushHiddenRun();
+      flushHiddenRun(index);
       return;
     }
     if (message.type === "thread_transition_marker") {
@@ -494,6 +497,113 @@ function buildCrossThreadActivityItem(
       } as BrowserIncomingMessage,
     },
   };
+}
+
+function buildMainThreadAttachAuditItem(
+  hiddenRun: ReadonlyArray<{ message: BrowserIncomingMessage; index: number }>,
+  route: RouteTarget,
+  messages: ReadonlyArray<BrowserIncomingMessage>,
+  throughIndex?: number,
+): FeedItem | null {
+  if (!isQuestThreadKey(route.threadKey)) return null;
+
+  const attachCommand = firstThreadAttachCommand(hiddenRun, route);
+  if (!attachCommand) return null;
+
+  const marker = findMainSourceAttachmentMarker(messages, attachCommand.index, throughIndex, attachCommand.target);
+  if (!marker) return null;
+
+  const commandId = rawMessageId(attachCommand.message, attachCommand.index);
+  const markerId = rawMessageId(marker.message, marker.index);
+  const destination = marker.message.questId ?? marker.message.threadKey;
+  const attachedCount = marker.message.count;
+  const messageLabel = attachedCount === 1 ? "message" : "messages";
+  return {
+    order: attachCommand.index,
+    entry: {
+      synthetic: true,
+      history_index: attachCommand.index,
+      message: {
+        type: "cross_thread_activity_marker",
+        id: `thread-attach-audit:${destination}:${commandId}:${markerId}`,
+        timestamp: timestampForRawMessage(marker.message),
+        threadKey: marker.message.threadKey,
+        ...(marker.message.questId ? { questId: marker.message.questId } : {}),
+        count: 1,
+        activityKind: "thread_attach",
+        attachedCount,
+        summary: `Thread attach command added ${attachedCount} Main ${messageLabel} to thread:${destination}`,
+        firstMessageId: commandId,
+        lastMessageId: markerId,
+        firstHistoryIndex: attachCommand.index,
+        lastHistoryIndex: marker.index,
+        startedAt: timestampForRawMessage(attachCommand.message),
+        updatedAt: timestampForRawMessage(marker.message),
+      } as BrowserIncomingMessage,
+    },
+  };
+}
+
+function firstThreadAttachCommand(
+  hiddenRun: ReadonlyArray<{ message: BrowserIncomingMessage; index: number }>,
+  route: RouteTarget,
+): { message: BrowserIncomingMessage; index: number; target: RouteTarget } | null {
+  for (const item of hiddenRun) {
+    const command = threadAttachCommandText(item.message);
+    if (!command) continue;
+    const target = threadAttachCommandTarget(command);
+    if (!target || !sameRouteTarget(target, route)) continue;
+    return { ...item, target };
+  }
+  return null;
+}
+
+function threadAttachCommandText(message: BrowserIncomingMessage): string | null {
+  if (message.type !== "assistant") return null;
+  const block = message.message.content.find((candidate) => {
+    return candidate.type === "tool_use" && candidate.name === "Bash" && typeof candidate.input?.command === "string";
+  });
+  if (!block || block.type !== "tool_use" || block.name !== "Bash" || typeof block.input.command !== "string") {
+    return null;
+  }
+  return /\btakode\s+thread\s+attach\s+q-\d+\b/.test(block.input.command) ? block.input.command : null;
+}
+
+function threadAttachCommandTarget(command: string): RouteTarget | null {
+  const match = /\btakode\s+thread\s+attach\s+(q-\d+)\b/.exec(command);
+  if (!match) return null;
+  const threadKey = normalizeSelectedFeedThreadKey(match[1]!);
+  return { threadKey, questId: threadKey };
+}
+
+function sameRouteTarget(left: RouteTarget, right: RouteTarget): boolean {
+  return (
+    normalizeSelectedFeedThreadKey(left.threadKey) === normalizeSelectedFeedThreadKey(right.threadKey) ||
+    normalizeSelectedFeedThreadKey(left.questId ?? "") === normalizeSelectedFeedThreadKey(right.threadKey) ||
+    normalizeSelectedFeedThreadKey(left.threadKey) === normalizeSelectedFeedThreadKey(right.questId ?? "")
+  );
+}
+
+function findMainSourceAttachmentMarker(
+  messages: ReadonlyArray<BrowserIncomingMessage>,
+  afterIndex: number,
+  throughIndex: number | undefined,
+  target: RouteTarget,
+): { message: Extract<BrowserIncomingMessage, { type: "thread_attachment_marker" }>; index: number } | null {
+  const endIndex = throughIndex ?? messages.length - 1;
+  for (let index = afterIndex + 1; index <= endIndex; index++) {
+    const message = messages[index];
+    if (message?.type !== "thread_attachment_marker") continue;
+    if (!sameRouteTarget({ threadKey: message.threadKey, questId: message.questId }, target)) continue;
+    if (!attachmentMarkerHasMainSource(message)) continue;
+    return { message, index };
+  }
+  return null;
+}
+
+function attachmentMarkerHasMainSource(message: Extract<BrowserIncomingMessage, { type: "thread_attachment_marker" }>) {
+  const sourceKey = message.sourceThreadKey ?? message.sourceQuestId;
+  return !sourceKey || normalizeSelectedFeedThreadKey(sourceKey) === MAIN_THREAD_KEY;
 }
 
 function normalizedRouteKeys(message: BrowserIncomingMessage, includeBackfill: boolean): Set<string> {

@@ -589,7 +589,7 @@ function buildThreadMarkerClusterDetails(messages: ChatMessage[]): string[] {
     if (activity) {
       const destination = activity.questId ?? activity.threadKey;
       const countLabel = `${activity.count} ${activity.count === 1 ? "activity" : "activities"}`;
-      details.push(`${countLabel} in thread:${destination}`);
+      details.push(activity.summary ?? `${countLabel} in thread:${destination}`);
     }
   }
   return details;

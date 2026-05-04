@@ -187,6 +187,9 @@ export interface ChatMessage {
       threadKey: string;
       questId?: string;
       count: number;
+      activityKind?: "thread_attach";
+      summary?: string;
+      attachedCount?: number;
       firstMessageId: string;
       lastMessageId: string;
       firstHistoryIndex?: number;

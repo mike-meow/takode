@@ -191,6 +191,57 @@ describe("normalizeHistoryMessageToChatMessages", () => {
     ]);
   });
 
+  it("uses compact audit summaries for cross-thread activity markers when provided", () => {
+    const message: BrowserIncomingMessage = {
+      type: "cross_thread_activity_marker",
+      id: "thread-attach-audit:q-941:a1:m1",
+      timestamp: 1236,
+      threadKey: "q-941",
+      questId: "q-941",
+      count: 1,
+      activityKind: "thread_attach",
+      attachedCount: 4,
+      summary: "Thread attach command added 4 Main messages to thread:q-941",
+      firstMessageId: "a1",
+      lastMessageId: "m1",
+      firstHistoryIndex: 7,
+      lastHistoryIndex: 8,
+      startedAt: 1235,
+      updatedAt: 1236,
+    };
+
+    const normalized = normalizeHistoryMessageToChatMessages(message, 8);
+
+    expect(normalized).toEqual([
+      {
+        id: "thread-attach-audit:q-941:a1:m1",
+        role: "system",
+        content: "Thread attach command added 4 Main messages to thread:q-941",
+        timestamp: 1236,
+        historyIndex: 8,
+        ephemeral: true,
+        metadata: {
+          threadKey: "q-941",
+          questId: "q-941",
+          crossThreadActivityMarker: {
+            threadKey: "q-941",
+            questId: "q-941",
+            count: 1,
+            activityKind: "thread_attach",
+            attachedCount: 4,
+            summary: "Thread attach command added 4 Main messages to thread:q-941",
+            firstMessageId: "a1",
+            lastMessageId: "m1",
+            firstHistoryIndex: 7,
+            lastHistoryIndex: 8,
+            startedAt: 1235,
+            updatedAt: 1236,
+          },
+        },
+      },
+    ]);
+  });
+
   it("replays leader user-visible messages as assistant Markdown", () => {
     const message: BrowserIncomingMessage = {
       type: "leader_user_message",

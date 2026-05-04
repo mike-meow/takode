@@ -323,11 +323,12 @@ export function normalizeHistoryMessageToChatMessages(
   if (histMsg.type === "cross_thread_activity_marker") {
     const destination = histMsg.questId ?? histMsg.threadKey;
     const countLabel = `${histMsg.count} ${histMsg.count === 1 ? "activity" : "activities"}`;
+    const content = histMsg.summary ?? `${countLabel} in thread:${destination}`;
     return [
       {
         id: histMsg.id,
         role: "system",
-        content: `${countLabel} in thread:${destination}`,
+        content,
         timestamp: histMsg.timestamp,
         historyIndex,
         ephemeral: true,
@@ -338,6 +339,9 @@ export function normalizeHistoryMessageToChatMessages(
             threadKey: histMsg.threadKey,
             ...(histMsg.questId ? { questId: histMsg.questId } : {}),
             count: histMsg.count,
+            ...(histMsg.activityKind ? { activityKind: histMsg.activityKind } : {}),
+            ...(histMsg.summary ? { summary: histMsg.summary } : {}),
+            ...(typeof histMsg.attachedCount === "number" ? { attachedCount: histMsg.attachedCount } : {}),
             firstMessageId: histMsg.firstMessageId,
             lastMessageId: histMsg.lastMessageId,
             ...(typeof histMsg.firstHistoryIndex === "number" ? { firstHistoryIndex: histMsg.firstHistoryIndex } : {}),

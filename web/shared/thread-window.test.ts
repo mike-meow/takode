@@ -43,6 +43,34 @@ function assistant(
   };
 }
 
+function bashAssistant(
+  id: string,
+  command: string,
+  options: { threadKey?: string; toolUseId: string },
+): BrowserIncomingMessage {
+  return {
+    type: "assistant",
+    message: {
+      id,
+      type: "message",
+      role: "assistant",
+      model: "claude",
+      content: [
+        { type: "text", text: "running shell command" },
+        { type: "tool_use", id: options.toolUseId, name: "Bash", input: { command } },
+      ],
+      stop_reason: "end_turn",
+      usage: { input_tokens: 1, output_tokens: 1, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+    },
+    parent_tool_use_id: null,
+    timestamp: Number(id.replace(/\D/g, "")) || 1,
+    ...(options.threadKey ? { threadKey: options.threadKey, questId: options.threadKey } : {}),
+    ...(options.threadKey
+      ? { threadRefs: [{ threadKey: options.threadKey, questId: options.threadKey, source: "explicit" as const }] }
+      : {}),
+  };
+}
+
 function attachmentMarker(overrides: Partial<BrowserIncomingMessage> = {}): BrowserIncomingMessage {
   return {
     type: "thread_attachment_marker",
@@ -357,6 +385,149 @@ describe("thread window hydration", () => {
 
     expect(sync.entries.map((entry) => entry.history_index)).toEqual([0, 1, 3]);
     expect(sync.entries.map((entry) => entry.message.type)).toEqual(["user_message", "user_message", "user_message"]);
+  });
+
+  it("surfaces a compact Main audit row for q-routed thread attach commands that attach Main source messages", () => {
+    const attachedMainMessage = {
+      ...user("u6211", "Main follow-up with screenshot context"),
+      threadRefs: [{ threadKey: "q-1152", questId: "q-1152", source: "backfill" as const }],
+    };
+    const attachedMainTool = {
+      ...assistant("a6212", "viewing attached screenshot", { toolUseId: "tool-view-image" }),
+      threadRefs: [{ threadKey: "q-1152", questId: "q-1152", source: "backfill" as const }],
+    };
+    const mainToQuest = transitionMarker({
+      id: "transition-main-q1152",
+      sourceThreadKey: "main",
+      threadKey: "q-1152",
+    });
+    const attachCommand = bashAssistant(
+      "a6224",
+      "# thread:q-1152\nquest feedback add q-1152 --text-file /tmp/body.md && takode thread attach q-1152 --turn 417",
+      { threadKey: "q-1152", toolUseId: "tool-attach-q1152" },
+    );
+    const marker = attachmentMarker({
+      id: "marker-q1152-main-source",
+      threadKey: "q-1152",
+      questId: "q-1152",
+      count: 4,
+      messageIds: ["u6211", "a6212", "history-2", "transition-main-q1152"],
+      messageIndices: [0, 1, 2, 3],
+      ranges: ["0-3"],
+      firstMessageId: "u6211",
+      firstMessageIndex: 0,
+    });
+    const futureQuestTool = bashAssistant("a6230", "# thread:q-1152\nquest status q-1152", {
+      threadKey: "q-1152",
+      toolUseId: "tool-future-q1152",
+    });
+    const history = [
+      attachedMainMessage,
+      attachedMainTool,
+      toolResultPreview("tool-view-image", "screenshot opened"),
+      mainToQuest,
+      attachCommand,
+      toolResultPreview("tool-attach-q1152", "Attached 6211, 6212, 6213, 6214 to q-1152"),
+      marker,
+      futureQuestTool,
+      toolResultPreview("tool-future-q1152", "quest status output"),
+      user("u6232", "Main continues after manual nudge"),
+    ];
+
+    const mainSync = buildThreadWindowSync({
+      messageHistory: history,
+      threadKey: "main",
+      fromItem: 0,
+      itemCount: 10,
+      sectionItemCount: 5,
+      visibleItemCount: 2,
+    });
+    const questSync = buildThreadWindowSync({
+      messageHistory: history,
+      threadKey: "q-1152",
+      fromItem: 0,
+      itemCount: 10,
+      sectionItemCount: 5,
+      visibleItemCount: 2,
+    });
+
+    expect(mainSync.entries.map((entry) => entry.history_index)).toEqual([0, 1, 2, 3, 4, 9]);
+    expect(mainSync.entries.map((entry) => entry.message.type)).toEqual([
+      "user_message",
+      "assistant",
+      "tool_result_preview",
+      "thread_transition_marker",
+      "cross_thread_activity_marker",
+      "user_message",
+    ]);
+    expect(mainSync.entries[4]?.message).toEqual(
+      expect.objectContaining({
+        type: "cross_thread_activity_marker",
+        activityKind: "thread_attach",
+        threadKey: "q-1152",
+        attachedCount: 4,
+        summary: "Thread attach command added 4 Main messages to thread:q-1152",
+      }),
+    );
+    expect(mainSync.entries.some((entry) => entry.message.type === "thread_attachment_marker")).toBe(false);
+    expect(mainSync.entries.some((entry) => entry.message === futureQuestTool)).toBe(false);
+    expect(
+      mainSync.entries.some(
+        (entry) =>
+          entry.message.type === "tool_result_preview" &&
+          entry.message.previews.some((preview) => preview.tool_use_id === "tool-attach-q1152"),
+      ),
+    ).toBe(false);
+
+    expect(questSync.entries).toContainEqual(expect.objectContaining({ history_index: 4, message: attachCommand }));
+    expect(questSync.entries).toContainEqual(expect.objectContaining({ history_index: 5 }));
+    expect(questSync.entries).toContainEqual(expect.objectContaining({ history_index: 7, message: futureQuestTool }));
+    expect(questSync.entries.some((entry) => entry.message.type === "cross_thread_activity_marker")).toBe(false);
+  });
+
+  it("does not add a Main attach audit row for q-routed thread attach commands that attach another quest source", () => {
+    const sourceQuestMessage = {
+      ...user("u1", "source quest context", "q-1140"),
+      threadRefs: [
+        { threadKey: "q-1140", questId: "q-1140", source: "explicit" as const },
+        { threadKey: "q-1152", questId: "q-1152", source: "backfill" as const },
+      ],
+    };
+    const attachCommand = bashAssistant("a2", "# thread:q-1152\ntakode thread attach q-1152 --turn 417", {
+      threadKey: "q-1152",
+      toolUseId: "tool-attach-q-source",
+    });
+    const history = [
+      user("u0", "main request"),
+      sourceQuestMessage,
+      attachCommand,
+      attachmentMarker({
+        id: "marker-q1152-source-quest",
+        threadKey: "q-1152",
+        questId: "q-1152",
+        sourceThreadKey: "q-1140",
+        sourceQuestId: "q-1140",
+        messageIds: ["u1"],
+        messageIndices: [1],
+        ranges: ["1"],
+        count: 1,
+        firstMessageId: "u1",
+        firstMessageIndex: 1,
+      }),
+      user("u4", "main tail"),
+    ];
+
+    const sync = buildThreadWindowSync({
+      messageHistory: history,
+      threadKey: "main",
+      fromItem: 0,
+      itemCount: 10,
+      sectionItemCount: 5,
+      visibleItemCount: 2,
+    });
+
+    expect(sync.entries.map((entry) => entry.history_index)).toEqual([0, 4]);
+    expect(sync.entries.some((entry) => entry.message.type === "cross_thread_activity_marker")).toBe(false);
   });
 
   it("retains Main attachment sources for a latest window without hydrating marker rows", () => {
