@@ -3,6 +3,7 @@ import { waitFor } from "@testing-library/dom";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   absoluteUrlForHash,
+  hasMessageDeepLinkFromHash,
   messageIdFromHash,
   messageIndexFromHash,
   parseHash,
@@ -11,6 +12,7 @@ import {
   sessionMessageHash,
   scrollToMessageIndex,
   navigateToSession,
+  navigateToSessionMessageId,
   navigateToSessionThread,
   navigateHome,
   navigateToMostRecentSession,
@@ -142,6 +144,9 @@ describe("leader thread hash helpers", () => {
 
   it("updates the leader thread query while preserving the route and other params", () => {
     expect(withThreadKeyInHash("#/session/s1", "q-12")).toBe("#/session/s1?thread=q-12");
+    expect(withThreadKeyInHash("#/session/41/msg/alpha-thread-target", "q-1177")).toBe(
+      "#/session/41/msg/alpha-thread-target?thread=q-1177",
+    );
     expect(withThreadKeyInHash("#/session/123?quest=q-7", "all")).toBe("#/session/123?quest=q-7&thread=all");
     expect(withThreadKeyInHash("#/session/s1?thread=q-12&quest=q-7", "main")).toBe("#/session/s1?quest=q-7");
   });
@@ -194,6 +199,7 @@ describe("sessionMessageHash", () => {
 describe("messageIdFromHash", () => {
   it("reads the stable message ID from the session path", () => {
     expect(messageIdFromHash("#/session/123/msg/asst-42")).toBe("asst-42");
+    expect(messageIdFromHash("#/session/41/msg/alpha-thread-target?thread=q-1177")).toBe("alpha-thread-target");
     expect(messageIdFromHash("#/session/123/msg/42")).toBeNull();
     expect(messageIdFromHash("#/session/123?msg=42")).toBeNull();
   });
@@ -210,6 +216,19 @@ describe("messageIndexFromHash", () => {
 
   it("ignores opaque message IDs", () => {
     expect(messageIndexFromHash("#/session/123/msg/asst-42")).toBeNull();
+  });
+});
+
+describe("hasMessageDeepLinkFromHash", () => {
+  it("recognizes message-specific routes while preserving thread query parsing", () => {
+    expect(hasMessageDeepLinkFromHash("#/session/41/msg/alpha-thread-target?thread=q-1177")).toBe(true);
+    expect(threadRouteFromHash("#/session/41/msg/alpha-thread-target?thread=q-1177")).toEqual({
+      hasThreadParam: true,
+      threadKey: "q-1177",
+    });
+    expect(hasMessageDeepLinkFromHash("#/session/41/msg/12?thread=q-1177")).toBe(true);
+    expect(hasMessageDeepLinkFromHash("#/session/41?msg=12&thread=q-1177")).toBe(true);
+    expect(hasMessageDeepLinkFromHash("#/session/41?thread=q-1177")).toBe(false);
   });
 });
 
@@ -349,6 +368,24 @@ describe("navigateToSessionThread", () => {
     navigateToSessionThread("resolved-session", "q-941");
 
     expect(window.location.hash).toBe("#/session/123?quest=q-7&thread=q-941");
+  });
+});
+
+describe("navigateToSessionMessageId", () => {
+  beforeEach(() => {
+    window.location.hash = "";
+    useStore.getState().reset();
+  });
+
+  it("preserves leader thread context when opening a stable message route", () => {
+    navigateToSessionMessageId("validation-alpha", "alpha-thread-target", {
+      routeSessionId: 41,
+      threadKey: "q-1177",
+    });
+
+    expect(window.location.hash).toBe("#/session/41/msg/alpha-thread-target?thread=q-1177");
+    expect(useStore.getState().scrollToMessageId.get("validation-alpha")).toBe("alpha-thread-target");
+    expect(useStore.getState().expandAllInTurn.get("validation-alpha")).toBe("alpha-thread-target");
   });
 });
 

@@ -28,7 +28,7 @@ import { WorkBoardBar, type WorkBoardThreadNavigationRow } from "./WorkBoardBar.
 import { YarnBallDot } from "./CatIcons.js";
 import { SearchBar } from "./SearchBar.js";
 import { useSessionSearch } from "../hooks/useSessionSearch.js";
-import { navigateToSessionThread, threadRouteFromHash } from "../utils/routing.js";
+import { hasMessageDeepLinkFromHash, navigateToSessionThread, threadRouteFromHash } from "../utils/routing.js";
 import type { BoardRowData } from "./BoardTable.js";
 import {
   isCompletedJourneyPresentationStatus,
@@ -1014,16 +1014,18 @@ export function ChatView({
 
   useEffect(() => {
     if (!routeSyncEnabled || preview) return;
-    const liveThreadRoute = threadRouteFromHash(window.location.hash);
+    const liveHash = window.location.hash;
+    const liveThreadRoute = threadRouteFromHash(liveHash);
     if (liveThreadRoute.hasThreadParam !== hasThreadRoute || liveThreadRoute.threadKey !== (routeThreadKey ?? null)) {
       return;
     }
+    const preserveMessageThreadRoute = hasMessageDeepLinkFromHash(liveHash) && routeThreadKey != null;
 
     if (!isLeaderSession) {
       if (selectedThreadKey !== MAIN_THREAD_KEY) {
         setSelectedThreadKey(MAIN_THREAD_KEY);
       }
-      if (hasThreadRoute) {
+      if (hasThreadRoute && !preserveMessageThreadRoute) {
         navigateToSessionThread(sessionId, MAIN_THREAD_KEY, true);
       }
       return;
@@ -1074,7 +1076,9 @@ export function ChatView({
         setSelectedThreadKey(MAIN_THREAD_KEY);
       }
       persistLeaderSelectedThreadKey(sessionId, MAIN_THREAD_KEY);
-      navigateToSessionThread(sessionId, MAIN_THREAD_KEY, true);
+      if (!preserveMessageThreadRoute) {
+        navigateToSessionThread(sessionId, MAIN_THREAD_KEY, true);
+      }
     }
   }, [
     authoritativeLeaderOpenThreadTabs,

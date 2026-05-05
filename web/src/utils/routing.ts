@@ -307,6 +307,17 @@ export function messageIdFromHash(hash: string): string | null {
 }
 
 /**
+ * Return whether the hash targets a specific message inside a session.
+ */
+export function hasMessageDeepLinkFromHash(hash: string): boolean {
+  const route = parseHash(hash);
+  return (
+    route.page === "session" &&
+    (route.messageId != null || route.messageIndex != null || messageIndexFromHash(hash) != null)
+  );
+}
+
+/**
  * Resolve a session route segment to a live session UUID.
  * Numeric references are treated as Takode session numbers.
  */

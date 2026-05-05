@@ -931,6 +931,39 @@ describe("ChatView backend banners", () => {
     expect(scope.getByTestId("message-feed")).toHaveAttribute("data-thread-key", "main");
   });
 
+  it("preserves a message deep link thread query when a non-leader session cannot select the thread", async () => {
+    resetStore({
+      messages: new Map([["s1", []]]),
+    });
+    window.location.hash = "#/session/41/msg/alpha-thread-target?thread=q-1177";
+
+    const view = render(<ChatView sessionId="s1" routeThreadKey="q-1177" hasThreadRoute={true} />);
+    const scope = within(view.container);
+
+    await waitFor(() => {
+      expect(scope.getByTestId("message-feed")).toHaveAttribute("data-thread-key", "main");
+    });
+    expect(window.location.hash).toBe("#/session/41/msg/alpha-thread-target?thread=q-1177");
+  });
+
+  it("preserves a message deep link thread query when leader thread sources do not contain the target thread", async () => {
+    resetStore({
+      sessions: new Map([["s1", { backend_state: "connected", backend_error: null, isOrchestrator: true }]]),
+      sdkSessions: [{ sessionId: "s1", archived: false, isOrchestrator: true }],
+      messages: new Map([["s1", []]]),
+      quests: [],
+    });
+    window.location.hash = "#/session/41/msg/alpha-thread-target?thread=q-1177";
+
+    const view = render(<ChatView sessionId="s1" routeThreadKey="q-1177" hasThreadRoute={true} />);
+    const scope = within(view.container);
+
+    await waitFor(() => {
+      expect(scope.getByTestId("message-feed")).toHaveAttribute("data-thread-key", "main");
+    });
+    expect(window.location.hash).toBe("#/session/41/msg/alpha-thread-target?thread=q-1177");
+  });
+
   it("keeps preview thread jumps local without mutating the current session URL", () => {
     resetStore({
       sessions: new Map([["s2", { backend_state: "connected", backend_error: null, isOrchestrator: true }]]),
