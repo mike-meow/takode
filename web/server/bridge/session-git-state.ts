@@ -2,6 +2,7 @@ import { exec as execCb } from "node:child_process";
 import { readFile, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
+import { GIT_STATUS_AUTO_REFRESH_STALE_MS } from "../../shared/git-status-freshness.js";
 import { GIT_CMD_TIMEOUT, SERVER_GIT_CMD } from "../constants.js";
 import * as gitUtils from "../git-utils.js";
 import type { BackendType, SessionState } from "../session-types.js";
@@ -59,6 +60,8 @@ export function makeDefaultState(sessionId: string, backendType: BackendType = "
     git_behind: 0,
     total_lines_added: 0,
     total_lines_removed: 0,
+    git_status_refreshed_at: undefined,
+    git_status_refresh_error: null,
   };
 }
 
@@ -161,6 +164,8 @@ export async function resolveGitInfo(state: SessionState): Promise<void> {
       state.git_ahead = 0;
       state.git_behind = 0;
     }
+    state.git_status_refreshed_at = Date.now();
+    state.git_status_refresh_error = null;
   } catch {
     const preservedDiffBaseBranch = state.diff_base_branch;
     const preservedDiffBaseExplicit = state.diff_base_branch_explicit;
@@ -174,6 +179,8 @@ export async function resolveGitInfo(state: SessionState): Promise<void> {
     state.repo_root = "";
     state.git_ahead = 0;
     state.git_behind = 0;
+    state.git_status_refreshed_at = Date.now();
+    state.git_status_refresh_error = "Unable to read git status";
   }
   state.is_containerized = wasContainerized;
 }
@@ -222,12 +229,14 @@ interface RefreshWorktreeGitStateForSnapshotDeps {
     session: SessionDiffRefreshLike,
     options: { broadcastUpdate?: boolean; notifyPoller?: boolean; force?: boolean },
   ) => Promise<void>;
+  broadcastSessionUpdate: (session: SessionDiffRefreshLike, update: Record<string, unknown>) => void;
   broadcastDiffTotals: (session: SessionDiffRefreshLike) => void;
   persistSession: (session: SessionDiffRefreshLike) => void;
 }
 
 interface RefreshGitInfoDeps {
   gitSessionKeys: readonly (keyof SessionState)[];
+  broadcastSessionUpdate: (session: SessionDiffRefreshLike, update: Record<string, unknown>) => void;
   broadcastGitUpdate: (session: SessionDiffRefreshLike) => void;
   persistSession: (session: SessionDiffRefreshLike) => void;
   notifyPoller: (session: SessionDiffRefreshLike) => void;
@@ -250,6 +259,8 @@ interface RefreshGitInfoPublicDeps {
     session: SessionDiffRefreshLike,
     options: { broadcastUpdate?: boolean; notifyPoller?: boolean; force?: boolean },
   ) => Promise<void>;
+  broadcastSessionUpdate: (session: SessionDiffRefreshLike, update: Record<string, unknown>) => void;
+  broadcastDiffTotals: (session: SessionDiffRefreshLike) => void;
   persistSession: (session: SessionDiffRefreshLike) => void;
 }
 
@@ -417,8 +428,25 @@ export async function refreshGitInfoPublic(
   options: { broadcastUpdate?: boolean; notifyPoller?: boolean; force?: boolean } = {},
 ): Promise<void> {
   session.diffStatsDirty = true;
+  const beforeAdded = session.state.total_lines_added;
+  const beforeRemoved = session.state.total_lines_removed;
   await deps.refreshGitInfo(session, options);
-  await computeDiffStatsAsync(session);
+  const didRun = await computeDiffStatsAsync(session);
+  if (didRun) {
+    session.diffStatsDirty = false;
+  }
+  if (options.broadcastUpdate) {
+    deps.broadcastSessionUpdate(session, {
+      git_status_refreshed_at: session.state.git_status_refreshed_at,
+      git_status_refresh_error: session.state.git_status_refresh_error ?? null,
+    });
+    if (
+      didRun &&
+      (beforeAdded !== session.state.total_lines_added || beforeRemoved !== session.state.total_lines_removed)
+    ) {
+      deps.broadcastDiffTotals(session);
+    }
+  }
   deps.persistSession(session);
 }
 
@@ -462,6 +490,10 @@ export async function refreshGitInfo(
   if (changed) {
     if (options.broadcastUpdate) {
       deps.broadcastGitUpdate(session);
+      deps.broadcastSessionUpdate(session, {
+        git_status_refreshed_at: session.state.git_status_refreshed_at,
+        git_status_refresh_error: session.state.git_status_refresh_error ?? null,
+      });
     }
     deps.persistSession(session);
   }
@@ -506,12 +538,16 @@ async function runWorktreeGitStateRefreshForSnapshot(
 
   const currentFingerprint = await readWorktreeStateFingerprint(session.state.cwd);
   const previousFingerprint = session.worktreeStateFingerprint.trim();
-  if (currentFingerprint && previousFingerprint && currentFingerprint === previousFingerprint) {
+  const previousRefreshAt = session.state.git_status_refreshed_at || 0;
+  const staleRefresh = Date.now() - previousRefreshAt >= GIT_STATUS_AUTO_REFRESH_STALE_MS;
+  if (currentFingerprint && previousFingerprint && currentFingerprint === previousFingerprint && !staleRefresh) {
     return session.state;
   }
 
   const beforeAdded = session.state.total_lines_added;
   const beforeRemoved = session.state.total_lines_removed;
+  const beforeAnchor = session.state.diff_base_start_sha;
+  const fingerprintChanged = !currentFingerprint || !previousFingerprint || currentFingerprint !== previousFingerprint;
 
   await deps.refreshGitInfo(session, {
     broadcastUpdate: options.broadcastUpdate,
@@ -519,10 +555,17 @@ async function runWorktreeGitStateRefreshForSnapshot(
     force: true,
   });
 
-  const didRun = await computeDiffStatsAsync(session);
-  if (!didRun) return session.state;
-
-  session.diffStatsDirty = false;
+  const shouldRefreshDiff =
+    fingerprintChanged ||
+    session.diffStatsDirty ||
+    beforeAnchor !== session.state.diff_base_start_sha ||
+    (session.state.is_worktree &&
+      (session.state.git_ahead || 0) <= 0 &&
+      (session.state.total_lines_added > 0 || session.state.total_lines_removed > 0));
+  const didRun = shouldRefreshDiff ? await computeDiffStatsAsync(session) : false;
+  if (didRun) {
+    session.diffStatsDirty = false;
+  }
   session.worktreeStateFingerprint = currentFingerprint || "";
 
   const totalsChanged =
@@ -530,7 +573,13 @@ async function runWorktreeGitStateRefreshForSnapshot(
   if (totalsChanged && options.broadcastUpdate) {
     deps.broadcastDiffTotals(session);
   }
-  if (totalsChanged) {
+  if (staleRefresh && options.broadcastUpdate) {
+    deps.broadcastSessionUpdate(session, {
+      git_status_refreshed_at: session.state.git_status_refreshed_at,
+      git_status_refresh_error: session.state.git_status_refresh_error ?? null,
+    });
+  }
+  if (totalsChanged || staleRefresh) {
     deps.persistSession(session);
   }
   return session.state;

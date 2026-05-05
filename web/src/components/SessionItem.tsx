@@ -1,5 +1,6 @@
 import { useRef, useCallback, useState, type RefObject } from "react";
 import type { SidebarSessionItem as SessionItemType } from "../utils/sidebar-session-item.js";
+import { api } from "../api.js";
 import { deriveSessionStatus, type SessionVisualStatus } from "./SessionStatusDot.js";
 import { useStore } from "../store.js";
 import { navigateToSession } from "../utils/routing.js";
@@ -8,6 +9,7 @@ import { questLabel, questOwnsSessionName } from "../utils/quest-helpers.js";
 import type { HerdGroupBadgeTheme } from "../utils/herd-group-theme.js";
 import { getHighestNotificationUrgency, type NotificationUrgency } from "../utils/notification-urgency.js";
 import { isClearedNotificationStatus } from "../notification-status.js";
+import { formatGitStatusAge, isGitStatusStale } from "../../shared/git-status-freshness.js";
 
 type SearchMatchedField =
   | "session_number"
@@ -20,6 +22,7 @@ type SearchMatchedField =
   | "user_message"
   | "assistant"
   | "compact_marker";
+type GitRefreshState = "idle" | "refreshing" | "error";
 
 export interface ArchiveConfirmationState {
   sessionId: string;
@@ -182,6 +185,90 @@ function ScheduledTimerStatusIcon({ timerCount }: { timerCount: number }) {
       <svg viewBox="0 0 16 16" fill="currentColor" className="block h-3 w-3 shrink-0 -translate-y-px">
         <path d="M8 1.75a.75.75 0 01.75.75v.88a4.75 4.75 0 11-1.5 0V2.5A.75.75 0 018 1.75zm0 3A3.25 3.25 0 108 11.25 3.25 3.25 0 008 4.75zm.75 1.5v1.44l1.02.61a.75.75 0 11-.77 1.28L7.62 8.8A.75.75 0 017.25 8V6.25a.75.75 0 011.5 0z" />
       </svg>
+    </span>
+  );
+}
+
+function GitRefreshIcon({ refreshing }: { refreshing: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      className={`h-3 w-3 ${refreshing ? "animate-spin" : ""}`}
+    >
+      <path d="M13 5.2A5.5 5.5 0 004.2 3.1L3 4.3" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3 1.5v2.8h2.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3 10.8a5.5 5.5 0 008.8 2.1l1.2-1.2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M13 14.5v-2.8h-2.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function SessionGitRefreshButton({ session: s }: { session: SessionItemType }) {
+  const [gitRefreshState, setGitRefreshState] = useState<GitRefreshState>("idle");
+  const gitStatusAge = formatGitStatusAge(s.gitStatusRefreshedAt);
+  const gitStatusStale = isGitStatusStale(s.gitStatusRefreshedAt);
+  const gitStatusRecent = !!s.gitStatusRefreshedAt && Date.now() - s.gitStatusRefreshedAt < 60_000;
+  const gitRefreshTitle = (() => {
+    if (gitRefreshState === "refreshing") return "Refreshing git stats";
+    if (gitRefreshState === "error" || s.gitStatusRefreshError) {
+      return s.gitStatusRefreshError || "Git stats refresh failed";
+    }
+    const base = s.gitBranch ? ` Branch: ${s.gitBranch}.` : "";
+    return `Refresh git stats. Last refreshed ${gitStatusAge}.${base}`;
+  })();
+  const refreshGitStatus = useCallback(() => {
+    setGitRefreshState("refreshing");
+    api
+      .refreshSessionGitStatus(s.id)
+      .then((result) => {
+        setGitRefreshState(result.gitStatusRefreshError ? "error" : "idle");
+      })
+      .catch((err) => {
+        console.warn("[sidebar] failed to refresh session git status:", err);
+        setGitRefreshState("error");
+      });
+  }, [s.id]);
+  const handleRefreshGitStatus = useCallback(
+    (event: React.MouseEvent | React.KeyboardEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      refreshGitStatus();
+    },
+    [refreshGitStatus],
+  );
+
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      title={gitRefreshTitle}
+      aria-label={gitRefreshTitle}
+      data-testid="session-git-refresh"
+      data-refresh-state={gitRefreshState}
+      data-stale={gitStatusStale ? "true" : "false"}
+      onClick={handleRefreshGitStatus}
+      onMouseDown={(e) => e.stopPropagation()}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          handleRefreshGitStatus(e);
+        }
+      }}
+      className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded text-[10px] transition-colors hover:bg-cc-hover hover:text-cc-fg ${
+        gitRefreshState === "refreshing"
+          ? "text-cc-primary"
+          : gitRefreshState === "error" || s.gitStatusRefreshError
+            ? "text-red-400"
+            : gitStatusRecent
+              ? "text-emerald-500"
+              : gitStatusStale
+                ? "text-amber-400/80"
+                : "text-cc-muted/45"
+      }`}
+    >
+      <GitRefreshIcon refreshing={gitRefreshState === "refreshing"} />
     </span>
   );
 }
@@ -436,6 +523,7 @@ export function SessionItem({
   const backendAlt = s.backendType === "codex" ? "Codex" : s.backendType === "claude-sdk" ? "Claude SDK" : "Claude";
   const hasBranchDivergence = s.gitAhead > 0 || s.gitBehind > 0;
   const hasLineDiff = s.linesAdded > 0 || s.linesRemoved > 0;
+  const hasGitStatus = !!s.gitBranch || hasBranchDivergence || hasLineDiff || !!s.isWorktree;
   const showingSwipeBackdrop = canSwipeToArchive && Math.abs(swipeOffsetPx) > 0;
   const herdHighlightClass =
     herdHoverHighlight === "leader"
@@ -833,6 +921,7 @@ export function SessionItem({
                   <span className="text-red-400">-{s.linesRemoved}</span>
                 </span>
               )}
+              {hasGitStatus && !archived && <SessionGitRefreshButton session={s} />}
             </div>
           )}
         </div>

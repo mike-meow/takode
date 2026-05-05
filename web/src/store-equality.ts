@@ -184,6 +184,8 @@ function sdkSessionInfoEqual(a: SdkSessionInfo, b: SdkSessionInfo): boolean {
     a.gitBehind === b.gitBehind &&
     a.totalLinesAdded === b.totalLinesAdded &&
     a.totalLinesRemoved === b.totalLinesRemoved &&
+    a.gitStatusRefreshedAt === b.gitStatusRefreshedAt &&
+    a.gitStatusRefreshError === b.gitStatusRefreshError &&
     a.cronJobId === b.cronJobId &&
     a.cronJobName === b.cronJobName &&
     a.pendingTimerCount === b.pendingTimerCount &&

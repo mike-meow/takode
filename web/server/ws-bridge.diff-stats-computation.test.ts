@@ -16,6 +16,7 @@ vi.mock("./bridge/settings-rule-matcher.js", async (importOriginal) => {
 });
 
 import { WsBridge, type SocketData } from "./ws-bridge.js";
+import { GIT_STATUS_AUTO_REFRESH_STALE_MS } from "../shared/git-status-freshness.js";
 import { SessionStore } from "./session-store.js";
 import { HerdEventDispatcher, isSessionIdleRuntime, renderHerdEventBatch } from "./herd-event-dispatcher.js";
 import {
@@ -994,6 +995,7 @@ describe("Diff stats computation", () => {
     await bridge.refreshWorktreeGitStateForSnapshot("s1");
     expect(session.state.total_lines_added).toBe(10);
     expect(session.state.total_lines_removed).toBe(3);
+    session.state.git_status_refreshed_at = Date.now();
 
     mockExecSync.mockClear();
     await bridge.refreshWorktreeGitStateForSnapshot("s1");
@@ -1001,6 +1003,48 @@ describe("Diff stats computation", () => {
     expect(mockExecSync).not.toHaveBeenCalled();
     expect(session.state.total_lines_added).toBe(10);
     expect(session.state.total_lines_removed).toBe(3);
+  });
+
+  it("refreshWorktreeGitStateForSnapshot rechecks stale worktree git status even when the fingerprint is unchanged", async () => {
+    const worktreeCwd = join(tempDir, "wt");
+    const worktreeGitDir = join(tempDir, "repo.git", "worktrees", "wt-1");
+    mkdirSync(worktreeCwd, { recursive: true });
+    mkdirSync(worktreeGitDir, { recursive: true });
+    writeFileSync(join(worktreeCwd, ".git"), `gitdir: ${worktreeGitDir}\n`);
+    writeFileSync(join(worktreeGitDir, "HEAD"), "ref: refs/heads/jiayi-wt-1\n");
+    writeFileSync(join(worktreeGitDir, "index"), "index");
+
+    let ahead = 1;
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (cmd.includes("--abbrev-ref HEAD")) return "jiayi-wt-1\n";
+      if (cmd.includes("--git-dir")) return `${worktreeGitDir}\n`;
+      if (cmd.includes("--git-common-dir")) return `${join(tempDir, "repo.git")}\n`;
+      if (cmd.includes("rev-parse HEAD")) return "same-head-sha\n";
+      if (cmd.includes("--left-right --count")) return `0\t${ahead}\n`;
+      if (cmd.includes("merge-base")) return "same-head-sha\n";
+      if (cmd.includes("diff --numstat")) return "10\t3\tfile.ts\n";
+      return "";
+    });
+
+    bridge.markWorktree("s1", join(tempDir, "repo"), worktreeCwd, "jiayi");
+    const session = bridge.getSession("s1")!;
+    session.state.cwd = worktreeCwd;
+
+    await bridge.refreshWorktreeGitStateForSnapshot("s1");
+    expect(session.state.git_ahead).toBe(1);
+    expect(session.state.total_lines_added).toBe(10);
+
+    ahead = 0;
+    session.state.git_status_refreshed_at = Date.now() - GIT_STATUS_AUTO_REFRESH_STALE_MS - 1;
+    mockExecSync.mockClear();
+    await bridge.refreshWorktreeGitStateForSnapshot("s1");
+
+    expect(session.state.git_ahead).toBe(0);
+    expect(session.state.total_lines_added).toBe(0);
+    expect(session.state.total_lines_removed).toBe(0);
+    expect(
+      mockExecSync.mock.calls.some((call: unknown[]) => String(call[0]).includes("rev-list --left-right --count")),
+    ).toBe(true);
   });
 
   it("refreshWorktreeGitStateForSnapshot coalesces concurrent refreshes for the same session", async () => {

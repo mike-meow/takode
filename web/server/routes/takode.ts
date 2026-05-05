@@ -413,6 +413,8 @@ export function createTakodeRoutes(ctx: RouteContext) {
             gitBehind: bridge?.git_behind || 0,
             totalLinesAdded: bridge?.total_lines_added || 0,
             totalLinesRemoved: bridge?.total_lines_removed || 0,
+            gitStatusRefreshedAt: bridge?.git_status_refreshed_at,
+            gitStatusRefreshError: bridge?.git_status_refresh_error ?? null,
             lastMessagePreview: currentBridgeSession?.lastUserMessage || "",
             cliConnected,
             taskHistory: currentBridgeSession?.taskHistory ?? [],
@@ -646,6 +648,8 @@ export function createTakodeRoutes(ctx: RouteContext) {
       gitBehind: bridge?.git_behind || 0,
       totalLinesAdded: bridge?.total_lines_added || 0,
       totalLinesRemoved: bridge?.total_lines_removed || 0,
+      gitStatusRefreshedAt: bridge?.git_status_refreshed_at,
+      gitStatusRefreshError: bridge?.git_status_refresh_error ?? null,
       totalCostUsd: bridge?.total_cost_usd || 0,
       numTurns: actualNumTurns,
       contextUsedPercent: bridge?.context_used_percent || 0,
@@ -1627,6 +1631,8 @@ export function createTakodeRoutes(ctx: RouteContext) {
       gitBehind: state.git_behind || 0,
       totalLinesAdded: state.total_lines_added || 0,
       totalLinesRemoved: state.total_lines_removed || 0,
+      gitStatusRefreshedAt: state.git_status_refreshed_at || null,
+      gitStatusRefreshError: state.git_status_refresh_error || null,
       isWorktree: state.is_worktree || false,
     });
   });

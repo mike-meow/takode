@@ -16,6 +16,7 @@ import { createSessionsRoutes } from "./sessions.js";
 import { createGitRoutes } from "./git.js";
 import { createFilesystemRoutes } from "./filesystem.js";
 import { createSettingsRoutes } from "./settings.js";
+import { createSessionGitStatusRoutes } from "./session-git-status.js";
 import { createTranscriptionRoutes } from "./transcription.js";
 import { createTakodeRoutes } from "./takode.js";
 import { createQuestRoutes } from "./quests.js";
@@ -243,6 +244,7 @@ export function createRoutes(
   api.route("/", createSystemRoutes(ctx));
   api.route("/", createLogsRoutes(ctx));
   api.route("/", createSessionsRoutes(ctx));
+  api.route("/", createSessionGitStatusRoutes(ctx));
   api.route("/", createTakodeRoutes(ctx));
   api.route("/", createRecordingsRoutes(ctx));
   api.route("/", createFilesystemRoutes(ctx));

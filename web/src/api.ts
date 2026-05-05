@@ -1232,6 +1232,19 @@ export const api = {
       git_ahead: number;
       git_behind: number;
     }>("/git/pull", { cwd, sessionId }),
+  refreshSessionGitStatus: (sessionId: string) =>
+    post<{
+      ok: boolean;
+      gitBranch: string | null;
+      gitDefaultBranch: string | null;
+      diffBaseBranch: string | null;
+      gitAhead: number;
+      gitBehind: number;
+      totalLinesAdded: number;
+      totalLinesRemoved: number;
+      gitStatusRefreshedAt: number | null;
+      gitStatusRefreshError: string | null;
+    }>(`/sessions/${encodeURIComponent(sessionId)}/git-status/refresh`),
 
   // Git worktrees
   listWorktrees: (repoRoot: string) =>

@@ -296,6 +296,8 @@ export interface SdkSessionInfo {
   gitBehind?: number;
   totalLinesAdded?: number;
   totalLinesRemoved?: number;
+  gitStatusRefreshedAt?: number;
+  gitStatusRefreshError?: string | null;
   /** If this session was spawned by a cron job */
   cronJobId?: string;
   /** Human-readable name of the cron job that spawned this session */

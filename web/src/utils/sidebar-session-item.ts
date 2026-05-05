@@ -10,6 +10,8 @@ export interface SidebarSessionItem {
   gitBehind: number;
   linesAdded: number;
   linesRemoved: number;
+  gitStatusRefreshedAt?: number;
+  gitStatusRefreshError?: string | null;
   isConnected: boolean;
   status: "idle" | "running" | "compacting" | "reverting" | null;
   sdkState: "starting" | "connected" | "running" | "exited" | null;

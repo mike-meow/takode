@@ -174,6 +174,10 @@ export interface SdkSessionInfo {
   totalLinesAdded?: number;
   /** Total lines removed (enriched by REST API) */
   totalLinesRemoved?: number;
+  /** Epoch ms for the last server git metadata refresh attempt. */
+  gitStatusRefreshedAt?: number;
+  /** Last git refresh error, if any. */
+  gitStatusRefreshError?: string | null;
   /** Whether internet/web search is enabled for Codex sessions */
   codexInternetAccess?: boolean;
   /** Sandbox mode selected for Codex sessions */
