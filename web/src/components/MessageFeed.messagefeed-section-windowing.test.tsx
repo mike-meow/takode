@@ -270,6 +270,21 @@ function setStoreHistoryLoading(sessionId: string, loading: boolean) {
   mockStoreValues.historyLoading = map;
 }
 
+function setStoreHistoryWindow(sessionId: string) {
+  mockStoreValues.historyWindows = new Map([
+    [
+      sessionId,
+      {
+        from_turn: 22,
+        turn_count: 15,
+        total_turns: 37,
+        section_turn_count: 5,
+        visible_section_count: 3,
+      },
+    ],
+  ]);
+}
+
 function setStoreFeedScrollPosition(
   sessionId: string,
   pos: {
@@ -775,6 +790,101 @@ describe("MessageFeed section windowing", () => {
     expect(container.querySelectorAll("[data-feed-section-id]")).toHaveLength(5);
     expect(screen.queryByText("Scroll up for older section")).toBeNull();
     expect(screen.getByText("Scroll down for newer section")).toBeTruthy();
+  });
+
+  it("keeps leader Main loading while the selected thread window hydrates", async () => {
+    const sid = "test-leader-main-selected-window-cold-start";
+    const mainTail = makeMessage({
+      id: "u-main-tail",
+      role: "user",
+      content: "Persisted Main history tail",
+      timestamp: 100,
+      historyIndex: 42,
+    });
+    setStoreSessionState(sid, { isOrchestrator: true });
+    setStoreMessages(sid, [mainTail]);
+    setStoreHistoryWindow(sid);
+
+    const { rerender } = render(<MessageFeed sessionId={sid} threadKey="main" sectionTurnCount={5} />);
+
+    expect(screen.queryByText("Start a conversation")).toBeNull();
+    expect(screen.getByText("Loading conversation...")).toBeTruthy();
+    await flushFeedObservers();
+    expect(mockSendToSession).toHaveBeenCalledWith(
+      sid,
+      expect.objectContaining({
+        type: "thread_window_request",
+        thread_key: "main",
+        from_item: -1,
+        item_count: 15,
+        section_item_count: 5,
+        visible_item_count: 3,
+        feed_window_sync_version: FEED_WINDOW_SYNC_VERSION,
+      }),
+    );
+
+    setStoreSelectedThreadWindow({
+      sessionId: sid,
+      threadKey: "main",
+      fromItem: 22,
+      itemCount: 15,
+      totalItems: 37,
+      sectionItemCount: 5,
+      visibleItemCount: 3,
+      messages: [mainTail],
+    });
+    rerender(<MessageFeed sessionId={sid} threadKey="main" sectionTurnCount={5} />);
+
+    expect(screen.getByText("Persisted Main history tail")).toBeTruthy();
+    expect(screen.queryByText("Start a conversation")).toBeNull();
+  });
+
+  it("requests the Main selected window when returning from a quest tab", async () => {
+    const sid = "test-leader-main-request-after-quest-tab";
+    const mainTail = makeMessage({
+      id: "u-main-tail-after-quest",
+      role: "user",
+      content: "Main content after quest return",
+      timestamp: 100,
+      historyIndex: 42,
+    });
+    const questTail = makeMessage({
+      id: "u-quest-tail",
+      role: "user",
+      content: "Quest thread content",
+      timestamp: 200,
+      historyIndex: 43,
+    });
+    setStoreSessionState(sid, { isOrchestrator: true });
+    setStoreMessages(sid, [mainTail]);
+    setStoreHistoryWindow(sid);
+    setStoreSelectedThreadWindow({
+      sessionId: sid,
+      threadKey: "q-1162",
+      fromItem: 0,
+      itemCount: 1,
+      totalItems: 1,
+      sectionItemCount: 5,
+      visibleItemCount: 3,
+      messages: [questTail],
+    });
+    const { rerender } = render(<MessageFeed sessionId={sid} threadKey="q-1162" sectionTurnCount={5} />);
+    await flushFeedObservers();
+    mockSendToSession.mockClear();
+
+    rerender(<MessageFeed sessionId={sid} threadKey="main" sectionTurnCount={5} />);
+
+    expect(screen.queryByText("Start a conversation")).toBeNull();
+    expect(screen.getByText("Loading conversation...")).toBeTruthy();
+    await flushFeedObservers();
+    expect(mockSendToSession).toHaveBeenCalledWith(
+      sid,
+      expect.objectContaining({
+        type: "thread_window_request",
+        thread_key: "main",
+        from_item: -1,
+      }),
+    );
   });
 
   it("does not auto-load newer selected-thread content on stationary mobile top overscroll", () => {

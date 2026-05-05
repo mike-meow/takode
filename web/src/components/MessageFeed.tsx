@@ -202,6 +202,7 @@ export function MessageFeed({
   const selectedFeedWindowMessages = useStore(
     (s) => s.threadWindowMessages?.get(sessionId)?.get(normalizedThreadKey) ?? EMPTY_MESSAGES,
   );
+  const [pendingInitialThreadWindowKey, setPendingInitialThreadWindowKey] = useState<string | null>(null);
   const sessionNotifications = useStore((s) => s.sessionNotifications?.get(sessionId));
   const sessionAttentionRecords = useStore((s) => s.sessionAttentionRecords?.get(sessionId));
   const sessionBoard = useStore((s) => s.sessionBoards?.get(sessionId));
@@ -245,6 +246,7 @@ export function MessageFeed({
   const frozenCount = useStore((s) => s.messageFrozenCounts.get(sessionId) ?? 0);
   const frozenRevision = useStore((s) => s.messageFrozenRevisions.get(sessionId) ?? 0);
   const historyWindow = useStore((s) => s.historyWindows.get(sessionId) ?? null);
+  const leaderProjection = useStore((s) => s.leaderProjections?.get(sessionId) ?? null);
   const streamingText = useStore((s) => s.streaming.get(sessionId));
   const isCodexSession = useStore((s) => s.sessions.get(sessionId)?.backend_type === "codex");
   const toolProgress = useStore((s) => s.toolProgress.get(sessionId));
@@ -609,6 +611,14 @@ export function MessageFeed({
   const isLoadingOlderSection = pendingSectionLoadDirection === "older";
   const isLoadingNewerSection = pendingSectionLoadDirection === "newer";
   const latestPillLabel = hasNewerSections ? "Latest section below" : "New content below";
+  const missingSelectedWindowHasContext =
+    selectedFeedWindowEnabled &&
+    !activeThreadWindow &&
+    (historyLoading ||
+      allMessages.length > 0 ||
+      frozenCount > 0 ||
+      (historyWindow?.total_turns ?? 0) > 0 ||
+      (leaderProjection?.sourceHistoryLength ?? 0) > 0);
   const { turnStates, toggleTurn } = useCollapsePolicy({
     sessionId,
     turns: visibleTurns,
@@ -642,7 +652,7 @@ export function MessageFeed({
         sectionItemCount,
         visibleItemCount,
       });
-      sendToSession(sessionId, {
+      const delivered = sendToSession(sessionId, {
         type: "thread_window_request",
         thread_key: normalizedThreadKey,
         from_item: fromItem,
@@ -652,6 +662,7 @@ export function MessageFeed({
         feed_window_sync_version: FEED_WINDOW_SYNC_VERSION,
         ...(cachedWindowHash ? { cached_window_hash: cachedWindowHash } : {}),
       });
+      if (delivered && !activeThreadWindow) setPendingInitialThreadWindowKey(normalizedThreadKey);
     },
     [activeThreadWindow, normalizedThreadKey, sectionTurnCount, sessionId],
   );
@@ -660,7 +671,12 @@ export function MessageFeed({
     if (!selectedFeedWindowEnabled) return;
     if (activeThreadWindow) return;
     requestThreadWindow(-1);
-  }, [activeThreadWindow, requestThreadWindow, selectedFeedWindowEnabled]);
+  }, [activeThreadWindow, missingSelectedWindowHasContext, requestThreadWindow, selectedFeedWindowEnabled]);
+
+  useEffect(() => {
+    if (selectedFeedWindowEnabled && !activeThreadWindow) return;
+    setPendingInitialThreadWindowKey((current) => (current === normalizedThreadKey ? null : current));
+  }, [activeThreadWindow, normalizedThreadKey, selectedFeedWindowEnabled]);
 
   useEffect(() => {
     pendingSectionLoadKeyRef.current = null;
@@ -1758,7 +1774,16 @@ export function MessageFeed({
 
   // ─── Render ──────────────────────────────────────────────────────────────
 
-  if (showConversationLoading) {
+  const showSelectedWindowLoading =
+    messages.length === 0 &&
+    pendingUserUploads.length === 0 &&
+    pendingCodexInputs.length === 0 &&
+    !streamingText &&
+    selectedFeedWindowEnabled &&
+    !activeThreadWindow &&
+    (missingSelectedWindowHasContext || pendingInitialThreadWindowKey === normalizedThreadKey);
+
+  if (showConversationLoading || showSelectedWindowLoading) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-4 select-none px-6">
         <YarnBallSpinner className="w-5 h-5 text-cc-primary" />
