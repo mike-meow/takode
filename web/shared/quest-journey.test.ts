@@ -633,4 +633,37 @@ describe("Quest Journey phases", () => {
       }),
     ).toMatch("completed phase boundary cannot be inferred");
   });
+
+  it("uses an explicit active phase index to repair ambiguous legacy active Journeys", () => {
+    // Legacy rows can lack activePhaseIndex when a phase repeats; the supplied
+    // next active index is the repair signal that defines the completed boundary.
+    expect(
+      validateQuestJourneyCompletedPrefixRevision({
+        existingPlan: {
+          mode: "active",
+          phaseIds: ["alignment", "implement", "code-review", "implement", "port"],
+          currentPhaseId: "implement",
+        },
+        existingStatus: "IMPLEMENTING",
+        nextActivePhaseIndex: 3,
+      }),
+    ).toBeUndefined();
+  });
+
+  it("still protects completed occurrences when repairing an ambiguous legacy active Journey", () => {
+    // The repair signal should only disambiguate the boundary; it must not permit
+    // callers to rewrite the phase occurrences before that boundary.
+    expect(
+      validateQuestJourneyCompletedPrefixRevision({
+        existingPlan: {
+          mode: "active",
+          phaseIds: ["alignment", "implement", "code-review", "implement", "port"],
+          currentPhaseId: "implement",
+        },
+        existingStatus: "IMPLEMENTING",
+        nextActivePhaseIndex: 3,
+        nextPhaseIds: ["alignment", "explore", "code-review", "implement", "port"],
+      }),
+    ).toMatch("Completed Journey phase occurrences cannot be revised in place");
+  });
 });

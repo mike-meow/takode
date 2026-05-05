@@ -440,9 +440,10 @@ export function validateQuestJourneyCompletedPrefixRevision(
   revision: QuestJourneyCompletedPrefixRevision,
 ): string | undefined {
   const prefixResult = getQuestJourneyCompletedPrefixLength(revision.existingPlan, revision.existingStatus);
-  if (!prefixResult.ok) return prefixResult.error;
+  const explicitPrefixLength = getExplicitQuestJourneyCompletedPrefixLength(revision);
+  if (!prefixResult.ok && explicitPrefixLength === undefined) return prefixResult.error;
 
-  const completedPrefixLength = prefixResult.prefixLength ?? 0;
+  const completedPrefixLength = prefixResult.ok ? (prefixResult.prefixLength ?? 0) : (explicitPrefixLength ?? 0);
   if (completedPrefixLength <= 0) return undefined;
 
   const existingPhaseIds = normalizeQuestJourneyPhaseIds(revision.existingPlan?.phaseIds);
@@ -466,6 +467,24 @@ export function validateQuestJourneyCompletedPrefixRevision(
   }
 
   return undefined;
+}
+
+function getExplicitQuestJourneyCompletedPrefixLength(
+  revision: QuestJourneyCompletedPrefixRevision,
+): number | undefined {
+  if (
+    typeof revision.nextActivePhaseIndex !== "number" ||
+    !Number.isInteger(revision.nextActivePhaseIndex) ||
+    revision.nextActivePhaseIndex < 0
+  ) {
+    return undefined;
+  }
+
+  const existingPhaseIds = normalizeQuestJourneyPhaseIds(revision.existingPlan?.phaseIds);
+  if (existingPhaseIds.length === 0) return undefined;
+  const nextPhaseIds = revision.nextPhaseIds ? normalizeQuestJourneyPhaseIds(revision.nextPhaseIds) : existingPhaseIds;
+  if (revision.nextActivePhaseIndex >= nextPhaseIds.length) return undefined;
+  return Math.min(revision.nextActivePhaseIndex, existingPhaseIds.length);
 }
 
 function normalizeQuestJourneyPhaseNotes(

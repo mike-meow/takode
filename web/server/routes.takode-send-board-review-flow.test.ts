@@ -598,6 +598,28 @@ describe("Takode server-authoritative auth", () => {
     return sessions;
   }
 
+  function installLegacyRepeatedExecuteRow() {
+    bridge._sessions["orch-1"].notifications = [{ id: "n-16", category: "needs-input", done: false }];
+    bridge._sessions["orch-1"].board = new Map([
+      [
+        "q-9",
+        {
+          questId: "q-9",
+          title: "Recover repeated Journey phase",
+          status: "EXECUTING",
+          createdAt: 1,
+          updatedAt: 1,
+          journey: {
+            presetId: "execute-loop",
+            mode: "active",
+            phaseIds: ["alignment", "execute", "user-checkpoint", "execute", "user-checkpoint", "explore"],
+            currentPhaseId: "execute",
+          },
+        },
+      ],
+    ]);
+  }
+
   it("blocks spoofed sender identity and accepts authenticated send", async () => {
     setupTakodeSessions();
     launcher.isAlive.mockReturnValue(true);
@@ -1268,6 +1290,130 @@ describe("Takode server-authoritative auth", () => {
     expect(res.status).toBe(400);
     expect(await res.json()).toMatchObject({
       error: expect.stringContaining("completed phase boundary cannot be inferred"),
+    });
+  });
+
+  it("repairs a legacy repeated active row by pinning the active phase occurrence", async () => {
+    setupTakodeSessions();
+    installLegacyRepeatedExecuteRow();
+
+    // Legacy rows may know only the repeated current phase ID; this verifies the explicit
+    // occurrence pin used by `takode board set --active-phase-position 4`.
+    const pinRes = await app.request("/api/sessions/orch-1/board", {
+      method: "POST",
+      headers: authHeaders("orch-1", "tok-1"),
+      body: JSON.stringify({
+        questId: "q-9",
+        activePhaseIndex: 3,
+      }),
+    });
+
+    expect(pinRes.status).toBe(200);
+    expect(await pinRes.json()).toMatchObject({
+      board: [
+        {
+          questId: "q-9",
+          status: "EXECUTING",
+          journey: {
+            activePhaseIndex: 3,
+            currentPhaseId: "execute",
+          },
+        },
+      ],
+    });
+
+    // After the row is pinned, future phase notes, normal advance, and another explicit
+    // active-boundary move should no longer require removing and recreating the board row.
+    const noteRes = await app.request("/api/sessions/orch-1/board", {
+      method: "POST",
+      headers: authHeaders("orch-1", "tok-1"),
+      body: JSON.stringify({
+        questId: "q-9",
+        phaseNoteEdits: [{ index: 4, note: "Checkpoint before the follow-up diagnosis." }],
+      }),
+    });
+    expect(noteRes.status).toBe(200);
+
+    const advanceRes = await app.request("/api/sessions/orch-1/board/q-9/advance", {
+      method: "POST",
+      headers: authHeaders("orch-1", "tok-1"),
+    });
+    expect(advanceRes.status).toBe(200);
+    expect(await advanceRes.json()).toMatchObject({
+      previousState: "EXECUTING",
+      newState: "USER_CHECKPOINTING",
+      board: [
+        {
+          questId: "q-9",
+          status: "USER_CHECKPOINTING",
+          journey: {
+            activePhaseIndex: 4,
+            currentPhaseId: "user-checkpoint",
+            phaseNotes: {
+              "4": "Checkpoint before the follow-up diagnosis.",
+            },
+          },
+        },
+      ],
+    });
+
+    const moveRes = await app.request("/api/sessions/orch-1/board", {
+      method: "POST",
+      headers: authHeaders("orch-1", "tok-1"),
+      body: JSON.stringify({
+        questId: "q-9",
+        status: "EXPLORING",
+        activePhaseIndex: 5,
+        waitForInput: ["n-16"],
+      }),
+    });
+
+    expect(moveRes.status).toBe(200);
+    expect(await moveRes.json()).toMatchObject({
+      board: [
+        {
+          questId: "q-9",
+          status: "EXPLORING",
+          waitForInput: ["n-16"],
+          journey: {
+            activePhaseIndex: 5,
+            currentPhaseId: "explore",
+          },
+        },
+      ],
+    });
+  });
+
+  it("allows an explicit move from a legacy repeated phase to the next active occurrence", async () => {
+    setupTakodeSessions();
+    installLegacyRepeatedExecuteRow();
+
+    // This is the one-step recovery shape used when the leader already knows the
+    // newly active occurrence after a repeated phase.
+    const res = await app.request("/api/sessions/orch-1/board", {
+      method: "POST",
+      headers: authHeaders("orch-1", "tok-1"),
+      body: JSON.stringify({
+        questId: "q-9",
+        status: "USER_CHECKPOINTING",
+        activePhaseIndex: 4,
+        waitForInput: ["n-16"],
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      board: [
+        {
+          questId: "q-9",
+          status: "USER_CHECKPOINTING",
+          waitForInput: ["n-16"],
+          journey: {
+            activePhaseIndex: 4,
+            currentPhaseId: "user-checkpoint",
+          },
+        },
+      ],
     });
   });
 

@@ -519,6 +519,7 @@ export function registerTakodeBoardRoutes(api: Hono, deps: TakodeBoardRoutesDeps
         existingStatus: existingRow?.status,
         ...(typedPhaseIds ? { nextPhaseIds: typedPhaseIds } : {}),
         ...(phaseNoteEdits ? { phaseNoteEditIndices: phaseNoteEdits.map((edit) => edit.index) } : {}),
+        ...(explicitActivePhaseIndex !== null ? { nextActivePhaseIndex: explicitActivePhaseIndex } : {}),
       });
       if (historyError) return c.json({ error: historyError }, 400);
     }
