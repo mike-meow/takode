@@ -54,6 +54,9 @@ const DEFAULT_COMPACT_SORT_DIRECTIONS: Record<QuestmasterCompactSortColumn, Ques
   updated: "desc",
 };
 const COMPACT_TLDR_MAX_CHARS = 180;
+const COMPACT_QUEST_ID_CONTROL_COLUMNS: CSSProperties = {
+  gridTemplateColumns: "7.5ch 1.25rem",
+};
 
 type CompactSortContext = {
   sessionNumById: Map<string, number>;
@@ -517,10 +520,14 @@ function CompactQuestIdControls({ quest, searchText }: { quest: QuestmasterTask;
   }
 
   return (
-    <span className="inline-flex items-center gap-1.5">
+    <span
+      data-testid="quest-compact-id-controls"
+      className="inline-grid items-center gap-1.5"
+      style={COMPACT_QUEST_ID_CONTROL_COLUMNS}
+    >
       <a
         href={`#/questmaster?quest=${quest.questId}`}
-        className="font-mono-code text-blue-400 hover:text-blue-300 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-300/70 rounded-sm"
+        className="justify-self-start font-mono-code text-blue-400 hover:text-blue-300 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-300/70 rounded-sm"
         onClick={(event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -533,7 +540,7 @@ function CompactQuestIdControls({ quest, searchText }: { quest: QuestmasterTask;
       </a>
       <button
         type="button"
-        className={`inline-flex h-5 w-5 items-center justify-center rounded border border-transparent text-cc-muted transition-colors hover:border-cc-border hover:bg-cc-hover hover:text-cc-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cc-primary/70 ${
+        className={`inline-flex h-5 w-5 items-center justify-center justify-self-start rounded border border-transparent text-cc-muted transition-colors hover:border-cc-border hover:bg-cc-hover hover:text-cc-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cc-primary/70 ${
           copied ? "text-emerald-300" : ""
         }`}
         aria-label={`Copy quest ID ${quest.questId}`}

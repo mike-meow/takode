@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import type { QuestmasterTask } from "../types.js";
 import { CompactQuestTable } from "./QuestmasterCompactTable.js";
@@ -112,5 +112,64 @@ describe("CompactQuestTable", () => {
     expect(onOpenQuest).toHaveBeenCalledWith(quest);
     fireEvent.keyDown(row, { key: "Enter" });
     expect(onOpenQuest).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps copy controls in a stable compact quest-id mini-column", () => {
+    const shortQuest = buildQuest({ id: "q-769-v1", questId: "q-769", title: "Short quest id" });
+    const longQuest = buildQuest({ id: "q-1153-v1", questId: "q-1153", title: "Long quest id" });
+
+    render(
+      <CompactQuestTable
+        quests={[shortQuest, longQuest]}
+        onOpenQuest={vi.fn()}
+        searchText=""
+        journeyContextByQuestId={new Map()}
+        sort={{ column: "updated", direction: "desc" }}
+        sortSaving={false}
+        onSortChange={vi.fn()}
+      />,
+    );
+
+    // JSDOM cannot measure rendered x-positions, so this asserts the observable
+    // layout contract: every row uses the same fixed ID track before the icon.
+    const controls = screen.getAllByTestId("quest-compact-id-controls");
+    expect(controls).toHaveLength(2);
+    controls.forEach((control) => {
+      expect(control).toHaveClass("inline-grid");
+      expect(control).toHaveStyle({ gridTemplateColumns: "7.5ch 1.25rem" });
+    });
+
+    const [shortControl, longControl] = controls as [HTMLElement, HTMLElement];
+    expect(within(shortControl).getByRole("link", { name: "q-769" })).toHaveClass("justify-self-start");
+    expect(within(shortControl).getByRole("button", { name: "Copy quest ID q-769" })).toHaveClass("justify-self-start");
+    expect(within(longControl).getByRole("link", { name: "q-1153" })).toHaveClass("justify-self-start");
+    expect(within(longControl).getByRole("button", { name: "Copy quest ID q-1153" })).toHaveClass("justify-self-start");
+  });
+
+  it("copies the quest id without activating the compact row", async () => {
+    const quest = buildQuest();
+    const onOpenQuest = vi.fn();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+
+    render(
+      <CompactQuestTable
+        quests={[quest]}
+        onOpenQuest={onOpenQuest}
+        searchText=""
+        journeyContextByQuestId={new Map()}
+        sort={{ column: "updated", direction: "desc" }}
+        sortSaving={false}
+        onSortChange={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy quest ID q-100" }));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("q-100"));
+    expect(onOpenQuest).not.toHaveBeenCalled();
   });
 });
