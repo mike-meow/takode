@@ -81,4 +81,71 @@ describe("session git status routes", () => {
     });
     expect(deps.broadcastDiffTotals).not.toHaveBeenCalled();
   });
+
+  it("uses the cheap snapshot refresh path for automatic refresh requests", async () => {
+    const session = {
+      id: "s1",
+      state: {
+        cwd: "/repo",
+        git_branch: "feature",
+        git_default_branch: "main",
+        diff_base_branch: "main",
+        git_ahead: 1,
+        git_behind: 0,
+        is_worktree: true,
+        total_lines_added: 12,
+        total_lines_removed: 3,
+        git_status_refreshed_at: 1234,
+        git_status_refresh_error: null,
+      },
+      worktreeStateFingerprint: "",
+      backendSocket: null,
+      codexAdapter: null,
+      browserSockets: { size: 1 },
+      diffStatsDirty: false,
+    };
+    const refreshWorktreeGitStateForSnapshot = vi.fn(async () => {
+      session.state.git_status_refreshed_at = 4321;
+      return session.state;
+    });
+    const manualDeps = {
+      refreshGitInfo: vi.fn(),
+      broadcastSessionUpdate: vi.fn(),
+      broadcastDiffTotals: vi.fn(),
+      persistSession: vi.fn(),
+    };
+    const app = new Hono();
+    app.route(
+      "/api",
+      createSessionGitStatusRoutes({
+        resolveId: (id: string) => id,
+        wsBridge: {
+          getSession: vi.fn(() => session),
+          getSessionGitStateDeps: vi.fn(() => manualDeps),
+          refreshWorktreeGitStateForSnapshot,
+        },
+      } as any),
+    );
+
+    const res = await app.request("/api/sessions/s1/git-status/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ force: false }),
+    });
+    const body = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(refreshWorktreeGitStateForSnapshot).toHaveBeenCalledWith("s1", {
+      broadcastUpdate: true,
+      notifyPoller: true,
+    });
+    expect(manualDeps.refreshGitInfo).not.toHaveBeenCalled();
+    expect(body).toMatchObject({
+      ok: true,
+      gitAhead: 1,
+      totalLinesAdded: 12,
+      gitStatusRefreshedAt: 4321,
+      gitStatusRefreshError: null,
+    });
+  });
 });

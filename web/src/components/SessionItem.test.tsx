@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, fireEvent, screen, waitFor } from "@testing-library/react";
+import { render, fireEvent, screen } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { useState, type ComponentProps } from "react";
 import type { SidebarSessionItem as SessionItemType } from "../utils/sidebar-session-item.js";
@@ -24,25 +24,6 @@ vi.mock("../store.js", () => ({
 const mockNavigateToSession = vi.fn();
 vi.mock("../utils/routing.js", () => ({
   navigateToSession: (...args: unknown[]) => mockNavigateToSession(...args),
-}));
-
-const mockRefreshSessionGitStatus = vi.fn().mockResolvedValue({
-  ok: true,
-  gitBranch: "main",
-  gitDefaultBranch: "main",
-  diffBaseBranch: "main",
-  gitAhead: 0,
-  gitBehind: 0,
-  totalLinesAdded: 0,
-  totalLinesRemoved: 0,
-  gitStatusRefreshedAt: 123,
-  gitStatusRefreshError: null,
-});
-
-vi.mock("../api.js", () => ({
-  api: {
-    refreshSessionGitStatus: (...args: unknown[]) => mockRefreshSessionGitStatus(...args),
-  },
 }));
 
 import { SessionItem } from "./SessionItem.js";
@@ -158,22 +139,6 @@ const SAGE_THEME: HerdGroupBadgeTheme = {
   leaderBackground: "rgba(119, 191, 139, 0.16)",
   herdBackground: "rgba(119, 191, 139, 0.1)",
 };
-
-beforeEach(() => {
-  mockRefreshSessionGitStatus.mockClear();
-  mockRefreshSessionGitStatus.mockResolvedValue({
-    ok: true,
-    gitBranch: "main",
-    gitDefaultBranch: "main",
-    diffBaseBranch: "main",
-    gitAhead: 0,
-    gitBehind: 0,
-    totalLinesAdded: 0,
-    totalLinesRemoved: 0,
-    gitStatusRefreshedAt: 123,
-    gitStatusRefreshError: null,
-  });
-});
 
 describe("SessionItem swipe archive", () => {
   it("archives on right swipe in normal mode", () => {
@@ -526,25 +491,34 @@ describe("SessionItem status dot", () => {
 });
 
 describe("SessionItem git status refresh", () => {
-  it("shows a stale manual refresh control and calls the refresh API without selecting the session", async () => {
-    const onSelect = vi.fn();
+  it("does not render a dedicated manual git refresh button", () => {
     renderSessionItem({
       session: makeSession({
+        isWorktree: true,
         gitAhead: 3,
         linesAdded: 42,
         gitStatusRefreshedAt: Date.now() - 10 * 60_000,
       }),
-      onSelect,
     });
 
-    const refresh = screen.getByTestId("session-git-refresh");
-    expect(refresh).toHaveAttribute("data-stale", "true");
-    expect(refresh.getAttribute("title")).toContain("Last refreshed");
+    expect(screen.queryByTestId("session-git-refresh")).toBeNull();
+    expect(screen.getByTestId("session-git-divergence")).toHaveAttribute("data-stale", "true");
+    expect(screen.getByTestId("session-git-line-diff").getAttribute("title")).toContain("Last refreshed");
+  });
 
-    fireEvent.click(refresh);
+  it("surfaces git refresh failures as compact status metadata", () => {
+    renderSessionItem({
+      session: makeSession({
+        isWorktree: true,
+        linesAdded: 42,
+        gitStatusRefreshedAt: Date.now() - 10 * 60_000,
+        gitStatusRefreshError: "Unable to refresh diff stats",
+      }),
+    });
 
-    await waitFor(() => expect(mockRefreshSessionGitStatus).toHaveBeenCalledWith("s1"));
-    expect(onSelect).not.toHaveBeenCalled();
+    const error = screen.getByTestId("session-git-status-error");
+    expect(error).toHaveTextContent("!");
+    expect(error.getAttribute("title")).toContain("Unable to refresh diff stats");
   });
 });
 

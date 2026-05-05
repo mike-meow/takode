@@ -33,6 +33,7 @@ const mockApi = {
   herdWorkerToLeader: vi
     .fn()
     .mockResolvedValue({ herded: ["worker-1"], notFound: [], conflicts: [], reassigned: [], leaders: [] }),
+  refreshSessionGitStatus: vi.fn().mockResolvedValue({ ok: true }),
   getSettings: vi.fn().mockResolvedValue({ serverName: "" }),
   updateSettings: vi.fn().mockResolvedValue({}),
   getTreeGroups: vi
@@ -54,6 +55,7 @@ vi.mock("../api.js", () => ({
     updateTreeGroups: (...args: unknown[]) => mockApi.updateTreeGroups(...args),
     updateTreeNodeOrder: (...args: unknown[]) => mockApi.updateTreeNodeOrder(...args),
     herdWorkerToLeader: (...args: unknown[]) => mockApi.herdWorkerToLeader(...args),
+    refreshSessionGitStatus: (...args: unknown[]) => mockApi.refreshSessionGitStatus(...args),
     getSettings: (...args: unknown[]) => mockApi.getSettings(...args),
     updateSettings: (...args: unknown[]) => mockApi.updateSettings(...args),
     getTreeGroups: (...args: unknown[]) => mockApi.getTreeGroups(...args),
@@ -240,9 +242,12 @@ vi.mock("../store.js", () => {
 });
 
 import { Sidebar } from "./Sidebar.js";
+import { resetSessionGitStatusAutoRefreshForTest } from "../utils/session-git-status-auto-refresh.js";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resetSessionGitStatusAutoRefreshForTest();
+  mockApi.refreshSessionGitStatus.mockResolvedValue({ ok: true });
   vi.stubGlobal("alert", vi.fn());
   Element.prototype.scrollIntoView = mockScrollIntoView;
   mockState = createMockState();
@@ -394,6 +399,51 @@ describe("Sidebar herd tree behavior", { timeout: 10000 }, () => {
     const leaderAfter = screen.getByText("Leader First").closest("button")!;
     const workerAfter = screen.getByText("Worker First").closest("button")!;
     expect(leaderAfter.compareDocumentPosition(workerAfter) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("refreshes stale expanded worker git rows in the background", async () => {
+    const staleAt = Date.now() - 10 * 60_000;
+    mockState = createMockState({
+      sessions: new Map([
+        ["leader-refresh", makeSession("leader-refresh", { model: "leader-refresh-model", is_worktree: true })],
+        [
+          "worker-refresh",
+          makeSession("worker-refresh", {
+            model: "worker-refresh-model",
+            is_worktree: true,
+            git_branch: "worker-refresh",
+            git_ahead: 1,
+            total_lines_added: 12,
+            git_status_refreshed_at: staleAt,
+          }),
+        ],
+      ]),
+      sdkSessions: [
+        makeSdkSession("leader-refresh", {
+          isOrchestrator: true,
+          isWorktree: true,
+          sessionNum: 61,
+          createdAt: 100,
+        }),
+        makeSdkSession("worker-refresh", {
+          herdedBy: "leader-refresh",
+          isWorktree: true,
+          sessionNum: 62,
+          createdAt: 200,
+        }),
+      ],
+      sessionNames: new Map([
+        ["leader-refresh", "Leader Refresh"],
+        ["worker-refresh", "Worker Refresh"],
+      ]),
+      expandedHerdNodes: new Set(["leader-refresh"]),
+    });
+
+    render(<Sidebar />);
+
+    await waitFor(() => {
+      expect(mockApi.refreshSessionGitStatus).toHaveBeenCalledWith("worker-refresh", { force: false });
+    });
   });
 
   it("tree view keeps workers in their leader's assigned group across projects", () => {

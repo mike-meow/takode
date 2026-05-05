@@ -37,6 +37,7 @@ import { buildReviewerByParent } from "../utils/reviewer-by-parent.js";
 import { isDesktopShellLayout } from "../utils/layout.js";
 import { questOwnsSessionName } from "../utils/quest-helpers.js";
 import { requestThreadViewportSnapshot } from "../utils/thread-viewport.js";
+import { requestAutoSessionGitStatusRefreshes } from "../utils/session-git-status-auto-refresh.js";
 import {
   buildHerdGroupBadgeThemes,
   getHerdGroupLeaderId,
@@ -762,7 +763,15 @@ export function Sidebar() {
     }
   }, []);
 
-  const { allSessionList, activeSessions, activeReviewers, cronSessions, archivedSessions, treeViewGroups } = useMemo(
+  const {
+    allSessionList,
+    activeSessions,
+    activeReviewers,
+    cronSessions,
+    archivedSessions,
+    orderedVisibleSessionIds,
+    treeViewGroups,
+  } = useMemo(
     () =>
       buildSidebarVisibleSessions({
         sessions,
@@ -800,6 +809,14 @@ export function Sidebar() {
       sessionSortMode,
     ],
   );
+
+  useEffect(() => {
+    const sessionById = new Map(allSessionList.map((session) => [session.id, session] as const));
+    const visibleWorkerSessions = orderedVisibleSessionIds
+      .map((sessionId) => sessionById.get(sessionId))
+      .filter((session) => session && session.herdedBy && session.id !== currentSessionId);
+    requestAutoSessionGitStatusRefreshes(visibleWorkerSessions, { requireStale: true });
+  }, [allSessionList, currentSessionId, orderedVisibleSessionIds]);
 
   // Map: parentSessionNum -> reviewer SessionItem (for inline badge on parent row).
   // Includes archived reviewers so historical review trajectories stay inspectable

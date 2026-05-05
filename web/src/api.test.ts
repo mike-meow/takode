@@ -138,6 +138,32 @@ describe("refreshSessionGitStatus", () => {
     const [url, opts] = mockFetch.mock.calls[0];
     expect(url).toBe("/api/sessions/s%2F1/git-status/refresh");
     expect(opts.method).toBe("POST");
+    expect(opts.body).toBeUndefined();
+    expect(result).toEqual(responseData);
+  });
+
+  it("can request the cheap automatic refresh mode", async () => {
+    const responseData = {
+      ok: true,
+      gitBranch: "feature",
+      gitDefaultBranch: "main",
+      diffBaseBranch: "main",
+      gitAhead: 0,
+      gitBehind: 0,
+      totalLinesAdded: 0,
+      totalLinesRemoved: 0,
+      gitStatusRefreshedAt: 123,
+      gitStatusRefreshError: null,
+    };
+    mockFetch.mockResolvedValueOnce(mockResponse(responseData));
+
+    const result = await api.refreshSessionGitStatus("s1", { force: false });
+
+    expect(mockFetch).toHaveBeenCalledOnce();
+    const [url, opts] = mockFetch.mock.calls[0];
+    expect(url).toBe("/api/sessions/s1/git-status/refresh");
+    expect(opts.method).toBe("POST");
+    expect(JSON.parse(opts.body)).toEqual({ force: false });
     expect(result).toEqual(responseData);
   });
 });

@@ -1082,6 +1082,43 @@ describe("Diff stats computation", () => {
     expect(session.state.git_status_refresh_error).toBe("Unable to refresh diff stats");
   });
 
+  it("refreshWorktreeGitStateForSnapshot preserves stale totals when required diff recompute fails", async () => {
+    const worktreeCwd = join(tempDir, "wt");
+    const worktreeGitDir = join(tempDir, "repo.git", "worktrees", "wt-1");
+    mkdirSync(worktreeCwd, { recursive: true });
+    mkdirSync(worktreeGitDir, { recursive: true });
+    writeFileSync(join(worktreeCwd, ".git"), `gitdir: ${worktreeGitDir}\n`);
+    writeFileSync(join(worktreeGitDir, "HEAD"), "ref: refs/heads/jiayi-wt-1\n");
+    writeFileSync(join(worktreeGitDir, "index"), "index");
+
+    mockExecSync.mockImplementation((cmd: string) => {
+      if (cmd.includes("--abbrev-ref HEAD")) return "jiayi-wt-1\n";
+      if (cmd.includes("--git-dir")) return `${worktreeGitDir}\n`;
+      if (cmd.includes("--git-common-dir")) return `${join(tempDir, "repo.git")}\n`;
+      if (cmd.includes("rev-parse HEAD")) return "same-head-sha\n";
+      if (cmd.includes("--left-right --count")) return "0\t1\n";
+      if (cmd.includes("merge-base")) return "same-head-sha\n";
+      if (cmd.includes("diff --numstat")) throw new Error("diff timed out");
+      return "";
+    });
+
+    bridge.markWorktree("s1", join(tempDir, "repo"), worktreeCwd, "jiayi");
+    const session = bridge.getSession("s1")!;
+    session.state.cwd = worktreeCwd;
+    session.state.git_status_refreshed_at = 1234;
+    session.state.total_lines_added = 25;
+    session.state.total_lines_removed = 4;
+    session.diffStatsDirty = true;
+
+    await bridge.refreshWorktreeGitStateForSnapshot("s1", { broadcastUpdate: true });
+
+    expect(session.diffStatsDirty).toBe(true);
+    expect(session.state.total_lines_added).toBe(25);
+    expect(session.state.total_lines_removed).toBe(4);
+    expect(session.state.git_status_refreshed_at).toBe(1234);
+    expect(session.state.git_status_refresh_error).toBe("Unable to refresh diff stats");
+  });
+
   it("refreshWorktreeGitStateForSnapshot coalesces concurrent refreshes for the same session", async () => {
     const worktreeCwd = join(tempDir, "wt");
     const worktreeGitDir = join(tempDir, "repo.git", "worktrees", "wt-1");

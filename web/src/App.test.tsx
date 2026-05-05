@@ -162,12 +162,14 @@ const mockCheckHealth = vi.fn().mockResolvedValue(true);
 const mockMarkSessionRead = vi.fn().mockResolvedValue({ ok: true });
 const mockListSessions = vi.fn().mockResolvedValue([]);
 const mockSearchEverything = vi.fn().mockResolvedValue({ query: "", tookMs: 0, totalMatches: 0, results: [] });
+const mockRefreshSessionGitStatus = vi.fn().mockResolvedValue({ ok: true });
 
 vi.mock("./api.js", () => ({
   api: {
     markSessionRead: (...args: unknown[]) => mockMarkSessionRead(...args),
     listSessions: (...args: unknown[]) => mockListSessions(...args),
     searchEverything: (...args: unknown[]) => mockSearchEverything(...args),
+    refreshSessionGitStatus: (...args: unknown[]) => mockRefreshSessionGitStatus(...args),
   },
   checkHealth: (...args: unknown[]) => mockCheckHealth(...args),
 }));
@@ -258,10 +260,13 @@ vi.mock("./utils/vscode-bridge.js", () => ({
 }));
 
 import App from "./App.js";
+import { resetSessionGitStatusAutoRefreshForTest } from "./utils/session-git-status-auto-refresh.js";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resetSessionGitStatusAutoRefreshForTest();
   mockListSessions.mockResolvedValue([]);
+  mockRefreshSessionGitStatus.mockResolvedValue({ ok: true });
   resetStore();
   window.location.hash = "#/session/s1";
 });
@@ -403,6 +408,28 @@ describe("App hidden panels", () => {
     });
     expect(screen.getByTestId("chat-view")).toHaveAttribute("data-session-id", "s1");
     expect(mockConnectSession).not.toHaveBeenCalledWith("123");
+  });
+
+  it("starts a cheap git status refresh when switching to a worktree session", async () => {
+    resetStore({
+      currentSessionId: "s1",
+      sdkSessions: [
+        { sessionId: "s1", createdAt: 1, archived: false, cwd: "/repo/s1", backendType: "claude", isWorktree: true },
+        { sessionId: "s2", createdAt: 2, archived: false, cwd: "/repo/s2", backendType: "claude", isWorktree: true },
+      ],
+      sessions: new Map([
+        ["s1", { backend_type: "claude", is_worktree: true } as any],
+        ["s2", { backend_type: "claude", is_worktree: true } as any],
+      ]),
+    });
+    window.location.hash = "#/session/s2";
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(mockConnectSession).toHaveBeenCalledWith("s2");
+      expect(mockRefreshSessionGitStatus).toHaveBeenCalledWith("s2", { force: false });
+    });
   });
 
   it("does not show a fake session for an unresolved numeric message deep link", () => {

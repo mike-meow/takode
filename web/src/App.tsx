@@ -39,6 +39,7 @@ import { isDesktopShellLayout, isDesktopTaskPanelLayout } from "./utils/layout.j
 import { getLastSessionCreationContext } from "./utils/new-session-defaults.js";
 import { buildSidebarVisibleSessions } from "./utils/sidebar-visible-sessions.js";
 import { requestThreadViewportSnapshot } from "./utils/thread-viewport.js";
+import { requestAutoSessionGitStatusRefresh } from "./utils/session-git-status-auto-refresh.js";
 import {
   announceVsCodeReady,
   type VsCodeSelectionContextPayload,
@@ -368,6 +369,7 @@ export default function App() {
   const restoredIdRef = useRef(useStore.getState().currentSessionId);
   const connectedSessionIdRef = useRef<string | null>(null);
   const previewConnectedSessionIdRef = useRef<string | null>(null);
+  const selectedGitRefreshSessionIdRef = useRef<string | null>(null);
 
   // Sync hash → store. On mount, restore a localStorage session into the URL first.
   useEffect(() => {
@@ -417,6 +419,17 @@ export default function App() {
         api.markSessionRead?.(resolvedSessionId).catch(() => {});
         connectSession(resolvedSessionId);
         connectedSessionIdRef.current = resolvedSessionId;
+        if (selectedGitRefreshSessionIdRef.current !== resolvedSessionId) {
+          const sdkSession = store.sdkSessions.find((session) => session.sessionId === resolvedSessionId);
+          const bridgeSession = store.sessions.get(resolvedSessionId);
+          requestAutoSessionGitStatusRefresh({
+            id: resolvedSessionId,
+            archived: sdkSession?.archived,
+            isWorktree: bridgeSession?.is_worktree ?? sdkSession?.isWorktree ?? true,
+            gitStatusRefreshedAt: bridgeSession?.git_status_refreshed_at ?? sdkSession?.gitStatusRefreshedAt,
+          });
+          selectedGitRefreshSessionIdRef.current = resolvedSessionId;
+        }
       }
     } else if (route.page === "home") {
       const store = useStore.getState();

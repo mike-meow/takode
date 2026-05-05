@@ -1232,7 +1232,7 @@ export const api = {
       git_ahead: number;
       git_behind: number;
     }>("/git/pull", { cwd, sessionId }),
-  refreshSessionGitStatus: (sessionId: string) =>
+  refreshSessionGitStatus: (sessionId: string, options?: { force?: boolean }) =>
     post<{
       ok: boolean;
       gitBranch: string | null;
@@ -1245,7 +1245,7 @@ export const api = {
       gitStatusRefreshedAt: number | null;
       gitStatusRefreshError: string | null;
       error?: string | null;
-    }>(`/sessions/${encodeURIComponent(sessionId)}/git-status/refresh`),
+    }>(`/sessions/${encodeURIComponent(sessionId)}/git-status/refresh`, options),
 
   // Git worktrees
   listWorktrees: (repoRoot: string) =>

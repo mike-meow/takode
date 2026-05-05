@@ -1,6 +1,5 @@
 import { useRef, useCallback, useState, type RefObject } from "react";
 import type { SidebarSessionItem as SessionItemType } from "../utils/sidebar-session-item.js";
-import { api } from "../api.js";
 import { deriveSessionStatus, type SessionVisualStatus } from "./SessionStatusDot.js";
 import { useStore } from "../store.js";
 import { navigateToSession } from "../utils/routing.js";
@@ -22,7 +21,6 @@ type SearchMatchedField =
   | "user_message"
   | "assistant"
   | "compact_marker";
-type GitRefreshState = "idle" | "refreshing" | "error";
 
 export interface ArchiveConfirmationState {
   sessionId: string;
@@ -189,88 +187,14 @@ function ScheduledTimerStatusIcon({ timerCount }: { timerCount: number }) {
   );
 }
 
-function GitRefreshIcon({ refreshing }: { refreshing: boolean }) {
-  return (
-    <svg
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      className={`h-3 w-3 ${refreshing ? "animate-spin" : ""}`}
-    >
-      <path d="M13 5.2A5.5 5.5 0 004.2 3.1L3 4.3" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M3 1.5v2.8h2.8" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M3 10.8a5.5 5.5 0 008.8 2.1l1.2-1.2" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M13 14.5v-2.8h-2.8" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function SessionGitRefreshButton({ session: s }: { session: SessionItemType }) {
-  const [gitRefreshState, setGitRefreshState] = useState<GitRefreshState>("idle");
+function buildGitStatusTitle(s: SessionItemType): string {
   const gitStatusAge = formatGitStatusAge(s.gitStatusRefreshedAt);
-  const gitStatusStale = isGitStatusStale(s.gitStatusRefreshedAt);
-  const gitStatusRecent = !!s.gitStatusRefreshedAt && Date.now() - s.gitStatusRefreshedAt < 60_000;
-  const gitRefreshTitle = (() => {
-    if (gitRefreshState === "refreshing") return "Refreshing git stats";
-    if (gitRefreshState === "error" || s.gitStatusRefreshError) {
-      return s.gitStatusRefreshError || "Git stats refresh failed";
-    }
-    const base = s.gitBranch ? ` Branch: ${s.gitBranch}.` : "";
-    return `Refresh git stats. Last refreshed ${gitStatusAge}.${base}`;
-  })();
-  const refreshGitStatus = useCallback(() => {
-    setGitRefreshState("refreshing");
-    api
-      .refreshSessionGitStatus(s.id)
-      .then((result) => {
-        setGitRefreshState(result.gitStatusRefreshError ? "error" : "idle");
-      })
-      .catch((err) => {
-        console.warn("[sidebar] failed to refresh session git status:", err);
-        setGitRefreshState("error");
-      });
-  }, [s.id]);
-  const handleRefreshGitStatus = useCallback(
-    (event: React.MouseEvent | React.KeyboardEvent) => {
-      event.preventDefault();
-      event.stopPropagation();
-      refreshGitStatus();
-    },
-    [refreshGitStatus],
-  );
-
-  return (
-    <span
-      role="button"
-      tabIndex={0}
-      title={gitRefreshTitle}
-      aria-label={gitRefreshTitle}
-      data-testid="session-git-refresh"
-      data-refresh-state={gitRefreshState}
-      data-stale={gitStatusStale ? "true" : "false"}
-      onClick={handleRefreshGitStatus}
-      onMouseDown={(e) => e.stopPropagation()}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          handleRefreshGitStatus(e);
-        }
-      }}
-      className={`inline-flex h-4 w-4 shrink-0 items-center justify-center rounded text-[10px] transition-colors hover:bg-cc-hover hover:text-cc-fg ${
-        gitRefreshState === "refreshing"
-          ? "text-cc-primary"
-          : gitRefreshState === "error" || s.gitStatusRefreshError
-            ? "text-red-400"
-            : gitStatusRecent
-              ? "text-emerald-500"
-              : gitStatusStale
-                ? "text-amber-400/80"
-                : "text-cc-muted/45"
-      }`}
-    >
-      <GitRefreshIcon refreshing={gitRefreshState === "refreshing"} />
-    </span>
-  );
+  const branch = s.gitBranch ? ` Branch: ${s.gitBranch}.` : "";
+  if (s.gitStatusRefreshError) {
+    return `${s.gitStatusRefreshError}. Last successful refresh ${gitStatusAge}.${branch}`;
+  }
+  const freshness = isGitStatusStale(s.gitStatusRefreshedAt) ? "stale" : "fresh";
+  return `Git stats ${freshness}. Last refreshed ${gitStatusAge}.${branch}`;
 }
 
 interface SessionItemProps {
@@ -524,6 +448,8 @@ export function SessionItem({
   const hasBranchDivergence = s.gitAhead > 0 || s.gitBehind > 0;
   const hasLineDiff = s.linesAdded > 0 || s.linesRemoved > 0;
   const hasGitStatus = !!s.gitBranch || hasBranchDivergence || hasLineDiff || !!s.isWorktree;
+  const gitStatusTitle = hasGitStatus ? buildGitStatusTitle(s) : undefined;
+  const gitStatusStale = hasGitStatus ? isGitStatusStale(s.gitStatusRefreshedAt) : false;
   const showingSwipeBackdrop = canSwipeToArchive && Math.abs(swipeOffsetPx) > 0;
   const herdHighlightClass =
     herdHoverHighlight === "leader"
@@ -830,17 +756,19 @@ export function SessionItem({
                           : "bg-cc-primary/10 text-cc-primary"
                   }`}
                   title={
-                    archived && s.worktreeCleanupStatus === "pending"
-                      ? "Worktree cleanup is still running"
-                      : archived && s.worktreeCleanupStatus === "failed"
-                        ? s.worktreeCleanupError || "Worktree cleanup failed"
-                        : archived && s.worktreeExists !== undefined
-                          ? s.worktreeExists
-                            ? s.worktreeDirty
-                              ? "Worktree preserved (uncommitted changes)"
-                              : "Worktree preserved"
-                            : "Worktree deleted"
-                          : undefined
+                    !archived && gitStatusTitle
+                      ? gitStatusTitle
+                      : archived && s.worktreeCleanupStatus === "pending"
+                        ? "Worktree cleanup is still running"
+                        : archived && s.worktreeCleanupStatus === "failed"
+                          ? s.worktreeCleanupError || "Worktree cleanup failed"
+                          : archived && s.worktreeExists !== undefined
+                            ? s.worktreeExists
+                              ? s.worktreeDirty
+                                ? "Worktree preserved (uncommitted changes)"
+                                : "Worktree preserved"
+                              : "Worktree deleted"
+                            : undefined
                   }
                 >
                   wt
@@ -910,18 +838,36 @@ export function SessionItem({
                   );
                 })()}
               {hasBranchDivergence && (
-                <span className="flex items-center gap-0.5 text-[10px] shrink-0">
+                <span
+                  className="flex items-center gap-0.5 text-[10px] shrink-0"
+                  title={gitStatusTitle}
+                  data-testid="session-git-divergence"
+                  data-stale={gitStatusStale ? "true" : "false"}
+                >
                   {s.gitAhead > 0 && <span className="text-green-500">{s.gitAhead}&#8593;</span>}
                   {s.gitBehind > 0 && <span className="text-cc-warning">{s.gitBehind}&#8595;</span>}
                 </span>
               )}
               {hasLineDiff && (
-                <span className="flex items-center gap-0.5 text-[10px] shrink-0">
+                <span
+                  className="flex items-center gap-0.5 text-[10px] shrink-0"
+                  title={gitStatusTitle}
+                  data-testid="session-git-line-diff"
+                  data-stale={gitStatusStale ? "true" : "false"}
+                >
                   <span className="text-green-500">+{s.linesAdded}</span>
                   <span className="text-red-400">-{s.linesRemoved}</span>
                 </span>
               )}
-              {hasGitStatus && !archived && <SessionGitRefreshButton session={s} />}
+              {hasGitStatus && !archived && s.gitStatusRefreshError && (
+                <span
+                  title={gitStatusTitle}
+                  data-testid="session-git-status-error"
+                  className="text-[10px] font-semibold text-red-400 shrink-0"
+                >
+                  !
+                </span>
+              )}
             </div>
           )}
         </div>

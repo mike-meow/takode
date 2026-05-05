@@ -565,6 +565,7 @@ async function runWorktreeGitStateRefreshForSnapshot(
   const beforeAdded = session.state.total_lines_added;
   const beforeRemoved = session.state.total_lines_removed;
   const beforeAnchor = session.state.diff_base_start_sha;
+  const beforeRefreshedAt = session.state.git_status_refreshed_at;
   const fingerprintChanged = !currentFingerprint || !previousFingerprint || currentFingerprint !== previousFingerprint;
 
   await deps.refreshGitInfo(session, {
@@ -583,6 +584,10 @@ async function runWorktreeGitStateRefreshForSnapshot(
   const didRun = shouldRefreshDiff ? await computeDiffStatsAsync(session) : false;
   if (didRun) {
     session.diffStatsDirty = false;
+  } else if (shouldRefreshDiff && !session.state.git_status_refresh_error) {
+    session.diffStatsDirty = true;
+    session.state.git_status_refreshed_at = beforeRefreshedAt;
+    session.state.git_status_refresh_error = DIFF_STATS_REFRESH_FAILED_ERROR;
   }
   session.worktreeStateFingerprint = currentFingerprint || "";
 
@@ -591,13 +596,13 @@ async function runWorktreeGitStateRefreshForSnapshot(
   if (totalsChanged && options.broadcastUpdate) {
     deps.broadcastDiffTotals(session);
   }
-  if (staleRefresh && options.broadcastUpdate) {
+  if ((staleRefresh || (shouldRefreshDiff && !didRun)) && options.broadcastUpdate) {
     deps.broadcastSessionUpdate(session, {
       git_status_refreshed_at: session.state.git_status_refreshed_at,
       git_status_refresh_error: session.state.git_status_refresh_error ?? null,
     });
   }
-  if (totalsChanged || staleRefresh) {
+  if (totalsChanged || staleRefresh || (shouldRefreshDiff && !didRun)) {
     deps.persistSession(session);
   }
   return session.state;

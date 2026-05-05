@@ -15,11 +15,27 @@ export function createSessionGitStatusRoutes(ctx: RouteContext) {
     const deps = bridgeAny.getSessionGitStateDeps?.();
     if (!session || !deps) return c.json({ error: "Session not found" }, 404);
 
-    const refreshResult = await refreshGitInfoPublicController(session as any, deps, {
-      broadcastUpdate: true,
-      notifyPoller: true,
-      force: true,
-    });
+    const body = await c.req.json().catch(() => ({}));
+    const force =
+      typeof body === "object" && body !== null && "force" in body
+        ? (body as { force?: boolean }).force !== false
+        : true;
+
+    const refreshResult = force
+      ? await refreshGitInfoPublicController(session as any, deps, {
+          broadcastUpdate: true,
+          notifyPoller: true,
+          force: true,
+        })
+      : await wsBridge
+          .refreshWorktreeGitStateForSnapshot(id, {
+            broadcastUpdate: true,
+            notifyPoller: true,
+          })
+          .then((state) => ({
+            ok: !state?.git_status_refresh_error,
+            error: state?.git_status_refresh_error ?? null,
+          }));
 
     const state = wsBridge.getSession(id)?.state;
     return c.json({
