@@ -4,6 +4,7 @@ import * as sessionNames from "../session-names.js";
 import {
   searchEverything,
   type SearchEverythingCategory,
+  type SearchEverythingQuestDocument,
   type SearchEverythingSessionDocument,
 } from "../search-everything.js";
 import type { RouteContext } from "./context.js";
@@ -30,7 +31,8 @@ export function createSearchRoutes(ctx: RouteContext) {
     const includeReviewers = parseAffirmativeBoolean(c.req.query("includeReviewers"));
     const currentSessionId = normalizeNullableString(c.req.query("currentSessionId"));
 
-    const [quests, sessionDocs] = await Promise.all([questStore.listQuests(), buildSessionDocuments()]);
+    const questDocumentsPromise = categories.includes("quests") ? buildQuestDocuments() : Promise.resolve([]);
+    const [quests, sessionDocs] = await Promise.all([questDocumentsPromise, buildSessionDocuments()]);
     const output = searchEverything(quests, sessionDocs, {
       query: rawQuery,
       categories,
@@ -49,6 +51,19 @@ export function createSearchRoutes(ctx: RouteContext) {
   });
 
   return api;
+
+  async function buildQuestDocuments(): Promise<SearchEverythingQuestDocument[]> {
+    const quests = await questStore.listQuests();
+    return Promise.all(
+      quests.map(async (quest) => {
+        const historyView = await questStore.getQuestHistoryView(quest.questId);
+        return {
+          quest,
+          history: historyView.entries,
+        };
+      }),
+    );
+  }
 
   async function buildSessionDocuments(): Promise<SearchEverythingSessionDocument[]> {
     const sessions = launcher.listSessions();

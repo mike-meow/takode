@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { searchEverything, type SearchEverythingSessionDocument } from "./search-everything.js";
+import {
+  searchEverything,
+  type SearchEverythingQuestDocument,
+  type SearchEverythingSessionDocument,
+} from "./search-everything.js";
 import type { QuestmasterTask } from "./quest-types.js";
 
 function quest(overrides: Partial<QuestmasterTask> & { questId: string; title: string }): QuestmasterTask {
@@ -69,6 +73,30 @@ describe("searchEverything", () => {
     expect(result.childMatches.map((match) => match.type)).toEqual(["message", "message", "message"]);
   });
 
+  it("uses the best grouped message child as the session parent default route", () => {
+    const output = searchEverything(
+      [],
+      [
+        session({
+          sessionId: "s1",
+          sessionNum: 12,
+          name: "Auth worker",
+          messageHistory: [
+            { type: "user_message", content: "needle older thread note", timestamp: 100, id: "m1", threadKey: "q-1" },
+            { type: "user_message", content: "needle newest thread note", timestamp: 300, id: "m3", threadKey: "q-3" },
+          ],
+        }),
+      ],
+      { query: "needle", categories: ["messages"], childPreviewLimit: 3 },
+    );
+
+    expect(output.results).toHaveLength(1);
+    expect(output.results[0]).toMatchObject({
+      type: "session",
+      route: { kind: "message", sessionId: "s1", messageId: "m3", threadKey: "q-3" },
+    });
+  });
+
   it("groups quest feedback and debrief matches under one quest parent", () => {
     const output = searchEverything(
       [
@@ -103,6 +131,45 @@ describe("searchEverything", () => {
     expect(result.totalChildMatches).toBeGreaterThanOrEqual(3);
     expect(result.childMatches.some((match) => match.type === "quest_feedback")).toBe(true);
     expect(result.childMatches.some((match) => match.type === "quest_debrief")).toBe(true);
+  });
+
+  it("searches quest history content that is not present on the current quest record", () => {
+    const current = quest({
+      questId: "q-20",
+      title: "Search overlay",
+      version: 3,
+      id: "q-20-v3",
+      description: "Current implementation scope",
+    });
+    const doc: SearchEverythingQuestDocument = {
+      quest: current,
+      history: [
+        quest({
+          questId: "q-20",
+          title: "Old route investigation",
+          version: 1,
+          id: "q-20-v1",
+          description: "Legacy-only paprika detail lives in version history.",
+        }),
+        current,
+      ],
+    };
+
+    const output = searchEverything([doc], [], { query: "paprika", childPreviewLimit: 3 });
+
+    expect(output.results).toHaveLength(1);
+    expect(output.results[0]).toMatchObject({
+      id: "quest:q-20",
+      type: "quest",
+      route: { kind: "quest", questId: "q-20" },
+    });
+    expect(output.results[0]?.childMatches).toEqual([
+      expect.objectContaining({
+        type: "quest_history",
+        title: "History v1 description",
+        snippet: "Legacy-only paprika detail lives in version history.",
+      }),
+    ]);
   });
 
   it("uses child match count to boost a parent without flooding results", () => {

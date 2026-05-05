@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import "@testing-library/jest-dom";
 import { SearchEverythingOverlay } from "./SearchEverythingOverlay.js";
 import type { SearchEverythingResponse, SearchEverythingResult } from "../api.js";
+import { searchEverything } from "../../server/search-everything.js";
 
 const mocks = vi.hoisted(() => ({
   searchEverything: vi.fn(),
@@ -167,7 +168,7 @@ describe("SearchEverythingOverlay", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("routes quest and message results to existing deep-link helpers", async () => {
+  it("routes quest results and backend-produced grouped message results to existing deep-link helpers", async () => {
     const quest = result({
       id: "quest:q-42",
       type: "quest",
@@ -175,13 +176,24 @@ describe("SearchEverythingOverlay", () => {
       route: { kind: "quest", questId: "q-42" },
       meta: { questId: "q-42" },
     });
-    const message = result({
-      id: "session:s3",
-      title: "#33 Threaded session",
-      route: { kind: "message", sessionId: "s3", messageId: "m9", threadKey: "q-42" },
-      meta: { sessionId: "s3", sessionNum: 33 },
-    });
-    mocks.searchEverything.mockResolvedValue(response([quest, message]));
+    const groupedMessage = searchEverything(
+      [],
+      [
+        {
+          sessionId: "s3",
+          sessionNum: 33,
+          archived: false,
+          createdAt: 100,
+          name: "Threaded session",
+          messageHistory: [
+            { type: "user_message", id: "m1", content: "older threaded note", timestamp: 100, threadKey: "q-1" },
+            { type: "user_message", id: "m9", content: "threaded search target", timestamp: 300, threadKey: "q-42" },
+          ],
+        },
+      ],
+      { query: "threaded", categories: ["messages"], childPreviewLimit: 3 },
+    ).results[0] as SearchEverythingResult;
+    mocks.searchEverything.mockResolvedValue(response([quest]));
 
     const { unmount } = render(<SearchEverythingOverlay open currentSessionId="s1" onClose={() => undefined} />);
     await typeQuery("search");
@@ -191,8 +203,8 @@ describe("SearchEverythingOverlay", () => {
     unmount();
 
     render(<SearchEverythingOverlay open currentSessionId="s1" onClose={() => undefined} />);
+    mocks.searchEverything.mockResolvedValue(response([groupedMessage]));
     await typeQuery("threaded");
-    fireEvent.keyDown(screen.getByRole("dialog"), { key: "ArrowDown" });
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Enter" });
 
     expect(mocks.navigateToSessionMessageId).toHaveBeenCalledWith("s3", "m9", {

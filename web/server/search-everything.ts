@@ -11,6 +11,7 @@ export type SearchEverythingChildType =
   | "quest_field"
   | "quest_feedback"
   | "quest_debrief"
+  | "quest_history"
   | "session_field"
   | "message";
 
@@ -73,6 +74,13 @@ export interface SearchEverythingSessionDocument {
   searchExcerpts?: SearchExcerpt[];
 }
 
+export interface SearchEverythingQuestDocument {
+  quest: QuestmasterTask;
+  history?: QuestmasterTask[];
+}
+
+export type SearchEverythingQuestInput = QuestmasterTask | SearchEverythingQuestDocument;
+
 export interface SearchEverythingOptions {
   query: string;
   categories?: SearchEverythingCategory[];
@@ -106,7 +114,7 @@ const QUEST_RESULT_CAP = 30;
 const SESSION_RESULT_CAP = 30;
 
 export function searchEverything(
-  quests: QuestmasterTask[],
+  quests: SearchEverythingQuestInput[],
   sessions: SearchEverythingSessionDocument[],
   options: SearchEverythingOptions,
 ): SearchEverythingOutput {
@@ -151,13 +159,15 @@ export function searchEverything(
 }
 
 function searchQuestParents(
-  quests: QuestmasterTask[],
+  quests: SearchEverythingQuestInput[],
   matcher: QueryMatcher,
   childPreviewLimit: number,
 ): SearchEverythingResult[] {
   const results: SearchEverythingResult[] = [];
-  for (const quest of quests) {
-    const children = collectQuestMatches(quest, matcher);
+  for (const questInput of quests) {
+    const questDocument = normalizeQuestInput(questInput);
+    const quest = questDocument.quest;
+    const children = collectQuestMatches(questDocument, matcher);
     if (children.length === 0) continue;
 
     results.push(
@@ -269,12 +279,28 @@ function buildParentResult(input: {
     childMatches,
     totalChildMatches: sortedChildren.length,
     remainingChildMatches: Math.max(0, sortedChildren.length - childMatches.length),
-    route: input.route,
+    route: chooseParentRoute(input.type, input.route, sortedChildren),
     meta: input.meta,
   };
 }
 
-function collectQuestMatches(quest: QuestmasterTask, matcher: QueryMatcher): CandidateChildMatch[] {
+function chooseParentRoute(
+  type: SearchEverythingResultType,
+  parentRoute: SearchEverythingRoute,
+  sortedChildren: CandidateChildMatch[],
+): SearchEverythingRoute {
+  if (type !== "session") return parentRoute;
+  const childRoute = sortedChildren.find((child) => child.type === "message" && child.route?.kind === "message")?.route;
+  return childRoute ?? parentRoute;
+}
+
+function normalizeQuestInput(input: SearchEverythingQuestInput): SearchEverythingQuestDocument {
+  if ("quest" in input) return input;
+  return { quest: input };
+}
+
+function collectQuestMatches(document: SearchEverythingQuestDocument, matcher: QueryMatcher): CandidateChildMatch[] {
+  const quest = document.quest;
   const matches: CandidateChildMatch[] = [];
   const addField = (
     field: string,
@@ -314,7 +340,107 @@ function collectQuestMatches(quest: QuestmasterTask, matcher: QueryMatcher): Can
     const metadata = [entry.kind, entry.phaseId, entry.author].filter(Boolean).join(" ");
     addField(`feedback_${index}_metadata`, `${title} metadata`, metadata, 540, "quest_feedback");
   }
+
+  const history = dedupeQuestHistory(quest, document.history ?? []);
+  for (const [index, version] of history.entries()) {
+    const title = formatQuestHistoryTitle(version);
+    addHistoricalQuestField(quest, version, matcher, matches, {
+      field: `history_${index}_title`,
+      title: `${title} title`,
+      text: version.title,
+      parentScore: 690,
+    });
+    addHistoricalQuestField(quest, version, matcher, matches, {
+      field: `history_${index}_tldr`,
+      title: `${title} TLDR`,
+      text: version.tldr,
+      parentScore: 650,
+    });
+    addHistoricalQuestField(quest, version, matcher, matches, {
+      field: `history_${index}_description`,
+      title: `${title} description`,
+      text: "description" in version ? version.description : undefined,
+      parentScore: 620,
+    });
+    addHistoricalQuestField(quest, version, matcher, matches, {
+      field: `history_${index}_status`,
+      title: `${title} status`,
+      text: version.status,
+      parentScore: 560,
+    });
+    if (version.status === "done" && version.cancelled !== true) {
+      addHistoricalQuestField(quest, version, matcher, matches, {
+        field: `history_${index}_debrief_tldr`,
+        title: `${title} debrief TLDR`,
+        text: version.debriefTldr,
+        parentScore: 600,
+      });
+      addHistoricalQuestField(quest, version, matcher, matches, {
+        field: `history_${index}_debrief`,
+        title: `${title} debrief`,
+        text: version.debrief,
+        parentScore: 580,
+      });
+    }
+    for (const [feedbackIndex, entry] of (version.feedback ?? []).entries()) {
+      const feedbackTitle = `${title} ${formatQuestFeedbackTitle(entry, feedbackIndex)}`;
+      addHistoricalQuestField(quest, version, matcher, matches, {
+        field: `history_${index}_feedback_${feedbackIndex}_tldr`,
+        title: `${feedbackTitle} TLDR`,
+        text: entry.tldr,
+        parentScore: 570,
+      });
+      addHistoricalQuestField(quest, version, matcher, matches, {
+        field: `history_${index}_feedback_${feedbackIndex}_text`,
+        title: feedbackTitle,
+        text: entry.text,
+        parentScore: 550,
+      });
+      const metadata = [entry.kind, entry.phaseId, entry.author].filter(Boolean).join(" ");
+      addHistoricalQuestField(quest, version, matcher, matches, {
+        field: `history_${index}_feedback_${feedbackIndex}_metadata`,
+        title: `${feedbackTitle} metadata`,
+        text: metadata,
+        parentScore: 520,
+      });
+    }
+  }
   return matches;
+}
+
+function dedupeQuestHistory(currentQuest: QuestmasterTask, history: QuestmasterTask[]): QuestmasterTask[] {
+  const currentVersionKey = `${currentQuest.id}:${currentQuest.version}`;
+  return history.filter((entry) => {
+    if (entry.questId !== currentQuest.questId) return false;
+    if (`${entry.id}:${entry.version}` === currentVersionKey) return false;
+    return !(entry.id === currentQuest.id || entry.version === currentQuest.version);
+  });
+}
+
+function addHistoricalQuestField(
+  currentQuest: QuestmasterTask,
+  version: QuestmasterTask,
+  matcher: QueryMatcher,
+  matches: CandidateChildMatch[],
+  input: {
+    field: string;
+    title: string;
+    text: string | undefined;
+    parentScore: number;
+  },
+) {
+  if (!matcher.matches(input.text)) return;
+  matches.push({
+    id: `quest:${currentQuest.questId}:${input.field}`,
+    type: "quest_history",
+    title: input.title,
+    snippet: buildSnippet(input.text ?? "", matcher.words),
+    matchedField: input.field,
+    score: input.parentScore,
+    parentScore: input.parentScore,
+    timestamp: questRecencyTs(version),
+    route: { kind: "quest", questId: currentQuest.questId },
+  });
 }
 
 function collectSessionMetadataMatches(
@@ -589,6 +715,10 @@ function formatQuestFeedbackTitle(entry: QuestFeedbackEntry, index: number): str
   const label = entry.kind ? entry.kind.replace(/_/g, " ") : "comment";
   const phase = entry.phaseId ? `, ${entry.phaseId}` : "";
   return `Feedback ${index + 1} (${entry.author}, ${label}${phase})`;
+}
+
+function formatQuestHistoryTitle(version: QuestmasterTask): string {
+  return `History v${version.version}`;
 }
 
 function formatSessionTitle(session: SearchEverythingSessionDocument): string {

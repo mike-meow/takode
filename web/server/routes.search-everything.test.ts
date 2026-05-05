@@ -7,11 +7,13 @@ import type { QuestmasterTask } from "./quest-types.js";
 
 const mocks = vi.hoisted(() => ({
   listQuests: vi.fn(),
+  getQuestHistoryView: vi.fn(),
   getAllNames: vi.fn(),
 }));
 
 vi.mock("./quest-store.js", () => ({
   listQuests: () => mocks.listQuests(),
+  getQuestHistoryView: (questId: string) => mocks.getQuestHistoryView(questId),
 }));
 
 vi.mock("./session-names.js", () => ({
@@ -58,6 +60,8 @@ function createApp({
 describe("GET /api/search", () => {
   beforeEach(() => {
     mocks.listQuests.mockReset();
+    mocks.getQuestHistoryView.mockReset();
+    mocks.getQuestHistoryView.mockResolvedValue({ mode: "live", entries: [] });
     mocks.getAllNames.mockReset();
     mocks.getAllNames.mockReturnValue({});
   });
@@ -112,6 +116,52 @@ describe("GET /api/search", () => {
 
     const questResult = body.results.find((result) => result.id === "quest:q-1");
     expect(questResult?.childMatches.some((match) => match.type === "quest_feedback")).toBe(true);
+  });
+
+  it("searches quest history versions through the route", async () => {
+    mocks.listQuests.mockResolvedValue([
+      quest({
+        questId: "q-3",
+        title: "Current quest title",
+        version: 3,
+        id: "q-3-v3",
+        description: "Current text has no legacy marker.",
+      }),
+    ]);
+    mocks.getQuestHistoryView.mockResolvedValue({
+      mode: "live",
+      entries: [
+        quest({
+          questId: "q-3",
+          title: "First version",
+          version: 1,
+          id: "q-3-v1",
+          description: "Version history contains turmeric-only evidence.",
+        }),
+        quest({
+          questId: "q-3",
+          title: "Current quest title",
+          version: 3,
+          id: "q-3-v3",
+          description: "Current text has no legacy marker.",
+        }),
+      ],
+    });
+
+    const app = createApp({ sessions: [], bridgeSessions: {} });
+    const res = await app.request("/api/search?q=turmeric", { method: "GET" });
+    const body = (await res.json()) as { results: SearchEverythingResult[] };
+
+    expect(res.status).toBe(200);
+    expect(mocks.getQuestHistoryView).toHaveBeenCalledWith("q-3");
+    expect(body.results).toHaveLength(1);
+    expect(body.results[0]).toMatchObject({ id: "quest:q-3", route: { kind: "quest", questId: "q-3" } });
+    expect(body.results[0]?.childMatches).toEqual([
+      expect.objectContaining({
+        type: "quest_history",
+        snippet: "Version history contains turmeric-only evidence.",
+      }),
+    ]);
   });
 
   it("applies category, archived-session, and child preview route parameters", async () => {

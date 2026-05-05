@@ -291,6 +291,7 @@ export type SearchEverythingChildType =
   | "quest_field"
   | "quest_feedback"
   | "quest_debrief"
+  | "quest_history"
   | "session_field"
   | "message";
 
