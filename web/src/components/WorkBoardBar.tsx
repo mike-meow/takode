@@ -18,7 +18,7 @@ import {
   type DraggableAttributes,
 } from "@dnd-kit/core";
 import { SortableContext, horizontalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+import { CSS, type Transform } from "@dnd-kit/utilities";
 import { useStore } from "../store.js";
 import {
   getQuestJourneyCurrentPhaseId,
@@ -93,6 +93,11 @@ export function reorderThreadTabsAfterDrag(
   const newIndex = keys.indexOf(overKey);
   if (oldIndex < 0 || newIndex < 0) return keys;
   return arrayMove(keys, oldIndex, newIndex);
+}
+
+export function constrainThreadTabTransformToHorizontal(transform: Transform | null): Transform | null {
+  if (!transform || transform.y === 0) return transform;
+  return { ...transform, y: 0 };
 }
 
 function stringArraysEqual(left: ReadonlyArray<string>, right: ReadonlyArray<string>): boolean {
@@ -334,7 +339,7 @@ function SortableThreadTabContainer({
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: tab.threadKey });
   const style: CSSProperties = {
-    transform: CSS.Transform.toString(transform),
+    transform: CSS.Transform.toString(constrainThreadTabTransformToHorizontal(transform)),
     transition,
     ...(isDragging ? { opacity: 0.78, zIndex: 30 } : {}),
   };

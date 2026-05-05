@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, fireEvent, within, waitFor } from "@testing-library/react";
 import "@testing-library/jest-dom";
-import { boardSummary, reorderThreadTabsAfterDrag } from "./WorkBoardBar.js";
+import { boardSummary, constrainThreadTabTransformToHorizontal, reorderThreadTabsAfterDrag } from "./WorkBoardBar.js";
 import type { BoardRowData } from "./BoardTable.js";
 import { scopedKey } from "../utils/scoped-storage.js";
 import { getQuestJourneyPhaseForState } from "../../shared/quest-journey.js";
@@ -115,6 +115,27 @@ describe("reorderThreadTabsAfterDrag", () => {
     expect(reorderThreadTabsAfterDrag(["q-1", "q-2", "q-3"], "q-3", "q-1")).toEqual(["q-3", "q-1", "q-2"]);
     expect(reorderThreadTabsAfterDrag(["q-1", "q-2"], "main", "q-2")).toEqual(["q-1", "q-2"]);
     expect(reorderThreadTabsAfterDrag(["q-1", "q-2"], "q-1", "q-missing")).toEqual(["q-1", "q-2"]);
+  });
+});
+
+describe("constrainThreadTabTransformToHorizontal", () => {
+  it("keeps sortable thread tab movement on the horizontal rail", () => {
+    const transform = { x: 42, y: 18, scaleX: 1, scaleY: 0.96 };
+
+    expect(constrainThreadTabTransformToHorizontal(transform)).toEqual({
+      x: 42,
+      y: 0,
+      scaleX: 1,
+      scaleY: 0.96,
+    });
+    expect(transform.y).toBe(18);
+  });
+
+  it("preserves empty and already-horizontal transforms", () => {
+    const transform = { x: -24, y: 0, scaleX: 1, scaleY: 1 };
+
+    expect(constrainThreadTabTransformToHorizontal(null)).toBeNull();
+    expect(constrainThreadTabTransformToHorizontal(transform)).toBe(transform);
   });
 });
 
