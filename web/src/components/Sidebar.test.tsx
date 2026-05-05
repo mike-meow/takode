@@ -1021,6 +1021,40 @@ describe("Sidebar", { timeout: 10000 }, () => {
     expect(input.tagName).toBe("INPUT");
   });
 
+  it("does not steal focus back to the composer after double-click rename starts", async () => {
+    const session = makeSession("s1");
+    const sdk = makeSdkSession("s1");
+    const animationFrameCallbacks: FrameRequestCallback[] = [];
+    const requestAnimationFrameMock = vi.fn((callback: FrameRequestCallback) => {
+      animationFrameCallbacks.push(callback);
+      return animationFrameCallbacks.length;
+    });
+    const originalRequestAnimationFrame = globalThis.requestAnimationFrame;
+    vi.stubGlobal("requestAnimationFrame", requestAnimationFrameMock);
+    mockState = createMockState({
+      sessions: new Map([["s1", session]]),
+      sdkSessions: [sdk],
+    });
+
+    try {
+      render(<Sidebar />);
+      const sessionButton = screen.getByText("claude-sonnet-4-5-20250929").closest("button")!;
+      fireEvent.click(sessionButton);
+      fireEvent.doubleClick(sessionButton);
+
+      await screen.findByDisplayValue("claude-sonnet-4-5-20250929");
+      expect(animationFrameCallbacks.length).toBeGreaterThan(0);
+      mockState.focusComposer.mockClear();
+      while (animationFrameCallbacks.length > 0) {
+        animationFrameCallbacks.shift()?.(performance.now());
+      }
+
+      expect(mockState.focusComposer).not.toHaveBeenCalled();
+    } finally {
+      vi.stubGlobal("requestAnimationFrame", originalRequestAnimationFrame);
+    }
+  });
+
   it("archive button exists in the DOM for session items", () => {
     const session = makeSession("s1");
     const sdk = makeSdkSession("s1");

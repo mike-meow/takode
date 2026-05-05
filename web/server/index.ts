@@ -597,6 +597,11 @@ wsBridge.onUserMessage = async (sessionId, history, cwd, wasGenerating) => {
   if (!getSettings().autoNamerEnabled) return;
   // Suppress auto-namer for sessions with noAutoName flag (e.g. temporary reviewer sessions)
   if (launcher.getSession(sessionId)?.noAutoName) return;
+  // Suppress auto-namer for sessions manually renamed by the user
+  if (sessionNames.isUserNamed(sessionId)) {
+    console.log(`[session-namer] Skipping auto-namer for ${sessionId} (manually renamed by user)`);
+    return;
+  }
   // Suppress auto-namer while a quest owns the session name
   if (await isQuestOwningSessionName(sessionId)) {
     console.log(`[session-namer] Skipping user-message namer for ${sessionId} (quest owns session name)`);

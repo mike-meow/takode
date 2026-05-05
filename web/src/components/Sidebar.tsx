@@ -148,6 +148,7 @@ export function Sidebar() {
   const [hoveredSession, setHoveredSession] = useState<{ sessionId: string; rect: DOMRect } | null>(null);
   const [hash, setHash] = useState(() => (typeof window !== "undefined" ? window.location.hash : ""));
   const editInputRef = useRef<HTMLInputElement>(null);
+  const editingSessionIdRef = useRef<string | null>(null);
   const [editingServerName, setEditingServerName] = useState(false);
   const [serverNameDraft, setServerNameDraft] = useState("");
   const serverNameInputRef = useRef<HTMLInputElement>(null);
@@ -452,6 +453,9 @@ export function Sidebar() {
     navigateToSession(sessionId);
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
+        // Skip focus-steal if user double-clicked to rename -- the rename input
+        // needs to keep focus; stealing it would blur, confirm, and exit.
+        if (editingSessionIdRef.current != null) return;
         useStore.getState().focusComposer();
       });
     });
@@ -576,16 +580,19 @@ export function Sidebar() {
       api.renameSession(editingSessionId, editingName.trim()).catch(() => {});
     }
     setEditingSessionId(null);
+    editingSessionIdRef.current = null;
     setEditingName("");
   }
 
   function cancelRename() {
     setEditingSessionId(null);
+    editingSessionIdRef.current = null;
     setEditingName("");
   }
 
   function handleStartRename(id: string, currentName: string) {
     setEditingSessionId(id);
+    editingSessionIdRef.current = id;
     setEditingName(currentName);
   }
 

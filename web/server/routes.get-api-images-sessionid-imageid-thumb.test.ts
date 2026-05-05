@@ -552,7 +552,10 @@ async function parseSSE(res: Response): Promise<{ event: string; data: string }[
   return events;
 }
 
-describe("GET /api/images/:sessionId/:imageId/thumb", () => {
+// The image thumb route uses Bun.file() internally, so these tests only work on Bun.
+const describeBun = typeof globalThis.Bun !== "undefined" ? describe : describe.skip;
+
+describeBun("GET /api/images/:sessionId/:imageId/thumb", () => {
   it("serves the real thumbnail with immutable caching when it exists", async () => {
     const tempRoot = await mkdtemp(join(tmpdir(), "routes-thumb-"));
     const thumbPath = join(tempRoot, "thumb.jpeg");

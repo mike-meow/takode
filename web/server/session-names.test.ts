@@ -8,6 +8,9 @@ import {
   getAllNames,
   removeName,
   getNextLeaderNumber,
+  setUserNamed,
+  isUserNamed,
+  clearUserNamed,
   _resetForTest,
   _flushForTest,
 } from "./session-names.js";
@@ -39,7 +42,7 @@ describe("session-names", () => {
     await _flushForTest();
     const raw = readFileSync(join(tempDir, "session-names.json"), "utf-8");
     const data = JSON.parse(raw);
-    expect(data).toEqual({ names: { s1: "My Session" }, leaderCounter: 0 });
+    expect(data).toEqual({ names: { s1: "My Session" }, leaderCounter: 0, userNamed: [] });
   });
 
   it("getAllNames returns a copy of all names", () => {
@@ -52,13 +55,16 @@ describe("session-names", () => {
     expect(getName("s3")).toBeUndefined();
   });
 
-  it("removeName deletes a name", async () => {
+  it("removeName deletes a name and clears userNamed flag", async () => {
     setName("s1", "Session One");
+    setUserNamed("s1");
+    expect(isUserNamed("s1")).toBe(true);
     removeName("s1");
     expect(getName("s1")).toBeUndefined();
+    expect(isUserNamed("s1")).toBe(false);
     await _flushForTest();
     const raw = readFileSync(join(tempDir, "session-names.json"), "utf-8");
-    expect(JSON.parse(raw)).toEqual({ names: {}, leaderCounter: 0 });
+    expect(JSON.parse(raw)).toEqual({ names: {}, leaderCounter: 0, userNamed: [] });
   });
 
   it("overwrites existing name", () => {
@@ -113,7 +119,7 @@ describe("leader counter", () => {
 
     const raw = readFileSync(join(tempDir, "session-names.json"), "utf-8");
     const data = JSON.parse(raw);
-    expect(data).toEqual({ names: { s1: "Worker 1" }, leaderCounter: 1 });
+    expect(data).toEqual({ names: { s1: "Worker 1" }, leaderCounter: 1, userNamed: [] });
   });
 
   it("loads counter from old-format file as 0 (backwards compat)", () => {
@@ -123,5 +129,46 @@ describe("leader counter", () => {
     expect(getName("existing")).toBe("Old Session");
     // Counter should start from 1 since it was 0 in old format
     expect(getNextLeaderNumber()).toBe(1);
+  });
+});
+
+describe("userNamed flag", () => {
+  it("isUserNamed returns false by default", () => {
+    expect(isUserNamed("s1")).toBe(false);
+  });
+
+  it("setUserNamed + isUserNamed round-trip", () => {
+    setUserNamed("s1");
+    expect(isUserNamed("s1")).toBe(true);
+    expect(isUserNamed("s2")).toBe(false);
+  });
+
+  it("clearUserNamed removes the flag", () => {
+    setUserNamed("s1");
+    clearUserNamed("s1");
+    expect(isUserNamed("s1")).toBe(false);
+  });
+
+  it("persists userNamed to disk and survives restart", async () => {
+    setUserNamed("s1");
+    setUserNamed("s2");
+    await _flushForTest();
+
+    const raw = readFileSync(join(tempDir, "session-names.json"), "utf-8");
+    const data = JSON.parse(raw);
+    expect(data.userNamed).toEqual(expect.arrayContaining(["s1", "s2"]));
+
+    // Simulate restart
+    _resetForTest(join(tempDir, "session-names.json"));
+    expect(isUserNamed("s1")).toBe(true);
+    expect(isUserNamed("s2")).toBe(true);
+  });
+
+  it("backwards-compatible: loads file without userNamed field", () => {
+    // Old format without userNamed
+    writeFileSync(join(tempDir, "session-names.json"), JSON.stringify({ names: { s1: "Test" }, leaderCounter: 1 }));
+    _resetForTest(join(tempDir, "session-names.json"));
+    expect(isUserNamed("s1")).toBe(false);
+    expect(getName("s1")).toBe("Test");
   });
 });
