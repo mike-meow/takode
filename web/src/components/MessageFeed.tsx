@@ -24,7 +24,6 @@ import {
   type FeedViewportPosition,
   getFeedViewportKey,
   persistLeaderViewportPosition,
-  readLeaderViewportPosition,
 } from "../utils/thread-viewport.js";
 import {
   CodexTerminalInspector,
@@ -79,6 +78,11 @@ import { collectAnchoredNotificationMessageIds } from "../utils/anchored-notific
 import { getCachedHistoryWindowHash, getCachedThreadWindowHash } from "../utils/history-window-cache.js";
 import { buildFeedMessageModel, buildFeedWindowModel } from "../utils/feed-render-model.js";
 import {
+  hasMissingSelectedThreadWindowContext,
+  shouldShowSelectedThreadWindowLoading,
+} from "./message-feed-selected-window.js";
+import { getSavedViewportRestoreKey, readSavedViewportPosition } from "./message-feed-viewport-state.js";
+import {
   isUserBoundaryEntry,
   useFeedModel,
   type FeedEntry,
@@ -122,35 +126,6 @@ interface FeedViewportAnchor {
   messageId: string | null;
   turnId: string | null;
   offsetTop: number;
-}
-
-function getSavedViewportRestoreKey(viewportKey: string, pos: FeedViewportPosition | null): string {
-  if (!pos) return `${viewportKey}:latest`;
-  return [
-    viewportKey,
-    pos.isAtBottom ? "bottom" : "position",
-    pos.scrollTop,
-    pos.scrollHeight,
-    pos.anchorTurnId ?? "",
-    pos.anchorOffsetTop ?? "",
-    pos.lastSeenContentBottom ?? "",
-  ].join(":");
-}
-
-function readSavedViewportPosition({
-  sessionId,
-  viewportKey,
-  normalizedThreadKey,
-  isLeaderSession,
-}: {
-  sessionId: string;
-  viewportKey: string;
-  normalizedThreadKey: string;
-  isLeaderSession: boolean;
-}): FeedViewportPosition | null {
-  const memoryPosition = useStore.getState().feedScrollPosition.get(viewportKey) ?? null;
-  if (!isLeaderSession) return memoryPosition;
-  return readLeaderViewportPosition(sessionId, normalizedThreadKey) ?? memoryPosition;
 }
 
 // ─── Main Feed ───────────────────────────────────────────────────────────────
@@ -203,6 +178,7 @@ export function MessageFeed({
     (s) => s.threadWindowMessages?.get(sessionId)?.get(normalizedThreadKey) ?? EMPTY_MESSAGES,
   );
   const [pendingInitialThreadWindowKey, setPendingInitialThreadWindowKey] = useState<string | null>(null);
+  const connectionStatus = useStore((s) => s.connectionStatus?.get(sessionId) ?? "disconnected");
   const sessionNotifications = useStore((s) => s.sessionNotifications?.get(sessionId));
   const sessionAttentionRecords = useStore((s) => s.sessionAttentionRecords?.get(sessionId));
   const sessionBoard = useStore((s) => s.sessionBoards?.get(sessionId));
@@ -611,14 +587,15 @@ export function MessageFeed({
   const isLoadingOlderSection = pendingSectionLoadDirection === "older";
   const isLoadingNewerSection = pendingSectionLoadDirection === "newer";
   const latestPillLabel = hasNewerSections ? "Latest section below" : "New content below";
-  const missingSelectedWindowHasContext =
-    selectedFeedWindowEnabled &&
-    !activeThreadWindow &&
-    (historyLoading ||
-      allMessages.length > 0 ||
-      frozenCount > 0 ||
-      (historyWindow?.total_turns ?? 0) > 0 ||
-      (leaderProjection?.sourceHistoryLength ?? 0) > 0);
+  const missingSelectedWindowHasContext = hasMissingSelectedThreadWindowContext({
+    selectedFeedWindowEnabled,
+    hasActiveThreadWindow: Boolean(activeThreadWindow),
+    historyLoading,
+    messageCount: allMessages.length,
+    frozenCount,
+    historyWindowTotalTurns: historyWindow?.total_turns ?? 0,
+    leaderProjectionSourceHistoryLength: leaderProjection?.sourceHistoryLength ?? 0,
+  });
   const { turnStates, toggleTurn } = useCollapsePolicy({
     sessionId,
     turns: visibleTurns,
@@ -671,7 +648,13 @@ export function MessageFeed({
     if (!selectedFeedWindowEnabled) return;
     if (activeThreadWindow) return;
     requestThreadWindow(-1);
-  }, [activeThreadWindow, missingSelectedWindowHasContext, requestThreadWindow, selectedFeedWindowEnabled]);
+  }, [
+    activeThreadWindow,
+    connectionStatus,
+    missingSelectedWindowHasContext,
+    requestThreadWindow,
+    selectedFeedWindowEnabled,
+  ]);
 
   useEffect(() => {
     if (selectedFeedWindowEnabled && !activeThreadWindow) return;
@@ -1774,14 +1757,17 @@ export function MessageFeed({
 
   // ─── Render ──────────────────────────────────────────────────────────────
 
-  const showSelectedWindowLoading =
-    messages.length === 0 &&
-    pendingUserUploads.length === 0 &&
-    pendingCodexInputs.length === 0 &&
-    !streamingText &&
-    selectedFeedWindowEnabled &&
-    !activeThreadWindow &&
-    (missingSelectedWindowHasContext || pendingInitialThreadWindowKey === normalizedThreadKey);
+  const showSelectedWindowLoading = shouldShowSelectedThreadWindowLoading({
+    messageCount: messages.length,
+    pendingUserUploadCount: pendingUserUploads.length,
+    pendingCodexInputCount: pendingCodexInputs.length,
+    hasStreamingText: Boolean(streamingText),
+    selectedFeedWindowEnabled,
+    hasActiveThreadWindow: Boolean(activeThreadWindow),
+    missingSelectedWindowHasContext,
+    pendingInitialThreadWindowKey,
+    normalizedThreadKey,
+  });
 
   if (showConversationLoading || showSelectedWindowLoading) {
     return (

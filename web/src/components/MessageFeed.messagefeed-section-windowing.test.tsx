@@ -77,6 +77,7 @@ vi.mock("../store.js", () => {
       streamingOutputTokens: mockStoreValues.streamingOutputTokens ?? new Map(),
       streamingPausedDuration: mockStoreValues.streamingPausedDuration ?? new Map(),
       streamingPauseStartedAt: mockStoreValues.streamingPauseStartedAt ?? new Map(),
+      connectionStatus: mockStoreValues.connectionStatus ?? new Map(),
       sessionStatus: mockStoreValues.sessionStatus ?? new Map(),
       sessionStuck: mockStoreValues.sessionStuck ?? new Map(),
       sessions: mockStoreValues.sessions ?? new Map(),
@@ -270,6 +271,10 @@ function setStoreHistoryLoading(sessionId: string, loading: boolean) {
   mockStoreValues.historyLoading = map;
 }
 
+function setStoreConnectionStatus(sessionId: string, status: "connecting" | "connected" | "disconnected") {
+  mockStoreValues.connectionStatus = new Map([[sessionId, status]]);
+}
+
 function setStoreHistoryWindow(sessionId: string) {
   mockStoreValues.historyWindows = new Map([
     [
@@ -431,6 +436,7 @@ function resetStore() {
   mockStoreValues.streamingOutputTokens = new Map();
   mockStoreValues.streamingPausedDuration = new Map();
   mockStoreValues.streamingPauseStartedAt = new Map();
+  mockStoreValues.connectionStatus = new Map();
   mockStoreValues.sessionStatus = new Map();
   mockStoreValues.sessions = new Map();
   mockStoreValues.threadWindows = new Map();
@@ -837,6 +843,43 @@ describe("MessageFeed section windowing", () => {
 
     expect(screen.getByText("Persisted Main history tail")).toBeTruthy();
     expect(screen.queryByText("Start a conversation")).toBeNull();
+  });
+
+  it("retries the selected Main window request after the browser socket connects", async () => {
+    const sid = "test-leader-main-selected-window-connect-retry";
+    const mainTail = makeMessage({
+      id: "u-main-connect-retry",
+      role: "user",
+      content: "Persisted Main history waiting on socket",
+      timestamp: 100,
+      historyIndex: 42,
+    });
+    setStoreSessionState(sid, { isOrchestrator: true });
+    setStoreMessages(sid, [mainTail]);
+    setStoreHistoryWindow(sid);
+    setStoreConnectionStatus(sid, "connecting");
+    mockSendToSession.mockReturnValueOnce(false).mockReturnValue(true);
+
+    const { rerender } = render(<MessageFeed sessionId={sid} threadKey="main" sectionTurnCount={5} />);
+
+    await flushFeedObservers();
+    expect(mockSendToSession).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("Start a conversation")).toBeNull();
+    expect(screen.getByText("Loading conversation...")).toBeTruthy();
+
+    setStoreConnectionStatus(sid, "connected");
+    rerender(<MessageFeed sessionId={sid} threadKey="main" sectionTurnCount={5} />);
+
+    await flushFeedObservers();
+    expect(mockSendToSession).toHaveBeenCalledTimes(2);
+    expect(mockSendToSession).toHaveBeenLastCalledWith(
+      sid,
+      expect.objectContaining({
+        type: "thread_window_request",
+        thread_key: "main",
+        from_item: -1,
+      }),
+    );
   });
 
   it("requests the Main selected window when returning from a quest tab", async () => {
