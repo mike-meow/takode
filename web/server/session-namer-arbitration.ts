@@ -1,4 +1,6 @@
-export type NamerTriggerSource = "user_message" | "turn_completed" | "agent_paused";
+export const NAMER_TRIGGER_SOURCES = ["user_message", "turn_completed", "agent_paused"] as const;
+
+export type NamerTriggerSource = (typeof NAMER_TRIGGER_SOURCES)[number];
 
 export interface NamerMutationRecord {
   source: NamerTriggerSource;

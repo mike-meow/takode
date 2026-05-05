@@ -64,10 +64,12 @@ import { recreateWorktreeIfMissing } from "./migration.js";
 import { access } from "node:fs/promises";
 import { RelaunchQueue } from "./relaunch-queue.js";
 import {
+  NAMER_TRIGGER_SOURCES,
   shouldAllowUserMessageOverrideOnNameMismatch,
   type NamerMutationRecord,
   type NamerTriggerSource,
 } from "./session-namer-arbitration.js";
+import { formatAutoNamerSkipReason, getAutoNamerSkipReason } from "./session-namer-guard.js";
 import type { SocketData } from "./ws-bridge.js";
 import type { ServerWebSocket } from "bun";
 
@@ -401,7 +403,7 @@ function endNamerCall(sessionId: string, source: NamerTriggerSource, controller:
 
 /** Cancel ALL in-flight namer calls for a session (all trigger sources). */
 function cancelAllNamersForSession(sessionId: string): void {
-  for (const source of ["user_message", "turn_completed", "agent_paused"] as const) {
+  for (const source of NAMER_TRIGGER_SOURCES) {
     const key = getNamerKey(sessionId, source);
     const ctrl = inFlightNamer.get(key);
     if (ctrl) {
@@ -471,6 +473,25 @@ async function isQuestOwningSessionName(sessionId: string): Promise<boolean> {
   );
 }
 
+async function shouldSkipAutoNamer(
+  sessionId: string,
+  source: NamerTriggerSource,
+  stage: "start" | "apply",
+): Promise<boolean> {
+  const reason = await getAutoNamerSkipReason({
+    isAutoNamerEnabled: () => getSettings().autoNamerEnabled,
+    isNoAutoNameSession: () => !!launcher.getSession(sessionId)?.noAutoName,
+    isUserNamed: () => sessionNames.isUserNamed(sessionId),
+    isQuestOwningName: () => isQuestOwningSessionName(sessionId),
+  });
+  if (!reason) return false;
+
+  const verb = stage === "apply" ? "Discarding" : "Skipping";
+  const noun = stage === "apply" ? `${source} namer result` : `${source} namer`;
+  console.log(`[session-namer] ${verb} ${noun} for ${sessionId} (${formatAutoNamerSkipReason(reason)})`);
+  return true;
+}
+
 /** Apply a naming result: set name, broadcast, add task entry. Shared by all triggers. */
 async function applyNamingResult(
   sessionId: string,
@@ -479,11 +500,7 @@ async function applyNamingResult(
   history: import("./session-types.js").BrowserIncomingMessage[],
   source: NamerTriggerSource,
 ): Promise<void> {
-  // Re-check: quest may have been claimed while the namer was in-flight
-  if (await isQuestOwningSessionName(sessionId)) {
-    console.log(`[session-namer] Discarding namer result for ${sessionId} (quest owns session name)`);
-    return;
-  }
+  if (await shouldSkipAutoNamer(sessionId, source, "apply")) return;
   // Merge keywords regardless of naming action
   if (result.keywords?.length) {
     mergeSessionKeywords(sessionId, result.keywords);
@@ -593,20 +610,7 @@ wsBridge.onSessionNamedByQuest = (sessionId, title) => {
 
 // Continuous session auto-naming via Claude Haiku (triggered on each user message)
 wsBridge.onUserMessage = async (sessionId, history, cwd, wasGenerating) => {
-  // Suppress auto-namer when disabled in settings
-  if (!getSettings().autoNamerEnabled) return;
-  // Suppress auto-namer for sessions with noAutoName flag (e.g. temporary reviewer sessions)
-  if (launcher.getSession(sessionId)?.noAutoName) return;
-  // Suppress auto-namer for sessions manually renamed by the user
-  if (sessionNames.isUserNamed(sessionId)) {
-    console.log(`[session-namer] Skipping auto-namer for ${sessionId} (manually renamed by user)`);
-    return;
-  }
-  // Suppress auto-namer while a quest owns the session name
-  if (await isQuestOwningSessionName(sessionId)) {
-    console.log(`[session-namer] Skipping user-message namer for ${sessionId} (quest owns session name)`);
-    return;
-  }
+  if (await shouldSkipAutoNamer(sessionId, "user_message", "start")) return;
   const currentName = sessionNames.getName(sessionId);
   const isRandomName = isRandomSessionName(currentName);
   const isFirstEvaluation = !autoNamingEvaluated.has(sessionId);
@@ -634,11 +638,7 @@ wsBridge.onUserMessage = async (sessionId, history, cwd, wasGenerating) => {
       const result = await generateFirstName(sessionId, history, cwd, { signal, isGenerating, claimedQuest });
       if (signal.aborted) return;
       if (!result || result.action !== "name") return;
-      // Re-check: quest may have been claimed while we were generating
-      if (await isQuestOwningSessionName(sessionId)) {
-        console.log(`[session-namer] Discarding first-name result for ${sessionId} (quest owns session name)`);
-        return;
-      }
+      if (await shouldSkipAutoNamer(sessionId, "user_message", "apply")) return;
       // Don't overwrite if user renamed while we were generating
       const freshName = sessionNames.getName(sessionId);
       if (freshName && !isRandomSessionName(freshName)) return;
@@ -672,12 +672,7 @@ wsBridge.onUserMessage = async (sessionId, history, cwd, wasGenerating) => {
 // The agent has done meaningful research/work to produce the plan, providing
 // rich context for naming — and it's a natural breakpoint before execution.
 wsBridge.onAgentPaused = async (sessionId, history, cwd) => {
-  if (!getSettings().autoNamerEnabled) return;
-  if (launcher.getSession(sessionId)?.noAutoName) return;
-  if (await isQuestOwningSessionName(sessionId)) {
-    console.log(`[session-namer] Skipping agent-paused namer for ${sessionId} (quest owns session name)`);
-    return;
-  }
+  if (await shouldSkipAutoNamer(sessionId, "agent_paused", "start")) return;
   const currentName = sessionNames.getName(sessionId);
   if (!currentName) return;
 
@@ -698,12 +693,7 @@ wsBridge.onAgentPaused = async (sessionId, history, cwd) => {
 // The turn-completed namer runs independently from user-message naming.
 // User-message outcomes are preferred when both produce competing revisions.
 wsBridge.onTurnCompleted = async (sessionId, history, cwd) => {
-  if (!getSettings().autoNamerEnabled) return;
-  if (launcher.getSession(sessionId)?.noAutoName) return;
-  if (await isQuestOwningSessionName(sessionId)) {
-    console.log(`[session-namer] Skipping turn-completed namer for ${sessionId} (quest owns session name)`);
-    return;
-  }
+  if (await shouldSkipAutoNamer(sessionId, "turn_completed", "start")) return;
   const currentName = sessionNames.getName(sessionId);
   if (!currentName) return;
 
