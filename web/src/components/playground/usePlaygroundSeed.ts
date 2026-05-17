@@ -14,6 +14,7 @@ import {
   PLAYGROUND_DISCONNECTED_SESSION_ID,
   PLAYGROUND_LOADING_SESSION_ID,
   PLAYGROUND_RECOVERING_SESSION_ID,
+  PLAYGROUND_RECOVERY_SUPPRESSED_SESSION_ID,
   PLAYGROUND_RESUMING_SESSION_ID,
   PLAYGROUND_SECTIONED_SESSION_ID,
   PLAYGROUND_SPARSE_THREAD_WINDOW_SESSION_ID,
@@ -47,6 +48,7 @@ export function usePlaygroundSeed() {
       PLAYGROUND_RESUMING_SESSION_ID,
       PLAYGROUND_DISCONNECTED_SESSION_ID,
       PLAYGROUND_BROKEN_SESSION_ID,
+      PLAYGROUND_RECOVERY_SUPPRESSED_SESSION_ID,
       PLAYGROUND_THREAD_PANEL_SESSION_ID,
       "leader-alpha",
       questInProgressId,
@@ -870,6 +872,20 @@ export function usePlaygroundSeed() {
     store.setCliEverConnected(PLAYGROUND_BROKEN_SESSION_ID);
     store.setCliDisconnectReason(PLAYGROUND_BROKEN_SESSION_ID, "broken");
     store.setSessionStatus(PLAYGROUND_BROKEN_SESSION_ID, null);
+
+    store.addSession({
+      ...session,
+      session_id: PLAYGROUND_RECOVERY_SUPPRESSED_SESSION_ID,
+      backend_type: "codex",
+      backend_state: "recovery_suppressed",
+      backend_error: "Codex automatic recovery is paused after 3 failed attempts. Use Resume to retry manually.",
+      model: "gpt-5.3-codex",
+    });
+    store.setConnectionStatus(PLAYGROUND_RECOVERY_SUPPRESSED_SESSION_ID, "connected");
+    store.setCliConnected(PLAYGROUND_RECOVERY_SUPPRESSED_SESSION_ID, false);
+    store.setCliEverConnected(PLAYGROUND_RECOVERY_SUPPRESSED_SESSION_ID);
+    store.setCliDisconnectReason(PLAYGROUND_RECOVERY_SUPPRESSED_SESSION_ID, "recovery_suppressed");
+    store.setSessionStatus(PLAYGROUND_RECOVERY_SUPPRESSED_SESSION_ID, null);
 
     // Seed quest-named state for sidebar quest demo rows.
     // SessionItem reads isQuestNamed + claimedQuestStatus from the store.

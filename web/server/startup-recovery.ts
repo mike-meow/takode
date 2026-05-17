@@ -47,12 +47,18 @@ export interface StartupRecoveryTimerManager {
   sweepDueTimersNow: (now?: number) => Promise<TimerSweepResult>;
 }
 
+export interface StartupRecoveryRelaunchRequest {
+  delayMs?: number;
+  reason?: StartupRecoveryReason;
+}
+
 export interface StartupRecoveryDeps {
   listLauncherSessions: () => StartupRecoveryLauncherSession[];
   getSession: (sessionId: string) => StartupRecoverySession | undefined;
   isBackendConnected: (sessionId: string) => boolean;
+  isBackendAttached?: (sessionId: string) => boolean;
   isSessionPaused?: (sessionId: string) => boolean;
-  requestCliRelaunch?: (sessionId: string, request?: { delayMs?: number; reason?: StartupRecoveryReason }) => void;
+  requestCliRelaunch?: (sessionId: string, request?: StartupRecoveryRelaunchRequest) => void;
   timerManager?: StartupRecoveryTimerManager;
   restartContinuationSessionIds?: string[];
   alreadyRequestedRelaunchSessionIds?: Iterable<string>;
@@ -81,6 +87,46 @@ export interface StartupRecoverySessionResult {
 export interface StartupRecoveryResult {
   recovered: StartupRecoverySessionResult[];
   timerSweep: TimerSweepResult | null;
+}
+
+type ActiveDeadBackendEligibilityDeps = Pick<
+  StartupRecoveryDeps,
+  "getSession" | "isBackendAttached" | "isBackendConnected" | "isSessionPaused"
+>;
+
+export interface StartupRecoveryRelaunchExecutionDeps {
+  getLauncherSession: (sessionId: string) => StartupRecoveryLauncherSession | undefined;
+  getSession: (sessionId: string) => StartupRecoverySession | undefined;
+  isBackendConnected: (sessionId: string) => boolean;
+  isBackendAttached?: (sessionId: string) => boolean;
+  isSessionPaused?: (sessionId: string) => boolean;
+  requestCliRelaunch?: (sessionId: string) => void;
+  requestCodexAutoRecovery?: (session: StartupRecoverySession, reason: string) => boolean;
+}
+
+export function requestStartupRecoveryRelaunch(
+  sessionId: string,
+  request: StartupRecoveryRelaunchRequest | undefined,
+  deps: StartupRecoveryRelaunchExecutionDeps,
+): void {
+  const requestRecovery = () => {
+    if (request?.reason === "active_dead_backend") {
+      const launcherSession = deps.getLauncherSession(sessionId);
+      if (!launcherSession || !isActiveDeadBackendCandidate(launcherSession, deps)) return;
+      const session = deps.getSession(sessionId);
+      if (session?.backendType === "codex") {
+        const requested = deps.requestCodexAutoRecovery?.(session, "startup_active_dead_backend");
+        if (requested) return;
+      }
+    }
+    deps.requestCliRelaunch?.(sessionId);
+  };
+
+  if (request?.delayMs && request.delayMs > 0) {
+    setTimeout(requestRecovery, request.delayMs);
+    return;
+  }
+  requestRecovery();
 }
 
 export async function runStartupRecovery(deps: StartupRecoveryDeps): Promise<StartupRecoveryResult> {
@@ -221,12 +267,13 @@ function selectActiveDeadBackendSessionIds(deps: StartupRecoveryDeps): Set<strin
 
 function isActiveDeadBackendCandidate(
   launcherSession: StartupRecoveryLauncherSession,
-  deps: StartupRecoveryDeps,
+  deps: ActiveDeadBackendEligibilityDeps,
 ): boolean {
   if (launcherSession.archived || launcherSession.killedByIdleManager) return false;
   if (launcherSession.backendType !== "codex") return false;
   if (launcherSession.state !== "exited" || launcherSession.exitCode !== -1) return false;
   if (deps.isBackendConnected(launcherSession.sessionId)) return false;
+  if (deps.isBackendAttached?.(launcherSession.sessionId)) return false;
   if (deps.isSessionPaused?.(launcherSession.sessionId)) return false;
   const session = deps.getSession(launcherSession.sessionId);
   if (!session) return false;

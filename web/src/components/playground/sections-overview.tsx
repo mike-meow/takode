@@ -77,6 +77,7 @@ import {
   PLAYGROUND_HERD_GROUP_THEMES,
   PLAYGROUND_LOADING_SESSION_ID,
   PLAYGROUND_RECOVERING_SESSION_ID,
+  PLAYGROUND_RECOVERY_SUPPRESSED_SESSION_ID,
   PLAYGROUND_RESUMING_SESSION_ID,
   PLAYGROUND_REVIEWER_MAP,
   PLAYGROUND_SECTIONED_SESSION_ID,
@@ -632,6 +633,11 @@ export function PlaygroundOverviewSections() {
           <Card label="Broken session relaunch banner">
             <div className="border border-cc-border rounded-xl overflow-hidden bg-cc-card h-[260px]">
               <ChatView sessionId={PLAYGROUND_BROKEN_SESSION_ID} />
+            </div>
+          </Card>
+          <Card label="Automatic recovery suppressed">
+            <div className="border border-cc-border rounded-xl overflow-hidden bg-cc-card h-[260px]">
+              <ChatView sessionId={PLAYGROUND_RECOVERY_SUPPRESSED_SESSION_ID} />
             </div>
           </Card>
         </div>

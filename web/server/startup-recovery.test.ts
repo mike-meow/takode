@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   collectStartupRecoveryReasons,
+  requestStartupRecoveryRelaunch,
   runStartupRecovery,
   type StartupRecoveryLauncherSession,
   type StartupRecoverySession,
@@ -373,5 +374,45 @@ describe("startup-recovery", () => {
 
     expect(requestCliRelaunch).not.toHaveBeenCalled();
     expect(result.recovered).toEqual([]);
+  });
+
+  it("revalidates delayed active-dead recovery before requesting recovery", () => {
+    vi.useFakeTimers();
+    try {
+      const launcherSessions = new Map<string, StartupRecoveryLauncherSession>([
+        ["connected", { sessionId: "connected", backendType: "codex", state: "exited", exitCode: -1 }],
+        ["paused", { sessionId: "paused", backendType: "codex", state: "exited", exitCode: -1 }],
+      ]);
+      const sessions = new Map<string, StartupRecoverySession>([
+        ["connected", { backendType: "codex", state: { backend_state: "disconnected" } }],
+        ["paused", { backendType: "codex", state: { backend_state: "disconnected" } }],
+      ]);
+      const requestCodexAutoRecovery = vi.fn(() => true);
+      const requestCliRelaunch = vi.fn();
+      const connected = new Set<string>();
+      const paused = new Set<string>();
+
+      const deps = {
+        getLauncherSession: (sessionId: string) => launcherSessions.get(sessionId),
+        getSession: (sessionId: string) => sessions.get(sessionId),
+        isBackendConnected: (sessionId: string) => connected.has(sessionId),
+        isBackendAttached: (sessionId: string) => connected.has(sessionId),
+        isSessionPaused: (sessionId: string) => paused.has(sessionId),
+        requestCodexAutoRecovery,
+        requestCliRelaunch,
+      };
+
+      requestStartupRecoveryRelaunch("connected", { delayMs: 250, reason: "active_dead_backend" }, deps);
+      requestStartupRecoveryRelaunch("paused", { delayMs: 250, reason: "active_dead_backend" }, deps);
+
+      connected.add("connected");
+      paused.add("paused");
+      vi.advanceTimersByTime(250);
+
+      expect(requestCodexAutoRecovery).not.toHaveBeenCalled();
+      expect(requestCliRelaunch).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

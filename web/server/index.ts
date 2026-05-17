@@ -48,7 +48,7 @@ import { HerdEventDispatcher } from "./herd-event-dispatcher.js";
 import { createUnavailableOrchestratorRecoveryWake } from "./unavailable-orchestrator-recovery.js";
 import { createLauncherHerdChangeHandler } from "./herd-change-handler.js";
 import { resumeRestartContinuations } from "./restart-continuation-store.js";
-import { runStartupRecovery } from "./startup-recovery.js";
+import { requestStartupRecoveryRelaunch, runStartupRecovery } from "./startup-recovery.js";
 import { getStaticAssetCacheControl } from "./static-asset-cache.js";
 import { markCodexIntentionalRelaunch, markSessionRelaunchPending } from "./bridge/codex-recovery-orchestrator.js";
 import {
@@ -955,23 +955,19 @@ await captureStartupInjectedRelaunches(async () => {
     listLauncherSessions: () => launcher.listSessions(),
     getSession: (sessionId) => wsBridge.getSession(sessionId),
     isBackendConnected: (sessionId) => wsBridge.isBackendConnected(sessionId),
+    isBackendAttached: (sessionId) => wsBridge.isBackendAttached(sessionId),
     isSessionPaused: (sessionId) => wsBridge.isSessionPaused(sessionId),
     requestCliRelaunch: (sessionId, request) => {
-      const requestRecovery = () => {
-        if (request?.reason === "active_dead_backend") {
-          const session = wsBridge.getSession(sessionId);
-          if (session?.backendType === "codex") {
-            const requested = bridgeAny.requestCodexAutoRecovery?.(session, "startup_active_dead_backend");
-            if (requested) return;
-          }
-        }
-        wsBridge.onCLIRelaunchNeeded?.(sessionId);
-      };
-      if (request?.delayMs && request.delayMs > 0) {
-        setTimeout(requestRecovery, request.delayMs);
-        return;
-      }
-      requestRecovery();
+      requestStartupRecoveryRelaunch(sessionId, request, {
+        getLauncherSession: (targetSessionId) => launcher.getSession(targetSessionId),
+        getSession: (targetSessionId) => wsBridge.getSession(targetSessionId),
+        isBackendConnected: (targetSessionId) => wsBridge.isBackendConnected(targetSessionId),
+        isBackendAttached: (targetSessionId) => wsBridge.isBackendAttached(targetSessionId),
+        isSessionPaused: (targetSessionId) => wsBridge.isSessionPaused(targetSessionId),
+        requestCliRelaunch: (targetSessionId) => wsBridge.onCLIRelaunchNeeded?.(targetSessionId),
+        requestCodexAutoRecovery: (targetSession, reason) =>
+          bridgeAny.requestCodexAutoRecovery?.(targetSession, reason) ?? false,
+      });
     },
     timerManager,
     restartContinuationSessionIds,

@@ -30,6 +30,10 @@ import {
   isTimerReminderContent,
   isTimerSourceTag,
 } from "./adapter-browser-routing-source-tags.js";
+import {
+  activeTurnRouteFromIngestedUserMessage,
+  maybeRequestAdapterRelaunchForUserMessage,
+} from "./adapter-browser-routing-recovery.js";
 import type {
   ActiveTurnRoute,
   BrowserIncomingMessage,
@@ -1686,46 +1690,6 @@ function queueAdapterMessage(session: AdapterBrowserRoutingSessionLike, raw: str
     session.pendingMessages.push(raw);
   }
 }
-function maybeRequestAdapterRelaunchForUserMessage(
-  session: AdapterBrowserRoutingSessionLike,
-  deps: AdapterBrowserRoutingDeps,
-): void {
-  const launcherInfo = deps.getLauncherSessionInfo(session.id);
-  if (
-    session.state.backend_state === "broken" ||
-    session.state.backend_state === "recovery_suppressed" ||
-    !launcherInfo ||
-    launcherInfo.state === "starting"
-  ) {
-    return;
-  }
-  if (launcherInfo.killedByIdleManager) {
-    launcherInfo.killedByIdleManager = false;
-    console.log(`[ws-bridge] Clearing idle-killed flag for session ${sessionTag(session.id)} (adapter user_message)`);
-  }
-  console.log(
-    `[ws-bridge] User message queued while ${session.backendType} session ${sessionTag(session.id)} is not ready, requesting relaunch`,
-  );
-  if (session.backendType === "codex") {
-    const recoveryRequested = deps.requestCodexAutoRecovery(session, "queued_user_message_adapter_missing");
-    if (recoveryRequested) return;
-    if ((session.state as { backend_state?: string }).backend_state === "recovery_suppressed") {
-      deps.setGenerating(session, false, "codex_recovery_suppressed");
-      deps.broadcastStatusChange(session, null);
-    }
-    return;
-  }
-  deps.requestCliRelaunch?.(session.id);
-}
-
-function activeTurnRouteFromIngestedUserMessage(ingested: IngestedUserMessage): ActiveTurnRoute {
-  const threadKey = ingested.historyEntry.threadKey ?? "main";
-  return {
-    threadKey,
-    ...(ingested.historyEntry.questId ? { questId: ingested.historyEntry.questId } : {}),
-  };
-}
-
 export function routeAdapterBrowserMessage(
   session: AdapterBrowserRoutingSessionLike,
   msg: BrowserOutgoingMessage,
