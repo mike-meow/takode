@@ -9,7 +9,7 @@ interface DocumentTitleAttentionState {
   sessionAttention: Map<string, "action" | "error" | "review" | null>;
   sessionStatus: Map<string, "idle" | "running" | "compacting" | "reverting" | null>;
   cliConnected: Map<string, boolean>;
-  cliDisconnectReason: Map<string, "idle_limit" | "broken" | null>;
+  cliDisconnectReason: Map<string, "idle_limit" | "broken" | "recovery_suppressed" | null>;
   countUserPermissions: (permissions: Map<string, unknown> | undefined) => number;
 }
 

@@ -863,7 +863,6 @@ export function Composer({
     const msg = text.trim();
     if (
       (!msg && images.length === 0) ||
-      !isBrowserServerConnected ||
       !canUseInput ||
       voiceEditProposal ||
       !allImagesReady ||
@@ -1521,7 +1520,6 @@ export function Composer({
           : null;
   const canSend =
     (text.trim().length > 0 || images.length > 0) &&
-    isBrowserServerConnected &&
     canUseInput &&
     !voiceEditProposal &&
     !activePendingUserUpload &&
@@ -1643,16 +1641,8 @@ export function Composer({
     : !canUseInput
       ? "Resume session to upload images"
       : "Upload image";
-  const hasDraft = text.trim().length > 0 || images.length > 0;
   const sendButtonTitle =
-    attachmentBlockReason ||
-    (activePendingUserUpload
-      ? "Delivering pending message"
-      : !isBrowserServerConnected && hasDraft
-        ? "Reconnect to Takode server to send message"
-        : !canUseInput && hasDraft
-          ? "Resume session to send message"
-          : "Send message");
+    attachmentBlockReason || (activePendingUserUpload ? "Delivering pending message" : "Send message");
   const plainReferencePreviews = useMemo(() => {
     const questIds = new Set(previewQuestIds);
     const sessionNums = new Set(previewSessionNums);

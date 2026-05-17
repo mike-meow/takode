@@ -571,18 +571,18 @@ describe("Composer send button state", () => {
     expect(sendBtn.hasAttribute("disabled")).toBe(true);
   });
 
-  it("keeps text send backend-gated when the CLI is disconnected but the browser is connected", () => {
+  it("queues text send when the CLI is disconnected but the browser is connected", () => {
     setupMockStore({ isConnected: false, connectionStatus: "connected" });
     const { container } = render(<Composer sessionId="s1" />);
     const textarea = container.querySelector("textarea")!;
 
     fireEvent.change(textarea, { target: { value: "Hold this draft" } });
 
-    const sendBtn = screen.getByTitle("Resume session to send message");
-    expect(sendBtn.hasAttribute("disabled")).toBe(true);
+    const sendBtn = screen.getByTitle("Send message");
+    expect(sendBtn.hasAttribute("disabled")).toBe(false);
 
     fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false });
-    expect(mockSendToSession).not.toHaveBeenCalledWith(
+    expect(mockSendToSession).toHaveBeenCalledWith(
       "s1",
       expect.objectContaining({ type: "user_message", content: "Hold this draft" }),
     );
@@ -603,7 +603,7 @@ describe("Composer send button state", () => {
     });
   });
 
-  it("allows image preparation while the CLI is disconnected and leaves final delivery disabled", async () => {
+  it("allows image preparation and queued delivery while the CLI is disconnected", async () => {
     setupMockStore({ isConnected: false, connectionStatus: "connected" });
     const { container } = render(<Composer sessionId="s1" />);
     const uploadButton = screen.getByTitle("Upload image");
@@ -618,7 +618,7 @@ describe("Composer send button state", () => {
     });
     expect(await screen.findByAltText("offline.png")).toBeTruthy();
     expect(screen.getByText("Ready")).toBeTruthy();
-    expect(screen.getByTitle("Resume session to send message").hasAttribute("disabled")).toBe(true);
+    expect(screen.getByTitle("Send message").hasAttribute("disabled")).toBe(false);
   });
 
   it("keeps file mention search available while the CLI is disconnected and the browser is connected", async () => {
