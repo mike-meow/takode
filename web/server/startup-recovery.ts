@@ -115,8 +115,10 @@ export function requestStartupRecoveryRelaunch(
       if (!launcherSession || !isActiveDeadBackendCandidate(launcherSession, deps)) return;
       const session = deps.getSession(sessionId);
       if (session?.backendType === "codex") {
-        const requested = deps.requestCodexAutoRecovery?.(session, "startup_active_dead_backend");
-        if (requested) return;
+        if (deps.requestCodexAutoRecovery) {
+          deps.requestCodexAutoRecovery(session, "startup_active_dead_backend");
+          return;
+        }
       }
     }
     deps.requestCliRelaunch?.(sessionId);

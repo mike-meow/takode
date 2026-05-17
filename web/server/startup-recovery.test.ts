@@ -376,6 +376,51 @@ describe("startup-recovery", () => {
     expect(result.recovered).toEqual([]);
   });
 
+  it("does not fall back to raw relaunch when Codex startup auto-recovery refuses", () => {
+    const session: StartupRecoverySession = { backendType: "codex", state: { backend_state: "disconnected" } };
+    const requestCodexAutoRecovery = vi.fn(() => false);
+    const requestCliRelaunch = vi.fn();
+
+    requestStartupRecoveryRelaunch(
+      "codex",
+      { reason: "active_dead_backend" },
+      {
+        getLauncherSession: (sessionId) =>
+          sessionId === "codex" ? { sessionId, backendType: "codex", state: "exited", exitCode: -1 } : undefined,
+        getSession: (sessionId) => (sessionId === "codex" ? session : undefined),
+        isBackendConnected: () => false,
+        isBackendAttached: () => false,
+        isSessionPaused: () => false,
+        requestCodexAutoRecovery,
+        requestCliRelaunch,
+      },
+    );
+
+    expect(requestCodexAutoRecovery).toHaveBeenCalledWith(session, "startup_active_dead_backend");
+    expect(requestCliRelaunch).not.toHaveBeenCalled();
+  });
+
+  it("falls back to raw relaunch when no Codex startup auto-recovery implementation is available", () => {
+    const session: StartupRecoverySession = { backendType: "codex", state: { backend_state: "disconnected" } };
+    const requestCliRelaunch = vi.fn();
+
+    requestStartupRecoveryRelaunch(
+      "codex",
+      { reason: "active_dead_backend" },
+      {
+        getLauncherSession: (sessionId) =>
+          sessionId === "codex" ? { sessionId, backendType: "codex", state: "exited", exitCode: -1 } : undefined,
+        getSession: (sessionId) => (sessionId === "codex" ? session : undefined),
+        isBackendConnected: () => false,
+        isBackendAttached: () => false,
+        isSessionPaused: () => false,
+        requestCliRelaunch,
+      },
+    );
+
+    expect(requestCliRelaunch).toHaveBeenCalledWith("codex");
+  });
+
   it("revalidates delayed active-dead recovery before requesting recovery", () => {
     vi.useFakeTimers();
     try {
