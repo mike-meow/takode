@@ -611,6 +611,7 @@ describe("MessageFeed duplicate rendering regression", () => {
         threadKey: "q-983",
         questId: "q-983",
         summary: "Approve q-983 dispatch plan",
+        suggestedAnswers: ["approve"],
         done: false,
       },
     ]);
@@ -619,7 +620,47 @@ describe("MessageFeed duplicate rendering regression", () => {
 
     expect(screen.getByText("Plan for q-983: dispatch the worker, then wait for review approval.")).toBeTruthy();
     expect(screen.getAllByText("Approve q-983 dispatch plan")).toHaveLength(1);
+    expect(screen.getByTestId("notification-answer-actions")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Use suggested answer: approve" })).toBeTruthy();
     expect(screen.queryByTestId("attention-ledger-row")).toBeNull();
+  });
+
+  it("does not render Main-owned needs-input controls in an unrelated selected quest thread", () => {
+    const sid = "test-main-owned-needs-input-hidden-in-unrelated-thread";
+    setStoreMessages(sid, [
+      makeMessage({
+        id: "a-main-prompt",
+        role: "assistant",
+        content: "Main prompt source was accidentally projected into another thread.",
+        metadata: { threadRefs: [{ threadKey: "q-777", questId: "q-777", source: "explicit" }] },
+        notification: {
+          id: "n-main",
+          category: "needs-input",
+          timestamp: Date.now(),
+          summary: "Approve the Main-thread decision",
+          suggestedAnswers: ["approve"],
+        },
+      }),
+    ]);
+    setStoreNotifications(sid, [
+      {
+        id: "n-main",
+        category: "needs-input",
+        timestamp: Date.now(),
+        messageId: "a-main-prompt",
+        threadKey: "main",
+        summary: "Approve the Main-thread decision",
+        suggestedAnswers: ["approve"],
+        done: false,
+      },
+    ]);
+
+    render(<MessageFeed sessionId={sid} threadKey="q-777" />);
+
+    expect(screen.getByText("Main prompt source was accidentally projected into another thread.")).toBeTruthy();
+    expect(screen.queryByText("Approve the Main-thread decision")).toBeNull();
+    expect(screen.queryByTestId("notification-answer-actions")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Use suggested answer: approve" })).toBeNull();
   });
 
   it("recovers a routed needs-input source message from selected thread-window history", () => {

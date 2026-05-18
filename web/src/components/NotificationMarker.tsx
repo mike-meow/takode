@@ -5,10 +5,11 @@ import { useStore } from "../store.js";
 import type { SessionNotification } from "../types.js";
 import { formatNeedsInputResponse, getNeedsInputQuestionViews } from "../utils/notification-questions.js";
 import {
+  isNotificationOwnerSelected,
   resolveNotificationOwnerThreadKey,
   runAfterNotificationOwnerThreadSelected,
 } from "../utils/notification-thread.js";
-import { MAIN_THREAD_KEY } from "../utils/thread-projection.js";
+import { ALL_THREADS_KEY, MAIN_THREAD_KEY, normalizeThreadKey } from "../utils/thread-projection.js";
 import { useVisibleReviewNotificationAutoResolve } from "../hooks/useVisibleReviewNotificationAutoResolve.js";
 
 /** Compact marker rendered inline for notification tool calls.
@@ -180,6 +181,17 @@ export function NotificationMarker({
   const setQuestionAnswer = useCallback((questionKey: string, value: string) => {
     setAnswersByQuestion((prev) => ({ ...prev, [questionKey]: value }));
   }, []);
+
+  const selectedThreadKey = currentThreadKey ? normalizeThreadKey(currentThreadKey) : undefined;
+  if (
+    isAction &&
+    notif &&
+    selectedThreadKey &&
+    selectedThreadKey !== ALL_THREADS_KEY &&
+    !isNotificationOwnerSelected(notif, selectedThreadKey)
+  ) {
+    return null;
+  }
 
   const replyButton = showReplyButton ? (
     <button

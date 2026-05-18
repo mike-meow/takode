@@ -204,6 +204,25 @@ describe("takode notify self-resolution workflow", () => {
     });
   });
 
+  it("passes explicit thread ownership for created needs-input notifications", async () => {
+    const result = await runTakode(
+      ["notify", "needs-input", "Need", "approval", "--thread", "q-983", "--suggest", "yes", "--port", String(port)],
+      {
+        ...process.env,
+        COMPANION_SESSION_ID: "worker-7",
+        COMPANION_AUTH_TOKEN: "auth-7",
+      },
+    );
+
+    expect(result.status).toBe(0);
+    expect(requestBodies[0]).toEqual({
+      category: "needs-input",
+      summary: "Need approval",
+      threadKey: "q-983",
+      suggestedAnswers: ["yes"],
+    });
+  });
+
   it("passes per-question suggested answers for needs-input notifications", async () => {
     const result = await runTakode(
       [

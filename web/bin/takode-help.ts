@@ -199,8 +199,8 @@ const REFRESH_BRANCH_HELP = `Usage: takode refresh-branch <session> [--json]
 Refresh git branch info for a session after checkout, rebase, or other branch changes.
 `;
 
-const NOTIFY_HELP = `Usage: takode notify <category> <summary> [--suggest <answer>]... [--json]
-       takode notify needs-input <summary> --question <prompt> [--suggest <answer>]... [--question <prompt> ...] [--json]
+const NOTIFY_HELP = `Usage: takode notify <category> <summary> [--thread <main|q-N> | --quest <q-N>] [--suggest <answer>]... [--json]
+       takode notify needs-input <summary> [--thread <main|q-N> | --quest <q-N>] --question <prompt> [--suggest <answer>]... [--question <prompt> ...] [--json]
        takode notify list [--json]
        takode notify resolve <notification-id> [--json]
 

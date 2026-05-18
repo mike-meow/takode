@@ -45,8 +45,8 @@ const ANSWER_HELP = `Usage: takode answer <session> [--message <msg-id> | --targ
 Answer a pending needs-input question or approve/reject an ExitPlanMode prompt from a herded session.
 `;
 
-const NOTIFY_HELP = `Usage: takode notify <category> <summary> [--suggest <answer>]... [--json]
-       takode notify needs-input <summary> --question <prompt> [--suggest <answer>]... [--question <prompt> ...] [--json]
+const NOTIFY_HELP = `Usage: takode notify <category> <summary> [--thread <main|q-N> | --quest <q-N>] [--suggest <answer>]... [--json]
+       takode notify needs-input <summary> [--thread <main|q-N> | --quest <q-N>] --question <prompt> [--suggest <answer>]... [--question <prompt> ...] [--json]
        takode notify list [--json]
        takode notify resolve <notification-id> [--json]
 
@@ -1385,8 +1385,12 @@ function parseNotifyCreateArgs(args: string[]): {
   summary: string | undefined;
   suggestedAnswers: string[];
   questions: Array<{ prompt: string; suggestedAnswers: string[] }>;
+  threadKey?: string;
+  questId?: string;
 } {
   let jsonMode = false;
+  let threadKey: string | undefined;
+  let questId: string | undefined;
   const suggestedAnswers: string[] = [];
   const questions: Array<{ prompt: string; suggestedAnswers: string[] }> = [];
   let currentQuestion: { prompt: string; suggestedAnswers: string[] } | null = null;
@@ -1396,6 +1400,20 @@ function parseNotifyCreateArgs(args: string[]): {
     const arg = args[i];
     if (arg === "--json") {
       jsonMode = true;
+      continue;
+    }
+    if (arg === "--thread") {
+      const value = args[i + 1];
+      if (value === undefined || value.startsWith("--")) err("--thread requires main or q-N.");
+      threadKey = value;
+      i += 1;
+      continue;
+    }
+    if (arg === "--quest") {
+      const value = args[i + 1];
+      if (value === undefined || value.startsWith("--")) err("--quest requires q-N.");
+      questId = value;
+      i += 1;
       continue;
     }
     if (arg === "--suggest") {
@@ -1426,12 +1444,15 @@ function parseNotifyCreateArgs(args: string[]): {
   if (questions.length > 0 && suggestedAnswers.length > 0) {
     err("Use --suggest after each --question when --question is used.");
   }
+  if (threadKey && questId) err("Use either --thread or --quest, not both.");
 
   return {
     jsonMode,
     summary: summaryParts.length > 0 ? summaryParts.join(" ") : undefined,
     suggestedAnswers,
     questions,
+    ...(threadKey ? { threadKey } : {}),
+    ...(questId ? { questId } : {}),
   };
 }
 
@@ -1529,6 +1550,8 @@ export async function handleNotify(base: string, args: string[]): Promise<void> 
   }
   const payload: Record<string, unknown> = { category };
   if (summary) payload.summary = summary;
+  if (parsed.threadKey) payload.threadKey = parsed.threadKey;
+  if (parsed.questId) payload.questId = parsed.questId;
   if (parsed.suggestedAnswers.length > 0) payload.suggestedAnswers = parsed.suggestedAnswers;
   if (parsed.questions.length > 0) {
     payload.questions = parsed.questions.map((question) => ({

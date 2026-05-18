@@ -64,6 +64,7 @@ import { getPauseState, isSessionPaused } from "../session-pause.js";
 import { buildLeaderActivePhaseSummaryForSnapshot as buildLeaderSummary } from "./session-list-snapshot.js";
 import { scheduleWorktreeGitStateRefreshForSnapshot } from "./session-list-snapshot.js";
 import { computeSessionTurnMetrics } from "../user-message-classification.js";
+import { normalizeAffectedThreadKey, normalizeNotifyThreadRoute } from "./takode-route-thread-helpers.js";
 
 const THREAD_ATTACHMENT_HISTORY_BROADCAST_DELAY_MS = 100;
 const THREAD_ATTACHMENT_UPDATE_VERSION = 1;
@@ -86,12 +87,6 @@ function scheduleThreadAttachmentHistoryBroadcast(wsBridge: RouteContext["wsBrid
     wsBridge.broadcastToSession(sessionId, { type: "message_history", messages: session.messageHistory });
   }, THREAD_ATTACHMENT_HISTORY_BROADCAST_DELAY_MS);
   pendingThreadAttachmentHistoryBroadcasts.set(sessionId, timer);
-}
-
-function normalizeAffectedThreadKey(threadKey: string | undefined): string | null {
-  const normalized = threadKey?.trim().toLowerCase();
-  if (!normalized) return null;
-  return normalized;
 }
 
 function pendingThreadAttachmentChangedCount(sessionId: string): number {
@@ -1854,6 +1849,10 @@ export function createTakodeRoutes(ctx: RouteContext) {
     if (questionsResult.questions.length > 0 && suggestedAnswersResult.answers.length > 0) {
       return c.json({ error: "Use per-question suggestedAnswers inside questions when questions are provided" }, 400);
     }
+    const threadRouteResult = normalizeNotifyThreadRoute(body);
+    if (!threadRouteResult.ok) {
+      return c.json({ error: threadRouteResult.error }, 400);
+    }
 
     const session = wsBridge.getSession(id);
     if (!session) return c.json({ error: "Session not found" }, 404);
@@ -1870,6 +1869,7 @@ export function createTakodeRoutes(ctx: RouteContext) {
     const result = notifyUserController(session, category, summary, notificationRouteDeps, {
       suggestedAnswers: suggestedAnswersResult.answers,
       questions: questionsResult.questions,
+      ...(threadRouteResult.route ? { threadRoute: threadRouteResult.route } : {}),
     });
     return c.json({
       ok: true,

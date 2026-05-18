@@ -4,7 +4,14 @@ import type {
   NeedsInputNotificationQuestion,
   SessionNotification,
 } from "../session-types.js";
-import { resolveConsistentNotificationThreadRoute, withThreadRoute } from "../thread-routing-metadata.js";
+import {
+  type ThreadRouteMetadata,
+  normalizeThreadRoute,
+  resolveConsistentNotificationThreadRoute,
+  routeFromHistoryEntry,
+  sameThreadRoute,
+  withThreadRoute,
+} from "../thread-routing-metadata.js";
 
 type SessionLike = any;
 
@@ -36,6 +43,12 @@ type NotifyUserDeps = PersistNotificationDeps & {
     detail: string,
     options?: { skipReadCheck?: boolean },
   ) => void;
+};
+
+type NotifyUserOptions = {
+  suggestedAnswers?: string[];
+  questions?: NeedsInputNotificationQuestion[];
+  threadRoute?: ThreadRouteMetadata;
 };
 
 type NotificationDoneDeps = PersistNotificationDeps & {
@@ -150,11 +163,20 @@ export function notifyUser(
   category: SessionNotification["category"],
   summary: string,
   deps: NotifyUserDeps,
-  options: { suggestedAnswers?: string[]; questions?: NeedsInputNotificationQuestion[] } = {},
+  options: NotifyUserOptions = {},
 ): { ok: true; anchoredMessageId: string | null; notificationId: string } {
   const timestamp = Date.now();
+  const preferredThreadRoute = options.threadRoute ?? activeNotificationThreadRoute(session);
   let anchorIndex = findLastNotificationAnchorIndex(session);
   let anchor = anchorIndex !== undefined ? getNotificationAnchor(session.messageHistory[anchorIndex]) : undefined;
+  if (
+    anchorIndex !== undefined &&
+    preferredThreadRoute &&
+    !anchorMatchesThreadRoute(session, anchorIndex, preferredThreadRoute)
+  ) {
+    anchorIndex = undefined;
+    anchor = undefined;
+  }
   let createdFallbackMessage: BrowserIncomingMessage | null = null;
   const isLeaderSession = deps.getLauncherSessionInfo?.(session.id)?.isOrchestrator === true;
 
@@ -177,7 +199,11 @@ export function notifyUser(
   const nextNotificationCounter = Number.isInteger(session.notificationCounter) ? session.notificationCounter + 1 : 1;
   session.notificationCounter = nextNotificationCounter;
   const notificationId = `n-${nextNotificationCounter}`;
-  const threadRoute = resolveConsistentNotificationThreadRoute(session.messageHistory, anchorIndex, notificationId);
+  const threadRoute =
+    preferredThreadRoute ??
+    (createdFallbackMessage
+      ? { threadKey: "main" }
+      : resolveConsistentNotificationThreadRoute(session.messageHistory, anchorIndex, notificationId));
   if (createdFallbackMessage) {
     createdFallbackMessage.threadKey = threadRoute.threadKey;
     if (threadRoute.questId) createdFallbackMessage.questId = threadRoute.questId;
@@ -266,11 +292,20 @@ export function notifyUserBySessionId(
   category: SessionNotification["category"],
   summary: string,
   deps: NotifyUserDeps,
-  options: { suggestedAnswers?: string[]; questions?: NeedsInputNotificationQuestion[] } = {},
+  options: NotifyUserOptions = {},
 ): { ok: true; anchoredMessageId: string | null; notificationId: string } | { ok: false; error: string } {
   const session = sessions.get(sessionId);
   if (!session) return { ok: false, error: "Session not found" };
   return notifyUser(session, category, summary, deps, options);
+}
+
+function activeNotificationThreadRoute(session: SessionLike): ThreadRouteMetadata | null {
+  return normalizeThreadRoute(session.activeTurnRoute?.threadKey, session.activeTurnRoute?.questId);
+}
+
+function anchorMatchesThreadRoute(session: SessionLike, anchorIndex: number, route: ThreadRouteMetadata): boolean {
+  const anchorRoute = routeFromHistoryEntry(session.messageHistory[anchorIndex]) ?? { threadKey: "main" };
+  return sameThreadRoute(anchorRoute, route);
 }
 
 function getSortedBoardRows(session: SessionLike): BoardRow[] {

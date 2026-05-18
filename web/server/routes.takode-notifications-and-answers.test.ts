@@ -638,6 +638,92 @@ describe("Takode server-authoritative auth", () => {
     ]);
   });
 
+  it("uses the current routed notify turn instead of a stale quest-thread assistant anchor", async () => {
+    setupTakodeSessions();
+    bridge._sessions["orch-1"].activeTurnRoute = { threadKey: "main" };
+    bridge._sessions["orch-1"].messageHistory.push({
+      type: "assistant",
+      message: { id: "stale-quest-anchor", content: [{ type: "text", text: "Completed unrelated thread work." }] },
+      timestamp: 1000,
+      threadKey: "q-777",
+      questId: "q-777",
+      threadRefs: [{ threadKey: "q-777", questId: "q-777", source: "explicit" }],
+    });
+
+    const res = await app.request("/api/sessions/orch-1/notify", {
+      method: "POST",
+      headers: authHeaders("orch-1", "tok-1"),
+      body: JSON.stringify({
+        category: "needs-input",
+        summary: "Approve previous-user-message navigation quest",
+        suggestedAnswers: ["approve", "correct"],
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      ok: true,
+      category: "needs-input",
+      notificationId: 1,
+      rawNotificationId: "n-1",
+    });
+    expect(bridge._sessions["orch-1"].messageHistory[0].notification).toBeUndefined();
+    expect(bridge._sessions["orch-1"].notifications[0]).toMatchObject({
+      id: "n-1",
+      category: "needs-input",
+      summary: "Approve previous-user-message navigation quest",
+      messageId: expect.stringMatching(/^leader-needs-input-/),
+      threadKey: "main",
+      done: false,
+    });
+    expect(bridge._sessions["orch-1"].notifications[0].questId).toBeUndefined();
+    expect(bridge._sessions["orch-1"].notifications[0].threadRefs).toBeUndefined();
+    expect(bridge._sessions["orch-1"].messageHistory[1]).toMatchObject({
+      type: "leader_user_message",
+      threadKey: "main",
+      notification: expect.objectContaining({ id: "n-1", threadKey: "main" }),
+    });
+  });
+
+  it("honors an explicit notify thread route when creating needs-input ownership metadata", async () => {
+    setupTakodeSessions();
+    bridge._sessions["orch-1"].messageHistory.push({
+      type: "assistant",
+      message: { id: "quest-plan", content: [{ type: "text", text: "Approve the owner-thread plan." }] },
+      timestamp: 1000,
+      threadKey: "q-983",
+      questId: "q-983",
+      threadRefs: [{ threadKey: "q-983", questId: "q-983", source: "explicit" }],
+    });
+
+    const res = await app.request("/api/sessions/orch-1/notify", {
+      method: "POST",
+      headers: authHeaders("orch-1", "tok-1"),
+      body: JSON.stringify({
+        category: "needs-input",
+        summary: "Approve owner-thread plan",
+        threadKey: "q-983",
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(bridge._sessions["orch-1"].notifications[0]).toMatchObject({
+      id: "n-1",
+      category: "needs-input",
+      summary: "Approve owner-thread plan",
+      messageId: "quest-plan",
+      threadKey: "q-983",
+      questId: "q-983",
+      threadRefs: [{ threadKey: "q-983", questId: "q-983", source: "explicit" }],
+      done: false,
+    });
+    expect(bridge._sessions["orch-1"].messageHistory[0].notification).toMatchObject({
+      id: "n-1",
+      threadKey: "q-983",
+      questId: "q-983",
+    });
+  });
+
   it("accepts waiting as a transient status marker without creating a persistent notification", async () => {
     setupTakodeSessions();
 
