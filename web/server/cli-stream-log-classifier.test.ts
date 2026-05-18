@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   classifyCliStreamLogLevel,
   extractCodexMissingCustomToolOutputCallId,
+  extractCodexMissingCustomToolOutputCallIds,
   isCodexMissingCustomToolOutputNoise,
   isCodexRefreshTokenReusedNoise,
   maybeFormatCodexMissingCustomToolOutputLogLine,
@@ -96,6 +97,15 @@ describe("CLI stream log classification", () => {
     expect(isCodexMissingCustomToolOutputNoise(line)).toBe(true);
     expect(extractCodexMissingCustomToolOutputCallId(line)).toBe("call_B2StgCHbFi7KjujPrAjvrZko");
     expect(classifyCliStreamLogLevel("stderr", line)).toBe("warn");
+  });
+
+  it("extracts each missing custom tool-output call id from multiline chunks", () => {
+    const chunk = [
+      "ERROR normalize: Custom tool call output is missing for call id: call_first",
+      "ERROR normalize: Custom tool call output is missing for call id: call_second",
+    ].join("\n");
+
+    expect(extractCodexMissingCustomToolOutputCallIds(chunk)).toEqual(["call_first", "call_second"]);
   });
 
   it("does not demote missing custom tool-output chunks mixed with unrelated failures", () => {
@@ -260,5 +270,25 @@ describe("CLI stream log classification", () => {
     expect(maybeFormatCodexMissingCustomToolOutputLogLine(state, "session-uuid", first, 62_000, 60_000)).toContain(
       "[suppressed 1 repeated Codex missing custom tool-output stderr line(s) for session_id=session-uuid call_id=call_orphan]",
     );
+  });
+
+  it("preserves first evidence for new call ids inside partially suppressed chunks", () => {
+    // Dedupe is per call id even when Bun delivers multiple missing-output
+    // records in a single decoded stderr chunk.
+    const state = new Map<string, CodexMissingCustomToolOutputState>();
+    const first = "[session:test:stderr] ERROR normalize: Custom tool call output is missing for call id: call_first";
+    const combined = [
+      "[session:test:stderr] ERROR normalize: Custom tool call output is missing for call id: call_first",
+      "ERROR normalize: Custom tool call output is missing for call id: call_second",
+    ].join("\n");
+
+    expect(maybeFormatCodexMissingCustomToolOutputLogLine(state, "session-uuid", first, 1_000, 60_000)).toContain(
+      "call_id=call_first",
+    );
+
+    const formatted = maybeFormatCodexMissingCustomToolOutputLogLine(state, "session-uuid", combined, 2_000, 60_000);
+
+    expect(formatted).toContain("call_id=call_second");
+    expect(formatted).not.toContain("call_id=call_first");
   });
 });

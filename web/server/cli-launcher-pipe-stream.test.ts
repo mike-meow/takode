@@ -65,4 +65,35 @@ describe("CliLauncher pipeStream", () => {
     warnSpy.mockRestore();
     errorSpy.mockRestore();
   });
+
+  it("keeps new Codex missing tool-output evidence from multi-call chunks", async () => {
+    const launcher = new CliLauncher(3456, { serverId: "test-server-id" });
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const firstCall = "call_first";
+    const secondCall = "call_second";
+    const firstLine = `ERROR codex_core::context_manager::normalize: Custom tool call output is missing for call id: ${firstCall}\n`;
+    const combinedChunk = [
+      `ERROR codex_core::context_manager::normalize: Custom tool call output is missing for call id: ${firstCall}`,
+      `ERROR codex_core::context_manager::normalize: Custom tool call output is missing for call id: ${secondCall}`,
+      "",
+    ].join("\n");
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(firstLine));
+        controller.enqueue(new TextEncoder().encode(combinedChunk));
+        controller.close();
+      },
+    });
+
+    const pipeStream = (launcher as unknown as { pipeStream: PipeStreamForTest }).pipeStream.bind(launcher);
+    await pipeStream("test-session-id-multi-call", stream, "stderr");
+
+    expect(warnSpy).toHaveBeenCalledTimes(2);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining(`call_id=${firstCall}`));
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining(`call_id=${secondCall}`));
+    expect(errorSpy).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+    errorSpy.mockRestore();
+  });
 });

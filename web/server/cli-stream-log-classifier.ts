@@ -129,6 +129,12 @@ export function extractCodexMissingCustomToolOutputCallId(text: string): string 
   return match?.[1]?.trim() || null;
 }
 
+export function extractCodexMissingCustomToolOutputCallIds(text: string): string[] {
+  return rawNonEmptyLines(text)
+    .map((line) => extractCodexMissingCustomToolOutputCallId(line))
+    .filter((callId): callId is string => Boolean(callId));
+}
+
 export function maybeFormatCodexMissingCustomToolOutputLogLine(
   stateBySessionAndCall: Map<string, CodexMissingCustomToolOutputState>,
   sessionId: string,
@@ -136,8 +142,29 @@ export function maybeFormatCodexMissingCustomToolOutputLogLine(
   now = Date.now(),
   suppressMs = CODEX_MISSING_CUSTOM_TOOL_OUTPUT_SUPPRESSION_MS,
 ): string | null {
-  const callId = extractCodexMissingCustomToolOutputCallId(line);
-  if (!callId) return line;
+  const formattedLines = rawNonEmptyLines(line)
+    .map((record) =>
+      maybeFormatCodexMissingCustomToolOutputRecord(stateBySessionAndCall, sessionId, record, now, suppressMs),
+    )
+    .filter((record): record is string => Boolean(record));
+
+  return formattedLines.length > 0 ? formattedLines.join("\n") : null;
+}
+
+function isLikelyStandaloneStderrRecord(normalized: string): boolean {
+  return /^(?:\d{4}-\d{2}-\d{2}t\S+\s+)?(?:error|warn|warning|fatal)\b/.test(normalized);
+}
+
+function maybeFormatCodexMissingCustomToolOutputRecord(
+  stateBySessionAndCall: Map<string, CodexMissingCustomToolOutputState>,
+  sessionId: string,
+  record: string,
+  now: number,
+  suppressMs: number,
+): string | null {
+  const callId = extractCodexMissingCustomToolOutputCallId(record);
+  if (!callId) return record;
+
   const key = `${sessionId}:${callId}`;
   const current = stateBySessionAndCall.get(key);
   if (!current || now - current.lastEmittedAt >= suppressMs) {
@@ -147,17 +174,13 @@ export function maybeFormatCodexMissingCustomToolOutputLogLine(
         : "";
     stateBySessionAndCall.set(key, { lastEmittedAt: now, suppressed: 0 });
     return (
-      `${prefix}[codex-canonical-history-orphan session_id=${sessionId} call_id=${callId}] ${line}` +
+      `${prefix}[codex-canonical-history-orphan session_id=${sessionId} call_id=${callId}] ${record}` +
       " Takode diagnostic only; browser-visible recovery does not repair Codex rollout state."
     );
   }
 
   current.suppressed++;
   return null;
-}
-
-function isLikelyStandaloneStderrRecord(normalized: string): boolean {
-  return /^(?:\d{4}-\d{2}-\d{2}t\S+\s+)?(?:error|warn|warning|fatal)\b/.test(normalized);
 }
 
 export function maybeFormatCodexTokenRefreshLogLine(
@@ -188,6 +211,13 @@ function stripAnsi(input: string): string {
 function normalizedLines(text: string): string[] {
   return stripAnsi(text)
     .toLowerCase()
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function rawNonEmptyLines(text: string): string[] {
+  return text
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean);
