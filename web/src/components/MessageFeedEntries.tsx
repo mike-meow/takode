@@ -1702,6 +1702,7 @@ export const TurnEntries = memo(function TurnEntries({
   onSelectThread,
   turnStates,
   toggleTurn,
+  userBoundarySourceSessionId,
 }: {
   sections: FeedSection[];
   sessionId: string;
@@ -1713,6 +1714,7 @@ export const TurnEntries = memo(function TurnEntries({
   onSelectThread?: (threadKey: string) => void;
   turnStates: Array<{ isActivityExpanded: boolean } | undefined>;
   toggleTurn: (turnId: string) => void;
+  userBoundarySourceSessionId?: string | null;
 }) {
   const turns = useMemo(() => sections.flatMap((section) => section.turns), [sections]);
   const currentThreadStatuses = useStore((s) => s.sessions.get(sessionId)?.leaderThreadStatuses);
@@ -1770,7 +1772,9 @@ export const TurnEntries = memo(function TurnEntries({
                     data-turn-id={turn.id}
                     data-feed-block-id={getTurnFeedBlockId(turn.id)}
                     className="turn-container space-y-3 sm:space-y-5"
-                    data-user-turn={isUserBoundaryEntry(turn.userEntry) ? "true" : undefined}
+                    data-user-turn={
+                      isUserBoundaryEntry(turn.userEntry, userBoundarySourceSessionId) ? "true" : undefined
+                    }
                   >
                     {turn.userEntry && (
                       <FeedEntries

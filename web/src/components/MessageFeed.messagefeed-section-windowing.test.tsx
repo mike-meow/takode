@@ -234,6 +234,38 @@ function makeSectionedMessages(sectionCount: number, turnsPerSection = 50): Chat
   return messages;
 }
 
+function makeLeaderSectionedMessages(sectionCount: number, turnsPerSection = 50, leaderSessionId = "leader-session") {
+  const messages: ChatMessage[] = [];
+  let timestamp = 1_700_000_000_000;
+
+  for (let sectionIndex = 0; sectionIndex < sectionCount; sectionIndex++) {
+    for (let turnIndex = 0; turnIndex < turnsPerSection; turnIndex++) {
+      const turnNumber = sectionIndex * turnsPerSection + turnIndex + 1;
+      const label =
+        turnIndex === 0
+          ? `Leader section ${sectionIndex + 1} marker`
+          : `Leader section ${sectionIndex + 1} turn ${turnIndex + 1}`;
+      messages.push(
+        makeMessage({
+          id: `leader-u${turnNumber}`,
+          role: "user",
+          content: label,
+          timestamp: timestamp++,
+          agentSource: { sessionId: leaderSessionId, sessionLabel: "Leader" },
+        }),
+        makeMessage({
+          id: `leader-a${turnNumber}`,
+          role: "assistant",
+          content: `Worker response ${turnNumber}`,
+          timestamp: timestamp++,
+        }),
+      );
+    }
+  }
+
+  return messages;
+}
+
 function setStoreMessages(sessionId: string, msgs: ChatMessage[]) {
   const map = new Map();
   map.set(sessionId, msgs);
@@ -687,6 +719,21 @@ describe("MessageFeed section windowing", () => {
     expect(container.querySelectorAll("[data-feed-section-id]")).toHaveLength(3);
   });
 
+  it("sections leader-driven worker feeds by herding leader user messages", () => {
+    const sid = "test-leader-worker-section-boundaries";
+    setStoreSdkSessionRole(sid, { herdedBy: "leader-session" });
+    setStoreMessages(sid, makeLeaderSectionedMessages(4, 2));
+
+    const { container } = render(<MessageFeed sessionId={sid} sectionTurnCount={2} />);
+
+    expect(screen.queryByText("Leader section 1 marker")).toBeNull();
+    expect(screen.getByText("Leader section 2 marker")).toBeTruthy();
+    expect(screen.getByText("Leader section 4 marker")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Load older section" })).toBeTruthy();
+    expect(container.querySelectorAll("[data-feed-section-id]")).toHaveLength(3);
+    expect(container.querySelectorAll("[data-user-turn]")).toHaveLength(6);
+  });
+
   it("shows newer-section boundary text after loading older history", () => {
     const sid = "test-section-newer-control";
     setStoreMessages(sid, makeSectionedMessages(4, 2));
@@ -766,9 +813,11 @@ describe("MessageFeed section windowing", () => {
       makeMessage({ id: "assistant-tail", role: "assistant", content: "Worker response", timestamp: 4 }),
     ]);
     setStoreFeedScrollPosition(sid, { scrollTop: 240, scrollHeight: 900, isAtBottom: false });
+    let leaderTurnElement: HTMLElement | null = null;
     const rectSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
       this: HTMLElement,
     ) {
+      if (this === leaderTurnElement) return makePositionedDomRect(-80, -40);
       if (this.getAttribute("data-message-id") === "leader-routed") return makePositionedDomRect(-80, -40);
       if (this.getAttribute("data-message-id") === "timer-event") return makePositionedDomRect(-20, 20);
       if (this.getAttribute("data-testid") === "message-feed-scroll-container") return makePositionedDomRect(0, 400);
@@ -776,11 +825,16 @@ describe("MessageFeed section windowing", () => {
     });
 
     render(<MessageFeed sessionId={sid} />);
-    fireEvent.click(screen.getByLabelText("Previous user message"));
+    leaderTurnElement = screen.getByText("Leader routed prompt").closest("[data-turn-id]");
+    try {
+      fireEvent.click(screen.getByLabelText("Previous user message"));
 
-    const scrollContext = mockScrollIntoView.mock.contexts.at(-1) as HTMLElement | undefined;
-    expect(scrollContext?.getAttribute("data-message-id")).toBe("leader-routed");
-    rectSpy.mockRestore();
+      const scrollContext = mockScrollIntoView.mock.contexts.at(-1) as HTMLElement | undefined;
+      expect(scrollContext).toBe(leaderTurnElement);
+      expect(scrollContext?.getAttribute("data-user-turn")).toBe("true");
+    } finally {
+      rectSpy.mockRestore();
+    }
   });
 
   it("loads hidden local sections before scrolling to previous and next user-message targets", () => {

@@ -3,6 +3,7 @@
 import { renderHook } from "@testing-library/react";
 import type { ChatMessage, SessionAttentionRecord } from "../types.js";
 import { buildFeedModel, useFeedModel, summarizeHerdEvents } from "./use-feed-model.js";
+import { buildFeedSections } from "../components/message-feed-sections.js";
 
 function makeMessage(overrides: Partial<ChatMessage> & { id: string; role: ChatMessage["role"] }): ChatMessage {
   return {
@@ -63,6 +64,16 @@ function makeVisibleLeaderMessage(id: string, content: string, timestamp: number
     content,
     timestamp,
     metadata: { leaderUserMessage: true },
+  });
+}
+
+function makeAssistantMessage(id: string, content: string, timestamp: number): ChatMessage {
+  return makeMessage({
+    id,
+    role: "assistant",
+    content,
+    timestamp,
+    contentBlocks: [{ type: "text", text: content }],
   });
 }
 
@@ -728,6 +739,80 @@ describe("sub-conclusions in collapsed turns", () => {
     expect(group?.kind).toBe("tool_msg_group");
     if (group?.kind !== "tool_msg_group") throw new Error("expected a grouped terminal entry");
     expect(group.items.map((item) => item.messageId)).toEqual(["a1", "a2"]);
+  });
+});
+
+describe("worker leader-source turn boundaries", () => {
+  it("uses current herding leader messages as worker feed turn boundaries", () => {
+    const messages: ChatMessage[] = [];
+    for (let index = 1; index <= 12; index++) {
+      messages.push(
+        makeInjectedUserMessage(`leader-${index}`, `Leader instruction ${index}`, index * 10, "leader-session"),
+        makeAssistantMessage(`assistant-${index}`, `Worker response ${index}`, index * 10 + 1),
+      );
+    }
+
+    const model = buildFeedModel(messages, false, 0, undefined, "leader-session");
+
+    expect(model.turns).toHaveLength(12);
+    expect(model.turns.map((turn) => (turn.userEntry?.kind === "message" ? turn.userEntry.msg.id : null))).toEqual(
+      Array.from({ length: 12 }, (_, index) => `leader-${index + 1}`),
+    );
+    expect(buildFeedSections(model.turns, 5)).toHaveLength(3);
+  });
+
+  it("does not turn injected user-shaped messages or leader-visible assistant rows into worker boundaries", () => {
+    const messages: ChatMessage[] = [
+      makeInjectedUserMessage("leader-1", "Leader instruction 1", 1, "leader-session"),
+      makeAssistantMessage("assistant-1", "Worker response 1", 2),
+      makeInjectedUserMessage("timer-1", "Timer fired", 3, "timer:t1", "Timer"),
+      makeHerdEvent("herd-1", "#100 | turn_end | done", 4),
+      makeInjectedUserMessage(
+        "compaction-1",
+        "Context was compacted. Before continuing, recover enough context from your own session history to safely resume work:",
+        5,
+        "system:compaction-recovery",
+        "Compaction Recovery",
+      ),
+      makeInjectedUserMessage("system-1", "System reminder", 6, "system:tag-reminder", "System"),
+      makeMessage({
+        id: "kickoff-1",
+        role: "user",
+        content: "[System] You are a leader session. Historical kickoff without source metadata.",
+        timestamp: 7,
+      }),
+      makeVisibleLeaderMessage("leader-visible-1", "Visible leader note", 8),
+      makeInjectedUserMessage("leader-2", "Leader instruction 2", 9, "leader-session"),
+      makeAssistantMessage("assistant-2", "Worker response 2", 10),
+    ];
+
+    const model = buildFeedModel(messages, false, 0, undefined, "leader-session");
+
+    expect(model.turns).toHaveLength(2);
+    expect(model.turns.map((turn) => (turn.userEntry?.kind === "message" ? turn.userEntry.msg.id : null))).toEqual([
+      "leader-1",
+      "leader-2",
+    ]);
+    expect(entryIds(model.turns[0].allEntries)).toEqual([
+      "assistant-1",
+      "timer-1",
+      "herd-1",
+      "compaction-1",
+      "system-1",
+      "kickoff-1",
+      "leader-visible-1",
+    ]);
+  });
+
+  it("keeps leader-source boundaries source-aware for unherded sessions", () => {
+    const messages: ChatMessage[] = [
+      makeInjectedUserMessage("leader-1", "Leader instruction 1", 1, "leader-session"),
+      makeAssistantMessage("assistant-1", "Worker response 1", 2),
+      makeInjectedUserMessage("leader-2", "Leader instruction 2", 3, "leader-session"),
+      makeAssistantMessage("assistant-2", "Worker response 2", 4),
+    ];
+
+    expect(buildFeedModel(messages, false).turns).toHaveLength(1);
   });
 });
 

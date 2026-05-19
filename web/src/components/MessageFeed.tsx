@@ -159,9 +159,8 @@ export function MessageFeed({
       s.sessions?.get(sessionId)?.isOrchestrator === true ||
       s.sdkSessions?.some((sdk) => sdk.sessionId === sessionId && sdk.isOrchestrator === true) === true,
   );
-  const userNavigationSourceSessionId = useStore(
-    (s) => s.sdkSessions?.find((sdk) => sdk.sessionId === sessionId)?.herdedBy ?? sessionId,
-  );
+  const herdingLeaderSessionId = useStore((s) => s.sdkSessions?.find((sdk) => sdk.sessionId === sessionId)?.herdedBy);
+  const userNavigationSourceSessionId = herdingLeaderSessionId ?? sessionId;
   const selectedFeedWindowEnabled = useMemo(() => {
     if (isAllThreadsKey(normalizedThreadKey)) return false;
     return isLeaderSession;
@@ -296,6 +295,7 @@ export function MessageFeed({
     frozenCount,
     frozenRevision,
     anchoredNotificationMessageIds,
+    userBoundarySourceSessionId: herdingLeaderSessionId ?? null,
     perf: { sessionId, threadKey: normalizedThreadKey },
   });
   const userNavigationTargets = useMemo(
@@ -1812,6 +1812,7 @@ export function MessageFeed({
                   onSelectThread={onSelectThread}
                   turnStates={turnStates}
                   toggleTurn={toggleTurn}
+                  userBoundarySourceSessionId={herdingLeaderSessionId ?? null}
                 />
                 {hasNewerSections && (
                   <div className="flex justify-center pt-1" aria-live="polite">

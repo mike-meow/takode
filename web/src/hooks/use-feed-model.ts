@@ -457,14 +457,12 @@ function getEntryId(entry: FeedEntry): string {
   return entry.taskToolUseId;
 }
 
-export function isUserBoundaryEntry(entry: FeedEntry | null): boolean {
-  return !!(
-    entry &&
-    entry.kind === "message" &&
-    entry.msg.role === "user" &&
-    entry.msg.agentSource == null &&
-    !isInjectedEventMessage(entry.msg)
-  );
+export function isUserBoundaryEntry(entry: FeedEntry | null, userBoundarySourceSessionId?: string | null): boolean {
+  if (!entry || entry.kind !== "message" || entry.msg.role !== "user") return false;
+  if (isInjectedEventMessage(entry.msg)) return false;
+
+  const sourceId = entry.msg.agentSource?.sessionId;
+  return sourceId == null || (userBoundarySourceSessionId != null && sourceId === userBoundarySourceSessionId);
 }
 
 /** Check if a FeedEntry is a herd event message (user message injected by herd dispatcher). */
@@ -865,13 +863,16 @@ export function groupIntoTurns(
   leaderMode = false,
   startTurnIndex = 0,
   anchoredNotificationMessageIds?: ReadonlySet<string>,
+  userBoundarySourceSessionId?: string | null,
 ): Turn[] {
   const turns: Turn[] = [];
   let currentUser: FeedEntry | null = null;
   let currentEntries: FeedEntry[] = [];
 
   for (const entry of entries) {
-    const isBoundary = leaderMode ? isLeaderBoundaryEntry(entry) : isUserBoundaryEntry(entry);
+    const isBoundary = leaderMode
+      ? isLeaderBoundaryEntry(entry)
+      : isUserBoundaryEntry(entry, userBoundarySourceSessionId);
     if (isBoundary) {
       // Flush previous turn
       if (currentUser !== null || currentEntries.length > 0) {
@@ -907,13 +908,14 @@ export function buildFeedModel(
   leaderMode = false,
   startTurnIndex = 0,
   anchoredNotificationMessageIds?: ReadonlySet<string> | readonly string[],
+  userBoundarySourceSessionId?: string | null,
 ): FeedModel {
   const anchoredIds =
     anchoredNotificationMessageIds instanceof Set
       ? anchoredNotificationMessageIds
       : new Set(anchoredNotificationMessageIds ?? []);
   const entries = groupMessages(messages, anchoredIds);
-  const turns = groupIntoTurns(entries, leaderMode, startTurnIndex, anchoredIds);
+  const turns = groupIntoTurns(entries, leaderMode, startTurnIndex, anchoredIds, userBoundarySourceSessionId);
   return { entries, turns };
 }
 
@@ -927,6 +929,7 @@ function concatFeedModels(
   next: FeedModel,
   leaderMode = false,
   anchoredNotificationMessageIds?: ReadonlySet<string> | readonly string[],
+  userBoundarySourceSessionId?: string | null,
 ): FeedModel {
   if (base.entries.length === 0) return next;
   if (next.entries.length === 0) return base;
@@ -981,6 +984,7 @@ export function useFeedModel(
     frozenCount?: number;
     frozenRevision?: number;
     anchoredNotificationMessageIds?: readonly string[];
+    userBoundarySourceSessionId?: string | null;
     perf?: { sessionId: string; threadKey: string };
   },
 ): FeedModel {
@@ -988,6 +992,7 @@ export function useFeedModel(
   const frozenCount = Math.max(0, Math.min(config?.frozenCount ?? 0, messages.length));
   const frozenRevision = config?.frozenRevision ?? 0;
   const anchoredNotificationMessageIds = config?.anchoredNotificationMessageIds ?? [];
+  const userBoundarySourceSessionId = config?.userBoundarySourceSessionId ?? null;
   const anchoredNotificationSignature = anchoredNotificationMessageIds.join("\0");
   const perfSessionId = config?.perf?.sessionId;
   const perfThreadKey = config?.perf?.threadKey;
@@ -996,6 +1001,7 @@ export function useFeedModel(
     frozenCount: number;
     frozenRevision: number;
     anchoredNotificationSignature: string;
+    userBoundarySourceSessionId: string | null;
     frozenMessages: ChatMessage[];
     frozenModel: FeedModel;
   } | null>(null);
@@ -1012,6 +1018,7 @@ export function useFeedModel(
       cached.frozenCount === frozenCount &&
       cached.frozenRevision === frozenRevision &&
       cached.anchoredNotificationSignature === anchoredNotificationSignature &&
+      cached.userBoundarySourceSessionId === userBoundarySourceSessionId &&
       haveSameMessageRefs(cached.frozenMessages, frozenMessages)
     ) {
       frozenModel = cached.frozenModel;
@@ -1020,6 +1027,7 @@ export function useFeedModel(
       cached.leaderMode === leaderMode &&
       cached.frozenRevision === frozenRevision &&
       cached.anchoredNotificationSignature === anchoredNotificationSignature &&
+      cached.userBoundarySourceSessionId === userBoundarySourceSessionId &&
       frozenCount >= cached.frozenCount &&
       haveSameMessageRefs(cached.frozenMessages, frozenMessages.slice(0, cached.frozenCount))
     ) {
@@ -1029,10 +1037,23 @@ export function useFeedModel(
         leaderMode,
         cached.frozenModel.turns.length,
         anchoredNotificationMessageIds,
+        userBoundarySourceSessionId,
       );
-      frozenModel = concatFeedModels(cached.frozenModel, deltaModel, leaderMode, anchoredNotificationMessageIds);
+      frozenModel = concatFeedModels(
+        cached.frozenModel,
+        deltaModel,
+        leaderMode,
+        anchoredNotificationMessageIds,
+        userBoundarySourceSessionId,
+      );
     } else {
-      frozenModel = buildFeedModel(frozenMessages, leaderMode, 0, anchoredNotificationMessageIds);
+      frozenModel = buildFeedModel(
+        frozenMessages,
+        leaderMode,
+        0,
+        anchoredNotificationMessageIds,
+        userBoundarySourceSessionId,
+      );
     }
 
     cacheRef.current = {
@@ -1040,6 +1061,7 @@ export function useFeedModel(
       frozenCount,
       frozenRevision,
       anchoredNotificationSignature,
+      userBoundarySourceSessionId,
       frozenMessages,
       frozenModel,
     };
@@ -1049,8 +1071,15 @@ export function useFeedModel(
       leaderMode,
       frozenModel.turns.length,
       anchoredNotificationMessageIds,
+      userBoundarySourceSessionId,
     );
-    return concatFeedModels(frozenModel, activeModel, leaderMode, anchoredNotificationMessageIds);
+    return concatFeedModels(
+      frozenModel,
+      activeModel,
+      leaderMode,
+      anchoredNotificationMessageIds,
+      userBoundarySourceSessionId,
+    );
   }, [
     messages,
     leaderMode,
@@ -1058,6 +1087,7 @@ export function useFeedModel(
     frozenRevision,
     anchoredNotificationMessageIds,
     anchoredNotificationSignature,
+    userBoundarySourceSessionId,
   ]);
 
   useEffect(() => {
