@@ -16,6 +16,7 @@ import { resolveNotificationOwnerThreadKey } from "../utils/notification-thread.
 import { navigateToSessionMessageId, navigateToSessionThread, routeSessionRefForId } from "../utils/routing.js";
 import { MAIN_THREAD_KEY } from "../utils/thread-projection.js";
 import { NeedsInputSourceTarget } from "./NeedsInputSourceTarget.js";
+import { NeedsInputAnswerField } from "./NeedsInputAnswerField.js";
 import {
   getGlobalNeedsInputEntries,
   type GlobalNeedsInputEntry,
@@ -114,6 +115,9 @@ function GlobalNeedsInputRow({ entry, sdkSessions }: { entry: GlobalNeedsInputEn
   const canSubmitResponse = canSendResponse && !sending;
   const sessionLabel = entry.sessionNum == null ? entry.sessionName : `#${entry.sessionNum} ${entry.sessionName}`;
   const summary = getNotificationTitle(entry.notification);
+  const ownerThreadKey = resolveNotificationOwnerThreadKey(entry.notification);
+  const voiceThreadTitle =
+    ownerThreadKey === MAIN_THREAD_KEY ? "Main Thread" : (entry.notification.questId ?? ownerThreadKey);
   const localSourceContext = useMemo(
     () => getNotificationSourceContext(entry.notification, messages),
     [entry.notification, messages],
@@ -149,7 +153,7 @@ function GlobalNeedsInputRow({ entry, sdkSessions }: { entry: GlobalNeedsInputEn
 
   const sendResponse = useCallback(async () => {
     if (!canSubmitResponse) return;
-    const threadKey = resolveNotificationOwnerThreadKey(entry.notification);
+    const threadKey = ownerThreadKey;
     const content = formatNeedsInputResponse(entry.notification.summary, questionViews, answersByQuestion);
     setSending(true);
     setDeliveryError(null);
@@ -168,7 +172,7 @@ function GlobalNeedsInputRow({ entry, sdkSessions }: { entry: GlobalNeedsInputEn
     } finally {
       setSending(false);
     }
-  }, [answersByQuestion, canSubmitResponse, entry, questionViews]);
+  }, [answersByQuestion, canSubmitResponse, entry, ownerThreadKey, questionViews]);
 
   return (
     <div className="px-3 py-2.5 hover:bg-cc-hover/35 transition-colors">
@@ -221,13 +225,19 @@ function GlobalNeedsInputRow({ entry, sdkSessions }: { entry: GlobalNeedsInputEn
                   ))}
                 </div>
               )}
-              <input
-                type="text"
+              <NeedsInputAnswerField
+                sessionId={entry.sessionId}
+                notification={entry.notification}
+                question={question}
+                questionCount={questionViews.length}
                 value={answersByQuestion[question.key] ?? ""}
-                onChange={(e) => setQuestionAnswer(question.key, e.currentTarget.value)}
-                aria-label={`Answer for ${question.prompt}`}
-                className="w-full rounded border border-cc-border/60 bg-cc-bg/70 px-2 py-1 text-[12px] text-cc-fg outline-none transition-colors placeholder:text-cc-muted/50 focus:border-cc-attention"
+                onChange={(value) => setQuestionAnswer(question.key, value)}
                 placeholder="Your answer"
+                sourceContext={sourceContext}
+                threadKey={ownerThreadKey}
+                threadTitle={voiceThreadTitle}
+                textareaClassName="border-cc-border/60 px-2 py-1 text-[12px] text-cc-fg"
+                onClickStopsPropagation={false}
               />
             </div>
           ))}
@@ -286,7 +296,7 @@ function GlobalNeedsInputPopover({
   return createPortal(
     <div
       ref={popoverRef}
-      className="fixed right-3 z-50 flex max-h-[min(72vh,32rem)] w-[min(26rem,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-lg border border-cc-border bg-cc-card/98 shadow-xl"
+      className="fixed right-3 z-50 flex max-h-[min(72vh,32rem)] w-[min(28rem,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-lg border border-cc-border bg-cc-card/98 shadow-xl"
       style={{ top: MENU_TOP_PX }}
       role="dialog"
       aria-label="Global needs-input notifications"

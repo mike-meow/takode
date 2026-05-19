@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { MouseEvent } from "react";
 import { api } from "../api.js";
 import { useStore } from "../store.js";
-import type { SessionNotification } from "../types.js";
+import type { ChatMessage, SessionNotification } from "../types.js";
 import { formatNeedsInputResponse, getNeedsInputQuestionViews } from "../utils/notification-questions.js";
 import {
   isNotificationOwnerSelected,
@@ -11,6 +11,10 @@ import {
 } from "../utils/notification-thread.js";
 import { ALL_THREADS_KEY, MAIN_THREAD_KEY, normalizeThreadKey } from "../utils/thread-projection.js";
 import { useVisibleReviewNotificationAutoResolve } from "../hooks/useVisibleReviewNotificationAutoResolve.js";
+import { getNotificationSourceContext } from "../utils/notification-source-context.js";
+import { NeedsInputAnswerField } from "./NeedsInputAnswerField.js";
+
+const EMPTY_MESSAGES: ChatMessage[] = [];
 
 /** Compact marker rendered inline for notification tool calls.
  *  When sessionId and messageId are provided, shows the checkbox affordance immediately
@@ -59,6 +63,11 @@ export function NotificationMarker({
   const questionViews = useMemo(
     () => (isAction && !isDone && notif ? getNeedsInputQuestionViews(notif) : []),
     [isAction, isDone, notif],
+  );
+  const messages = useStore((s) => (sessionId ? (s.messages?.get(sessionId) ?? EMPTY_MESSAGES) : EMPTY_MESSAGES));
+  const sourceContext = useMemo(
+    () => (notif ? getNotificationSourceContext(notif, messages, messageId) : null),
+    [messageId, messages, notif],
   );
   const [answersByQuestion, setAnswersByQuestion] = useState<Record<string, string>>({});
   const canSendQuickReply =
@@ -205,11 +214,15 @@ export function NotificationMarker({
       </svg>
     </button>
   ) : null;
+  const voiceThreadKey = notif ? resolveNotificationOwnerThreadKey(notif) : MAIN_THREAD_KEY;
+  const voiceThreadTitle = voiceThreadKey === MAIN_THREAD_KEY ? "Main Thread" : (notif?.questId ?? voiceThreadKey);
 
   return (
     <div
       ref={markerRef}
       className={`inline-flex max-w-full flex-col items-start gap-1 mt-2 px-2 py-0.5 rounded-xl text-[11px] font-medium border transition-opacity ${
+        questionViews.length > 0 ? "w-full sm:w-[min(30rem,100%)]" : ""
+      } ${
         isDone
           ? "border-cc-border bg-cc-hover/30 text-cc-muted opacity-60"
           : isAction
@@ -277,28 +290,35 @@ export function NotificationMarker({
                   {answer}
                 </button>
               ))}
-              <div className="flex min-w-0 items-center gap-1">
-                <input
-                  type="text"
+              {sessionId && notif && (
+                <NeedsInputAnswerField
+                  sessionId={sessionId}
+                  notification={notif}
+                  question={question}
+                  questionCount={questionViews.length}
                   value={answersByQuestion[question.key] ?? ""}
-                  onClick={(e) => e.stopPropagation()}
-                  onChange={(e) => setQuestionAnswer(question.key, e.currentTarget.value)}
-                  aria-label={`Answer for ${question.prompt}`}
-                  className="min-w-0 flex-1 rounded border border-cc-attention-border bg-cc-bg/70 px-1.5 py-1 text-[11px] text-cc-fg outline-none transition-colors placeholder:text-cc-muted/50 focus:border-cc-attention"
+                  onChange={(value) => setQuestionAnswer(question.key, value)}
                   placeholder="Your answer"
+                  sourceContext={sourceContext}
+                  threadKey={voiceThreadKey}
+                  threadTitle={voiceThreadTitle}
+                  className="w-full min-w-0"
+                  textareaClassName="border-cc-attention-border px-1.5 py-1 text-[11px] text-cc-fg"
                 />
-                {questionViews.length === 1 && (
+              )}
+              {questionViews.length === 1 && (
+                <div className="flex flex-wrap items-center gap-1 pt-0.5" data-testid="notification-answer-footer">
                   <button
                     type="button"
                     onClick={sendQuickReply}
                     disabled={!canSendQuickReply}
-                    className="shrink-0 rounded border border-cc-attention-border bg-cc-attention-bg px-2 py-1 text-[11px] text-cc-attention transition-colors hover:bg-cc-attention-bg/80 disabled:cursor-not-allowed disabled:opacity-45 cursor-pointer"
+                    className="rounded border border-cc-attention-border bg-cc-attention-bg px-2 py-1 text-[11px] text-cc-attention transition-colors hover:bg-cc-attention-bg/80 disabled:cursor-not-allowed disabled:opacity-45 cursor-pointer"
                   >
                     Reply
                   </button>
-                )}
-                {questionViews.length === 1 && replyButton}
-              </div>
+                  {replyButton}
+                </div>
+              )}
             </div>
           ))}
           {questionViews.length > 1 && (

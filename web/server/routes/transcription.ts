@@ -26,6 +26,7 @@ import { buildThreadWindowSync } from "../../shared/thread-window.js";
 import { normalizeThreadTarget } from "../../shared/thread-routing.js";
 
 const TRANSCRIPTION_THREAD_CONTEXT_TURNS = 12;
+const TRANSCRIPTION_FOCUSED_CONTEXT_MAX_CHARS = 4000;
 type TranscriptionMode = "dictation" | "edit" | "append";
 type TranscriptionProgressPhase = "transcribing" | "enhancing" | "editing" | "appending" | "complete" | "error";
 type TranscriptionFrontendTimingPhase =
@@ -203,6 +204,14 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
     return trimmed ? trimmed.slice(0, 300) : undefined;
   }
 
+  function normalizeTranscriptionFocusedContext(rawFocusedContext: string | undefined): string | undefined {
+    const trimmed = rawFocusedContext
+      ?.trim()
+      .replace(/\r\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n");
+    return trimmed ? trimmed.slice(0, TRANSCRIPTION_FOCUSED_CONTEXT_MAX_CHARS) : undefined;
+  }
+
   function buildThreadScopedTranscriptionHistory(
     history: BrowserIncomingMessage[] | null,
     threadKey: string | undefined,
@@ -365,6 +374,7 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
     let requestedBackend: string | undefined;
     let rawThreadKey: string | undefined;
     let rawThreadTitle: string | undefined;
+    let rawFocusedContext: string | undefined;
     let transcriptionRequestId: string | undefined;
 
     if (contentType.toLowerCase().startsWith("multipart/form-data")) {
@@ -382,6 +392,7 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
       requestedBackend = typeof body["backend"] === "string" ? body["backend"] : undefined;
       rawThreadKey = typeof body["threadKey"] === "string" ? body["threadKey"] : undefined;
       rawThreadTitle = typeof body["threadTitle"] === "string" ? body["threadTitle"] : undefined;
+      rawFocusedContext = typeof body["focusedContext"] === "string" ? body["focusedContext"] : undefined;
       transcriptionRequestId = typeof body["requestId"] === "string" ? body["requestId"] : undefined;
     } else {
       buf = Buffer.from(await c.req.arrayBuffer());
@@ -396,6 +407,7 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
       requestedBackend = c.req.query("backend") || undefined;
       rawThreadKey = c.req.query("threadKey") || undefined;
       rawThreadTitle = c.req.query("threadTitle") || undefined;
+      rawFocusedContext = c.req.query("focusedContext") || undefined;
       transcriptionRequestId = c.req.query("requestId") || undefined;
     }
 
@@ -403,6 +415,7 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
     const mode = rawMode === "edit" ? "edit" : rawMode === "append" ? "append" : "dictation";
     const threadKey = normalizeTranscriptionThreadKey(rawThreadKey);
     const threadTitle = normalizeTranscriptionThreadTitle(rawThreadTitle);
+    const focusedContext = normalizeTranscriptionFocusedContext(rawFocusedContext);
     const { default: defaultBackend } = getAvailableBackends();
     const backend = requestedBackend || defaultBackend;
     const uploadTiming = {
@@ -475,6 +488,7 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
             taskHistory: sessionContext.taskHistory,
             sessionName: sessionContext.sessionName,
             threadTitle: sessionContext.threadTitle,
+            focusedContext,
             activeSessionNames: sessionContext.activeSessionNames?.slice(0, 10),
             composerText: mode === "edit" || mode === "append" ? composerText : undefined,
             messageHistory: sessionContext.messageHistory,
@@ -572,6 +586,7 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
               taskTitles: sessionContext.taskHistory.map((t) => t.title),
               sessionName: sessionContext.sessionName,
               threadTitle: sessionContext.threadTitle,
+              focusedContext,
               activeSessionNames: sessionContext.activeSessionNames,
               customVocabulary: settings.transcriptionConfig.customVocabulary || undefined,
             },
@@ -645,6 +660,7 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
               taskTitles: sessionContext.taskHistory.map((t) => t.title),
               sessionName: sessionContext.sessionName,
               threadTitle: sessionContext.threadTitle,
+              focusedContext,
               activeSessionNames: sessionContext.activeSessionNames,
               customVocabulary: settings.transcriptionConfig.customVocabulary || undefined,
             },
@@ -715,6 +731,7 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
               taskTitles: sessionContext.taskHistory.map((t) => t.title),
               sessionName: sessionContext.sessionName,
               threadTitle: sessionContext.threadTitle,
+              focusedContext,
               activeSessionNames: sessionContext.activeSessionNames,
               customVocabulary: settings.transcriptionConfig.customVocabulary || undefined,
             },

@@ -1203,7 +1203,7 @@ describe("POST /api/transcribe", () => {
       );
 
     const res = await app.request(
-      "/api/transcribe?backend=openai&mode=dictation&sessionId=session-1&threadKey=q-1210&threadTitle=q-1210%3A%20Use%20active%20leader%20thread%20tab%20as%20voice%20transcription%20context",
+      "/api/transcribe?backend=openai&mode=dictation&sessionId=session-1&threadKey=q-1210&threadTitle=q-1210%3A%20Use%20active%20leader%20thread%20tab%20as%20voice%20transcription%20context&focusedContext=Needs-input%20prompt%3A%20Approve%20deployment%3F%0ACurrent%20question%3A%20Run%20execute%3F",
       {
         method: "POST",
         headers: {
@@ -1221,6 +1221,8 @@ describe("POST /api/transcribe", () => {
     const [, sttInit] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
     const sttPrompt = String((sttInit.body as FormData).get("prompt"));
     expect(sttPrompt).toContain("Current thread: q-1210: Use active leader thread tab as voice transcription context");
+    expect(sttPrompt).toContain("Focused context: Needs-input prompt: Approve deployment?");
+    expect(sttPrompt).toContain("Current question: Run execute?");
     expect(sttPrompt).toContain("Custom vocabulary: Takode, WsBridge, SelectedCustomTerm");
     expect(sttPrompt).toContain("<VOCABULARY_REFERENCE>");
     expect(sttPrompt).toContain("Selected quest tab is about SelectedThreadOnly.");
@@ -1233,6 +1235,7 @@ describe("POST /api/transcribe", () => {
     expect(enhanceBody.messages[1].content).toContain(
       "Current thread: q-1210: Use active leader thread tab as voice transcription context",
     );
+    expect(enhanceBody.messages[1].content).toContain("Focused context: Needs-input prompt: Approve deployment?");
     expect(enhanceBody.messages[1].content).toContain("Important Vocabulary: Takode, WsBridge, SelectedCustomTerm");
     expect(enhanceBody.messages[1].content).toContain("Selected quest tab is about SelectedThreadOnly.");
     expect(enhanceBody.messages[1].content).toContain("SelectedThreadOnly user-visible leader context.");

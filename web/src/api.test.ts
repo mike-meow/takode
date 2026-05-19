@@ -813,6 +813,43 @@ describe("transcribe", () => {
     expect(opts?.body).toBeInstanceOf(Blob);
   });
 
+  it("uses multipart transport when focused voice context is provided", async () => {
+    const encoder = new TextEncoder();
+    const body = new ReadableStream({
+      start(controller) {
+        controller.enqueue(
+          encoder.encode(
+            `event: result\ndata: ${JSON.stringify({
+              text: "focused context",
+              backend: "openai",
+              enhanced: false,
+            } satisfies VoiceTranscriptionResult)}\n\n`,
+          ),
+        );
+        controller.close();
+      },
+    });
+    mockFetch.mockResolvedValueOnce(
+      new Response(body, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      }),
+    );
+
+    await api.transcribe(new Blob([new Uint8Array([1, 2, 3, 4])], { type: "audio/webm" }), {
+      mode: "dictation",
+      sessionId: "session-1",
+      focusedContext: "Needs-input prompt: Approve deployment?",
+    });
+
+    const [url, opts] = mockFetch.mock.calls[0];
+    expect(url).toBe("/api/transcribe?mode=dictation&sessionId=session-1");
+    expect(opts?.body).toBeInstanceOf(FormData);
+    const form = opts?.body as FormData;
+    expect(form.get("focusedContext")).toBe("Needs-input prompt: Approve deployment?");
+    expect(form.get("audio")).toBeInstanceOf(File);
+  });
+
   it("reports frontend voice timing for backend log correlation", async () => {
     const report = {
       requestId: "voice-request-1",

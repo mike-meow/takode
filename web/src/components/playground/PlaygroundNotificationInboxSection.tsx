@@ -32,6 +32,10 @@ function seedNotificationData() {
                 prompt: "Run browser validation in Execute?",
                 suggestedAnswers: ["yes", "no"],
               },
+              {
+                prompt:
+                  "Add any reviewer context or rollout caveats that should travel with this answer. This is intentionally long enough to exercise the auto-expanding custom answer field.",
+              },
             ],
             timestamp: now - 120_000,
             messageId: "mock-msg-87",
@@ -228,9 +232,9 @@ export function PlaygroundNotificationInboxSection() {
             </div>
             <p className="text-[10px] text-cc-muted">
               Click &quot;Seed notification data&quot; first. The inbox shows needs-input rows with one prompt title,
-              expandable source context, direct Send Response controls, compact quest-first review rows, and a
-              collapsible Done section. On mobile, the modal stretches across the viewport while staying scrollable and
-              height-capped.
+              expandable source context, direct Send Response controls, voice-enabled long-answer fields, compact
+              quest-first review rows, and a collapsible Done section. On mobile, the modal stretches across the
+              viewport while staying scrollable and height-capped.
             </p>
           </div>
         </Card>

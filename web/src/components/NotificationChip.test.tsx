@@ -903,7 +903,8 @@ describe("NotificationChip", () => {
     expect(dialog.className).toContain("inset-x-3");
     expect(dialog.className).toContain("bottom-[var(--notification-popover-bottom)]");
     expect(dialog.className).toContain("max-h-[min(60vh,28rem,var(--notification-popover-available-height))]");
-    expect(dialog.className).toContain("sm:w-80");
+    expect(dialog.className).toContain("sm:w-[24rem]");
+    expect(dialog.className).toContain("md:w-[26rem]");
     expect(dialog.className).toContain("sm:max-h-[min(50vh,var(--notification-popover-available-height))]");
     expect(dialog.style.getPropertyValue("--notification-popover-bottom")).toBe("56px");
   });

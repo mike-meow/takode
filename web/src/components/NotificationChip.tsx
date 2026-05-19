@@ -25,6 +25,7 @@ import { useVisibleReviewNotificationAutoResolve } from "../hooks/useVisibleRevi
 import { getActionableNotificationMessageId } from "../utils/notification-targets.js";
 import { normalizeThreadKey } from "../utils/thread-projection.js";
 import { NeedsInputSourceTarget } from "./NeedsInputSourceTarget.js";
+import { NeedsInputAnswerField } from "./NeedsInputAnswerField.js";
 
 const EMPTY: SessionNotification[] = [];
 const EMPTY_MESSAGES: ChatMessage[] = [];
@@ -397,6 +398,7 @@ function NotificationItem({
     () => (isNeedsInput ? getNotificationSourceContext(notif, notificationTargetMessages, actionableMessageId) : null),
     [actionableMessageId, isNeedsInput, notif, notificationTargetMessages],
   );
+  const voiceThreadTitle = ownerThreadKey === MAIN_THREAD_KEY ? "Main Thread" : (notif.questId ?? ownerThreadKey);
 
   const renderLabel = () => {
     if (!questSummary) {
@@ -518,14 +520,18 @@ function NotificationItem({
                     ))}
                   </div>
                 )}
-                <input
-                  type="text"
+                <NeedsInputAnswerField
+                  sessionId={sessionId}
+                  notification={notif}
+                  question={question}
+                  questionCount={questionViews.length}
                   value={answersByQuestion[question.key] ?? ""}
-                  onClick={(e) => e.stopPropagation()}
-                  onChange={(e) => setQuestionAnswer(question.key, e.currentTarget.value)}
-                  aria-label={`Answer for ${question.prompt}`}
-                  className="w-full rounded border border-cc-border/60 bg-cc-bg/70 px-2 py-1 text-[12px] text-cc-fg outline-none transition-colors placeholder:text-cc-muted/50 focus:border-cc-attention"
+                  onChange={(value) => setQuestionAnswer(question.key, value)}
                   placeholder="Answer"
+                  sourceContext={sourceContext}
+                  threadKey={ownerThreadKey}
+                  threadTitle={voiceThreadTitle}
+                  textareaClassName="border-cc-border/60 px-2 py-1 text-[12px] text-cc-fg"
                 />
               </div>
             ))}
@@ -609,7 +615,7 @@ function NotificationPopover({
   return createPortal(
     <div
       ref={popoverRef}
-      className="fixed inset-x-3 bottom-[var(--notification-popover-bottom)] z-50 flex max-h-[min(60vh,28rem,var(--notification-popover-available-height))] flex-col overflow-hidden rounded-2xl border border-cc-border bg-cc-card/95 shadow-[0_25px_60px_rgba(0,0,0,0.5)] backdrop-blur-xl sm:inset-x-auto sm:right-3 sm:w-80 sm:max-w-[calc(100vw-1.5rem)] sm:max-h-[min(50vh,var(--notification-popover-available-height))]"
+      className="fixed inset-x-3 bottom-[var(--notification-popover-bottom)] z-50 flex max-h-[min(60vh,28rem,var(--notification-popover-available-height))] flex-col overflow-hidden rounded-2xl border border-cc-border bg-cc-card/95 shadow-[0_25px_60px_rgba(0,0,0,0.5)] backdrop-blur-xl sm:inset-x-auto sm:right-3 sm:w-[24rem] md:w-[26rem] sm:max-w-[calc(100vw-1.5rem)] sm:max-h-[min(50vh,var(--notification-popover-available-height))]"
       style={popoverLayoutStyle}
       role="dialog"
       aria-label="Notification inbox"

@@ -368,6 +368,56 @@ describe("MessageBubble notification markers", () => {
     }
   });
 
+  it("stacks single-answer inline controls below the custom answer field", () => {
+    const prevNotifications = useStore.getState().sessionNotifications;
+    const notifications = new Map(prevNotifications);
+    const longAnswer =
+      "Continue the rollout now. The canary looks healthy, the rollback owner is online, and the final smoke check should include mobile notification coverage.";
+    notifications.set("notify-session", [
+      {
+        id: "n-stacked-actions",
+        category: "needs-input",
+        summary: "Approve the rollout?",
+        suggestedAnswers: [longAnswer],
+        timestamp: Date.now(),
+        messageId: "asst-notify",
+        done: false,
+      },
+    ]);
+    useStore.setState({ sessionNotifications: notifications });
+
+    try {
+      render(
+        <NotificationMarker
+          category="needs-input"
+          summary="Approve the rollout?"
+          sessionId="notify-session"
+          messageId="asst-notify"
+          notificationId="n-stacked-actions"
+        />,
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: `Use suggested answer: ${longAnswer}` }));
+
+      const actionColumn = screen.getByTestId("notification-answer-actions");
+      const footer = screen.getByTestId("notification-answer-footer");
+      const answer = screen.getByLabelText("Answer for Approve the rollout?");
+      const reply = screen.getByRole("button", { name: "Reply" });
+      const composerReply = screen.getByRole("button", { name: "reply in composer" });
+      const fieldRow = footer.previousElementSibling;
+
+      expect(actionColumn.className).toContain("flex-col");
+      expect(footer.contains(reply)).toBe(true);
+      expect(footer.contains(composerReply)).toBe(true);
+      expect(footer.contains(answer)).toBe(false);
+      expect(fieldRow?.contains(answer)).toBe(true);
+      expect(answer).toMatchObject({ value: longAnswer });
+      expect((reply as HTMLButtonElement).disabled).toBe(false);
+    } finally {
+      useStore.setState({ sessionNotifications: prevNotifications });
+    }
+  });
+
   it("switches to the notification owner thread before sending an inline quick answer", () => {
     const onSelectThread = vi.fn();
     vi.useFakeTimers();

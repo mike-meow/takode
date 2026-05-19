@@ -1493,6 +1493,7 @@ export const api = {
       sessionId?: string;
       threadKey?: string;
       threadTitle?: string;
+      focusedContext?: string;
       composerText?: string;
       /** Called when transcription phase changes (e.g. first stream ack -> "transcribing"). */
       onPhase?: (phase: VoiceTranscriptionPhase) => void;
@@ -1505,7 +1506,8 @@ export const api = {
     const mode = options?.mode ?? "dictation";
     const requestId = options?.requestId ?? createTranscriptionRequestId();
     const audioFileName = resolveAudioUploadFilename(audio.type);
-    const canUseRawAudioTransport = mode === "dictation" && options?.composerText === undefined;
+    const canUseRawAudioTransport =
+      mode === "dictation" && options?.composerText === undefined && options?.focusedContext === undefined;
     const emitProgress = (event: Omit<VoiceTranscriptionProgressEvent, "requestId" | "timestamp">) => {
       options?.onProgress?.({
         requestId,
@@ -1544,6 +1546,7 @@ export const api = {
       if (options?.sessionId) form.append("sessionId", options.sessionId);
       if (options?.threadKey) form.append("threadKey", options.threadKey);
       if (options?.threadTitle) form.append("threadTitle", options.threadTitle);
+      if (options?.focusedContext !== undefined) form.append("focusedContext", options.focusedContext);
       if (options?.composerText !== undefined) form.append("composerText", options.composerText);
       if (options?.requestId) form.append("requestId", requestId);
       body = form;

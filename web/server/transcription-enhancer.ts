@@ -414,6 +414,8 @@ export interface EnhancementContextInput {
   sessionName?: string;
   /** Title of the currently selected leader thread, used only as vocabulary context. */
   threadTitle?: string;
+  /** Narrow interaction context, such as the notification prompt being answered. */
+  focusedContext?: string;
   /** Names of other active sessions (vocabulary from the user's workspace). */
   activeSessionNames?: string[];
   /** Comma-separated custom vocabulary terms from user settings. */
@@ -430,6 +432,9 @@ function appendSessionContext(parts: string[], extra: EnhancementContextInput | 
   }
   if (extra?.threadTitle) {
     supplementary.push(`Current thread: ${extra.threadTitle}`);
+  }
+  if (extra?.focusedContext) {
+    supplementary.push(`Focused context: ${extra.focusedContext}`);
   }
   if (extra?.activeSessionNames && extra.activeSessionNames.length > 0) {
     supplementary.push(`Other active sessions: ${extra.activeSessionNames.join("; ")}`);
@@ -568,6 +573,8 @@ export interface SttPromptInput {
   sessionName?: string;
   /** Title of the currently selected leader thread, used only as vocabulary context. */
   threadTitle?: string;
+  /** Narrow interaction context, such as the notification prompt being answered. */
+  focusedContext?: string;
   /** Names of other active sessions (vocabulary from the user's workspace). */
   activeSessionNames?: string[];
   /** Full message history for extracting recent user messages. */
@@ -647,18 +654,23 @@ export function buildSttPrompt(input: SttPromptInput): string {
     addMeta("Current thread: " + trunc(input.threadTitle, 200));
   }
 
-  // 4. Other session names (pre-filtered by caller)
+  // 4. Focused context for the exact UI prompt being answered
+  if (input.focusedContext && metaRemaining > 0) {
+    addMeta("Focused context: " + trunc(input.focusedContext, 1200));
+  }
+
+  // 5. Other session names (pre-filtered by caller)
   if (input.activeSessionNames && input.activeSessionNames.length > 0 && metaRemaining > 0) {
     const truncated = input.activeSessionNames.slice(0, 5).map((n) => trunc(n, 60));
     addMeta("Sessions: " + truncated.join(", "));
   }
 
-  // 5. Composer text (voice-edit and voice-append modes -- provides vocabulary from the draft)
+  // 6. Composer text (voice-edit and voice-append modes -- provides vocabulary from the draft)
   if ((input.mode === "edit" || input.mode === "append") && input.composerText && metaRemaining > 0) {
     addDraftSection(input.composerText);
   }
 
-  // 6. Custom vocabulary terms from user settings
+  // 7. Custom vocabulary terms from user settings
   if (input.customVocabulary && metaRemaining > 0) {
     const terms = input.customVocabulary.trim();
     if (terms) addMeta(`Custom vocabulary: ${terms}`);
