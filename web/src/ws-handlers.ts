@@ -1182,6 +1182,7 @@ function handleParsedMessage(
         mode: data.mode,
         timestamp: data.timestamp,
         timing: data.timing,
+        result: data.result,
         error: data.error,
       });
       break;

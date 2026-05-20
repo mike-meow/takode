@@ -904,8 +904,19 @@ describe("POST /api/transcribe", () => {
         timing: expect.objectContaining({
           sttDurationMs: expect.any(Number),
         }),
+        result: expect.objectContaining({
+          mode: "dictation",
+          text: "socket-progress transcript",
+          backend: "openai",
+          enhanced: false,
+          timing: expect.objectContaining({
+            sttDurationMs: expect.any(Number),
+          }),
+        }),
       }),
     ]);
+    expect(progressMessages[0]).not.toHaveProperty("result");
+    expect(progressMessages[1]).not.toHaveProperty("result");
   });
 
   it("broadcasts request-scoped progress through dictation enhancement", async () => {
@@ -999,6 +1010,18 @@ describe("POST /api/transcribe", () => {
           sttDurationMs: expect.any(Number),
           enhancementDurationMs: expect.any(Number),
         }),
+        result: expect.objectContaining({
+          mode: "dictation",
+          text: "This mobile Safari recording should report enhancement progress before the final transcript result.",
+          rawText:
+            "This mobile Safari recording is intentionally long enough to run the dictation enhancer after speech to text finishes, so the WebSocket progress path should report enhancement before the final result.",
+          backend: "openai",
+          enhanced: true,
+          timing: expect.objectContaining({
+            sttDurationMs: expect.any(Number),
+            enhancementDurationMs: expect.any(Number),
+          }),
+        }),
       }),
     ]);
 
@@ -1066,8 +1089,10 @@ describe("POST /api/transcribe", () => {
         fetchStartAt: 1001,
         responseStartAt: 1025,
         firstChunkAt: 1030,
+        webSocketResultAt: 8400,
         resultEventAt: 8400,
         resultReturnedAt: 8401,
+        resultDeliverySource: "websocket",
         responseStartDelayMs: 24,
         firstChunkDelayMs: 5,
         resultStreamDurationMs: 7370,
@@ -1110,6 +1135,8 @@ describe("POST /api/transcribe", () => {
           }),
           clientTiming: expect.objectContaining({
             transport: "raw",
+            webSocketResultAt: 8400,
+            resultDeliverySource: "websocket",
             responseStartDelayMs: 24,
             resultStreamDurationMs: 7370,
           }),

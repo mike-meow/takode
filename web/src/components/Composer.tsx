@@ -602,6 +602,12 @@ export function Composer({
                 ...(clientTiming.resultStreamDurationMs !== undefined
                   ? { resultStreamDurationMs: clientTiming.resultStreamDurationMs }
                   : {}),
+                ...(clientTiming.resultDeliverySource !== undefined
+                  ? { resultDeliverySource: clientTiming.resultDeliverySource }
+                  : {}),
+                ...(clientTiming.webSocketResultAt !== undefined
+                  ? { webSocketResultAt: clientTiming.webSocketResultAt }
+                  : {}),
                 ...(uiTiming.apiElapsedMs !== undefined ? { apiElapsedMs: uiTiming.apiElapsedMs } : {}),
                 ...(uiTiming.applyToNextPaintMs !== undefined
                   ? { applyToNextPaintMs: uiTiming.applyToNextPaintMs }

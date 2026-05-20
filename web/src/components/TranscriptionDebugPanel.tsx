@@ -339,6 +339,14 @@ export function TranscriptionDebugPanel() {
                             <span className="ml-2 text-cc-fg">
                               {expandedEntry.frontendTiming.clientTiming.transport}
                             </span>
+                            {expandedEntry.frontendTiming.clientTiming.resultDeliverySource && (
+                              <span className="ml-2">
+                                Result{" "}
+                                <span className="text-cc-fg">
+                                  {expandedEntry.frontendTiming.clientTiming.resultDeliverySource}
+                                </span>
+                              </span>
+                            )}
                             {expandedEntry.frontendTiming.clientTiming.responseStartDelayMs !== undefined && (
                               <span className="ml-2">
                                 Response{" "}

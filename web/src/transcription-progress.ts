@@ -18,6 +18,16 @@ export interface VoiceTranscriptionTiming {
   serverTiming?: VoiceTranscriptionServerTiming;
 }
 
+export interface VoiceTranscriptionResultPayload {
+  mode?: VoiceTranscriptionMode;
+  text: string;
+  rawText?: string;
+  instructionText?: string;
+  backend: string;
+  enhanced: boolean;
+  timing?: VoiceTranscriptionTiming;
+}
+
 export interface VoiceTranscriptionServerTiming {
   bodyReadDurationMs?: number;
   contextBuildDurationMs?: number;
@@ -57,8 +67,10 @@ export interface VoiceTranscriptionClientTiming {
   fetchStartAt: number;
   responseStartAt?: number;
   firstChunkAt?: number;
+  webSocketResultAt?: number;
   resultEventAt?: number;
   resultReturnedAt?: number;
+  resultDeliverySource?: "sse" | "websocket";
   responseStartDelayMs?: number;
   firstChunkDelayMs?: number;
   resultStreamDurationMs?: number;
@@ -84,6 +96,7 @@ export interface VoiceTranscriptionProgressEvent {
   timestamp: number;
   source: "client" | "sse" | "websocket";
   timing?: VoiceTranscriptionTiming;
+  result?: VoiceTranscriptionResultPayload;
   error?: string;
 }
 

@@ -770,6 +770,44 @@ export type BrowserIncomingMessageBase =
         audioSizeBytes?: number;
         audioMimeType?: string | null;
         audioFileName?: string | null;
+        serverTiming?: {
+          bodyReadDurationMs?: number;
+          contextBuildDurationMs?: number;
+          ssePhaseWriteDurationMs?: number;
+          sttCompleteWriteDurationMs?: number;
+          resultReadyDurationMs?: number;
+          resultWriteDurationMs?: number;
+          serverTotalDurationMs?: number;
+          uploadFormatMimeType?: string;
+          uploadFormatExtension?: string;
+        };
+      };
+      result?: {
+        mode?: "dictation" | "edit" | "append";
+        text: string;
+        rawText?: string;
+        instructionText?: string;
+        backend: string;
+        enhanced: boolean;
+        timing?: {
+          uploadDurationMs?: number;
+          sttDurationMs?: number;
+          enhancementDurationMs?: number;
+          audioSizeBytes?: number;
+          audioMimeType?: string | null;
+          audioFileName?: string | null;
+          serverTiming?: {
+            bodyReadDurationMs?: number;
+            contextBuildDurationMs?: number;
+            ssePhaseWriteDurationMs?: number;
+            sttCompleteWriteDurationMs?: number;
+            resultReadyDurationMs?: number;
+            resultWriteDurationMs?: number;
+            serverTotalDurationMs?: number;
+            uploadFormatMimeType?: string;
+            uploadFormatExtension?: string;
+          };
+        };
       };
       error?: string;
     }

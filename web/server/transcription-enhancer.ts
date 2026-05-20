@@ -1162,8 +1162,10 @@ export interface TranscriptionClientTiming {
   fetchStartAt: number;
   responseStartAt?: number;
   firstChunkAt?: number;
+  webSocketResultAt?: number;
   resultEventAt?: number;
   resultReturnedAt?: number;
+  resultDeliverySource?: "sse" | "websocket";
   responseStartDelayMs?: number;
   firstChunkDelayMs?: number;
   resultStreamDurationMs?: number;

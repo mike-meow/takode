@@ -113,6 +113,8 @@ export type FrontendPerfEntry =
       responseStartDelayMs?: number;
       firstChunkDelayMs?: number;
       resultStreamDurationMs?: number;
+      resultDeliverySource?: "sse" | "websocket";
+      webSocketResultAt?: number;
       apiElapsedMs?: number;
       applyToNextPaintMs?: number;
     }

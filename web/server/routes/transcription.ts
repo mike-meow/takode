@@ -60,6 +60,16 @@ interface TranscriptionProgressTiming {
   serverTiming?: TranscriptionServerTiming;
 }
 
+interface TranscriptionProgressResult {
+  mode?: TranscriptionMode;
+  text: string;
+  rawText?: string;
+  instructionText?: string;
+  backend: string;
+  enhanced: boolean;
+  timing?: TranscriptionProgressTiming;
+}
+
 const FRONTEND_TIMING_MAX_EVENTS = 100;
 const FRONTEND_TIMING_PHASES = new Set<TranscriptionFrontendTimingPhase>([
   "preparing",
@@ -237,7 +247,13 @@ function normalizeClientTiming(value: unknown): TranscriptionClientTiming | unde
     return undefined;
   }
   const timing: TranscriptionClientTiming = { transport, requestConstructedAt, fetchStartAt, requestBodyBytes };
-  for (const key of ["responseStartAt", "firstChunkAt", "resultEventAt", "resultReturnedAt"] as const) {
+  for (const key of [
+    "responseStartAt",
+    "firstChunkAt",
+    "webSocketResultAt",
+    "resultEventAt",
+    "resultReturnedAt",
+  ] as const) {
     const normalized = normalizeTimestampMs(body[key]);
     if (normalized !== undefined) timing[key] = normalized;
   }
@@ -249,6 +265,9 @@ function normalizeClientTiming(value: unknown): TranscriptionClientTiming | unde
   if (audioMimeType !== undefined) timing.audioMimeType = audioMimeType;
   const audioFileName = normalizeStringField(body.audioFileName);
   if (audioFileName !== undefined) timing.audioFileName = audioFileName;
+  if (body.resultDeliverySource === "sse" || body.resultDeliverySource === "websocket") {
+    timing.resultDeliverySource = body.resultDeliverySource;
+  }
   return timing;
 }
 
@@ -406,6 +425,7 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
     phase,
     mode,
     timing,
+    result,
     error,
   }: {
     sessionId: string | undefined;
@@ -413,6 +433,7 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
     phase: TranscriptionProgressPhase;
     mode?: TranscriptionMode;
     timing?: TranscriptionProgressTiming;
+    result?: TranscriptionProgressResult;
     error?: string;
   }): void {
     if (!sessionId || !requestId) return;
@@ -423,6 +444,7 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
       mode,
       timestamp: Date.now(),
       ...(timing ? { timing } : {}),
+      ...(result ? { result } : {}),
       ...(error ? { error } : {}),
     });
   }
@@ -560,7 +582,7 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
     const bodyReadCompletedAt = Date.now();
     const bodyReadDurationMs = bodyReadCompletedAt - bodyReadStartedAt;
     const uploadDurationMs = bodyReadCompletedAt - requestStart;
-    const mode = rawMode === "edit" ? "edit" : rawMode === "append" ? "append" : "dictation";
+    const mode: TranscriptionMode = rawMode === "edit" ? "edit" : rawMode === "append" ? "append" : "dictation";
     const threadKey = normalizeTranscriptionThreadKey(rawThreadKey);
     const threadTitle = normalizeTranscriptionThreadTitle(rawThreadTitle);
     const focusedContext = normalizeTranscriptionFocusedContext(rawFocusedContext);
@@ -760,24 +782,27 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
             },
           );
           const enhancementDurationMs = Date.now() - enhancementStart;
-
-          emitTranscriptionProgress({
-            sessionId,
-            requestId: transcriptionRequestId,
-            phase: "complete",
-            mode,
-            timing: { ...uploadTiming, sttDurationMs, enhancementDurationMs, serverTiming },
-          });
-
-          await writeResultSSE({
+          const resultTiming = { ...uploadTiming, sttDurationMs, enhancementDurationMs, serverTiming };
+          const resultPayload = {
             mode,
             text: result.text,
             rawText,
             instructionText: rawText,
             backend: usedBackend,
             enhanced: true,
-            timing: { ...uploadTiming, sttDurationMs, enhancementDurationMs, serverTiming },
+            timing: resultTiming,
+          };
+
+          emitTranscriptionProgress({
+            sessionId,
+            requestId: transcriptionRequestId,
+            phase: "complete",
+            mode,
+            timing: resultTiming,
+            result: resultPayload,
           });
+
+          await writeResultSSE(resultPayload);
           addTranscriptionLogEntry({
             sessionId: sessionId ?? null,
             requestId: transcriptionRequestId ?? null,
@@ -832,23 +857,26 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
             },
           );
           const enhancementDurationMs = Date.now() - enhancementStart;
+          const resultTiming = { ...uploadTiming, sttDurationMs, enhancementDurationMs, serverTiming };
+          const resultPayload = {
+            mode,
+            text: result.text,
+            rawText,
+            backend: usedBackend,
+            enhanced: true,
+            timing: resultTiming,
+          };
 
           emitTranscriptionProgress({
             sessionId,
             requestId: transcriptionRequestId,
             phase: "complete",
             mode,
-            timing: { ...uploadTiming, sttDurationMs, enhancementDurationMs, serverTiming },
+            timing: resultTiming,
+            result: resultPayload,
           });
 
-          await writeResultSSE({
-            mode,
-            text: result.text,
-            rawText,
-            backend: usedBackend,
-            enhanced: true,
-            timing: { ...uploadTiming, sttDurationMs, enhancementDurationMs, serverTiming },
-          });
+          await writeResultSSE(resultPayload);
           addTranscriptionLogEntry({
             sessionId: sessionId ?? null,
             requestId: transcriptionRequestId ?? null,
@@ -901,23 +929,26 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
             },
           );
           const enhancementDurationMs = Date.now() - enhancementStart;
+          const resultTiming = { ...uploadTiming, sttDurationMs, enhancementDurationMs, serverTiming };
+          const resultPayload = {
+            mode,
+            text: result.text,
+            rawText: result.rawText,
+            backend: usedBackend,
+            enhanced: result.enhanced,
+            timing: resultTiming,
+          };
 
           emitTranscriptionProgress({
             sessionId,
             requestId: transcriptionRequestId,
             phase: "complete",
             mode,
-            timing: { ...uploadTiming, sttDurationMs, enhancementDurationMs, serverTiming },
+            timing: resultTiming,
+            result: resultPayload,
           });
 
-          await writeResultSSE({
-            mode,
-            text: result.text,
-            rawText: result.rawText,
-            backend: usedBackend,
-            enhanced: result.enhanced,
-            timing: { ...uploadTiming, sttDurationMs, enhancementDurationMs, serverTiming },
-          });
+          await writeResultSSE(resultPayload);
           addTranscriptionLogEntry({
             sessionId: sessionId!,
             requestId: transcriptionRequestId ?? null,
@@ -947,28 +978,31 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
         }
 
         // STT-only call (no enhancement attempted)
+        const resultTiming = { ...uploadTiming, sttDurationMs, serverTiming };
+        const resultPayload = {
+          mode,
+          text: rawText,
+          backend: usedBackend,
+          enhanced: false,
+          timing: resultTiming,
+        };
         emitTranscriptionProgress({
           sessionId,
           requestId: transcriptionRequestId,
           phase: "finalizing",
           mode,
-          timing: { ...uploadTiming, sttDurationMs, serverTiming },
+          timing: resultTiming,
         });
         emitTranscriptionProgress({
           sessionId,
           requestId: transcriptionRequestId,
           phase: "complete",
           mode,
-          timing: { ...uploadTiming, sttDurationMs, serverTiming },
+          timing: resultTiming,
+          result: resultPayload,
         });
 
-        await writeResultSSE({
-          mode,
-          text: rawText,
-          backend: usedBackend,
-          enhanced: false,
-          timing: { ...uploadTiming, sttDurationMs, serverTiming },
-        });
+        await writeResultSSE(resultPayload);
         addTranscriptionLogEntry({
           sessionId: sessionId ?? null,
           requestId: transcriptionRequestId ?? null,

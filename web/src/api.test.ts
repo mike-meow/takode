@@ -656,6 +656,78 @@ describe("transcribe", () => {
     expect(url).toBe("/api/transcribe?mode=dictation&sessionId=session-1&requestId=voice-request-1");
   });
 
+  it("resolves from request-scoped WebSocket result when mobile fetch delays the SSE response", async () => {
+    let abortObserved = false;
+    mockFetch.mockImplementationOnce((_url, opts?: RequestInit) => {
+      const signal = opts?.signal as AbortSignal;
+      return new Promise<Response>((_resolve, reject) => {
+        signal.addEventListener(
+          "abort",
+          () => {
+            abortObserved = true;
+            reject(new DOMException("Aborted", "AbortError"));
+          },
+          { once: true },
+        );
+      });
+    });
+
+    const onProgress = vi.fn();
+    const onClientTiming = vi.fn();
+    const pending = api.transcribe(new Blob([new Uint8Array([1, 2, 3, 4])], { type: "audio/mp4" }), {
+      mode: "dictation",
+      sessionId: "session-1",
+      requestId: "voice-request-1",
+      onProgress,
+      onClientTiming,
+    });
+
+    await Promise.resolve();
+    handleTranscriptionProgressMessage({
+      requestId: "voice-request-1",
+      phase: "complete",
+      mode: "dictation",
+      timestamp: 123,
+      timing: { uploadDurationMs: 25, sttDurationMs: 300 },
+      result: {
+        mode: "dictation",
+        text: "websocket transcript",
+        backend: "openai",
+        enhanced: false,
+        timing: { uploadDurationMs: 25, sttDurationMs: 300 },
+      },
+    });
+
+    await expect(pending).resolves.toEqual({
+      mode: "dictation",
+      text: "websocket transcript",
+      backend: "openai",
+      enhanced: false,
+      timing: { uploadDurationMs: 25, sttDurationMs: 300 },
+    });
+    expect(abortObserved).toBe(true);
+    expect(onProgress).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestId: "voice-request-1",
+        phase: "complete",
+        source: "websocket",
+        result: expect.objectContaining({ text: "websocket transcript" }),
+      }),
+    );
+    expect(onClientTiming).toHaveBeenCalledWith(
+      expect.objectContaining({
+        transport: "raw",
+        requestBodyBytes: 4,
+        resultDeliverySource: "websocket",
+        webSocketResultAt: expect.any(Number),
+        resultReturnedAt: expect.any(Number),
+        resultStreamDurationMs: expect.any(Number),
+        audioMimeType: "audio/mp4",
+        audioFileName: "recording.mp4",
+      }),
+    );
+  });
+
   it("uses raw audio transport for empty-draft dictation and parses the SSE result", async () => {
     // q-566: the common mobile dictation path should avoid multipart overhead
     // and send the audio blob directly while preserving the phase-aware SSE flow.

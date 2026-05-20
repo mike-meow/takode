@@ -4,6 +4,7 @@ import type {
   VoiceTranscriptionMode,
   VoiceTranscriptionPhase,
   VoiceTranscriptionProgressEvent,
+  VoiceTranscriptionResultPayload,
   VoiceTranscriptionTiming,
 } from "../transcription-progress.js";
 
@@ -12,15 +13,7 @@ const TRANSCRIPTION_REQUEST_BASE_TIMEOUT_MS = 45_000;
 const TRANSCRIPTION_REQUEST_TIMEOUT_CAP_MS = 180_000;
 const TRANSCRIPTION_REQUEST_BYTES_PER_EXTRA_SECOND = 64 * 1024;
 
-export interface VoiceTranscriptionResult {
-  mode?: VoiceTranscriptionMode;
-  text: string;
-  rawText?: string;
-  instructionText?: string;
-  backend: string;
-  enhanced: boolean;
-  timing?: VoiceTranscriptionTiming;
-}
+export interface VoiceTranscriptionResult extends VoiceTranscriptionResultPayload {}
 
 export interface VoiceTranscriptionOptions {
   backend?: "gemini" | "openai";
@@ -90,6 +83,10 @@ function completeClientTiming(
   return { ...timing, ...fields };
 }
 
+type WebSocketTerminalTranscription =
+  | { type: "result"; receivedAt: number; result: VoiceTranscriptionResult }
+  | { type: "error"; receivedAt: number; error: Error };
+
 export async function transcribe(audio: Blob, options?: VoiceTranscriptionOptions): Promise<VoiceTranscriptionResult> {
   const mode = options?.mode ?? "dictation";
   const requestId = options?.requestId ?? createTranscriptionRequestId();
@@ -100,13 +97,32 @@ export async function transcribe(audio: Blob, options?: VoiceTranscriptionOption
   const emitProgress = (event: Omit<VoiceTranscriptionProgressEvent, "requestId" | "timestamp">) => {
     options?.onProgress?.({ requestId, timestamp: Date.now(), ...event });
   };
+  let resolveWebSocketTerminal: ((terminal: WebSocketTerminalTranscription) => void) | undefined;
+  const webSocketTerminal = new Promise<WebSocketTerminalTranscription>((resolve) => {
+    resolveWebSocketTerminal = resolve;
+  });
   const applyProgressPhase = (event: VoiceTranscriptionProgressEvent) => {
     options?.onProgress?.(event);
-    if (event.phase === "complete" || event.phase === "error") return;
+    if (event.phase === "complete") {
+      if (event.result) {
+        resolveWebSocketTerminal?.({ type: "result", receivedAt: Date.now(), result: event.result });
+      }
+      return;
+    }
+    if (event.phase === "error") {
+      resolveWebSocketTerminal?.({
+        type: "error",
+        receivedAt: Date.now(),
+        error: new Error(event.error || "Transcription failed"),
+      });
+      return;
+    }
     options?.onPhase?.(event.phase);
   };
-  const unsubscribeProgress =
-    options?.sessionId && options?.requestId ? subscribeTranscriptionProgress(requestId, applyProgressPhase) : () => {};
+  const canUseWebSocketTerminal = !!(options?.sessionId && options?.requestId);
+  const unsubscribeProgress = canUseWebSocketTerminal
+    ? subscribeTranscriptionProgress(requestId, applyProgressPhase)
+    : () => {};
   const query = new URLSearchParams();
   if (options?.backend) query.set("backend", options.backend);
   if (mode) query.set("mode", mode);
@@ -147,6 +163,7 @@ export async function transcribe(audio: Blob, options?: VoiceTranscriptionOption
   const controller = new AbortController();
   const timeoutMs = getTranscriptionRequestTimeoutMs(audio.size);
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let abortedAfterWebSocketTerminal = false;
   let res: Response;
   options?.onPhase?.("preparing");
   emitProgress({
@@ -155,122 +172,160 @@ export async function transcribe(audio: Blob, options?: VoiceTranscriptionOption
     mode,
     timing: { audioSizeBytes: audio.size, audioMimeType: audio.type || null, audioFileName },
   });
-  try {
-    clientTiming = completeClientTiming(clientTiming, { fetchStartAt: Date.now() });
-    res = await fetch(path, { method: "POST", body, headers, signal: controller.signal });
-    const responseStartAt = Date.now();
-    clientTiming = completeClientTiming(clientTiming, {
-      responseStartAt,
-      responseStartDelayMs: responseStartAt - clientTiming.fetchStartAt,
-    });
-  } catch (err) {
-    clearTimeout(timeout);
-    unsubscribeProgress();
-    options?.onClientTiming?.(clientTiming);
-    if (err instanceof DOMException && err.name === "AbortError") {
-      throw new Error(
-        `Transcription timed out after ${Math.round(timeoutMs / 1000)}s — sending audio or starting transcription took too long.`,
-      );
+
+  const readSseTranscription = async (): Promise<VoiceTranscriptionResult> => {
+    try {
+      clientTiming = completeClientTiming(clientTiming, { fetchStartAt: Date.now() });
+      res = await fetch(path, { method: "POST", body, headers, signal: controller.signal });
+      const responseStartAt = Date.now();
+      clientTiming = completeClientTiming(clientTiming, {
+        responseStartAt,
+        responseStartDelayMs: responseStartAt - clientTiming.fetchStartAt,
+      });
+    } catch (err) {
+      clearTimeout(timeout);
+      if (err instanceof DOMException && err.name === "AbortError" && abortedAfterWebSocketTerminal) {
+        throw err;
+      }
+      options?.onClientTiming?.(clientTiming);
+      if (err instanceof DOMException && err.name === "AbortError") {
+        throw new Error(
+          `Transcription timed out after ${Math.round(timeoutMs / 1000)}s — sending audio or starting transcription took too long.`,
+        );
+      }
+      throw err;
     }
-    throw err;
-  }
-  clearTimeout(timeout);
-  if (!res.ok) {
-    unsubscribeProgress();
-    options?.onClientTiming?.(clientTiming);
-    const err = await res.json().catch(() => ({ error: res.statusText }));
-    throw new Error((err as { error?: string }).error || res.statusText);
-  }
+    clearTimeout(timeout);
+    if (!res.ok) {
+      options?.onClientTiming?.(clientTiming);
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error((err as { error?: string }).error || res.statusText);
+    }
 
-  if (!res.body) {
-    unsubscribeProgress();
-    options?.onClientTiming?.(clientTiming);
-    throw new Error("No response body");
-  }
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let phaseAcked = false;
-  let streamEnded = false;
+    if (!res.body) {
+      options?.onClientTiming?.(clientTiming);
+      throw new Error("No response body");
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let phaseAcked = false;
+    let streamEnded = false;
 
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        streamEnded = true;
-        break;
-      }
-      const chunkReceivedAt = Date.now();
-      if (clientTiming.firstChunkAt === undefined) {
-        clientTiming = completeClientTiming(clientTiming, {
-          firstChunkAt: chunkReceivedAt,
-          firstChunkDelayMs: chunkReceivedAt - (clientTiming.responseStartAt ?? clientTiming.fetchStartAt),
-        });
-      }
-      buffer += decoder.decode(value, { stream: true });
-
-      const chunks = buffer.split("\n\n");
-      buffer = chunks.pop() || "";
-
-      for (const chunk of chunks) {
-        if (!chunk.trim()) continue;
-        let eventType = "";
-        let data = "";
-        for (const line of chunk.split("\n")) {
-          if (line.startsWith("event:")) eventType = line.slice(6).trim();
-          else if (line.startsWith("data:")) data = line.slice(5).trim();
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          streamEnded = true;
+          break;
         }
-        if (!data) continue;
-        if (!phaseAcked && eventType !== "phase") {
-          options?.onPhase?.("transcribing");
-          emitProgress({ source: "sse", phase: "transcribing", mode });
-          phaseAcked = true;
+        const chunkReceivedAt = Date.now();
+        if (clientTiming.firstChunkAt === undefined) {
+          clientTiming = completeClientTiming(clientTiming, {
+            firstChunkAt: chunkReceivedAt,
+            firstChunkDelayMs: chunkReceivedAt - (clientTiming.responseStartAt ?? clientTiming.fetchStartAt),
+          });
         }
+        buffer += decoder.decode(value, { stream: true });
 
-        const parsed = JSON.parse(data);
-        if (eventType === "phase") {
-          const nextPhase = parsed.phase as VoiceTranscriptionPhase | null | undefined;
-          if (nextPhase) {
-            options?.onPhase?.(nextPhase);
-            emitProgress({ source: "sse", phase: nextPhase, mode, timing: parsed.timing });
+        const chunks = buffer.split("\n\n");
+        buffer = chunks.pop() || "";
+
+        for (const chunk of chunks) {
+          if (!chunk.trim()) continue;
+          let eventType = "";
+          let data = "";
+          for (const line of chunk.split("\n")) {
+            if (line.startsWith("event:")) eventType = line.slice(6).trim();
+            else if (line.startsWith("data:")) data = line.slice(5).trim();
+          }
+          if (!data) continue;
+          if (!phaseAcked && eventType !== "phase") {
+            options?.onPhase?.("transcribing");
+            emitProgress({ source: "sse", phase: "transcribing", mode });
             phaseAcked = true;
           }
-        } else if (eventType === "stt_complete") {
-          const nextPhase = parsed.nextPhase as VoiceTranscriptionPhase | null | undefined;
-          if (nextPhase) {
-            options?.onPhase?.(nextPhase);
-            emitProgress({ source: "sse", phase: nextPhase, mode, timing: parsed.timing });
-          } else if (parsed.willEnhance) {
-            options?.onPhase?.("enhancing");
-            emitProgress({ source: "sse", phase: "enhancing", mode, timing: parsed.timing });
+
+          const parsed = JSON.parse(data);
+          if (eventType === "phase") {
+            const nextPhase = parsed.phase as VoiceTranscriptionPhase | null | undefined;
+            if (nextPhase) {
+              options?.onPhase?.(nextPhase);
+              emitProgress({ source: "sse", phase: nextPhase, mode, timing: parsed.timing });
+              phaseAcked = true;
+            }
+          } else if (eventType === "stt_complete") {
+            const nextPhase = parsed.nextPhase as VoiceTranscriptionPhase | null | undefined;
+            if (nextPhase) {
+              options?.onPhase?.(nextPhase);
+              emitProgress({ source: "sse", phase: nextPhase, mode, timing: parsed.timing });
+            } else if (parsed.willEnhance) {
+              options?.onPhase?.("enhancing");
+              emitProgress({ source: "sse", phase: "enhancing", mode, timing: parsed.timing });
+            }
+          } else if (eventType === "result") {
+            const resultEventAt = Date.now();
+            const transcriptionResult = parsed as VoiceTranscriptionResult;
+            emitProgress({ source: "sse", phase: "complete", mode, timing: transcriptionResult.timing });
+            const resultReturnedAt = Date.now();
+            clientTiming = completeClientTiming(clientTiming, {
+              resultDeliverySource: "sse",
+              resultEventAt,
+              resultReturnedAt,
+              resultStreamDurationMs:
+                resultEventAt - (clientTiming.firstChunkAt ?? clientTiming.responseStartAt ?? resultEventAt),
+            });
+            options?.onClientTiming?.(clientTiming);
+            return transcriptionResult;
+          } else if (eventType === "error") {
+            emitProgress({ source: "sse", phase: "error", mode, error: parsed.error || "Transcription failed" });
+            options?.onClientTiming?.(clientTiming);
+            throw new Error(parsed.error || "Transcription failed");
           }
-        } else if (eventType === "result") {
-          const resultEventAt = Date.now();
-          const transcriptionResult = parsed as VoiceTranscriptionResult;
-          emitProgress({ source: "sse", phase: "complete", mode, timing: transcriptionResult.timing });
-          const resultReturnedAt = Date.now();
-          clientTiming = completeClientTiming(clientTiming, {
-            resultEventAt,
-            resultReturnedAt,
-            resultStreamDurationMs:
-              resultEventAt - (clientTiming.firstChunkAt ?? clientTiming.responseStartAt ?? resultEventAt),
-          });
-          options?.onClientTiming?.(clientTiming);
-          return transcriptionResult;
-        } else if (eventType === "error") {
-          emitProgress({ source: "sse", phase: "error", mode, error: parsed.error || "Transcription failed" });
-          options?.onClientTiming?.(clientTiming);
-          throw new Error(parsed.error || "Transcription failed");
         }
       }
+    } finally {
+      if (!streamEnded) {
+        void reader.cancel().catch(() => undefined);
+      }
     }
+    options?.onClientTiming?.(clientTiming);
+    throw new Error("Stream ended without transcription result");
+  };
+
+  const sseResult = readSseTranscription();
+  try {
+    if (!canUseWebSocketTerminal) return await sseResult;
+
+    const terminal = await Promise.race([
+      sseResult.then((result) => ({ type: "sse" as const, result })),
+      webSocketTerminal.then((terminalResult) => ({ type: "websocket" as const, terminal: terminalResult })),
+    ]);
+    if (terminal.type === "sse") return terminal.result;
+    abortedAfterWebSocketTerminal = true;
+    controller.abort();
+    void sseResult.catch(() => undefined);
+    if (terminal.terminal.type === "error") {
+      clientTiming = completeClientTiming(clientTiming, {
+        webSocketResultAt: terminal.terminal.receivedAt,
+        resultReturnedAt: terminal.terminal.receivedAt,
+        resultDeliverySource: "websocket",
+      });
+      options?.onClientTiming?.(clientTiming);
+      throw terminal.terminal.error;
+    }
+    clientTiming = completeClientTiming(clientTiming, {
+      webSocketResultAt: terminal.terminal.receivedAt,
+      resultEventAt: terminal.terminal.receivedAt,
+      resultReturnedAt: terminal.terminal.receivedAt,
+      resultDeliverySource: "websocket",
+      resultStreamDurationMs:
+        terminal.terminal.receivedAt -
+        (clientTiming.firstChunkAt ?? clientTiming.responseStartAt ?? clientTiming.fetchStartAt),
+    });
+    options?.onClientTiming?.(clientTiming);
+    return terminal.terminal.result;
   } finally {
     unsubscribeProgress();
-    if (!streamEnded) {
-      void reader.cancel().catch(() => undefined);
-    }
   }
-
-  options?.onClientTiming?.(clientTiming);
-  throw new Error("Stream ended without transcription result");
 }
