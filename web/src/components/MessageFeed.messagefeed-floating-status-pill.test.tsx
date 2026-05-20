@@ -529,8 +529,8 @@ describe("MessageFeed - floating status pill", () => {
     setStoreNotifications(sid, [
       {
         id: "notif-1",
-        category: "review",
-        summary: "Quest q-464 ready for verification",
+        category: "needs-input",
+        summary: "Quest q-464 needs input",
         timestamp: Date.now(),
         messageId: "msg-anchor",
         done: false,
@@ -561,7 +561,7 @@ describe("MessageFeed - floating status pill", () => {
     expect(previousButton).toBeTruthy();
     expect(nextButton).toBeTruthy();
     expect(bottomButton).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Notification inbox: 1 review notification" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Notification inbox: 1 needs-input notification" })).toBeTruthy();
     expect(navFabs.style.bottom).toBe("42px");
     expect(navFabs.className).toContain("gap-2");
     expect(topButton.className).toContain("h-10");

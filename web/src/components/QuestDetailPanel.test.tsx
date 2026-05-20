@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { act, render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import "@testing-library/jest-dom";
 import { useStore } from "../store.js";
 
@@ -478,8 +478,8 @@ describe("QuestDetailPanel", () => {
           [
             {
               id: "notif-1",
-              category: "review",
-              summary: "q-42 ready for review",
+              category: "needs-input",
+              summary: "q-42 needs input",
               timestamp: Date.now(),
               messageId: "msg-1",
               done: false,
@@ -496,8 +496,10 @@ describe("QuestDetailPanel", () => {
       </>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Notification inbox: 1 review notification" }));
-    fireEvent.click(screen.getByRole("link", { name: "q-42" }));
+    fireEvent.click(screen.getByRole("button", { name: "Notification inbox: 1 needs-input notification" }));
+    act(() => {
+      useStore.setState({ questOverlayId: "q-42" });
+    });
     expect(screen.getByTestId("quest-detail-panel")).toBeTruthy();
 
     fireEvent.click(screen.getByTestId("quest-detail-panel-close"));
@@ -517,8 +519,8 @@ describe("QuestDetailPanel", () => {
           [
             {
               id: "notif-1",
-              category: "review",
-              summary: "q-42 ready for review",
+              category: "needs-input",
+              summary: "q-42 needs input",
               timestamp: Date.now(),
               messageId: "msg-1",
               done: false,
@@ -535,8 +537,10 @@ describe("QuestDetailPanel", () => {
       </>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Notification inbox: 1 review notification" }));
-    fireEvent.click(screen.getByRole("link", { name: "q-42" }));
+    fireEvent.click(screen.getByRole("button", { name: "Notification inbox: 1 needs-input notification" }));
+    act(() => {
+      useStore.setState({ questOverlayId: "q-42" });
+    });
     expect(screen.getByTestId("quest-detail-panel")).toBeTruthy();
 
     fireEvent.mouseDown(screen.getByTestId("quest-detail-panel-backdrop"));
@@ -557,8 +561,8 @@ describe("QuestDetailPanel", () => {
           [
             {
               id: "notif-1",
-              category: "review",
-              summary: "q-42 ready for review",
+              category: "needs-input",
+              summary: "q-42 needs input",
               timestamp: Date.now(),
               messageId: "msg-1",
               done: false,
@@ -575,8 +579,10 @@ describe("QuestDetailPanel", () => {
       </>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Notification inbox: 1 review notification" }));
-    fireEvent.click(screen.getByRole("link", { name: "q-42" }));
+    fireEvent.click(screen.getByRole("button", { name: "Notification inbox: 1 needs-input notification" }));
+    act(() => {
+      useStore.setState({ questOverlayId: "q-42" });
+    });
     expect(screen.getByTestId("quest-detail-panel")).toBeTruthy();
 
     fireEvent.keyDown(document, { key: "Escape" });
