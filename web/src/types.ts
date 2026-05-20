@@ -23,6 +23,7 @@ import type {
   VsCodeSelectionMetadata,
   VsCodeSelectionState,
   SessionNotification,
+  ThreadOutcomeReminderSatisfaction,
   SessionAttentionRecord,
   SessionAttentionRecordPriority,
   SessionAttentionRecordRoute,
@@ -227,6 +228,8 @@ export interface ChatMessage {
   };
   /** Present when this user message was injected programmatically (e.g. via takode CLI or cron). */
   agentSource?: { sessionId: string; sessionLabel?: string };
+  /** State recorded when a Thread Outcome Reminder was later satisfied by a concrete outcome. */
+  threadOutcomeReminder?: ThreadOutcomeReminderSatisfaction;
   /** Assistant message UUID from CLI, for revert support */
   cliUuid?: string;
   /** Notification anchored to this message (set by takode notify). */

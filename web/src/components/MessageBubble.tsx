@@ -322,7 +322,6 @@ export const MessageBubble = memo(function MessageBubble({
   if (message.role === "user" && threadOutcomeReminder) {
     return (
       <ThreadOutcomeReminderMessage
-        reminder={threadOutcomeReminder}
         message={message}
         sessionId={sessionId}
         showTimestamp={showTimestamp}
@@ -948,19 +947,20 @@ export { EVENT_HEADER_RE, parseHerdEvents } from "../utils/herd-event-parser.js"
 type SearchHighlightInfo = { query: string; mode: "strict" | "fuzzy"; isCurrent: boolean } | null;
 
 function ThreadOutcomeReminderMessage({
-  reminder,
   message,
   sessionId,
   showTimestamp,
   searchHighlight,
 }: {
-  reminder: NonNullable<ReturnType<typeof buildThreadOutcomeReminderViewModel>>;
   message: ChatMessage;
   sessionId?: string;
   showTimestamp: boolean;
   searchHighlight?: SearchHighlightInfo;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const notifications = useStore((s) => (sessionId ? s.sessionNotifications?.get(sessionId) : undefined));
+  const reminder = buildThreadOutcomeReminderViewModel(message, notifications);
+  if (!reminder) return null;
   const renderedTitle = searchHighlight?.query ? (
     <HighlightedText
       text={reminder.title}
@@ -1007,6 +1007,11 @@ function ThreadOutcomeReminderMessage({
             </button>
             {expanded && (
               <div className="mt-1.5 rounded-md border border-cc-border/20 bg-cc-card/35 px-2.5 py-2 text-left">
+                {reminder.satisfiedSummary && (
+                  <div className="mb-1.5 text-[11px] leading-snug text-cc-muted">
+                    Satisfied by needs-input: {reminder.satisfiedSummary}
+                  </div>
+                )}
                 <MarkdownContent
                   text={reminder.rawContent}
                   variant="conservative"

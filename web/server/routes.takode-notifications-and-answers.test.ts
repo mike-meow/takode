@@ -191,6 +191,10 @@ import * as sessionNames from "./session-names.js";
 import * as settingsManager from "./settings-manager.js";
 import * as transcriptionEnhancer from "./transcription-enhancer.js";
 import { containerManager } from "./container-manager.js";
+import {
+  THREAD_OUTCOME_REMINDER_SOURCE_ID,
+  THREAD_OUTCOME_REMINDER_SOURCE_LABEL,
+} from "../shared/thread-outcome-reminder.js";
 
 // ─── Mock factories ──────────────────────────────────────────────────────────
 
@@ -721,6 +725,52 @@ describe("Takode server-authoritative auth", () => {
       id: "n-1",
       threadKey: "q-983",
       questId: "q-983",
+    });
+  });
+
+  it("marks an intervening Thread Outcome Reminder satisfied when needs-input anchors to the prompted message", async () => {
+    setupTakodeSessions();
+    bridge._sessions["orch-1"].messageHistory.push(
+      {
+        type: "assistant",
+        message: { id: "approval-plan", content: [{ type: "text", text: "Approve the plan?" }] },
+        parent_tool_use_id: null,
+        timestamp: 1000,
+        threadKey: "main",
+      },
+      {
+        type: "user_message",
+        id: "thread-outcome-reminder",
+        content: "Thread outcome reminder",
+        timestamp: 1500,
+        agentSource: {
+          sessionId: THREAD_OUTCOME_REMINDER_SOURCE_ID,
+          sessionLabel: THREAD_OUTCOME_REMINDER_SOURCE_LABEL,
+        },
+        threadKey: "main",
+      },
+    );
+
+    const res = await app.request("/api/sessions/orch-1/notify", {
+      method: "POST",
+      headers: authHeaders("orch-1", "tok-1"),
+      body: JSON.stringify({
+        category: "needs-input",
+        summary: "Approve the plan",
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(bridge._sessions["orch-1"].notifications[0]).toMatchObject({
+      id: "n-1",
+      category: "needs-input",
+      messageId: "approval-plan",
+      threadKey: "main",
+    });
+    expect(bridge._sessions["orch-1"].messageHistory[1].threadOutcomeReminder).toMatchObject({
+      status: "satisfied",
+      notificationId: "n-1",
+      notificationSummary: "Approve the plan",
     });
   });
 

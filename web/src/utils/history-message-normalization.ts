@@ -231,6 +231,7 @@ export function normalizeHistoryMessageToChatMessages(
         ...(typeof histMsg.client_msg_id === "string" ? { clientMsgId: histMsg.client_msg_id } : {}),
         ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
         ...(histMsg.agentSource ? { agentSource: histMsg.agentSource } : {}),
+        ...(histMsg.threadOutcomeReminder ? { threadOutcomeReminder: histMsg.threadOutcomeReminder } : {}),
       },
     ];
   }

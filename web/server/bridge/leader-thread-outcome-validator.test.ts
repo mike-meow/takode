@@ -170,6 +170,35 @@ describe("validateLeaderThreadOutcomes", () => {
     expect(session.leaderThreadOutcomeValidatedHistoryLength).toBe(1);
   });
 
+  it("accepts a same-thread needs-input notification as the user-blocking outcome", () => {
+    const session = {
+      id: "leader",
+      messageHistory: [assistantMessage({ id: "a1", text: "Approve this quest?", timestamp: 20 })],
+      notifications: [notification({ category: "needs-input", timestamp: 25 })],
+      leaderThreadOutcomeValidatedHistoryLength: 0,
+    };
+    const deps = makeDeps();
+
+    const result = validateLeaderThreadOutcomes(session, deps);
+
+    expect(result).toEqual({ checked: true, missing: [], injected: false });
+    expect(deps.injectUserMessage).not.toHaveBeenCalled();
+  });
+
+  it("rejects resolved needs-input notifications as active outcomes", () => {
+    const session = {
+      id: "leader",
+      messageHistory: [assistantMessage({ id: "a1", text: "Approve this quest?", timestamp: 20 })],
+      notifications: [notification({ category: "needs-input", timestamp: 25, done: true })],
+      leaderThreadOutcomeValidatedHistoryLength: 0,
+    };
+    const deps = makeDeps();
+
+    const result = validateLeaderThreadOutcomes(session, deps);
+
+    expect(result).toEqual({ checked: true, missing: ["main"], injected: true });
+  });
+
   it("accepts a fresh inline Thread Waiting marker from server status state", () => {
     const session = {
       id: "leader",

@@ -970,6 +970,32 @@ export function PlaygroundThreadOutcomeReminderMessage() {
   return <MessageBubble message={message} sessionId="playground-thread-outcome-reminder" showTimestamp={false} />;
 }
 
+export function PlaygroundHistoricalThreadOutcomeReminderMessage() {
+  const message: ChatMessage = {
+    id: "playground-historical-thread-outcome-reminder-msg",
+    role: "user",
+    content: [
+      "Thread outcome reminder: mark every touched leader thread with a fresh outcome before idling.",
+      "Missing outcome marker for: Main.",
+      'Use `takode notify needs-input "..."` only for user-blocking prompts. For non-blocking thread status, add a standalone `{[(Thread Waiting: thread | summary)]}` or `{[(Thread Ready: thread | summary)]}` line to your assistant response.',
+    ].join("\n"),
+    timestamp: Date.now() - 16_000,
+    agentSource: {
+      sessionId: THREAD_OUTCOME_REMINDER_SOURCE_ID,
+      sessionLabel: THREAD_OUTCOME_REMINDER_SOURCE_LABEL,
+    },
+    metadata: { threadKey: "main" },
+    threadOutcomeReminder: {
+      status: "satisfied",
+      notificationId: "n-playground-approval",
+      notificationSummary: "Approve worker dispatch",
+      satisfiedAt: Date.now() - 12_000,
+    },
+  };
+
+  return <MessageBubble message={message} sessionId="playground-thread-outcome-reminder" showTimestamp={false} />;
+}
+
 export function PlaygroundResourceLeaseMessage() {
   const message: ChatMessage = {
     id: "playground-resource-lease-msg",

@@ -683,6 +683,50 @@ describe("MessageBubble - agent source badge", () => {
     expect(screen.getByText(/Missing outcome marker for: Main/)).toBeTruthy();
   });
 
+  it("renders Thread Outcome Reminder as historical when a later same-thread needs-input satisfies it", async () => {
+    const prevNotifications = useStore.getState().sessionNotifications;
+    const nextNotifications = new Map(prevNotifications);
+    nextNotifications.set("thread-outcome-session", [
+      {
+        id: "n-approval",
+        category: "needs-input",
+        summary: "Approve recovery quest",
+        timestamp: 2000,
+        messageId: "approval-plan",
+        done: true,
+        threadKey: "main",
+      },
+    ]);
+    useStore.setState({ sessionNotifications: nextNotifications });
+
+    try {
+      const msg = makeMessage({
+        role: "user",
+        content: [
+          "Thread outcome reminder: mark every touched leader thread with a fresh outcome before idling.",
+          "Missing outcome marker for: Main.",
+        ].join("\n"),
+        timestamp: 1500,
+        agentSource: {
+          sessionId: THREAD_OUTCOME_REMINDER_SOURCE_ID,
+          sessionLabel: THREAD_OUTCOME_REMINDER_SOURCE_LABEL,
+        },
+        metadata: { threadKey: "main" },
+      });
+      render(<MessageBubble message={msg} sessionId="thread-outcome-session" showTimestamp={false} />);
+
+      const chip = screen.getByRole("button", { name: `Expand Historical ${THREAD_OUTCOME_REMINDER_SOURCE_LABEL}` });
+      expect(chip.textContent).toContain(`Historical ${THREAD_OUTCOME_REMINDER_SOURCE_LABEL}`);
+      expect(screen.queryByText(/Satisfied by needs-input/)).toBeNull();
+
+      await userEvent.click(chip);
+
+      expect(screen.getByText("Satisfied by needs-input: Approve recovery quest")).toBeTruthy();
+    } finally {
+      useStore.setState({ sessionNotifications: prevNotifications });
+    }
+  });
+
   it("renders compaction recovery injections as collapsed event chips by default", () => {
     const msg = makeMessage({
       role: "user",

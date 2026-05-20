@@ -725,6 +725,13 @@ export interface TakodeNotificationPayload {
   threadRefs?: ThreadRef[];
 }
 
+export interface ThreadOutcomeReminderSatisfaction {
+  status: "satisfied";
+  notificationId: string;
+  notificationSummary?: string;
+  satisfiedAt: number;
+}
+
 export interface NeedsInputNotificationQuestion {
   prompt: string;
   suggestedAnswers?: string[];
@@ -839,6 +846,7 @@ export type BrowserIncomingMessageBase =
       threadRefs?: ThreadRef[];
       threadRoutingError?: ThreadRoutingError;
       takodeHerdEventKeys?: string[];
+      threadOutcomeReminder?: ThreadOutcomeReminderSatisfaction;
     }
   | {
       type: "leader_user_message";

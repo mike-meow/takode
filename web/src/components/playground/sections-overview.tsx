@@ -103,6 +103,7 @@ import {
   PlaygroundQuestThreadReminderMessage,
   PlaygroundResourceLeaseMessage,
   PlaygroundRestartContinuationMessage,
+  PlaygroundHistoricalThreadOutcomeReminderMessage,
   PlaygroundThreadOutcomeReminderMessage,
   PlaygroundThreadRoutingReminderMessage,
   PlaygroundSectionGroup,
@@ -722,6 +723,9 @@ export function PlaygroundOverviewSections() {
           </Card>
           <Card label="Thread outcome reminder (collapsed chip)">
             <PlaygroundThreadOutcomeReminderMessage />
+          </Card>
+          <Card label="Historical thread outcome reminder">
+            <PlaygroundHistoricalThreadOutcomeReminderMessage />
           </Card>
           <Card label="Compaction recovery event (collapsed chip)">
             <PlaygroundCompactionRecoveryEventMessage />

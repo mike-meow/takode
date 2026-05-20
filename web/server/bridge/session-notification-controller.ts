@@ -12,6 +12,7 @@ import {
   sameThreadRoute,
   withThreadRoute,
 } from "../thread-routing-metadata.js";
+import { THREAD_OUTCOME_REMINDER_SOURCE_ID } from "../../shared/thread-outcome-reminder.js";
 
 type SessionLike = any;
 
@@ -233,6 +234,9 @@ export function notifyUser(
     threadRoute,
   );
   session.notifications.push(notif);
+  if (notif.category === "needs-input") {
+    markSatisfiedThreadOutcomeReminders(session, notif, anchorIndex);
+  }
   touchNotificationStatus(session);
 
   if (deps.isHerdedWorkerSession?.(session)) {
@@ -299,6 +303,36 @@ export function notifyUserBySessionId(
 
 function activeNotificationThreadRoute(session: SessionLike): ThreadRouteMetadata | null {
   return normalizeThreadRoute(session.activeTurnRoute?.threadKey, session.activeTurnRoute?.questId);
+}
+
+function markSatisfiedThreadOutcomeReminders(
+  session: SessionLike,
+  notification: SessionNotification,
+  anchorIndex: number | undefined,
+): void {
+  if (anchorIndex === undefined) return;
+  const notificationRoute = normalizeThreadRoute(notification.threadKey, notification.questId) ?? { threadKey: "main" };
+  const anchorTimestamp = Number(session.messageHistory[anchorIndex]?.timestamp ?? 0);
+  const notificationTimestamp = Number(notification.timestamp);
+
+  for (let index = anchorIndex + 1; index < session.messageHistory.length; index += 1) {
+    const entry = session.messageHistory[index] as BrowserIncomingMessage & {
+      threadOutcomeReminder?: Record<string, unknown>;
+    };
+    if (entry.type !== "user_message") continue;
+    if (entry.agentSource?.sessionId !== THREAD_OUTCOME_REMINDER_SOURCE_ID) continue;
+    if (entry.threadOutcomeReminder?.status === "satisfied") continue;
+    if (!sameThreadRoute(routeFromHistoryEntry(entry) ?? { threadKey: "main" }, notificationRoute)) continue;
+
+    const reminderTimestamp = Number(entry.timestamp ?? 0);
+    if (reminderTimestamp < anchorTimestamp || reminderTimestamp > notificationTimestamp) continue;
+    entry.threadOutcomeReminder = {
+      status: "satisfied",
+      notificationId: notification.id,
+      ...(notification.summary ? { notificationSummary: notification.summary } : {}),
+      satisfiedAt: notificationTimestamp,
+    };
+  }
 }
 
 function anchorMatchesThreadRoute(session: SessionLike, anchorIndex: number, route: ThreadRouteMetadata): boolean {
