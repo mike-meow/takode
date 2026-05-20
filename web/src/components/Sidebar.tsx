@@ -800,8 +800,8 @@ export function Sidebar() {
   const logoSrc = "/app-logo.png";
   const [showCronSessions, setShowCronSessions] = useState(true);
   const treeGroupIds = useMemo(() => treeViewGroups.map((g) => g.id), [treeViewGroups]);
-  const groupPointerSensor = useSensor(PointerSensor, { activationConstraint: { distance: 8 } });
-  const groupSensors = useSensors(groupPointerSensor);
+  const treePointerSensor = useSensor(PointerSensor, { activationConstraint: { distance: 8 } });
+  const treeSensors = useSensors(treePointerSensor);
   const handleTreeGroupDragEnd = useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event;
@@ -858,12 +858,6 @@ export function Sidebar() {
     }
     return map;
   }, [treeViewGroups]);
-  const allTreeSessionIds = useMemo(
-    () => treeViewGroups.flatMap((g) => g.nodes.map((n) => n.leader.id)),
-    [treeViewGroups],
-  );
-  const sessionPointerSensor = useSensor(PointerSensor, { activationConstraint: { distance: 8 } });
-  const sessionSensors = useSensors(sessionPointerSensor);
   const handleTreeSessionDragEnd = useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event;
@@ -889,6 +883,25 @@ export function Sidebar() {
       }
     },
     [sessionToGroupMap, treeViewGroups],
+  );
+  const handleTreeDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over || active.id === over.id) return;
+
+      const activeId = active.id as string;
+      const overId = over.id as string;
+      const activeIsGroup = treeGroupIds.includes(activeId);
+      const overIsGroup = treeGroupIds.includes(overId);
+
+      if (activeIsGroup || overIsGroup) {
+        if (activeIsGroup && overIsGroup) handleTreeGroupDragEnd(event);
+        return;
+      }
+
+      handleTreeSessionDragEnd(event);
+    },
+    [handleTreeGroupDragEnd, handleTreeSessionDragEnd, treeGroupIds],
   );
 
   // Server-side session search (debounced, abort on query change).
@@ -1370,75 +1383,61 @@ export function Sidebar() {
             )}
 
             <DndContext
-              sensors={sessionSortMode === "activity" || bulkSelectionGroupId ? [] : groupSensors}
+              sensors={sessionSortMode === "activity" || bulkSelectionGroupId ? [] : treeSensors}
               collisionDetection={closestCenter}
-              onDragEnd={sessionSortMode === "activity" || bulkSelectionGroupId ? undefined : handleTreeGroupDragEnd}
+              onDragEnd={sessionSortMode === "activity" || bulkSelectionGroupId ? undefined : handleTreeDragEnd}
               modifiers={[restrictToVerticalAxis]}
             >
               <SortableContext items={treeGroupIds} strategy={verticalListSortingStrategy}>
-                {/* Session-level DndContext enables cross-group drag-and-drop */}
-                <DndContext
-                  sensors={sessionSortMode === "activity" || bulkSelectionGroupId ? [] : sessionSensors}
-                  collisionDetection={closestCenter}
-                  onDragEnd={
-                    sessionSortMode === "activity" || bulkSelectionGroupId ? undefined : handleTreeSessionDragEnd
-                  }
-                  modifiers={[restrictToVerticalAxis]}
-                >
-                  <SortableContext items={allTreeSessionIds} strategy={verticalListSortingStrategy}>
-                    {treeViewGroups.map((group, i) => (
-                      <SortableTreeGroup key={group.id} id={group.id}>
-                        {({ setNodeRef, style, listeners, attributes, isDragging }) => (
-                          <div ref={setNodeRef} style={style}>
-                            <TreeViewGroup
-                              group={group}
-                              isGroupCollapsed={collapsedTreeGroups.has(group.id)}
-                              collapsedTreeNodes={collapsedTreeNodes}
-                              onToggleGroupCollapse={toggleTreeGroupCollapse}
-                              onToggleNodeCollapse={toggleTreeNodeCollapse}
-                              onCreateSession={handleCreateSessionInTreeGroup}
-                              currentSessionId={currentSessionId}
-                              sessionNames={sessionNames}
-                              sessionPreviews={sessionPreviews}
-                              pendingPermissions={pendingPermissions}
-                              recentlyRenamed={recentlyRenamed}
-                              isFirst={i === 0}
-                              groupDragging={isDragging}
-                              onMobileReorderHandleActiveChange={setMobileReorderHandleActive}
-                              groupDragHandleProps={
-                                treeViewGroups.length > 1 && sessionSortMode !== "activity" && !bulkSelectionGroupId
-                                  ? {
-                                      listeners: listeners as Record<string, unknown> | undefined,
-                                      attributes: attributes as unknown as Record<string, unknown>,
-                                    }
-                                  : undefined
-                              }
-                              visibleSessionLimit={
-                                groupVisibleLimits.get(group.id) ?? DEFAULT_GROUP_VISIBLE_SESSION_LIMIT
-                              }
-                              overflowExpanded={expandedOverflowGroups.has(group.id)}
-                              onToggleOverflow={toggleGroupOverflow}
-                              onSetVisibleSessionLimit={setGroupVisibleLimit}
-                              herdGroupBadgeThemes={herdGroupBadgeThemes}
-                              bulkSelectionActive={bulkSelectionGroupId === group.id}
-                              bulkSelectedSessionIds={bulkSelectedSessionIds}
-                              bulkTargetGroupId={bulkTargetGroupId}
-                              bulkAssigning={bulkAssigning}
-                              availableBulkTargetGroups={treeGroups.filter((candidate) => candidate.id !== group.id)}
-                              onCancelBulkSelection={cancelBulkSelection}
-                              onToggleBulkSession={toggleBulkSession}
-                              onToggleBulkSelectAll={toggleBulkSelectAll}
-                              onBulkTargetGroupChange={setBulkTargetGroupId}
-                              onApplyBulkAssignment={applyBulkAssignment}
-                              onCreateGroupForBulkAssignment={createGroupForBulkAssignment}
-                              {...sessionItemProps}
-                            />
-                          </div>
-                        )}
-                      </SortableTreeGroup>
-                    ))}
-                  </SortableContext>
-                </DndContext>
+                {treeViewGroups.map((group, i) => (
+                  <SortableTreeGroup key={group.id} id={group.id}>
+                    {({ setNodeRef, style, listeners, attributes, isDragging }) => (
+                      <div ref={setNodeRef} style={style}>
+                        <TreeViewGroup
+                          group={group}
+                          isGroupCollapsed={collapsedTreeGroups.has(group.id)}
+                          collapsedTreeNodes={collapsedTreeNodes}
+                          onToggleGroupCollapse={toggleTreeGroupCollapse}
+                          onToggleNodeCollapse={toggleTreeNodeCollapse}
+                          onCreateSession={handleCreateSessionInTreeGroup}
+                          currentSessionId={currentSessionId}
+                          sessionNames={sessionNames}
+                          sessionPreviews={sessionPreviews}
+                          pendingPermissions={pendingPermissions}
+                          recentlyRenamed={recentlyRenamed}
+                          isFirst={i === 0}
+                          groupDragging={isDragging}
+                          onMobileReorderHandleActiveChange={setMobileReorderHandleActive}
+                          groupDragHandleProps={
+                            treeViewGroups.length > 1 && sessionSortMode !== "activity" && !bulkSelectionGroupId
+                              ? {
+                                  listeners: listeners as Record<string, unknown> | undefined,
+                                  attributes: attributes as unknown as Record<string, unknown>,
+                                }
+                              : undefined
+                          }
+                          visibleSessionLimit={groupVisibleLimits.get(group.id) ?? DEFAULT_GROUP_VISIBLE_SESSION_LIMIT}
+                          overflowExpanded={expandedOverflowGroups.has(group.id)}
+                          onToggleOverflow={toggleGroupOverflow}
+                          onSetVisibleSessionLimit={setGroupVisibleLimit}
+                          herdGroupBadgeThemes={herdGroupBadgeThemes}
+                          bulkSelectionActive={bulkSelectionGroupId === group.id}
+                          bulkSelectedSessionIds={bulkSelectedSessionIds}
+                          bulkTargetGroupId={bulkTargetGroupId}
+                          bulkAssigning={bulkAssigning}
+                          availableBulkTargetGroups={treeGroups.filter((candidate) => candidate.id !== group.id)}
+                          onCancelBulkSelection={cancelBulkSelection}
+                          onToggleBulkSession={toggleBulkSession}
+                          onToggleBulkSelectAll={toggleBulkSelectAll}
+                          onBulkTargetGroupChange={setBulkTargetGroupId}
+                          onApplyBulkAssignment={applyBulkAssignment}
+                          onCreateGroupForBulkAssignment={createGroupForBulkAssignment}
+                          {...sessionItemProps}
+                        />
+                      </div>
+                    )}
+                  </SortableTreeGroup>
+                ))}
               </SortableContext>
             </DndContext>
             <button

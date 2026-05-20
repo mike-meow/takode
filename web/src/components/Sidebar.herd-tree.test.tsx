@@ -1,18 +1,63 @@
 // @vitest-environment jsdom
-import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within, act } from "@testing-library/react";
 import "@testing-library/jest-dom";
+import type { ReactNode } from "react";
 import type { SessionState, SdkSessionInfo } from "../types.js";
 
 const mockConnectSession = vi.fn();
 const mockConnectAllSessions = vi.fn();
 const mockDisconnectSession = vi.fn();
 const mockScrollIntoView = vi.fn();
+const dndKitMockState = vi.hoisted(() => ({
+  dndContexts: [] as Array<{ onDragEnd?: (event: unknown) => void }>,
+  invalidSortableIds: [] as Array<{ id: string; items: string[] }>,
+}));
 
 vi.mock("../ws.js", () => ({
   connectSession: (...args: unknown[]) => mockConnectSession(...args),
   connectAllSessions: (...args: unknown[]) => mockConnectAllSessions(...args),
   disconnectSession: (...args: unknown[]) => mockDisconnectSession(...args),
 }));
+
+vi.mock("@dnd-kit/core", () => ({
+  DndContext: ({ children, onDragEnd }: { children: ReactNode; onDragEnd?: (event: unknown) => void }) => {
+    dndKitMockState.dndContexts.push({ onDragEnd });
+    return children;
+  },
+  closestCenter: vi.fn(),
+  PointerSensor: vi.fn(),
+  useSensor: vi.fn((sensor, options) => ({ sensor, options })),
+  useSensors: vi.fn((...sensors) => sensors),
+}));
+
+vi.mock("@dnd-kit/sortable", async () => {
+  const React = await import("react");
+  const SortableItemsContext = React.createContext<string[]>([]);
+  return {
+    SortableContext: ({ children, items }: { children: ReactNode; items: Array<string | number> }) =>
+      React.createElement(SortableItemsContext.Provider, { value: items.map((item) => String(item)) }, children),
+    verticalListSortingStrategy: {},
+    useSortable: ({ id, disabled }: { id: string | number; disabled?: boolean }) => {
+      const items = React.useContext(SortableItemsContext);
+      const stringId = String(id);
+      if (!disabled && !items.includes(stringId)) dndKitMockState.invalidSortableIds.push({ id: stringId, items });
+      return {
+        attributes: { "data-sortable-id": stringId },
+        listeners: { onPointerDown: vi.fn() },
+        setNodeRef: vi.fn(),
+        transform: null,
+        transition: undefined,
+        isDragging: false,
+      };
+    },
+    arrayMove: <T,>(array: T[], from: number, to: number) => {
+      const next = array.slice();
+      const [item] = next.splice(from, 1);
+      if (item !== undefined) next.splice(to, 0, item);
+      return next;
+    },
+  };
+});
 
 vi.mock("../utils/pending-creation.js", () => ({
   cancelPendingCreation: vi.fn(),
@@ -246,6 +291,8 @@ import { resetSessionGitStatusAutoRefreshForTest } from "../utils/session-git-st
 
 beforeEach(() => {
   vi.clearAllMocks();
+  dndKitMockState.dndContexts.length = 0;
+  dndKitMockState.invalidSortableIds.length = 0;
   resetSessionGitStatusAutoRefreshForTest();
   mockApi.refreshSessionGitStatus.mockResolvedValue({ ok: true });
   vi.stubGlobal("alert", vi.fn());
@@ -268,6 +315,56 @@ beforeEach(() => {
 });
 
 describe("Sidebar herd tree behavior", { timeout: 10000 }, () => {
+  it("places group sortables in the group context and updates group order on group drag", async () => {
+    mockState = createMockState({
+      sessions: new Map([
+        ["alpha-session", makeSession("alpha-session", { model: "alpha-model" })],
+        ["beta-session", makeSession("beta-session", { model: "beta-model" })],
+      ]),
+      sdkSessions: [
+        makeSdkSession("alpha-session", { sessionNum: 71, createdAt: 100 }),
+        makeSdkSession("beta-session", { sessionNum: 72, createdAt: 200 }),
+      ],
+      sessionNames: new Map([
+        ["alpha-session", "Alpha Session"],
+        ["beta-session", "Beta Session"],
+      ]),
+      treeGroups: [
+        { id: "alpha", name: "Alpha Space" },
+        { id: "beta", name: "Beta Space" },
+      ],
+      treeAssignments: new Map([
+        ["alpha-session", "alpha"],
+        ["beta-session", "beta"],
+      ]),
+    });
+
+    render(<Sidebar />);
+
+    expect(dndKitMockState.dndContexts).toHaveLength(1);
+    expect(dndKitMockState.invalidSortableIds).toEqual([]);
+
+    await act(async () => {
+      dndKitMockState.dndContexts[0]!.onDragEnd?.({ active: { id: "beta" }, over: { id: "alpha" } });
+    });
+
+    await waitFor(() => {
+      expect(mockApi.updateTreeGroups).toHaveBeenCalledWith({
+        groups: [
+          { id: "default", name: "Default" },
+          { id: "beta", name: "Beta Space" },
+          { id: "alpha", name: "Alpha Space" },
+        ],
+        assignments: {
+          "alpha-session": "alpha",
+          "beta-session": "beta",
+        },
+      });
+    });
+    expect(mockApi.assignSessionToTreeGroup).not.toHaveBeenCalled();
+    expect(mockApi.updateTreeNodeOrder).not.toHaveBeenCalled();
+  });
+
   it("hovering a herded worker highlights its leader and shows leader info in hover card", async () => {
     const leaderSessionId = "leader-1";
     const workerSessionId = "worker-1";

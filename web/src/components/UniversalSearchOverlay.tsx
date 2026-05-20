@@ -45,6 +45,8 @@ export interface UniversalSearchOverlayProps {
   leaderSessionId?: string;
   messageSearchPreviewResponse?: MessageSearchResponse;
   presentation?: "fixed" | "inline";
+  initialMode?: UniversalSearchMode;
+  initialQuery?: string;
   onClose: () => void;
   onOpenQuest: (questId: string, query: string) => void;
   onOpenMessage: (sessionId: string, messageId: string, threadKey?: string | null) => void;
@@ -153,10 +155,19 @@ function normalizeStoredMessageSearchSettings(settings: Partial<MessageSearchSet
   };
 }
 
-function initialMode(currentSessionId: string | null, messageModeAvailable: boolean): UniversalSearchMode {
+function getInitialMode(currentSessionId: string | null, messageModeAvailable: boolean): UniversalSearchMode {
   const stored = readLastMode();
   if (stored && (stored !== "messages" || messageModeAvailable)) return stored;
   return currentSessionId && messageModeAvailable ? "messages" : "quests";
+}
+
+function normalizeInitialModeOverride(
+  mode: UniversalSearchMode | undefined,
+  currentSessionId: string | null,
+  messageModeAvailable: boolean,
+): UniversalSearchMode {
+  if (mode && (mode !== "messages" || messageModeAvailable)) return mode;
+  return getInitialMode(currentSessionId, messageModeAvailable);
 }
 
 function normalizeMessageSearchScope(input: {
@@ -293,6 +304,8 @@ export function UniversalSearchOverlay({
   onOpenQuest,
   onOpenMessage,
   messageSearchPreviewResponse,
+  initialMode,
+  initialQuery,
 }: UniversalSearchOverlayProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -302,8 +315,10 @@ export function UniversalSearchOverlay({
   const copiedResetTimerRef = useRef<number | null>(null);
   const messageModeAvailable = Boolean(currentSessionId);
 
-  const [mode, setMode] = useState<UniversalSearchMode>(() => initialMode(currentSessionId, messageModeAvailable));
-  const [query, setQuery] = useState(() => readLastQuery());
+  const [mode, setMode] = useState<UniversalSearchMode>(() =>
+    normalizeInitialModeOverride(initialMode, currentSessionId, messageModeAvailable),
+  );
+  const [query, setQuery] = useState(() => initialQuery ?? readLastQuery());
   const debouncedQuery = useDebouncedValue(query, DEBOUNCE_MS);
   const [visibleLimit, setVisibleLimit] = useState(PAGE_SIZE);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -377,15 +392,15 @@ export function UniversalSearchOverlay({
 
   useEffect(() => {
     if (!open) return;
-    setMode(initialMode(currentSessionId, messageModeAvailable));
+    setMode(normalizeInitialModeOverride(initialMode, currentSessionId, messageModeAvailable));
     setMessageSettings(readMessageSearchSettings());
-    setQuery(readLastQuery());
+    setQuery(initialQuery ?? readLastQuery());
     setVisibleLimit(PAGE_SIZE);
     setSelectedIndex(0);
     setQuestActionMenu(null);
     const frame = window.requestAnimationFrame(() => inputRef.current?.focus());
     return () => window.cancelAnimationFrame(frame);
-  }, [currentSessionId, messageModeAvailable, open]);
+  }, [currentSessionId, initialMode, initialQuery, messageModeAvailable, open]);
 
   useEffect(() => {
     if (mode === "messages" && !messageModeAvailable) setMode("quests");

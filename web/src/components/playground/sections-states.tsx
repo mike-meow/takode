@@ -14,11 +14,10 @@ import {
 } from "../CatIcons.js";
 import { HighlightedText } from "../HighlightedText.js";
 import { PawTrailAvatar } from "../PawTrail.js";
-import { UniversalSearchOverlay } from "../UniversalSearchOverlay.js";
 import { VoiceLevelWaveform } from "../VoiceRecordingStatus.js";
-import type { MessageSearchResponse } from "../../api.js";
-import type { ChatMessage, CreationProgressEvent, SdkSessionInfo } from "../../types.js";
+import type { CreationProgressEvent } from "../../types.js";
 import { MOCK_SUBAGENT_TOOL_ITEMS, MOCK_TOOL_GROUP_ITEMS } from "./fixtures.js";
+import { PlaygroundSidebarOverflowStates, PlaygroundUniversalSearchStates } from "./search-sidebar-states.js";
 import {
   Card,
   PlaygroundClaudeMdButton,
@@ -31,119 +30,12 @@ import {
   Section,
 } from "./shared.js";
 
-const PLAYGROUND_UNIVERSAL_SESSIONS: SdkSessionInfo[] = [
-  {
-    sessionId: "playground-universal",
-    state: "connected",
-    cwd: "/repo/takode",
-    createdAt: Date.now() - 15 * 60_000,
-    lastActivityAt: Date.now() - 2 * 60_000,
-    name: "Universal search implementation",
-    backendType: "codex",
-    gitBranch: "feature/universal-search",
-    sessionNum: 1277,
-    isOrchestrator: true,
-  },
-  {
-    sessionId: "playground-review",
-    state: "connected",
-    cwd: "/repo/takode",
-    createdAt: Date.now() - 2 * 60 * 60_000,
-    lastActivityAt: Date.now() - 35 * 60_000,
-    name: "Review search overlay states",
-    backendType: "claude",
-  },
-];
-
 const PLAYGROUND_VOICE_HISTORY = [0.08, 0.18, 0.35, 0.68, 0.82, 0.44, 0.16, 0.1, 0.28, 0.58, 0.72, 0.24];
 
 function PlaygroundVoiceHistory() {
   const volumeHistory = PLAYGROUND_VOICE_HISTORY.map((level, index) => ({ time: index, level }));
   return <VoiceLevelWaveform currentLevel={0.64} samples={volumeHistory} />;
 }
-
-const PLAYGROUND_UNIVERSAL_MESSAGE_RESPONSE: MessageSearchResponse = {
-  sessionId: "playground-universal",
-  sessionNum: 1277,
-  query: "search",
-  scope: { kind: "current_thread", threadKey: "main", label: "Searching in #1277 Main" },
-  filters: { user: true, assistant: false, event: true },
-  totalMatches: 3,
-  nextOffset: null,
-  hasMore: false,
-  tookMs: 2,
-  results: [
-    {
-      id: "playground-universal:0:universal-user-new",
-      sessionId: "playground-universal",
-      sessionNum: 1277,
-      messageId: "universal-user-new",
-      historyIndex: 0,
-      role: "user",
-      category: "user",
-      timestamp: Date.now() - 2 * 60_000,
-      snippet: "Can you make the universal search overlay keyboard efficient and mode scoped?",
-      routeThreadKey: "main",
-      sourceThreadKey: "main",
-      sourceLabel: "Main",
-    },
-    {
-      id: "playground-universal:1:universal-event",
-      sessionId: "playground-universal",
-      sessionNum: 1277,
-      messageId: "universal-event",
-      historyIndex: 1,
-      role: "user",
-      category: "event",
-      timestamp: Date.now() - 12 * 60_000,
-      snippet: "Herd event reported compact search evidence from another session.",
-      routeThreadKey: "main",
-      sourceThreadKey: "main",
-      sourceLabel: "Herd Events",
-    },
-    {
-      id: "playground-universal:3:universal-user-old",
-      sessionId: "playground-universal",
-      sessionNum: 1277,
-      messageId: "universal-user-old",
-      historyIndex: 3,
-      role: "user",
-      category: "user",
-      timestamp: Date.now() - 30 * 60_000,
-      snippet: "Default message mode should show recent user messages when the query is empty.",
-      routeThreadKey: "main",
-      sourceThreadKey: "main",
-      sourceLabel: "Main",
-    },
-  ],
-};
-
-const PLAYGROUND_UNIVERSAL_MESSAGES: ChatMessage[] = [
-  {
-    id: "universal-user-new",
-    role: "user",
-    content: "Can you make the universal search overlay keyboard efficient and mode scoped?",
-    timestamp: Date.now() - 2 * 60_000,
-  },
-  {
-    id: "universal-assistant",
-    role: "assistant",
-    content: "I am wiring the app-level overlay through the existing configurable shortcut action.",
-    timestamp: Date.now() - 90_000,
-  },
-  {
-    id: "universal-event",
-    role: "system",
-    content: "Shortcut settings updated: Universal Search uses Mod+F.",
-    timestamp: Date.now() - 60_000,
-  },
-  {
-    id: "universal-user-old",
-    role: "user",
-    content: "Default message mode should show recent user messages when the query is empty.",
-    timestamp: Date.now() - 30 * 60_000,
-  },
-];
 
 export function PlaygroundStateSections() {
   return (
@@ -1919,41 +1811,8 @@ diff --git a/src/routes/summary.ts b/src/routes/summary.ts
         </div>
       </Section>
 
-      <Section
-        title="Universal Search"
-        description="App-level command palette for mode-scoped quest, session, and current-session message search."
-      >
-        <div className="space-y-4">
-          <Card label="Overlay with current-session message mode">
-            <UniversalSearchOverlay
-              open
-              presentation="inline"
-              currentSessionId="playground-universal"
-              currentThreadKey="main"
-              sessions={PLAYGROUND_UNIVERSAL_SESSIONS}
-              messages={PLAYGROUND_UNIVERSAL_MESSAGES}
-              leaderSessionId="playground-universal"
-              messageSearchPreviewResponse={PLAYGROUND_UNIVERSAL_MESSAGE_RESPONSE}
-              onClose={() => {}}
-              onOpenQuest={() => {}}
-              onOpenMessage={() => {}}
-            />
-          </Card>
-          <Card label="Overlay outside a session">
-            <UniversalSearchOverlay
-              open
-              presentation="inline"
-              currentSessionId={null}
-              currentThreadKey={null}
-              sessions={PLAYGROUND_UNIVERSAL_SESSIONS}
-              messages={[]}
-              onClose={() => {}}
-              onOpenQuest={() => {}}
-              onOpenMessage={() => {}}
-            />
-          </Card>
-        </div>
-      </Section>
+      <PlaygroundUniversalSearchStates />
+      <PlaygroundSidebarOverflowStates />
 
       {/* ─── Folder Picker ──────────────────────────────── */}
       <Section
