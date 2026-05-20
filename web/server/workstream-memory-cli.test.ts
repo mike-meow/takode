@@ -114,10 +114,21 @@ source: [q-1220, session:1559]
     expect(catalog.status).toBe(0);
     expect(catalog.stdout).toContain(`Memory repo: ${join(tempDir, "memory")}`);
     expect(catalog.stdout).toContain(
-      "decisions/memory-schema.md [decisions] Memory frontmatter is intentionally small and path-derived.",
+      "decisions/memory-schema.md Memory frontmatter is intentionally small and path-derived.",
     );
-    expect(catalog.stdout).toContain("source: q-1220, session:1559");
+    expect(catalog.stdout).not.toContain("[decisions]");
+    expect(catalog.stdout).not.toContain("source: q-1220, session:1559");
     expect(catalog.stdout).not.toContain(join(tempDir, "memory", "decisions", "memory-schema.md"));
+
+    const catalogJson = await runMemory(["catalog", "show", "--json"], env);
+    expect(catalogJson.status).toBe(0);
+    expect(JSON.parse(catalogJson.stdout).entries[0]).toEqual(
+      expect.objectContaining({
+        id: "decisions/memory-schema.md",
+        kind: "decisions",
+        source: ["q-1220", "session:1559"],
+      }),
+    );
   });
 
   it("reports catalog changes since this session last saw the catalog", async () => {
@@ -138,7 +149,7 @@ source:
 
     const show = await runMemory(["catalog", "show"], scopedEnv);
     expect(show.status).toBe(0);
-    expect(show.stdout).toContain("decisions/first.md [decisions] First catalog entry.");
+    expect(show.stdout).toContain("decisions/first.md First catalog entry.");
 
     await writeMemoryFile(
       "decisions/first.md",
@@ -370,7 +381,9 @@ source:
 
     const catalog = await runMemory(["catalog"], env);
     expect(catalog.status).toBe(0);
-    expect(catalog.stdout).toContain("knowledge/dual-schema.md [knowledge] New schema description stays visible.");
+    expect(catalog.stdout).toContain("knowledge/dual-schema.md New schema description stays visible.");
+    expect(catalog.stdout).not.toContain("[knowledge]");
+    expect(catalog.stdout).not.toContain("source: q-1220");
     expect(catalog.stdout).not.toContain("Obsolete memory frontmatter field");
     expect(catalog.stdout).not.toContain("Issues:");
 
@@ -511,6 +524,8 @@ source:
     expect(help.stdout).toContain("Print the resolved repo root");
     expect(help.stdout).toContain("catalog [show|diff]");
     expect(help.stdout).toContain("Show the repo root and list authored memory files");
+    expect(help.stdout).toContain("Default show output is compact");
+    expect(help.stdout).toContain("inspect the file or use --json for provenance/source refs");
     expect(help.stdout).toContain("Use catalog diff as a freshness check for memory-focused work");
     expect(help.stdout).not.toContain("Prefer catalog/direct file inspection for normal orientation.");
     expect(help.stdout).toContain("description: one or two sentences for catalog orientation");

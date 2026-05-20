@@ -76,6 +76,7 @@ Commands:
       Print the resolved repo root. Use this to rediscover memory after compaction.
   catalog [show|diff]
       Show the repo root and list authored memory files from frontmatter.
+      Default show output is compact; inspect the file or use --json for provenance/source refs.
       Use catalog diff as a freshness check for memory-focused work, not routine orientation.
   lint
       Canonical health check for memory files and frontmatter.
@@ -198,8 +199,7 @@ function printCatalog(catalog: Awaited<ReturnType<typeof workstreamMemoryService
     console.log("No memory files found.");
   }
   for (const entry of catalog.entries) {
-    console.log(`${entry.id} [${entry.kind}] ${entry.description}`);
-    if (entry.source.length) console.log(`  source: ${entry.source.join(", ")}`);
+    console.log(`${entry.id} ${entry.description}`);
   }
   printIssues(filterNormalReadIssues(catalog.issues));
 }
