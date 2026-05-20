@@ -743,6 +743,42 @@ describe("ChatView backend banners", () => {
     await waitFor(() => expect(mockMarkNotificationDone).toHaveBeenCalledWith("s1", "review-q941", true));
   });
 
+  it("clears a backing multi-quest review notification when selecting a generated quest tab", async () => {
+    resetStore({
+      sessions: new Map([["s1", { backend_state: "connected", backend_error: null, isOrchestrator: true }]]),
+      sdkSessions: [{ sessionId: "s1", archived: false, isOrchestrator: true }],
+      sessionNotifications: new Map([
+        [
+          "s1",
+          [
+            {
+              id: "review-batch",
+              category: "review",
+              summary: "2 quests ready for review: q-1, q-2",
+              timestamp: 2,
+              messageId: null,
+              threadKey: "main",
+              done: false,
+            },
+          ],
+        ],
+      ]),
+    });
+
+    const view = render(<ChatView sessionId="s1" />);
+    const scope = within(view.container);
+    const tabs = scope.getAllByTestId("mock-workboard-thread");
+    const q1Tab = tabs.find((tab) => tab.getAttribute("data-thread-key") === "q-1");
+    const q2Tab = tabs.find((tab) => tab.getAttribute("data-thread-key") === "q-2");
+    expect(q1Tab).toHaveTextContent("q-1 Journey finished");
+    expect(q2Tab).toHaveTextContent("q-2 Journey finished");
+    expect(mockMarkNotificationDone).not.toHaveBeenCalled();
+
+    fireEvent.click(q1Tab!);
+
+    await waitFor(() => expect(mockMarkNotificationDone).toHaveBeenCalledWith("s1", "review-batch", true));
+  });
+
   it("does not clear review notifications when selecting aggregate All Threads", async () => {
     resetStore({
       sessions: new Map([["s1", { backend_state: "connected", backend_error: null, isOrchestrator: true }]]),

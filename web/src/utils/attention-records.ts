@@ -325,7 +325,7 @@ function reviewDisplayFromNotification(notification: SessionNotification): Revie
   };
 }
 
-function parseQuestIdsFromReviewSummary(summary: string | undefined): string[] {
+export function parseQuestIdsFromReviewSummary(summary: string | undefined): string[] {
   const match = summary?.match(/^\s*\d+\s+quests?\s+(?:ready\s+for\s+review|finished)\s*:\s*(.+?)\s*$/i);
   if (!match) return [];
   return [...match[1].matchAll(/\bq-\d+\b/gi)].map((questIdMatch) => questIdMatch[0].toLowerCase());

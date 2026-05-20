@@ -62,7 +62,11 @@ import {
   readLeaderSelectedThreadKey,
   requestThreadViewportSnapshot,
 } from "../utils/thread-viewport.js";
-import { buildAttentionRecords } from "../utils/attention-records.js";
+import {
+  buildAttentionRecords,
+  isAttentionRecordActive,
+  parseQuestIdsFromReviewSummary,
+} from "../utils/attention-records.js";
 import { getQuestStatusTheme } from "../utils/quest-status-theme.js";
 import {
   placeOpenThreadTabKey,
@@ -111,15 +115,35 @@ const EMPTY_ATTENTION_RECORDS: SessionAttentionRecord[] = [];
 
 function reviewNotificationIdsForSelectedThread(
   notifications: ReadonlyArray<SessionNotification> | undefined,
+  attentionRecords: ReadonlyArray<SessionAttentionRecord>,
   selectedThreadKey: string,
 ): string[] {
   const selected = normalizeThreadKey(selectedThreadKey || MAIN_THREAD_KEY);
   if (selected === ALL_THREADS_KEY) return [];
 
+  const effectiveThreadsByNotificationId = new Map<string, Set<string>>();
+  for (const record of attentionRecords) {
+    if (record.priority !== "review" || record.source.kind !== "notification" || !record.source.id) continue;
+    if (!isAttentionRecordActive(record)) continue;
+    const threadKey = normalizeThreadKey(record.route.threadKey || record.threadKey);
+    const threads = effectiveThreadsByNotificationId.get(record.source.id) ?? new Set<string>();
+    threads.add(threadKey);
+    effectiveThreadsByNotificationId.set(record.source.id, threads);
+  }
+
   const ids: string[] = [];
   for (const notification of notifications ?? []) {
     if (notification.done || notification.category !== "review") continue;
-    if (resolveNotificationOwnerThreadKey(notification) !== selected) continue;
+    const parsedMultiQuestThreads = parseQuestIdsFromReviewSummary(notification.summary);
+    const effectiveThreads =
+      parsedMultiQuestThreads.length > 1
+        ? new Set(parsedMultiQuestThreads.map((threadKey) => normalizeThreadKey(threadKey)))
+        : effectiveThreadsByNotificationId.get(notification.id);
+    if (
+      effectiveThreads ? !effectiveThreads.has(selected) : resolveNotificationOwnerThreadKey(notification) !== selected
+    ) {
+      continue;
+    }
     ids.push(notification.id);
   }
   return ids;
@@ -1058,10 +1082,11 @@ export function ChatView({
       !preview
         ? reviewNotificationIdsForSelectedThread(
             sessionNotifications,
+            attentionRecords,
             isLeaderSession ? selectedThreadKey : MAIN_THREAD_KEY,
           )
         : [],
-    [isLeaderSession, preview, selectedThreadKey, sessionNotifications],
+    [attentionRecords, isLeaderSession, preview, selectedThreadKey, sessionNotifications],
   );
   useEffect(() => {
     for (const notificationId of reviewNotificationIdsToClear) {
