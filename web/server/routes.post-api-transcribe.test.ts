@@ -836,6 +836,8 @@ describe("POST /api/transcribe", () => {
     expect(phaseIndex).toBeGreaterThanOrEqual(0);
     expect(resultIndex).toBeGreaterThan(phaseIndex);
     expect(body).toContain('"phase":"transcribing"');
+    expect(body).toContain('"nextPhase":"finalizing"');
+    expect(body).toContain('"sttDurationMs"');
   });
 
   it("broadcasts request-scoped transcription progress over the browser WebSocket", async () => {
@@ -876,6 +878,14 @@ describe("POST /api/transcribe", () => {
           audioMimeType: "audio/wav",
           audioFileName: "recording.wav",
           uploadDurationMs: expect.any(Number),
+        }),
+      }),
+      expect.objectContaining({
+        requestId: "voice-request-1",
+        phase: "finalizing",
+        mode: "dictation",
+        timing: expect.objectContaining({
+          sttDurationMs: expect.any(Number),
         }),
       }),
       expect.objectContaining({

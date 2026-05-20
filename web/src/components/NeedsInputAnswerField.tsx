@@ -169,11 +169,13 @@ export function NeedsInputAnswerField({
       ? "Preparing transcript..."
       : transcriptionPhase === "transcribing"
         ? "Transcribing..."
-        : transcriptionPhase === "enhancing"
-          ? "Enhancing transcript..."
-          : isTranscribing
-            ? "Transcribing..."
-            : null;
+        : transcriptionPhase === "finalizing"
+          ? "Finalizing transcript..."
+          : transcriptionPhase === "enhancing"
+            ? "Enhancing transcript..."
+            : isTranscribing
+              ? "Transcribing..."
+              : null;
   const voiceButtonTitle = isRecording
     ? "Stop voice answer"
     : voiceSupported

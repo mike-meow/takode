@@ -776,6 +776,73 @@ describe("transcribe", () => {
     );
   });
 
+  it("moves no-enhancement dictation into finalizing after STT completes", async () => {
+    const encoder = new TextEncoder();
+    let streamController: ReadableStreamDefaultController<Uint8Array> | undefined;
+    const body = new ReadableStream({
+      start(controller) {
+        streamController = controller;
+      },
+    });
+    mockFetch.mockResolvedValueOnce(
+      new Response(body, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      }),
+    );
+
+    const onPhase = vi.fn();
+    const onProgress = vi.fn();
+    const pending = api.transcribe(new Blob([new Uint8Array([1, 2, 3, 4])], { type: "audio/mp4" }), {
+      mode: "dictation",
+      sessionId: "session-1",
+      onPhase,
+      onProgress,
+    });
+
+    await Promise.resolve();
+    expect(onPhase.mock.calls).toEqual([["preparing"]]);
+
+    if (!streamController) throw new Error("stream controller was not initialized");
+    streamController.enqueue(encoder.encode('event: phase\ndata: {"phase":"transcribing","mode":"dictation"}\n\n'));
+    streamController.enqueue(
+      encoder.encode(
+        'event: stt_complete\ndata: {"rawText":"hello","nextPhase":"finalizing","mode":"dictation","timing":{"uploadDurationMs":25,"sttDurationMs":300}}\n\n',
+      ),
+    );
+
+    await vi.waitFor(() => {
+      expect(onPhase.mock.calls).toEqual([["preparing"], ["transcribing"], ["finalizing"]]);
+    });
+    expect(onProgress).toHaveBeenCalledWith(
+      expect.objectContaining({
+        phase: "finalizing",
+        source: "sse",
+        timing: expect.objectContaining({ sttDurationMs: 300 }),
+      }),
+    );
+
+    streamController.enqueue(
+      encoder.encode(
+        `event: result\ndata: ${JSON.stringify({
+          text: "hello",
+          rawText: "hello",
+          backend: "openai",
+          enhanced: false,
+          timing: { uploadDurationMs: 25, sttDurationMs: 300 },
+        } satisfies VoiceTranscriptionResult)}\n\n`,
+      ),
+    );
+
+    await expect(pending).resolves.toEqual({
+      text: "hello",
+      rawText: "hello",
+      backend: "openai",
+      enhanced: false,
+      timing: { uploadDurationMs: 25, sttDurationMs: 300 },
+    });
+  });
+
   it("adds selected thread context to raw dictation requests", async () => {
     const encoder = new TextEncoder();
     const body = new ReadableStream({

@@ -1624,9 +1624,11 @@ export function Composer({
                 ? "Editing..."
                 : transcriptionPhase === "appending"
                   ? "Appending..."
-                  : transcriptionPhase === "enhancing"
-                    ? "Enhancing..."
-                    : "Transcribing..."
+                  : transcriptionPhase === "finalizing"
+                    ? "Finalizing..."
+                    : transcriptionPhase === "enhancing"
+                      ? "Enhancing..."
+                      : "Transcribing..."
             : isRecording
               ? "Stop recording"
               : voiceEditProposal

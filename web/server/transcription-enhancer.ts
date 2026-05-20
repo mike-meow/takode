@@ -1104,6 +1104,7 @@ export async function applyVoiceAppend(
 export type TranscriptionFrontendTimingPhase =
   | "preparing"
   | "transcribing"
+  | "finalizing"
   | "enhancing"
   | "editing"
   | "appending"

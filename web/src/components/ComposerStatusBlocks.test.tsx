@@ -128,6 +128,19 @@ describe("ComposerStatusBlocks voice recording controls", () => {
     expect(bars[bars.length - 1].getAttribute("data-current-sample")).toBe("true");
     expect(bars[bars.length - 1].getAttribute("data-clipping")).toBe("true");
   });
+
+  it("labels post-STT no-enhancement transcription as finalizing", () => {
+    renderStatusBlocks({
+      isTranscribing: true,
+      transcriptionPhase: "finalizing",
+      vscodeSelectionLabel: null,
+      vscodeSelectionSummary: null,
+      vscodeSelectionTitle: null,
+    });
+
+    expect(screen.getByText("Finalizing...")).toBeTruthy();
+    expect(screen.queryByText("Transcribing...")).toBeNull();
+  });
 });
 
 describe("ComposerStatusBlocks VS Code selection chip", () => {

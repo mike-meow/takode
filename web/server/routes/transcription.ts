@@ -28,10 +28,18 @@ import { normalizeThreadTarget } from "../../shared/thread-routing.js";
 const TRANSCRIPTION_THREAD_CONTEXT_TURNS = 12;
 const TRANSCRIPTION_FOCUSED_CONTEXT_MAX_CHARS = 4000;
 type TranscriptionMode = "dictation" | "edit" | "append";
-type TranscriptionProgressPhase = "transcribing" | "enhancing" | "editing" | "appending" | "complete" | "error";
+type TranscriptionProgressPhase =
+  | "transcribing"
+  | "finalizing"
+  | "enhancing"
+  | "editing"
+  | "appending"
+  | "complete"
+  | "error";
 type TranscriptionFrontendTimingPhase =
   | "preparing"
   | "transcribing"
+  | "finalizing"
   | "enhancing"
   | "editing"
   | "appending"
@@ -51,6 +59,7 @@ const FRONTEND_TIMING_MAX_EVENTS = 100;
 const FRONTEND_TIMING_PHASES = new Set<TranscriptionFrontendTimingPhase>([
   "preparing",
   "transcribing",
+  "finalizing",
   "enhancing",
   "editing",
   "appending",
@@ -60,6 +69,7 @@ const FRONTEND_TIMING_PHASES = new Set<TranscriptionFrontendTimingPhase>([
 const FRONTEND_TIMING_VISIBLE_PHASES = new Set<Exclude<TranscriptionFrontendTimingPhase, "complete" | "error">>([
   "preparing",
   "transcribing",
+  "finalizing",
   "enhancing",
   "editing",
   "appending",
@@ -548,20 +558,22 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
         );
         const willRunVoiceEdit = mode === "edit";
         const willRunVoiceAppend = mode === "append";
+        const nextPhase = willRunVoiceEdit
+          ? "editing"
+          : willRunVoiceAppend
+            ? "appending"
+            : willEnhanceDictation
+              ? "enhancing"
+              : "finalizing";
         await stream.writeSSE({
           event: "stt_complete",
           data: JSON.stringify({
             rawText,
             backend: usedBackend,
             willEnhance: willEnhanceDictation,
-            nextPhase: willRunVoiceEdit
-              ? "editing"
-              : willRunVoiceAppend
-                ? "appending"
-                : willEnhanceDictation
-                  ? "enhancing"
-                  : null,
+            nextPhase,
             mode,
+            timing: { ...uploadTiming, sttDurationMs },
           }),
         });
 
@@ -786,6 +798,13 @@ export function createTranscriptionRoutes(ctx: RouteContext) {
         }
 
         // Log STT-only call (no enhancement attempted)
+        emitTranscriptionProgress({
+          sessionId,
+          requestId: transcriptionRequestId,
+          phase: "finalizing",
+          mode,
+          timing: { ...uploadTiming, sttDurationMs },
+        });
         addTranscriptionLogEntry({
           sessionId: sessionId ?? null,
           requestId: transcriptionRequestId ?? null,

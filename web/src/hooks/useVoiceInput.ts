@@ -6,7 +6,14 @@ export interface UseVoiceInputOptions {
   onAudioReady?: (blob: Blob) => void;
 }
 
-export type TranscriptionPhase = "preparing" | "transcribing" | "enhancing" | "editing" | "appending" | null;
+export type TranscriptionPhase =
+  | "preparing"
+  | "transcribing"
+  | "finalizing"
+  | "enhancing"
+  | "editing"
+  | "appending"
+  | null;
 export type VoiceInputUnsupportedReason =
   | "insecure-context"
   | "missing-media-devices"
@@ -21,7 +28,7 @@ export interface UseVoiceInputReturn {
   unsupportedReason: VoiceInputUnsupportedReason | null;
   unsupportedMessage: string | null;
   isTranscribing: boolean;
-  /** Current transcription phase: "preparing", "transcribing", "enhancing"/"editing", or null */
+  /** Current transcription phase: "preparing", "transcribing", "finalizing", "enhancing"/"editing", or null */
   transcriptionPhase: TranscriptionPhase;
   error: string | null;
   /** Normalized volume level 0–1 while recording, 0 otherwise */

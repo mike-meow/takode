@@ -694,6 +694,115 @@ describe("Composer voice edit mode", () => {
     });
   });
 
+  it("reports no-enhancement finalizing time separately from transcribing", async () => {
+    let progressRequestId = "";
+    mockTranscribe.mockImplementationOnce(async (_blob: Blob, options: unknown) => {
+      const transcriptionOptions = options as {
+        requestId?: string;
+        onProgress?: (event: VoiceTranscriptionProgressEvent) => void;
+      };
+      progressRequestId = transcriptionOptions.requestId!;
+
+      transcriptionOptions.onProgress?.({
+        requestId: progressRequestId,
+        phase: "transcribing",
+        mode: "dictation",
+        source: "websocket",
+        timestamp: 100,
+        timing: {
+          audioSizeBytes: 5,
+          audioMimeType: "audio/webm",
+          audioFileName: "recording.webm",
+          uploadDurationMs: 10,
+        },
+      });
+      transcriptionOptions.onProgress?.({
+        requestId: progressRequestId,
+        phase: "finalizing",
+        mode: "dictation",
+        source: "websocket",
+        timestamp: 200,
+        timing: {
+          uploadDurationMs: 10,
+          sttDurationMs: 450,
+        },
+      });
+      transcriptionOptions.onProgress?.({
+        requestId: progressRequestId,
+        phase: "complete",
+        mode: "dictation",
+        source: "sse",
+        timestamp: 300,
+        timing: {
+          uploadDurationMs: 10,
+          sttDurationMs: 450,
+        },
+      });
+
+      return { mode: "dictation", text: "transcribed text", backend: "openai", enhanced: false };
+    });
+
+    render(<Composer sessionId="s1" />);
+    fireEvent.click(screen.getByLabelText("Voice input"));
+
+    await waitFor(() => {
+      expect(mockTranscribe).toHaveBeenCalledWith(
+        expect.any(Blob),
+        expect.objectContaining({
+          mode: "dictation",
+          sessionId: "s1",
+          requestId: progressRequestId,
+          onProgress: expect.any(Function),
+        }),
+      );
+    });
+
+    expect(getFrontendPerfEntries()).toEqual([
+      expect.objectContaining({
+        kind: "voice_transcription_progress",
+        sessionId: "s1",
+        requestId: progressRequestId,
+        phase: "transcribing",
+        source: "websocket",
+      }),
+      expect.objectContaining({
+        kind: "voice_transcription_progress",
+        sessionId: "s1",
+        requestId: progressRequestId,
+        phase: "finalizing",
+        source: "websocket",
+        sttDurationMs: 450,
+      }),
+      expect.objectContaining({
+        kind: "voice_transcription_progress",
+        sessionId: "s1",
+        requestId: progressRequestId,
+        phase: "complete",
+        source: "sse",
+        sttDurationMs: 450,
+      }),
+    ]);
+    await waitFor(() => {
+      expect(mockReportTranscriptionFrontendTiming).toHaveBeenCalledWith(
+        expect.objectContaining({
+          requestId: progressRequestId,
+          sessionId: "s1",
+          mode: "dictation",
+          status: "success",
+          phaseDurationsMs: expect.objectContaining({
+            transcribing: expect.any(Number),
+            finalizing: expect.any(Number),
+          }),
+          events: [
+            expect.objectContaining({ phase: "transcribing", source: "websocket" }),
+            expect.objectContaining({ phase: "finalizing", source: "websocket", sttDurationMs: 450 }),
+            expect.objectContaining({ phase: "complete", source: "sse", sttDurationMs: 450 }),
+          ],
+        }),
+      );
+    });
+  });
+
   it("waits for the initial settings fetch before the first non-empty recording so the persisted mode wins", async () => {
     setupMockStore({ draftText: "Keep this draft" });
     const settingsLoad = deferred<{

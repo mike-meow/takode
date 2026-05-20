@@ -1,5 +1,11 @@
 export type VoiceTranscriptionMode = "dictation" | "edit" | "append";
-export type VoiceTranscriptionPhase = "preparing" | "transcribing" | "enhancing" | "editing" | "appending";
+export type VoiceTranscriptionPhase =
+  | "preparing"
+  | "transcribing"
+  | "finalizing"
+  | "enhancing"
+  | "editing"
+  | "appending";
 export type VoiceTranscriptionProgressPhase = VoiceTranscriptionPhase | "complete" | "error";
 
 export interface VoiceTranscriptionTiming {

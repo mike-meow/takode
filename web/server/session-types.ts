@@ -760,7 +760,7 @@ export type BrowserIncomingMessageBase =
   | {
       type: "transcription_progress";
       requestId: string;
-      phase: "transcribing" | "enhancing" | "editing" | "appending" | "complete" | "error";
+      phase: "transcribing" | "finalizing" | "enhancing" | "editing" | "appending" | "complete" | "error";
       mode?: "dictation" | "edit" | "append";
       timestamp: number;
       timing?: {
