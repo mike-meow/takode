@@ -85,4 +85,46 @@ describe("slack thread branch helpers", () => {
     expect(updated.lastMessagePreview).toBe("More detail");
     expect(updated.updatedAt).toBeGreaterThanOrEqual(record.updatedAt);
   });
+
+  it("counts only browser-visible user and assistant thread messages, not result bookkeeping", () => {
+    // Successful result records are backend turn bookkeeping. The root thread
+    // summary should stay aligned with messages visible in the thread panel.
+    const record: SlackThreadRecord = {
+      id: "st-1",
+      rootSessionId: "root",
+      childSessionId: "child",
+      anchorMessageId: "a1",
+      anchorHistoryIndex: 1,
+      anchorPreview: "Option X",
+      createdAt: 1,
+      updatedAt: 1,
+      messageCount: 0,
+      seeded: true,
+    };
+
+    const updated = updateSlackThreadRecordFromChildHistory(record, [
+      user("tu1", "Expand option X"),
+      assistant("ta1", "More detail"),
+      {
+        type: "result",
+        data: {
+          type: "result",
+          subtype: "success",
+          is_error: false,
+          result: "Backend result text",
+          duration_ms: 1,
+          duration_api_ms: 1,
+          num_turns: 1,
+          total_cost_usd: 0,
+          stop_reason: null,
+          usage: { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+          uuid: "r1",
+          session_id: "child",
+        },
+      },
+    ]);
+
+    expect(updated.messageCount).toBe(2);
+    expect(updated.lastMessagePreview).toBe("More detail");
+  });
 });

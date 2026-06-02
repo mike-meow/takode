@@ -73,7 +73,7 @@ export function updateSlackThreadRecordFromChildHistory(
   childHistory: BrowserIncomingMessage[],
 ): SlackThreadRecord {
   const visibleMessages = childHistory.filter(
-    (message) => message.type === "user_message" || message.type === "assistant" || message.type === "result",
+    (message) => message.type === "user_message" || message.type === "assistant",
   );
   const lastPreviewSource = [...visibleMessages].reverse().find((message) => extractMessageText(message).trim());
   return {

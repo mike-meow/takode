@@ -250,6 +250,7 @@ export interface CodexAdapterBrowserMessageDeps {
     msg: CLIResultMessage,
     completedTurn: CodexOutboundTurn | null,
   ) => Promise<void> | void;
+  syncSlackThreadParent?: (session: CodexBrowserMessageSessionLike) => void;
 }
 
 export function isCodexContextWindowExhaustionMessage(message: unknown): boolean {
@@ -480,6 +481,7 @@ export async function handleCodexAdapterBrowserMessage(
       timestamp: assistantTimestamp,
     };
     if (deps.isDuplicateCodexAssistantReplay(session, normalizedAssistant)) {
+      deps.syncSlackThreadParent?.(session);
       return;
     }
     const statusUpdate = updateLeaderThreadStatusesForAssistantOutput(
@@ -507,6 +509,7 @@ export async function handleCodexAdapterBrowserMessage(
     if (transitionMarker) deps.broadcastToBrowsers(session, transitionMarker);
     session.messageHistory.push(outgoing);
     deps.persistSession(session);
+    deps.syncSlackThreadParent?.(session);
     if (leaderThreadStatusesChanged) {
       deps.broadcastToBrowsers(session, {
         type: "session_update",
@@ -525,11 +528,15 @@ export async function handleCodexAdapterBrowserMessage(
         : ((session.pendingCodexTurns?.[0] ?? null) as CodexOutboundTurn | null);
     session.consecutiveAdapterFailures = 0;
     session.lastAdapterFailureAt = null;
-    if (!deps.completeCodexTurnsForResult(session, outgoing.data, Date.now())) return;
+    if (!deps.completeCodexTurnsForResult(session, outgoing.data, Date.now())) {
+      deps.syncSlackThreadParent?.(session);
+      return;
+    }
     deps.clearCodexFreshTurnRequirement(session, "codex_turn_completed", {
       completedTurnId: typeof outgoing.data.codex_turn_id === "string" ? outgoing.data.codex_turn_id : null,
     });
     deps.handleResultMessage(session, outgoing.data as CLIResultMessage);
+    deps.syncSlackThreadParent?.(session);
     const maybeAutoPause = deps.handleCodexResultErrorAutoPause(
       session,
       outgoing.data as CLIResultMessage,

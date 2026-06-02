@@ -926,6 +926,12 @@ export class WsBridge {
     return true;
   }
 
+  syncSlackThreadRecordForChild(childSession: Session): boolean {
+    const child = childSession.state.slackThreadChild;
+    if (!child) return false;
+    return this.syncSlackThreadRecord(child.rootSessionId, child.threadId);
+  }
+
   async routeSlackThreadUserMessage(
     rootSessionId: string,
     threadId: string,

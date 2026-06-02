@@ -312,6 +312,8 @@ export interface SdkSessionInfo {
   containerName?: string;
   containerImage?: string;
   name?: string;
+  /** Hidden implementation session, omitted from normal session lists. */
+  hidden?: boolean;
   backendType?: BackendType;
   /** Durable session-space/group assignment. `default` means confirmed default; null means unknown. */
   treeGroupId?: string | null;

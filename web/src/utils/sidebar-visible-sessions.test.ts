@@ -79,6 +79,48 @@ describe("buildSidebarVisibleSessions", () => {
     expect(result.orderedVisibleSessionIds).toEqual(["leader", "worker"]);
   });
 
+  it("filters hidden Slack thread child sessions that only exist in frontend store state", () => {
+    const sessions = new Map<string, SessionState>([
+      ["root", makeSessionState("root")],
+      [
+        "hidden-child",
+        makeSessionState("hidden-child", {
+          hidden: true,
+          slackThreadChild: {
+            rootSessionId: "root",
+            threadId: "st-1",
+            anchorMessageId: "a1",
+            anchorHistoryIndex: 1,
+            readOnly: true,
+          },
+        }),
+      ],
+    ]);
+    const sdkSessions: SdkSessionInfo[] = [makeSdkSession("root", { createdAt: 2, sessionNum: 10 })];
+
+    const result = buildSidebarVisibleSessions({
+      sessions,
+      sdkSessions,
+      cliConnected: new Map(),
+      cliDisconnectReason: new Map(),
+      sessionStatus: new Map(),
+      pendingPermissions: new Map(),
+      askPermission: new Map(),
+      diffFileStats: new Map(),
+      treeGroups: [{ id: "default", name: "Default" }],
+      treeAssignments: new Map(),
+      treeNodeOrder: new Map(),
+      collapsedTreeGroups: new Set(),
+      expandedHerdNodes: new Set(),
+      sessionAttention: new Map(),
+      sessionSortMode: "created",
+      countUserPermissions: () => 0,
+    });
+
+    expect(result.allSessionList.map((session) => session.id)).toEqual(["root"]);
+    expect(result.orderedVisibleSessionIds).toEqual(["root"]);
+  });
+
   it("keeps archived reviewers attached to active parents without adding standalone archived rows", () => {
     const sessions = new Map<string, SessionState>([
       ["parent", makeSessionState("parent")],
