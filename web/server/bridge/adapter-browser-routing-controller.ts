@@ -69,6 +69,13 @@ import {
 } from "../thread-routing-metadata.js";
 import { isActualHumanUserMessage } from "../user-message-classification.js";
 import { determineUserMessageSourceKind } from "../codex-result-error-auto-pause.js";
+import type {
+  BrowserUserMessage,
+  ControlResponseHandler,
+  IngestedUserMessage,
+  InterruptSource,
+  PermissionResponseMessage,
+} from "./adapter-browser-routing-message-types.js";
 export {
   hasPendingForceCompact,
   isCliSlashCommand,
@@ -97,23 +104,6 @@ import {
   getDenialSummary,
   NOTABLE_APPROVALS,
 } from "./permission-summaries.js";
-type InterruptSource = "user" | "leader" | "system";
-type ControlResponseHandler = {
-  subtype: string;
-  resolve: (response: unknown) => void;
-};
-type BrowserUserMessage = Extract<BrowserOutgoingMessage, { type: "user_message" }>;
-type PermissionResponseMessage = Extract<BrowserOutgoingMessage, { type: "permission_response" }>;
-type IngestedUserMessage = {
-  timestamp: number;
-  historyEntry: Extract<BrowserIncomingMessage, { type: "user_message" }>;
-  historyIndex: number;
-  imageRefs?: ImageRef[];
-  needsInputReminderText?: string;
-  needsInputResolutionNoticeText?: string;
-  needsInputResolutionNoticeIds?: string[];
-  wasGenerating: boolean;
-};
 type SessionNotificationDeps = {
   isHerdedWorkerSession?: (session: AdapterBrowserRoutingSessionLike) => boolean;
   broadcastToBrowsers?: (session: AdapterBrowserRoutingSessionLike, msg: BrowserIncomingMessage) => void;

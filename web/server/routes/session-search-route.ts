@@ -35,35 +35,38 @@ export function registerSessionSearchRoute(api: Hono, deps: SessionSearchRouteDe
     const startedAt = Date.now();
     const sessions = launcher.listSessions();
     const names = sessionNames.getAllNames();
-    const docs: SessionSearchDocument[] = sessions.map((s) => {
+    const docs: SessionSearchDocument[] = sessions.flatMap((s) => {
       const bridgeSession = wsBridge.getSession(s.sessionId);
       const bridge = bridgeSession?.state;
-      return {
-        sessionId: s.sessionId,
-        sessionNum: launcher.getSessionNum(s.sessionId) ?? null,
-        state: s.state,
-        model: bridge?.model || s.model,
-        backendType: s.backendType,
-        archived: !!s.archived,
-        archivedAt: s.archivedAt,
-        isOrchestrator: s.isOrchestrator === true || bridge?.isOrchestrator === true,
-        reviewerOf: s.reviewerOf,
-        createdAt: s.createdAt || 0,
-        lastActivityAt: s.lastActivityAt,
-        lastUserMessageAt: s.lastUserMessageAt,
-        name: names[s.sessionId] ?? s.name ?? "",
-        taskHistory: bridgeSession?.taskHistory ?? [],
-        keywords: bridgeSession?.keywords ?? [],
-        gitBranch: bridge?.git_branch || "",
-        cwd: bridge?.cwd || s.cwd || "",
-        repoRoot: bridge?.repo_root || s.repoRoot || "",
-        leaderActivePhaseSummary: buildLeaderActivePhaseSummaryForSnapshot(
-          s.isOrchestrator === true || bridge?.isOrchestrator === true,
-          bridgeSession,
-        ),
-        messageHistory: bridgeSession?.messageHistory || [],
-        searchExcerpts: bridgeSession?.searchExcerpts ?? [],
-      };
+      if (s.hidden === true || bridge?.hidden === true || bridge?.slackThreadChild) return [];
+      return [
+        {
+          sessionId: s.sessionId,
+          sessionNum: launcher.getSessionNum(s.sessionId) ?? null,
+          state: s.state,
+          model: bridge?.model || s.model,
+          backendType: s.backendType,
+          archived: !!s.archived,
+          archivedAt: s.archivedAt,
+          isOrchestrator: s.isOrchestrator === true || bridge?.isOrchestrator === true,
+          reviewerOf: s.reviewerOf,
+          createdAt: s.createdAt || 0,
+          lastActivityAt: s.lastActivityAt,
+          lastUserMessageAt: s.lastUserMessageAt,
+          name: names[s.sessionId] ?? s.name ?? "",
+          taskHistory: bridgeSession?.taskHistory ?? [],
+          keywords: bridgeSession?.keywords ?? [],
+          gitBranch: bridge?.git_branch || "",
+          cwd: bridge?.cwd || s.cwd || "",
+          repoRoot: bridge?.repo_root || s.repoRoot || "",
+          leaderActivePhaseSummary: buildLeaderActivePhaseSummaryForSnapshot(
+            s.isOrchestrator === true || bridge?.isOrchestrator === true,
+            bridgeSession,
+          ),
+          messageHistory: bridgeSession?.messageHistory || [],
+          searchExcerpts: bridgeSession?.searchExcerpts ?? [],
+        },
+      ];
     });
 
     const { results, totalMatches } = searchSessionDocuments(docs, {

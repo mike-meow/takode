@@ -642,6 +642,61 @@ describe("GET /api/sessions/search", () => {
     expect(json.results.some((r: any) => r.sessionId === "s-archived")).toBe(false);
   });
 
+  it("does not return hidden Slack thread child sessions", async () => {
+    launcher.listSessions.mockReturnValue([
+      { sessionId: "root", state: "running", cwd: "/needle-root", createdAt: 1, archived: false },
+      {
+        sessionId: "hidden-child",
+        state: "running",
+        cwd: "/needle-child",
+        createdAt: 2,
+        archived: false,
+        hidden: true,
+      },
+      { sessionId: "state-child", state: "running", cwd: "/needle-state-child", createdAt: 3, archived: false },
+    ]);
+    vi.mocked(sessionNames.getAllNames).mockReturnValue({
+      root: "Needle root session",
+      "hidden-child": "Needle hidden child",
+      "state-child": "Needle state child",
+    });
+    bridge.getAllSessions.mockReturnValue([
+      { session_id: "root", cwd: "/needle-root", repo_root: "/repo/root", git_branch: "main" },
+      {
+        session_id: "hidden-child",
+        cwd: "/needle-child",
+        repo_root: "/repo/child",
+        git_branch: "main",
+        slackThreadChild: {
+          rootSessionId: "root",
+          threadId: "st-1",
+          anchorMessageId: "a1",
+          anchorHistoryIndex: 1,
+          readOnly: true,
+        },
+      },
+      {
+        session_id: "state-child",
+        cwd: "/needle-state-child",
+        repo_root: "/repo/state-child",
+        git_branch: "main",
+        slackThreadChild: {
+          rootSessionId: "root",
+          threadId: "st-2",
+          anchorMessageId: "a2",
+          anchorHistoryIndex: 2,
+          readOnly: true,
+        },
+      },
+    ]);
+
+    const res = await app.request("/api/sessions/search?q=needle", { method: "GET" });
+    expect(res.status).toBe(200);
+    const json = await res.json();
+
+    expect(json.results.map((r: any) => r.sessionId)).toEqual(["root"]);
+  });
+
   it("excludes reviewer sessions by default and includes them when requested", async () => {
     launcher.listSessions.mockReturnValue([
       { sessionId: "s-worker", state: "running", cwd: "/worker", createdAt: 1, archived: false, sessionNum: 42 },
