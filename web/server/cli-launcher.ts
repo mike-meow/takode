@@ -405,6 +405,18 @@ export class CliLauncher {
     return normalizeMemorySessionSpaceSlug(options.memorySessionSpaceSlug ?? this.memorySessionSpaceSlug);
   }
 
+  private composeSessionEnv(
+    baseEnv: Record<string, string> | undefined,
+    identityEnv: Record<string, string>,
+    blockedEnvKeys?: string[],
+  ): Record<string, string> {
+    const env = { ...(baseEnv ?? {}) };
+    for (const key of blockedEnvKeys ?? []) {
+      delete env[key];
+    }
+    return { ...env, ...identityEnv };
+  }
+
   private ensureMemorySessionSpaceSlug(info: SdkSessionInfo): string {
     const memorySessionSpaceSlug = normalizeMemorySessionSpaceSlug(
       info.memorySessionSpaceSlug ?? this.memorySessionSpaceSlug,
@@ -613,6 +625,7 @@ export class CliLauncher {
       backendType,
       memorySessionSpaceSlug,
       envSlug: options.envSlug,
+      blockedEnvKeys: options.blockedEnvKeys?.length ? Array.from(new Set(options.blockedEnvKeys)) : undefined,
       hidden: options.hidden === true,
       parentSessionId: options.parentSessionId,
       slackThreadId: options.slackThreadId,
@@ -685,21 +698,18 @@ export class CliLauncher {
       const profileVars = await this.envResolver(options.envSlug);
       if (profileVars) launchEnv = { ...profileVars, ...launchEnv };
     }
-    if (launchEnv && options.blockedEnvKeys?.length) {
-      launchEnv = { ...launchEnv };
-      for (const key of options.blockedEnvKeys) {
-        delete launchEnv[key];
-      }
-    }
-    const envWithSessionId = {
-      ...launchEnv,
-      COMPANION_SERVER_ID: this.serverId,
-      COMPANION_SERVER_SLUG: this.serverSlug,
-      [COMPANION_MEMORY_SPACE_SLUG_ENV]: memorySessionSpaceSlug,
-      COMPANION_SESSION_ID: sessionId,
-      COMPANION_SESSION_NUMBER: String(info.sessionNum),
-      COMPANION_AUTH_TOKEN: sessionAuthToken,
-    };
+    const envWithSessionId = this.composeSessionEnv(
+      launchEnv,
+      {
+        COMPANION_SERVER_ID: this.serverId,
+        COMPANION_SERVER_SLUG: this.serverSlug,
+        [COMPANION_MEMORY_SPACE_SLUG_ENV]: memorySessionSpaceSlug,
+        COMPANION_SESSION_ID: sessionId,
+        COMPANION_SESSION_NUMBER: String(info.sessionNum),
+        COMPANION_AUTH_TOKEN: sessionAuthToken,
+      },
+      options.blockedEnvKeys,
+    );
     this.sessionEnvs.set(sessionId, envWithSessionId);
     options = { ...options, env: envWithSessionId };
 
@@ -839,17 +849,23 @@ export class CliLauncher {
     const sessionAuthToken = this.ensureSessionAuthToken(info);
     const memorySessionSpaceSlug = this.ensureMemorySessionSpaceSlug(info);
 
-    // Ensure runtime env always carries authoritative identity/auth vars (covers legacy in-memory maps).
-    if (
-      runtimeEnv &&
-      (runtimeEnv.COMPANION_AUTH_TOKEN !== sessionAuthToken ||
-        runtimeEnv[COMPANION_MEMORY_SPACE_SLUG_ENV] !== memorySessionSpaceSlug)
-    ) {
-      runtimeEnv = {
-        ...runtimeEnv,
-        COMPANION_AUTH_TOKEN: sessionAuthToken,
-        [COMPANION_MEMORY_SPACE_SLUG_ENV]: memorySessionSpaceSlug,
-      };
+    const sessionNum = this.getSessionNum(sessionId);
+    const identityEnv: Record<string, string> = {
+      COMPANION_SERVER_ID: this.serverId,
+      COMPANION_SERVER_SLUG: this.serverSlug,
+      [COMPANION_MEMORY_SPACE_SLUG_ENV]: memorySessionSpaceSlug,
+      COMPANION_SESSION_ID: sessionId,
+      COMPANION_SESSION_NUMBER: sessionNum !== undefined ? String(sessionNum) : "",
+      COMPANION_AUTH_TOKEN: sessionAuthToken,
+      COMPANION_PORT: String(this.port),
+    };
+    if (info.isOrchestrator) {
+      identityEnv.TAKODE_ROLE = "orchestrator";
+      identityEnv.TAKODE_API_PORT = String(this.port);
+    }
+
+    if (runtimeEnv) {
+      runtimeEnv = this.composeSessionEnv(runtimeEnv, identityEnv, info.blockedEnvKeys);
       this.sessionEnvs.set(sessionId, runtimeEnv);
     }
 
@@ -857,27 +873,12 @@ export class CliLauncher {
     // Reconstruct essential env vars from persisted SdkSessionInfo fields
     // and re-resolve the env profile if one was used at creation time.
     if (!runtimeEnv) {
-      const sessionNum = this.getSessionNum(sessionId);
-      const reconstructed: Record<string, string> = {
-        COMPANION_SERVER_ID: this.serverId,
-        COMPANION_SERVER_SLUG: this.serverSlug,
-        [COMPANION_MEMORY_SPACE_SLUG_ENV]: memorySessionSpaceSlug,
-        COMPANION_SESSION_ID: sessionId,
-        COMPANION_SESSION_NUMBER: sessionNum !== undefined ? String(sessionNum) : "",
-        COMPANION_AUTH_TOKEN: sessionAuthToken,
-        COMPANION_PORT: String(this.port),
-      };
-      if (info.isOrchestrator) {
-        reconstructed.TAKODE_ROLE = "orchestrator";
-        reconstructed.TAKODE_API_PORT = String(this.port);
-      }
+      let profileEnv: Record<string, string> | undefined;
       if (info.envSlug && this.envResolver) {
-        const profileVars = await this.envResolver(info.envSlug);
-        if (profileVars) Object.assign(reconstructed, profileVars);
+        profileEnv = (await this.envResolver(info.envSlug)) ?? undefined;
       }
-      reconstructed[COMPANION_MEMORY_SPACE_SLUG_ENV] = memorySessionSpaceSlug;
-      this.sessionEnvs.set(sessionId, reconstructed);
-      runtimeEnv = reconstructed;
+      runtimeEnv = this.composeSessionEnv(profileEnv, identityEnv, info.blockedEnvKeys);
+      this.sessionEnvs.set(sessionId, runtimeEnv);
     }
 
     try {

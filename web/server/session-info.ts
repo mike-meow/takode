@@ -140,6 +140,8 @@ export interface SdkSessionInfo {
   herdedBy?: string;
   /** Env profile slug used at creation, for re-resolving env vars on relaunch */
   envSlug?: string;
+  /** Env keys removed after env profile resolution and before fresh session identity injection. */
+  blockedEnvKeys?: string[];
   /** Durable session-space/group assignment. `default` means confirmed default; null means unknown. */
   treeGroupId?: string | null;
   /** Authoritative Takode memory/session-space slug for default memory repo resolution. */
