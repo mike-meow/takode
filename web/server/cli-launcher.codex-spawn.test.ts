@@ -55,6 +55,8 @@ const mockSpawn = vi.fn();
 const bunGlobal = globalThis as typeof globalThis & { Bun?: any };
 const hadBunGlobal = typeof bunGlobal.Bun !== "undefined";
 const originalBunSpawn = hadBunGlobal ? bunGlobal.Bun!.spawn : undefined;
+const originalFetch = globalThis.fetch;
+const mockFetch = vi.fn();
 if (hadBunGlobal) {
   (bunGlobal.Bun as { spawn?: unknown }).spawn = mockSpawn;
 } else {
@@ -112,12 +114,16 @@ describe("Codex spawn preparation", () => {
     mockGetEnrichedPath.mockReturnValue("/usr/bin:/usr/local/bin");
     mockCaptureUserShellPath.mockReturnValue("/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin");
     mockCaptureUserShellEnv.mockReturnValue({});
+    globalThis.fetch = mockFetch as unknown as typeof fetch;
+    mockFetch.mockRejectedValue(new Error("no LiteLLM proxy in this test"));
   });
 
   afterEach(() => {
     rmSync(tempDir, { recursive: true, force: true });
     rmSync(codexHome, { recursive: true, force: true });
     delete process.env.LITELLM_API_KEY;
+    delete process.env.LITELLM_PROXY_URL;
+    delete process.env.LITELLM_BASE_URL;
   });
 
   afterAll(() => {
@@ -126,6 +132,7 @@ describe("Codex spawn preparation", () => {
     } else {
       delete bunGlobal.Bun;
     }
+    globalThis.fetch = originalFetch;
   });
 
   async function launchCodex(options: LaunchOptions = {}) {
@@ -138,6 +145,22 @@ describe("Codex spawn preparation", () => {
     });
     await waitForSpawnCalls(1);
     return info;
+  }
+
+  function mockLitellmModels(modelIds: string[]): void {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: modelIds.map((id) => ({ id })) }),
+    });
+  }
+
+  function readCodexConfigArg(args: string[], key: string): string | undefined {
+    for (let i = 0; i < args.length - 1; i += 1) {
+      if (args[i] === "-c" && args[i + 1].startsWith(`${key}=`)) {
+        return args[i + 1].slice(key.length + 1);
+      }
+    }
+    return undefined;
   }
 
   it("preserves Companion/Takode env vars in Codex shell policy for orchestrators", async () => {
@@ -194,6 +217,94 @@ describe("Codex spawn preparation", () => {
     expect(updatedConfig).toContain('"COMPANION_PORT"');
     expect(updatedConfig).toContain('"TAKODE_ROLE"');
     expect(updatedConfig).toContain('"TAKODE_API_PORT"');
+  });
+
+  it("passes Codex auto-review a valid review_model from Takode autoApprovalModel", async () => {
+    // Auto-review must keep Codex's native reviewer mode while sending a
+    // model ID that LiteLLM actually serves.
+    mockLitellmModels(["sonnet", "haiku", "gpt-5.5"]);
+    launcher.setSettingsGetter(() => ({
+      claudeBinary: "",
+      codexBinary: "/opt/fake/codex",
+      autoApprovalModel: "haiku",
+    }));
+
+    await launchCodex({
+      permissionMode: "codex-auto-review",
+      model: "gpt-5.5",
+      codexInternetAccess: false,
+    });
+
+    const [cmdAndArgs] = mockSpawn.mock.calls[0];
+    expect(readCodexConfigArg(cmdAndArgs, "approvals_reviewer")).toBe("auto_review");
+    expect(readCodexConfigArg(cmdAndArgs, "review_model")).toBe("haiku");
+  });
+
+  it("falls back to a valid session model when autoApprovalModel is unavailable", async () => {
+    // A configured approval model is only usable when it appears in the local
+    // provider list; otherwise the session/provider model is the next choice.
+    mockLitellmModels(["sonnet", "gpt-5.5"]);
+    launcher.setSettingsGetter(() => ({
+      claudeBinary: "",
+      codexBinary: "/opt/fake/codex",
+      autoApprovalModel: "codex-auto-review",
+    }));
+
+    await launchCodex({
+      permissionMode: "codex-auto-review",
+      model: "gpt-5.5",
+      codexInternetAccess: false,
+    });
+
+    const [cmdAndArgs] = mockSpawn.mock.calls[0];
+    expect(readCodexConfigArg(cmdAndArgs, "review_model")).toBe("gpt-5.5");
+  });
+
+  it("falls back to sonnet when Codex auto-review has no valid configured model", async () => {
+    // This is the current regression shape: codex-auto-review is a permission
+    // profile, not a LiteLLM model, so the reviewer needs a separate fallback.
+    mockLitellmModels(["sonnet", "gpt-5.5"]);
+
+    await launchCodex({
+      permissionMode: "codex-auto-review",
+      model: "codex-auto-review",
+      codexInternetAccess: false,
+    });
+
+    const [cmdAndArgs] = mockSpawn.mock.calls[0];
+    expect(readCodexConfigArg(cmdAndArgs, "approvals_reviewer")).toBe("auto_review");
+    expect(readCodexConfigArg(cmdAndArgs, "review_model")).toBe("sonnet");
+  });
+
+  it.each([
+    ["codex-default", "on-request", "workspace-write"],
+    ["codex-full-access", "never", "danger-full-access"],
+    ["codex-custom", undefined, undefined],
+  ])("does not add Codex reviewer config for %s", async (permissionMode, expectedApproval, expectedSandbox) => {
+    // Non-auto-review profiles should retain their existing approval/sandbox
+    // behavior and must not receive Codex reviewer-specific config.
+    await launchCodex({
+      permissionMode,
+      codexSandbox: undefined,
+      codexInternetAccess: false,
+    });
+
+    const [cmdAndArgs] = mockSpawn.mock.calls[0];
+    const approvalIdx = cmdAndArgs.indexOf("-a");
+    const sandboxIdx = cmdAndArgs.indexOf("-s");
+    if (expectedApproval) {
+      expect(cmdAndArgs[approvalIdx + 1]).toBe(expectedApproval);
+    } else {
+      expect(approvalIdx).toBe(-1);
+    }
+    if (expectedSandbox) {
+      expect(cmdAndArgs[sandboxIdx + 1]).toBe(expectedSandbox);
+    } else {
+      expect(sandboxIdx).toBe(-1);
+    }
+    expect(readCodexConfigArg(cmdAndArgs, "approvals_reviewer")).toBeUndefined();
+    expect(readCodexConfigArg(cmdAndArgs, "review_model")).toBeUndefined();
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
   it("scrubs session-scoped developer instructions from an existing session config", async () => {

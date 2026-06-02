@@ -58,6 +58,10 @@ const spawnPrepCacheTtlMs = 60_000;
 const takodeNonLeaderModelCatalogFilename = "takode-model-catalog.json";
 const containerTakodeNonLeaderModelCatalogPath = "/root/.codex/takode-model-catalog.json";
 const containerTakodeLeaderModelCatalogPath = "/root/.codex/takode-leader-model-catalog.json";
+const codexAutoReviewPermissionMode = "codex-auto-review";
+const codexDefaultReviewModel = "sonnet";
+const codexFallbackReviewModels = [codexDefaultReviewModel, "haiku", "opus"] as const;
+const codexReviewModelFetchTimeoutMs = 1_500;
 
 type HostCodexBinaryKind = "native" | "dotslash" | "bootstrap";
 type CodexSandboxMode = "read-only" | "workspace-write" | "danger-full-access";
@@ -115,6 +119,7 @@ interface CodexLaunchOptions {
   containerId?: string;
   env?: Record<string, string>;
   resumeCliSessionId?: string;
+  autoApprovalModel?: string;
   /** Legacy compatibility only; leader thresholds are derived from model effective context. */
   codexLeaderRecycleThresholdTokens?: number;
   /** Deprecated compatibility setting; ignored so non-leader compaction follows Codex defaults. */
@@ -203,7 +208,7 @@ function mapCodexApprovalPolicy(permissionMode?: string, askPermission?: boolean
       return undefined;
     case "codex-default":
       return "on-request";
-    case "codex-auto-review":
+    case codexAutoReviewPermissionMode:
       return "on-request";
     case "codex-full-access":
       return "never";
@@ -219,7 +224,7 @@ function resolveCodexSandbox(permissionMode?: string, requested?: CodexSandboxMo
   if (permissionMode === "codex-custom") return undefined;
   if (requested) return requested;
   switch (permissionMode) {
-    case "codex-auto-review":
+    case codexAutoReviewPermissionMode:
       return "workspace-write";
     case "codex-full-access":
     case "bypassPermissions":
@@ -585,6 +590,39 @@ function readTopLevelStringSetting(configToml: string, key: string): string | un
   return undefined;
 }
 
+function readStringSettingInSection(configToml: string, sectionName: string, key: string): string | undefined {
+  const lines = configToml.split("\n");
+  const normalizedSectionHeader = `[${sectionName}]`.toLowerCase();
+  const keyPattern = new RegExp(`^\\s*${escapeRegExp(key)}\\s*=\\s*(.+?)\\s*$`);
+  let inSection = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (/^\s*\[[^\]]+\]\s*$/.test(line)) {
+      inSection = trimmed.toLowerCase() === normalizedSectionHeader;
+      continue;
+    }
+    if (!inSection || !trimmed || trimmed.startsWith("#")) continue;
+
+    const match = line.match(keyPattern);
+    if (!match?.[1]) continue;
+    const value = match[1].trim();
+    if (value.startsWith('"') && value.endsWith('"')) {
+      try {
+        return JSON.parse(value);
+      } catch {
+        return value.slice(1, -1);
+      }
+    }
+    if (value.startsWith("'") && value.endsWith("'")) {
+      return value.slice(1, -1).replace(/'\\\\''/g, "'");
+    }
+    return value;
+  }
+
+  return undefined;
+}
+
 function readTopLevelNumberSetting(configToml: string, key: string): number | undefined {
   const lines = configToml.split("\n");
   const keyPattern = new RegExp(`^\\s*${escapeRegExp(key)}\\s*=\\s*(.+?)\\s*$`);
@@ -609,6 +647,118 @@ function readTopLevelNumberSetting(configToml: string, key: string): number | un
 
 function usesMaiLitellmProvider(configToml: string): boolean {
   return readTopLevelStringSetting(configToml, "model_provider")?.trim().toLowerCase() === "mai-litellm";
+}
+
+function normalizeReviewModelCandidate(value: string | undefined): string | undefined {
+  const normalized = value?.trim();
+  return normalized || undefined;
+}
+
+function getConfiguredProviderBaseUrl(configToml: string): string | undefined {
+  const provider = readTopLevelStringSetting(configToml, "model_provider")?.trim();
+  if (!provider) return undefined;
+  return readStringSettingInSection(configToml, `model_providers.${provider}`, "base_url");
+}
+
+function litellmModelsUrl(rawBaseUrl: string): string {
+  const trimmed = rawBaseUrl.trim().replace(/\/+$/, "");
+  if (!trimmed) return "http://localhost:4000/v1/models";
+  return trimmed.endsWith("/v1") ? `${trimmed}/models` : `${trimmed}/v1/models`;
+}
+
+function resolveLitellmModelListUrl(configToml: string, env?: Record<string, string>): string {
+  const rawBaseUrl =
+    normalizeReviewModelCandidate(env?.LITELLM_PROXY_URL) ||
+    normalizeReviewModelCandidate(env?.LITELLM_BASE_URL) ||
+    getConfiguredProviderBaseUrl(configToml) ||
+    normalizeReviewModelCandidate(process.env.LITELLM_PROXY_URL) ||
+    normalizeReviewModelCandidate(process.env.LITELLM_BASE_URL) ||
+    "http://localhost:4000";
+  return litellmModelsUrl(rawBaseUrl);
+}
+
+function extractModelIdsFromCatalogJson(raw: string): string[] {
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed?.models)) return [];
+    return parsed.models
+      .map((entry: any) =>
+        typeof entry?.slug === "string" ? entry.slug : typeof entry?.id === "string" ? entry.id : "",
+      )
+      .map((id: string) => id.trim())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+async function readCodexModelCatalogIds(codexHome: string, configToml: string): Promise<string[]> {
+  const existingCatalogPathValue = readTopLevelStringSetting(configToml, "model_catalog_json");
+  const catalogCandidates = [
+    existingCatalogPathValue ? resolveConfigPathValue(codexHome, existingCatalogPathValue) : undefined,
+    join(codexHome, "models_cache.json"),
+    join(getLegacyCodexHome(), "models_cache.json"),
+  ].filter((candidate, index, all): candidate is string => !!candidate && all.indexOf(candidate) === index);
+
+  const modelIds: string[] = [];
+  for (const catalogPath of catalogCandidates) {
+    const raw = await readFile(catalogPath, "utf-8").catch(() => "");
+    if (!raw) continue;
+    modelIds.push(...extractModelIdsFromCatalogJson(raw));
+  }
+  return modelIds;
+}
+
+async function fetchLitellmModelIds(configToml: string, env?: Record<string, string>): Promise<string[]> {
+  try {
+    const headers: Record<string, string> = {};
+    const apiKey = normalizeReviewModelCandidate(env?.LITELLM_API_KEY) || process.env.LITELLM_API_KEY;
+    if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+    const response = await fetch(resolveLitellmModelListUrl(configToml, env), {
+      headers,
+      signal: AbortSignal.timeout(codexReviewModelFetchTimeoutMs),
+    });
+    if (!response.ok) return [];
+    const body = (await response.json()) as { data?: Array<{ id?: unknown }> };
+    if (!Array.isArray(body.data)) return [];
+    return body.data
+      .map((entry) => (typeof entry.id === "string" ? entry.id.trim() : ""))
+      .filter((id) => id && !id.endsWith("*"));
+  } catch {
+    return [];
+  }
+}
+
+async function getAvailableCodexReviewModelIds(
+  codexHome: string,
+  configToml: string,
+  env?: Record<string, string>,
+): Promise<Set<string>> {
+  const [catalogIds, litellmIds] = await Promise.all([
+    readCodexModelCatalogIds(codexHome, configToml),
+    fetchLitellmModelIds(configToml, env),
+  ]);
+  return new Set([...catalogIds, ...litellmIds]);
+}
+
+function chooseCodexReviewModelFromAvailable(availableIds: Set<string>, candidates: Array<string | undefined>): string {
+  for (const candidate of candidates.map(normalizeReviewModelCandidate)) {
+    if (candidate && availableIds.has(candidate)) return candidate;
+  }
+  for (const fallback of codexFallbackReviewModels) {
+    if (availableIds.size === 0 || availableIds.has(fallback)) return fallback;
+  }
+  return codexDefaultReviewModel;
+}
+
+async function resolveCodexAutoReviewModel(
+  codexHome: string,
+  configToml: string,
+  options: Pick<CodexLaunchOptions, "autoApprovalModel" | "env" | "model">,
+): Promise<string> {
+  const availableIds = await getAvailableCodexReviewModelIds(codexHome, configToml, options.env);
+  const configuredSessionModel = options.model || readTopLevelStringSetting(configToml, "model");
+  return chooseCodexReviewModelFromAvailable(availableIds, [options.autoApprovalModel, configuredSessionModel]);
 }
 
 function upsertTopLevelStringSetting(configToml: string, key: string, value: string): string {
@@ -1602,6 +1752,7 @@ export async function prepareCodexSpawn(
     let leaderLaunchConfig: CodexLeaderLaunchConfig | undefined;
     let containerLeaderConfigToml: string | undefined;
     let containerModelCatalogJson: string | undefined;
+    let sessionConfigToml = "";
     const containerModelCatalogPath = leaderLaunch ? containerTakodeLeaderModelCatalogPath : undefined;
 
     if (!isContainerized) {
@@ -1626,6 +1777,7 @@ export async function prepareCodexSpawn(
       );
       resolvedLeaderRecycleThresholdTokens = sessionConfig.leaderRecycleThresholdTokens;
       leaderLaunchConfig = sessionConfig.leaderLaunchConfig;
+      sessionConfigToml = sessionConfig.configToml;
     } else {
       await timing.step("prepare container Codex home", () =>
         prepareCodexHome(codexHome, options.resumeCliSessionId || info.cliSessionId, undefined, { timing }),
@@ -1642,6 +1794,7 @@ export async function prepareCodexSpawn(
       containerModelCatalogJson = containerConfig.modelCatalogJson;
       resolvedLeaderRecycleThresholdTokens = containerConfig.leaderRecycleThresholdTokens;
       leaderLaunchConfig = containerConfig.leaderLaunchConfig;
+      sessionConfigToml = containerConfig.configToml;
     }
 
     const maiWrapperLaunchSpec =
@@ -1655,8 +1808,12 @@ export async function prepareCodexSpawn(
     if (options.codexReasoningEffort) {
       args.push("-c", `model_reasoning_effort=${options.codexReasoningEffort}`);
     }
-    if (options.permissionMode === "codex-auto-review") {
+    if (options.permissionMode === codexAutoReviewPermissionMode) {
+      const reviewModel = await timing.step("resolve Codex auto-review model", () =>
+        resolveCodexAutoReviewModel(codexHome, sessionConfigToml, options),
+      );
       args.push("-c", "approvals_reviewer=auto_review");
+      args.push("-c", `review_model=${reviewModel}`);
     }
     if (approvalPolicy) {
       args.push("-a", approvalPolicy);

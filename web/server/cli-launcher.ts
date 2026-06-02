@@ -35,6 +35,7 @@ import type { HerdChangeEvent, HerdSessionsResponse } from "../shared/herd-types
 import { getSessionAuthDir, getSessionAuthPath } from "../shared/session-auth.js";
 import type { SdkSessionInfo } from "./session-info.js";
 import { COMPANION_MEMORY_SPACE_SLUG_ENV, normalizeMemorySessionSpaceSlug } from "./memory-session-space.js";
+import type { CompanionSettings } from "./settings-manager.js";
 
 export type { SdkSessionInfo } from "./session-info.js";
 
@@ -180,6 +181,8 @@ export interface LaunchOptions {
  * or Codex via app-server stdio).
  */
 const knownSessionNums = new Map<string, number>();
+type LauncherSettings = Pick<CompanionSettings, "claudeBinary" | "codexBinary"> &
+  Partial<Pick<CompanionSettings, "autoApprovalModel">>;
 
 export function getKnownSessionNum(sessionId: string): number | undefined {
   return knownSessionNums.get(sessionId);
@@ -203,12 +206,7 @@ export class CliLauncher {
     | null = null;
   private onBeforeRelaunch: ((sessionId: string, backendType: BackendType) => void) | null = null;
   private exitHandlers: ((sessionId: string, exitCode: number | null) => void)[] = [];
-  private settingsGetter:
-    | (() => {
-        claudeBinary: string;
-        codexBinary: string;
-      })
-    | null = null;
+  private settingsGetter: (() => LauncherSettings) | null = null;
   /** Callback to resolve env profile variables by slug (set by server bootstrap). */
   private envResolver: ((slug: string) => Promise<Record<string, string> | null>) | null = null;
 
@@ -283,12 +281,7 @@ export class CliLauncher {
   }
 
   /** Attach a settings getter so relaunch() can read current binary settings. */
-  setSettingsGetter(
-    fn: () => {
-      claudeBinary: string;
-      codexBinary: string;
-    },
-  ): void {
+  setSettingsGetter(fn: () => LauncherSettings): void {
     this.settingsGetter = fn;
   }
 
@@ -1248,6 +1241,7 @@ export class CliLauncher {
       const codexOptions = binSettings
         ? {
             ...options,
+            autoApprovalModel: binSettings.autoApprovalModel,
           }
         : options;
       const spawnSpec = await prepareCodexSpawn(
