@@ -1,4 +1,5 @@
 import { CodexThinkingInline, MessageBubble, HerdEventMessage } from "../MessageBubble.js";
+import { useStore } from "../../store.js";
 import { DiffViewer } from "../DiffViewer.js";
 import { MarkdownContent } from "../MarkdownContent.js";
 import { SessionCreationProgress } from "../SessionCreationProgress.js";
@@ -16,7 +17,13 @@ import { HighlightedText } from "../HighlightedText.js";
 import { PawTrailAvatar } from "../PawTrail.js";
 import { VoiceLevelWaveform } from "../VoiceRecordingStatus.js";
 import type { CreationProgressEvent } from "../../types.js";
-import { MOCK_SUBAGENT_TOOL_ITEMS, MOCK_TOOL_GROUP_ITEMS } from "./fixtures.js";
+import {
+  MOCK_SESSION_ID,
+  MOCK_SUBAGENT_TOOL_ITEMS,
+  MOCK_TOOL_GROUP_ITEMS,
+  PLAYGROUND_SLACK_THREAD_CHILD_SESSION_ID,
+  MSG_ASSISTANT,
+} from "./fixtures.js";
 import { PlaygroundSidebarOverflowStates, PlaygroundUniversalSearchStates } from "./search-sidebar-states.js";
 import {
   Card,
@@ -38,8 +45,65 @@ function PlaygroundVoiceHistory() {
 }
 
 export function PlaygroundStateSections() {
+  const slackThreadMessages = useStore((s) => s.messages.get(PLAYGROUND_SLACK_THREAD_CHILD_SESSION_ID) ?? []);
   return (
     <PlaygroundSectionGroup groupId="states">
+      <Section title="Slack Threads" description="Root reply affordance and hidden read-only child thread panel">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <Card label="Root assistant reply with thread count">
+            <div className="space-y-4 border-t border-cc-border bg-cc-card px-4 py-4">
+              <MessageBubble message={MSG_ASSISTANT} sessionId={MOCK_SESSION_ID} currentThreadKey="main" />
+            </div>
+          </Card>
+          <Card label="Open read-only thread panel">
+            <div className="flex h-[360px] flex-col border-t border-cc-border bg-cc-card">
+              <div className="flex items-start gap-3 border-b border-cc-border px-3 py-2.5">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <h3 className="truncate text-sm font-semibold text-cc-fg">Thread</h3>
+                    <span className="rounded-full border border-cc-border bg-cc-hover/60 px-2 py-0.5 text-[11px] text-cc-muted">
+                      2
+                    </span>
+                  </div>
+                  <p className="mt-0.5 line-clamp-2 text-xs text-cc-muted">
+                    We can stage the migration instead of replacing auth in one pass.
+                  </p>
+                </div>
+              </div>
+              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-3 py-3">
+                {slackThreadMessages.map((message) => (
+                  <MessageBubble
+                    key={message.id}
+                    message={message}
+                    sessionId={PLAYGROUND_SLACK_THREAD_CHILD_SESSION_ID}
+                    currentThreadKey="main"
+                  />
+                ))}
+              </div>
+              <div className="border-t border-cc-border p-3">
+                <div className="rounded-lg border border-cc-border bg-cc-bg">
+                  <textarea
+                    readOnly
+                    rows={2}
+                    value="Can you compare the rollout risks?"
+                    className="min-h-[56px] w-full resize-none bg-transparent px-3 py-2 text-sm text-cc-fg outline-none"
+                  />
+                  <div className="flex items-center justify-between border-t border-cc-border/70 px-2 py-2">
+                    <span className="text-[11px] text-cc-muted">Read-only branch</span>
+                    <button
+                      type="button"
+                      className="rounded-md bg-cc-primary px-3 py-1.5 text-xs font-medium text-white"
+                    >
+                      Send
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </Card>
+        </div>
+      </Section>
+
       {/* ─── Composer — Voice Recording ──────────────────────────────── */}
       <Section
         title="Composer — Voice Recording"

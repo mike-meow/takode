@@ -94,6 +94,7 @@ export const PLAYGROUND_NAV_GROUPS: PlaygroundNavGroup[] = [
     "Hover Cross-links",
   ]),
   createNavGroup("states", "States", "Streaming, grouped activity, and state-heavy component demos.", [
+    "Slack Threads",
     "Composer — Voice Recording",
     "Streaming Indicator",
     "Tool Message Groups",

@@ -42,6 +42,7 @@ import type {
   TakodeHerdBatchSnapshot,
   ThreadRef,
   ActiveTurnRoute,
+  BrowserOutgoingMessage,
 } from "./session-types.js";
 import { TOOL_RESULT_PREVIEW_LIMIT, assertNever, formatVsCodeSelectionPrompt } from "./session-types.js";
 import type { QuestJourneyState } from "./session-types.js";
@@ -103,6 +104,7 @@ import type { BrowserTransportStateLike } from "./bridge/browser-transport-contr
 import { handleCodexResultErrorAutoPause as handleCodexResultErrorAutoPauseDelivery } from "./bridge/codex-result-error-auto-pause-delivery.js";
 import { deliverProgrammaticUserMessage } from "./bridge/programmatic-user-message-delivery.js";
 import { pauseSessionForDelivery, unpauseSessionForDelivery } from "./bridge/session-pause-delivery.js";
+import { buildSlackThreadSeedPrompt, updateSlackThreadRecordFromChildHistory } from "./slack-thread-branches.js";
 import {
   flushQueuedCliMessages as flushQueuedCliMessagesController,
   handleCLIClose as handleCLICloseTransportController,
@@ -907,6 +909,59 @@ export class WsBridge {
 
   getSession(sessionId: string): Session | undefined {
     return this.sessions.get(sessionId);
+  }
+
+  syncSlackThreadRecord(rootSessionId: string, threadId: string): boolean {
+    const root = this.sessions.get(rootSessionId);
+    if (!root?.state.slackThreads?.[threadId]) return false;
+    const record = root.state.slackThreads[threadId];
+    const child = this.sessions.get(record.childSessionId);
+    if (!child) return false;
+    root.state.slackThreads = {
+      ...root.state.slackThreads,
+      [threadId]: updateSlackThreadRecordFromChildHistory(record, child.messageHistory),
+    };
+    this.broadcastToBrowsers(root, { type: "session_update", session: { slackThreads: root.state.slackThreads } });
+    this.persistSession(root);
+    return true;
+  }
+
+  async routeSlackThreadUserMessage(
+    rootSessionId: string,
+    threadId: string,
+    content: string,
+    options?: { clientMsgId?: string },
+  ): Promise<{ ok: true; childSessionId: string } | { ok: false; error: string }> {
+    const root = this.sessions.get(rootSessionId);
+    if (!root) return { ok: false, error: "Root session not found" };
+    const record = root.state.slackThreads?.[threadId];
+    if (!record) return { ok: false, error: "Thread not found" };
+    const child = this.sessions.get(record.childSessionId);
+    if (!child) return { ok: false, error: "Hidden thread session not found" };
+
+    const seed = record.seeded
+      ? null
+      : buildSlackThreadSeedPrompt(root.messageHistory, record.anchorHistoryIndex, record.anchorMessageId);
+    const msg: BrowserOutgoingMessage = {
+      type: "user_message",
+      content,
+      ...(seed ? { deliveryContent: `${seed}\n\nUser thread message:\n${content}` } : {}),
+      ...(options?.clientMsgId ? { client_msg_id: options.clientMsgId } : {}),
+      slackThreadId: threadId,
+    };
+
+    await routeBrowserMessageController(child, msg, undefined, this.getBrowserRoutingDeps());
+
+    const latest = root.state.slackThreads?.[threadId];
+    if (latest) {
+      root.state.slackThreads = {
+        ...root.state.slackThreads,
+        [threadId]: updateSlackThreadRecordFromChildHistory({ ...latest, seeded: true }, child.messageHistory),
+      };
+      this.broadcastToBrowsers(root, { type: "session_update", session: { slackThreads: root.state.slackThreads } });
+      this.persistSession(root);
+    }
+    return { ok: true, childSessionId: child.id };
   }
 
   async setSessionPermissionMode(sessionId: string, mode: string): Promise<boolean> {

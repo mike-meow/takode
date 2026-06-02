@@ -85,7 +85,7 @@ export async function buildEnrichedSessionsSnapshot(
   filterFn?: (session: SessionListEntry) => boolean,
 ) {
   const { launcher, wsBridge, timerManager, pendingWorktreeCleanups } = deps;
-  const sessions = launcher.listSessions();
+  const sessions = launcher.listSessions().filter((session) => session.hidden !== true);
   const names = sessionNames.getAllNames();
   const pool = filterFn ? sessions.filter(filterFn) : sessions;
   const settings = getSettings();

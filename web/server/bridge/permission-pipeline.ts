@@ -26,6 +26,7 @@ export interface PermissionPipelineSession {
     permissionMode?: string;
     cwd?: string;
     repo_root?: string;
+    slackThreadChild?: { readOnly?: boolean } | null;
   };
   pendingPermissions: Map<string, PermissionRequest>;
 }
@@ -91,6 +92,19 @@ export const ACCEPT_EDITS_AUTO_APPROVE: ReadonlySet<string> = new Set([
   "Agent",
   "Skill",
 ]);
+
+const THREAD_READ_ONLY_MUTATING_TOOLS: ReadonlySet<string> = new Set([
+  "Edit",
+  "Write",
+  "MultiEdit",
+  "NotebookEdit",
+  "TodoWrite",
+  "apply_patch",
+  "functions.apply_patch",
+]);
+
+const THREAD_READ_ONLY_BASH_WRITE_RE =
+  /(?:^|[;&|]\s*)(?:(?:echo|printf|cat)\b[^;&|]*>\s*|tee\b|sed\s+-i\b|perl\s+-pi\b|touch\b|rm\b|mv\b|cp\b|mkdir\b|rmdir\b|chmod\b|chown\b|ln\b|truncate\b|dd\b|install\b|bun\s+(?:add|install|update|remove)\b|npm\s+(?:install|i|update|uninstall|remove|ci)\b|pnpm\s+(?:install|add|update|remove)\b|yarn\s+(?:install|add|remove|upgrade)\b|git\s+(?:checkout|switch|reset|clean|commit|merge|rebase|pull|push|add|restore)\b)/i;
 
 export function isSensitiveConfigPath(filePath: string): boolean {
   if (!filePath) return false;
@@ -173,9 +187,33 @@ function toPermissionRequest(request: IncomingPermissionRequest): PermissionRequ
   };
 }
 
-function getHardDeniedPermission(
+function getHardDeniedPermission<S extends PermissionPipelineSession>(
+  session: S,
   perm: PermissionRequest,
 ): Extract<PermissionPipelineResult, { kind: "hard_denied" }> | null {
+  if (session.state.slackThreadChild?.readOnly) {
+    if (THREAD_READ_ONLY_MUTATING_TOOLS.has(perm.tool_name)) {
+      return {
+        kind: "hard_denied",
+        request: perm,
+        message:
+          "Thread turns are read-only. Continue in the root conversation or a normal quest workflow to edit files.",
+        reminder: "This Slack-like thread is read-only for repository and file state.",
+      };
+    }
+    if (perm.tool_name === "Bash") {
+      const command = String(perm.input.command ?? "");
+      if (!command.trim() || THREAD_READ_ONLY_BASH_WRITE_RE.test(command)) {
+        return {
+          kind: "hard_denied",
+          request: perm,
+          message:
+            "Thread turns are read-only. This shell command may mutate repository or file state, so it cannot be allowed here.",
+          reminder: "Use read-only shell commands in this thread, or move edit work to the root conversation.",
+        };
+      }
+    }
+  }
   if (perm.tool_name !== "Bash") return null;
   const command = String(perm.input.command ?? "");
   if (!detectLongSleepBashCommand(command)) return null;
@@ -200,7 +238,7 @@ export function handlePermissionRequest<S extends PermissionPipelineSession>(
   const toolName = perm.tool_name;
   const input = perm.input;
 
-  const hardDenied = getHardDeniedPermission(perm);
+  const hardDenied = getHardDeniedPermission(session, perm);
   if (hardDenied) return hardDenied;
 
   const complete = (autoApprovalConfig: AutoApprovalConfig | null): PermissionPipelineResult => {

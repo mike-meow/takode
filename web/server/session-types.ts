@@ -359,6 +359,28 @@ export interface ActiveTurnRoute {
   questId?: string;
 }
 
+export interface SlackThreadRecord {
+  id: string;
+  rootSessionId: string;
+  childSessionId: string;
+  anchorMessageId: string;
+  anchorHistoryIndex: number;
+  anchorPreview: string;
+  createdAt: number;
+  updatedAt: number;
+  messageCount: number;
+  lastMessagePreview?: string;
+  seeded: boolean;
+}
+
+export interface SlackThreadChildState {
+  rootSessionId: string;
+  threadId: string;
+  anchorMessageId: string;
+  anchorHistoryIndex: number;
+  readOnly: true;
+}
+
 export interface ThreadRoutingError {
   reason: "missing" | "invalid";
   expected: string;
@@ -443,6 +465,7 @@ export interface PendingCodexInput {
   threadKey?: string;
   questId?: string;
   threadRefs?: ThreadRef[];
+  slackThreadId?: string;
   /** Server-only source classification used by Codex result-error auto-pause. */
   autoPauseSourceKind?: CodexAutoPauseInputSourceKind;
 }
@@ -474,6 +497,8 @@ export type BrowserOutgoingMessage =
       threadKey?: string;
       questId?: string;
       threadRefs?: ThreadRef[];
+      /** Slack-like conversation branch backed by a hidden child backend session. */
+      slackThreadId?: string;
       /** Present when the message was injected programmatically (e.g. via takode CLI or cron). */
       agentSource?: { sessionId: string; sessionLabel?: string };
       /** Server-only metadata for rebuilding/pruning queued herd batches before delivery. */
@@ -875,6 +900,7 @@ export type BrowserIncomingMessageBase =
       threadKey?: string;
       questId?: string;
       threadRefs?: ThreadRef[];
+      slackThreadId?: string;
       threadRoutingError?: ThreadRoutingError;
       takodeHerdEventKeys?: string[];
       threadOutcomeReminder?: ThreadOutcomeReminderSatisfaction;
@@ -1288,6 +1314,12 @@ export interface SessionState {
   attentionRecords?: SessionAttentionRecord[];
   /** Server-authoritative current Thread Waiting/Ready markers keyed by normalized thread key. */
   leaderThreadStatuses?: Record<string, LeaderThreadStatus>;
+  /** Server-authoritative Slack-like conversation branches anchored to root assistant messages. */
+  slackThreads?: Record<string, SlackThreadRecord>;
+  /** Present on hidden child backend sessions that power one Slack-like branch. */
+  slackThreadChild?: SlackThreadChildState;
+  /** Hidden sessions are omitted from normal user session lists but remain addressable by branch UI. */
+  hidden?: boolean;
 }
 
 export type NotificationUrgency = "needs-input" | "review" | null;
@@ -1496,6 +1528,7 @@ export interface PermissionRequest {
   threadKey?: string;
   questId?: string;
   threadRefs?: ThreadRef[];
+  slackThreadId?: string;
 }
 
 // ─── Session Creation Progress (SSE streaming) ──────────────────────────────

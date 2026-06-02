@@ -3,6 +3,7 @@ import type {
   TreeGroup,
   ChatMessage,
   BrowserIncomingMessage,
+  SlackThreadRecord,
   StreamRecord,
   SessionNotification,
 } from "./types.js";
@@ -966,6 +967,20 @@ export function isInterruptRestartBlockersResponse(value: unknown): value is Int
 export const api = {
   createSession: (opts?: CreateSessionOpts) =>
     post<{ sessionId: string; state: string; cwd: string }>("/sessions/create", opts),
+
+  createSlackThread: (sessionId: string, anchorMessageId: string) =>
+    post<{ ok: true; thread: SlackThreadRecord }>(`/sessions/${encodeURIComponent(sessionId)}/slack-threads`, {
+      anchorMessageId,
+    }),
+
+  sendSlackThreadMessage: (sessionId: string, threadId: string, content: string, clientMsgId?: string) =>
+    post<{ ok: true; thread?: SlackThreadRecord; childSessionId: string }>(
+      `/sessions/${encodeURIComponent(sessionId)}/slack-threads/${encodeURIComponent(threadId)}/message`,
+      {
+        content,
+        ...(clientMsgId ? { clientMsgId } : {}),
+      },
+    ),
 
   listSessions: (options?: { includeArchived?: boolean }) => {
     const params = new URLSearchParams();

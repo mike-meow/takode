@@ -17,6 +17,7 @@ type ExistingThreadMetadataSource = {
   threadRefs?: NonNullable<ChatMessage["metadata"]>["threadRefs"];
   threadKey?: string;
   questId?: string;
+  slackThreadId?: string;
   threadRoutingError?: NonNullable<ChatMessage["metadata"]>["threadRoutingError"];
   threadStatusMarkers?: NonNullable<ChatMessage["metadata"]>["threadStatusMarkers"];
 };
@@ -133,6 +134,7 @@ function existingThreadMetadataFromMessage(msg: ExistingThreadMetadataSource): C
     ...(msg.threadRefs ? { threadRefs: msg.threadRefs } : {}),
     ...(msg.threadKey ? { threadKey: msg.threadKey } : {}),
     ...(msg.questId ? { questId: msg.questId } : {}),
+    ...(msg.slackThreadId ? { slackThreadId: msg.slackThreadId } : {}),
     ...(msg.threadRoutingError ? { threadRoutingError: msg.threadRoutingError } : {}),
     ...(msg.threadStatusMarkers ? { threadStatusMarkers: msg.threadStatusMarkers } : {}),
   };
@@ -208,6 +210,7 @@ export function normalizeHistoryMessageToChatMessages(
       ...(histMsg.threadRefs ? { threadRefs: histMsg.threadRefs } : {}),
       ...(histMsg.threadKey ? { threadKey: histMsg.threadKey } : {}),
       ...(histMsg.questId ? { questId: histMsg.questId } : {}),
+      ...(histMsg.slackThreadId ? { slackThreadId: histMsg.slackThreadId } : {}),
       ...(histMsg.threadRoutingError ? { threadRoutingError: histMsg.threadRoutingError } : {}),
     };
     const localImages =

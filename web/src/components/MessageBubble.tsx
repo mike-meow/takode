@@ -32,6 +32,7 @@ import { formatThreadMarker } from "../../shared/thread-routing.js";
 import { isAllThreadsKey, normalizeThreadKey } from "../utils/thread-projection.js";
 import { ImagePreviewGroup } from "./ImagePreviewGroup.js";
 import { buildAssistantImagePreviewItems } from "./image-preview-utils.js";
+import { SlackThreadButton, SlackThreadSummary, useSlackThreadForMessage } from "./SlackThreadControls.js";
 
 export { NotificationMarker } from "./NotificationMarker.js";
 
@@ -1382,6 +1383,7 @@ function AssistantMessage({
   const resolvedNotification = message.notification ?? inboxAnchoredNotification;
   const suppressToolNotificationMarker = !!resolvedNotification;
   const threadKey = getMessageThreadBadgeKey(message, currentThreadKey);
+  const slackThread = useSlackThreadForMessage(sessionId, message);
   const assistantImagePreviewItems = useMemo(
     () => buildAssistantImagePreviewItems(message, sessionId),
     [message, sessionId],
@@ -1424,8 +1426,14 @@ function AssistantMessage({
             />
           )}
           {showTimestamp && <MessageTimestamp timestamp={message.timestamp} turnDurationMs={message.turnDurationMs} />}
+          {slackThread && <SlackThreadSummary thread={slackThread} sessionId={sessionId} />}
         </div>
-        <MessageActionBar message={message} contentRef={contentRef} sessionId={sessionId} />
+        <MessageActionBar
+          message={message}
+          contentRef={contentRef}
+          sessionId={sessionId}
+          currentThreadKey={currentThreadKey}
+        />
       </div>
     );
   }
@@ -1501,8 +1509,16 @@ function AssistantMessage({
           />
         )}
         {showTimestamp && <MessageTimestamp timestamp={message.timestamp} turnDurationMs={message.turnDurationMs} />}
+        {slackThread && <SlackThreadSummary thread={slackThread} sessionId={sessionId} />}
       </div>
-      {hasTextContent && <MessageActionBar message={message} contentRef={contentRef} sessionId={sessionId} />}
+      {hasTextContent && (
+        <MessageActionBar
+          message={message}
+          contentRef={contentRef}
+          sessionId={sessionId}
+          currentThreadKey={currentThreadKey}
+        />
+      )}
     </div>
   );
 }
@@ -1512,13 +1528,16 @@ function MessageActionBar({
   message,
   contentRef,
   sessionId,
+  currentThreadKey,
 }: {
   message: ChatMessage;
   contentRef: React.RefObject<HTMLDivElement | null>;
   sessionId?: string;
+  currentThreadKey?: string;
 }) {
   return (
     <div className="absolute top-0 right-0 shrink-0 flex flex-col items-center opacity-100 transition-opacity sm:flex-row sm:opacity-0 sm:group-hover/msg:opacity-100">
+      {sessionId && <SlackThreadButton message={message} sessionId={sessionId} currentThreadKey={currentThreadKey} />}
       {sessionId && <ReplyButton message={message} sessionId={sessionId} />}
       <CopyMessageButton message={message} contentRef={contentRef} sessionId={sessionId} />
     </div>

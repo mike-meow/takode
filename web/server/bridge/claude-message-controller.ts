@@ -143,6 +143,7 @@ export interface AssistantMessageSessionLike {
     context_used_percent: number;
     isOrchestrator?: boolean;
     leaderThreadStatuses?: SessionState["leaderThreadStatuses"];
+    slackThreadChild?: SessionState["slackThreadChild"];
   };
 }
 
@@ -245,6 +246,7 @@ export interface ResultMessageSessionLike {
     | "context_used_percent"
     | "claude_token_details"
     | "leaderThreadStatuses"
+    | "slackThreadChild"
   >;
   notifications?: SessionNotification[];
   leaderThreadOutcomeValidatedHistoryLength?: number;
@@ -446,6 +448,7 @@ export function handleAssistantMessage(
 ): void {
   const msgId = msg.message?.id;
   const isLeaderSession = isLeaderSessionForAssistantRouting(session, deps);
+  const slackThreadId = session.state.slackThreadChild?.threadId;
 
   if (!msgId) {
     if (shouldDropReplayHistoryAfterRevert(session)) {
@@ -481,6 +484,7 @@ export function handleAssistantMessage(
       ...(routed.threadKey ? { threadKey: routed.threadKey } : {}),
       ...(routed.questId ? { questId: routed.questId } : {}),
       ...(routed.threadRefs ? { threadRefs: routed.threadRefs } : {}),
+      ...(slackThreadId ? { slackThreadId } : {}),
       ...(routed.threadRoutingError ? { threadRoutingError: routed.threadRoutingError } : {}),
       ...(threadStatusRecords.length > 0 ? { threadStatusMarkers: threadStatusRecords } : {}),
     };
@@ -563,6 +567,7 @@ export function handleAssistantMessage(
       ...(routed.threadKey ? { threadKey: routed.threadKey } : {}),
       ...(routed.questId ? { questId: routed.questId } : {}),
       ...(routed.threadRefs ? { threadRefs: routed.threadRefs } : {}),
+      ...(slackThreadId ? { slackThreadId } : {}),
       ...(routed.threadRoutingError ? { threadRoutingError: routed.threadRoutingError } : {}),
       ...(threadStatusRecords.length > 0 ? { threadStatusMarkers: threadStatusRecords } : {}),
     };
@@ -787,6 +792,7 @@ export function handleResultMessage(
     type: "result",
     data: msg,
     ...(turnWasInterrupted ? { interrupted: true } : {}),
+    ...(session.state.slackThreadChild?.threadId ? { slackThreadId: session.state.slackThreadChild.threadId } : {}),
   };
   const turnMetrics = computeSessionTurnMetrics([...session.messageHistory, provisionalResultBrowserMsg]);
   session.state.total_cost_usd = msg.total_cost_usd;

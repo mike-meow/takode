@@ -968,6 +968,58 @@ describe("MessageBubble - assistant messages", () => {
     expect(markdown.textContent).toBe("Hello world");
   });
 
+  it("renders a visible Slack thread summary for root assistant messages with server-owned thread records", () => {
+    // Thread counts come from authoritative session state, so reconnect replay
+    // can rebuild the summary without relying on local UI state.
+    const sessionId = "session-with-slack-thread";
+    const msg = makeMessage({ id: "assistant-anchor", role: "assistant", content: "Root answer" });
+    useStore.getState().addSession({
+      session_id: sessionId,
+      backend_type: "claude",
+      model: "claude-sonnet",
+      cwd: "/tmp/test",
+      tools: [],
+      permissionMode: "default",
+      claude_code_version: "1",
+      mcp_servers: [],
+      agents: [],
+      slash_commands: [],
+      skills: [],
+      total_cost_usd: 0,
+      num_turns: 1,
+      context_used_percent: 0,
+      is_compacting: false,
+      git_branch: "main",
+      is_worktree: false,
+      is_containerized: false,
+      repo_root: "/tmp/test",
+      git_ahead: 0,
+      git_behind: 0,
+      total_lines_added: 0,
+      total_lines_removed: 0,
+      slackThreads: {
+        "st-test": {
+          id: "st-test",
+          rootSessionId: sessionId,
+          childSessionId: "child-session",
+          anchorMessageId: "assistant-anchor",
+          anchorHistoryIndex: 1,
+          anchorPreview: "Root answer",
+          createdAt: 1,
+          updatedAt: 2,
+          messageCount: 2,
+          lastMessagePreview: "Thread follow-up",
+          seeded: true,
+        },
+      },
+    } as any);
+
+    render(<MessageBubble message={msg} sessionId={sessionId} currentThreadKey="main" />);
+
+    expect(screen.getByText("2 replies")).toBeTruthy();
+    expect(screen.getByText("Thread follow-up")).toBeTruthy();
+  });
+
   it("renders deprecated @to(user) tags as raw text", () => {
     const msg = makeMessage({
       role: "assistant",

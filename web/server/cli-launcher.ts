@@ -174,6 +174,13 @@ export interface LaunchOptions {
   extraInstructions?: string;
   /** Authoritative Takode memory/session-space slug for default memory repo resolution. */
   memorySessionSpaceSlug?: string;
+  /** Hidden implementation session backing a Slack-like conversation branch. */
+  hidden?: boolean;
+  parentSessionId?: string;
+  slackThreadId?: string;
+  slackThreadAnchorMessageId?: string;
+  slackThreadAnchorHistoryIndex?: number;
+  slackThreadReadOnly?: boolean;
 }
 
 /**
@@ -601,6 +608,12 @@ export class CliLauncher {
       lastActivityAt: Date.now(),
       backendType,
       memorySessionSpaceSlug,
+      hidden: options.hidden === true,
+      parentSessionId: options.parentSessionId,
+      slackThreadId: options.slackThreadId,
+      slackThreadAnchorMessageId: options.slackThreadAnchorMessageId,
+      slackThreadAnchorHistoryIndex: options.slackThreadAnchorHistoryIndex,
+      slackThreadReadOnly: options.slackThreadReadOnly === true,
     };
 
     if (backendType === "codex") {

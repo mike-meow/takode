@@ -14,10 +14,11 @@ import { createPortal } from "react-dom";
 import { useShallow } from "zustand/react/shallow";
 import { useStore } from "../store.js";
 import { api } from "../api.js";
-import { sendToSession } from "../ws.js";
+import { connectSession, sendToSession } from "../ws.js";
 import { formatWaitForRefLabel, getWaitForRefKind } from "../../shared/quest-journey.js";
 import { MessageFeed } from "./MessageFeed.js";
 import { Composer } from "./Composer.js";
+import { SlackThreadPanel } from "./SlackThreadPanel.js";
 import {
   PermissionBanner,
   PlanReviewOverlay,
@@ -92,6 +93,7 @@ import type {
   QuestmasterTask,
   SessionAttentionRecord,
   SessionNotification,
+  SlackThreadRecord,
 } from "../types.js";
 
 export interface QuestThreadBannerRow {
@@ -116,6 +118,7 @@ type LeaderThreadRow = QuestThreadBannerRow & {
 const EMPTY_BOARD_ROWS: BoardRowData[] = [];
 const EMPTY_MESSAGES: ChatMessage[] = [];
 const EMPTY_ATTENTION_RECORDS: SessionAttentionRecord[] = [];
+const EMPTY_SLACK_THREADS: Record<string, SlackThreadRecord> = {};
 
 function reviewNotificationIdsForSelectedThread(
   notifications: ReadonlyArray<SessionNotification> | undefined,
@@ -1121,6 +1124,7 @@ export function ChatView({
     claimedQuestLeaderSessionId,
     herdedBy,
     leaderOpenThreadTabs,
+    slackThreads,
   } = useStore(
     useShallow((s) => {
       const sessionState = s.sessions.get(sessionId);
@@ -1150,6 +1154,7 @@ export function ChatView({
           sessionState?.claimedQuestLeaderSessionId ?? sdkSession?.claimedQuestLeaderSessionId,
         herdedBy: sdkSession?.herdedBy,
         leaderOpenThreadTabs: sessionState?.leaderOpenThreadTabs ?? sdkSession?.leaderOpenThreadTabs,
+        slackThreads: sessionState?.slackThreads ?? EMPTY_SLACK_THREADS,
       };
     }),
   );
@@ -1166,6 +1171,25 @@ export function ChatView({
       leaderOpenThreadTabs: authoritativeLeaderOpenThreadTabs,
     }),
   );
+  const [selectedSlackThreadId, setSelectedSlackThreadId] = useState<string | null>(null);
+  const selectedSlackThread = selectedSlackThreadId ? slackThreads[selectedSlackThreadId] : undefined;
+
+  useEffect(() => {
+    const onOpen = (event: Event) => {
+      const detail = (event as CustomEvent).detail as
+        | { sessionId?: string; threadId?: string; childSessionId?: string }
+        | undefined;
+      if (detail?.sessionId !== sessionId || !detail.threadId) return;
+      setSelectedSlackThreadId(detail.threadId);
+      if (detail.childSessionId) connectSession(detail.childSessionId);
+    };
+    window.addEventListener("takode:open-slack-thread", onOpen);
+    return () => window.removeEventListener("takode:open-slack-thread", onOpen);
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (selectedSlackThread?.childSessionId) connectSession(selectedSlackThread.childSessionId);
+  }, [selectedSlackThread?.childSessionId]);
   const [openThreadTabKeys, setOpenThreadTabKeys] = useState(() =>
     isLeaderSession ? initialOpenThreadTabKeys(sessionId, authoritativeLeaderOpenThreadTabs) : [],
   );
@@ -1790,24 +1814,35 @@ export function ChatView({
         <PlanReviewOverlay permission={planPerm} sessionId={sessionId} onCollapse={() => setPlanCollapsed(true)} />
       ) : (
         <div className="flex min-h-0 flex-1 flex-col">
-          {!preview && showQuestThreadBanner && (
-            <QuestThreadBanner row={selectedThreadRow} threadKey={selectedThreadKey} />
-          )}
-          {!preview && !showQuestThreadBanner && sessionQuestBannerRow && (
-            <QuestThreadBanner
-              row={sessionQuestBannerRow}
-              threadKey={sessionQuestBannerRow.threadKey}
-              variant="session"
-              currentSessionId={sessionId}
-            />
-          )}
-          <MessageFeed
-            key={`${sessionId}:${normalizeThreadKey(isLeaderSession ? selectedThreadKey : MAIN_THREAD_KEY)}`}
-            sessionId={sessionId}
-            threadKey={isLeaderSession ? selectedThreadKey : MAIN_THREAD_KEY}
-            projectThreadRoutes={isLeaderSession}
-            onSelectThread={isLeaderSession ? handleSelectThread : undefined}
-          />
+          <div className="flex min-h-0 flex-1">
+            <div className="flex min-w-0 flex-1 flex-col">
+              {!preview && showQuestThreadBanner && (
+                <QuestThreadBanner row={selectedThreadRow} threadKey={selectedThreadKey} />
+              )}
+              {!preview && !showQuestThreadBanner && sessionQuestBannerRow && (
+                <QuestThreadBanner
+                  row={sessionQuestBannerRow}
+                  threadKey={sessionQuestBannerRow.threadKey}
+                  variant="session"
+                  currentSessionId={sessionId}
+                />
+              )}
+              <MessageFeed
+                key={`${sessionId}:${normalizeThreadKey(isLeaderSession ? selectedThreadKey : MAIN_THREAD_KEY)}`}
+                sessionId={sessionId}
+                threadKey={isLeaderSession ? selectedThreadKey : MAIN_THREAD_KEY}
+                projectThreadRoutes={isLeaderSession}
+                onSelectThread={isLeaderSession ? handleSelectThread : undefined}
+              />
+            </div>
+            {!preview && selectedSlackThread && (
+              <SlackThreadPanel
+                rootSessionId={sessionId}
+                thread={selectedSlackThread}
+                onClose={() => setSelectedSlackThreadId(null)}
+              />
+            )}
+          </div>
         </div>
       )}
 

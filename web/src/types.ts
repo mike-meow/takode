@@ -33,6 +33,8 @@ import type {
   SessionAttentionRecordType,
   SessionLifecycleEvent,
   ActiveTurnRoute,
+  SlackThreadRecord,
+  SlackThreadChildState,
   ThreadRef,
   ThreadAttachmentMarker,
   ThreadAttachmentMovementSummary,
@@ -106,6 +108,8 @@ export type {
   SessionAttentionRecordType,
   SessionLifecycleEvent,
   ActiveTurnRoute,
+  SlackThreadRecord,
+  SlackThreadChildState,
   ThreadRef,
   ThreadAttachmentMarker,
   ThreadAttachmentMovementSummary,
@@ -197,6 +201,7 @@ export interface ChatMessage {
     threadRefs?: ThreadRef[];
     threadKey?: string;
     questId?: string;
+    slackThreadId?: string;
     threadAttachmentMarker?: ThreadAttachmentMarker;
     threadTransitionMarker?: ThreadTransitionMarker;
     crossThreadActivityMarker?: {

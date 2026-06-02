@@ -1374,6 +1374,7 @@ export function ingestUserMessage(
       ...(explicitTarget ? { threadKey: explicitTarget.threadKey } : {}),
       ...(explicitTarget?.questId ? { questId: explicitTarget.questId } : {}),
       ...(explicitThreadRef ? { threadRefs: [explicitThreadRef] } : {}),
+      ...(msg.slackThreadId ? { slackThreadId: msg.slackThreadId } : {}),
     };
     let userMsgHistoryIdx = -1;
     if (commit) {
@@ -1865,6 +1866,7 @@ export function routeAdapterBrowserMessage(
           ...(ingested.historyEntry.threadKey ? { threadKey: ingested.historyEntry.threadKey } : {}),
           ...(ingested.historyEntry.questId ? { questId: ingested.historyEntry.questId } : {}),
           ...(ingested.historyEntry.threadRefs ? { threadRefs: ingested.historyEntry.threadRefs } : {}),
+          ...(ingested.historyEntry.slackThreadId ? { slackThreadId: ingested.historyEntry.slackThreadId } : {}),
           autoPauseSourceKind: determineUserMessageSourceKind(msg),
         });
         markNeedsInputResolutionNoticesQueued(

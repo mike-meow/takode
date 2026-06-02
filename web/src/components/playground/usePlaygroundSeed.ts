@@ -18,6 +18,7 @@ import {
   PLAYGROUND_RECOVERY_SUPPRESSED_SESSION_ID,
   PLAYGROUND_RESUMING_SESSION_ID,
   PLAYGROUND_SECTIONED_SESSION_ID,
+  PLAYGROUND_SLACK_THREAD_CHILD_SESSION_ID,
   PLAYGROUND_SPARSE_THREAD_WINDOW_SESSION_ID,
   PLAYGROUND_STARTING_SESSION_ID,
   PLAYGROUND_THREAD_PANEL_SESSION_ID,
@@ -51,6 +52,7 @@ export function usePlaygroundSeed() {
       PLAYGROUND_DISCONNECTED_SESSION_ID,
       PLAYGROUND_BROKEN_SESSION_ID,
       PLAYGROUND_RECOVERY_SUPPRESSED_SESSION_ID,
+      PLAYGROUND_SLACK_THREAD_CHILD_SESSION_ID,
       PLAYGROUND_THREAD_PANEL_SESSION_ID,
       "leader-alpha",
       questInProgressId,
@@ -118,6 +120,21 @@ export function usePlaygroundSeed() {
       git_behind: 0,
       total_lines_added: 142,
       total_lines_removed: 38,
+      slackThreads: {
+        "st-playground": {
+          id: "st-playground",
+          rootSessionId: sessionId,
+          childSessionId: PLAYGROUND_SLACK_THREAD_CHILD_SESSION_ID,
+          anchorMessageId: MSG_ASSISTANT.id,
+          anchorHistoryIndex: 2,
+          anchorPreview: "We can stage the migration instead of replacing auth in one pass.",
+          createdAt: Date.now() - 30_000,
+          updatedAt: Date.now() - 8_000,
+          messageCount: 2,
+          lastMessagePreview: "Use a feature flag and keep session cookie validation until parity tests pass.",
+          seeded: true,
+        },
+      },
     };
 
     store.addSession(session);
@@ -149,6 +166,40 @@ export function usePlaygroundSeed() {
     store.setStreamingStats(sessionId, { startedAt: Date.now() - 12000, outputTokens: 1200 });
     store.addPermission(sessionId, PERM_BASH);
     store.addPermission(sessionId, PERM_DYNAMIC);
+
+    const slackThreadChildSession: SessionState = {
+      ...session,
+      session_id: PLAYGROUND_SLACK_THREAD_CHILD_SESSION_ID,
+      hidden: true,
+      slackThreadChild: {
+        rootSessionId: sessionId,
+        threadId: "st-playground",
+        anchorMessageId: MSG_ASSISTANT.id,
+        anchorHistoryIndex: 2,
+        readOnly: true,
+      },
+      num_turns: 1,
+    };
+    store.addSession(slackThreadChildSession);
+    store.setConnectionStatus(PLAYGROUND_SLACK_THREAD_CHILD_SESSION_ID, "connected");
+    store.setCliConnected(PLAYGROUND_SLACK_THREAD_CHILD_SESSION_ID, true);
+    store.setSessionStatus(PLAYGROUND_SLACK_THREAD_CHILD_SESSION_ID, "idle");
+    store.setMessages(PLAYGROUND_SLACK_THREAD_CHILD_SESSION_ID, [
+      makePlaygroundMessage({
+        id: "playground-thread-user",
+        role: "user",
+        content: "What is the lowest-risk migration order?",
+        timestamp: Date.now() - 12_000,
+        metadata: { slackThreadId: "st-playground" },
+      }),
+      makePlaygroundMessage({
+        id: "playground-thread-assistant",
+        role: "assistant",
+        content: "Use a feature flag and keep session cookie validation until parity tests pass.",
+        timestamp: Date.now() - 8_000,
+        metadata: { slackThreadId: "st-playground" },
+      }),
+    ]);
 
     const sectionedSession: SessionState = {
       ...session,

@@ -18,6 +18,7 @@ export const PLAYGROUND_DISCONNECTED_SESSION_ID = "playground-chat-disconnected"
 export const PLAYGROUND_BROKEN_SESSION_ID = "playground-chat-broken";
 export const PLAYGROUND_RECOVERY_SUPPRESSED_SESSION_ID = "playground-chat-recovery-suppressed";
 export const PLAYGROUND_THREAD_PANEL_SESSION_ID = "playground-thread-panel-wait-for";
+export const PLAYGROUND_SLACK_THREAD_CHILD_SESSION_ID = "playground-slack-thread-child";
 export const PLAYGROUND_SESSION_ROWS: Array<{ session: SidebarSessionItem; sessionName: string; preview: string }> = [
   {
     session: {

@@ -351,6 +351,68 @@ describe("permission pipeline takode event emission (q-205)", () => {
     expect(deps.emitTakodePermissionRequest).not.toHaveBeenCalled();
   });
 
+  it("hard-denies file mutation tools in read-only Slack thread sessions before mode auto-approval", () => {
+    // Thread turns have no Allow path. Even bypassPermissions must not permit
+    // file mutation from a hidden child backend session.
+    const session = makeSession({
+      state: {
+        permissionMode: "bypassPermissions",
+        cwd: "/tmp/test",
+        slackThreadChild: { readOnly: true },
+      },
+    });
+    const deps = makeDeps();
+
+    const result = handlePermissionRequest(
+      session,
+      {
+        request_id: "req-thread-edit",
+        tool_name: "Write",
+        input: { file_path: "/tmp/test/file.ts", content: "mutate" },
+        tool_use_id: "tu-thread-edit",
+      },
+      "claude-ws",
+      deps,
+      { activityReason: "permission_request" },
+    );
+
+    expect(result).not.toBeInstanceOf(Promise);
+    expect((result as { kind: string }).kind).toBe("hard_denied");
+    expect(session.pendingPermissions.size).toBe(0);
+    expect(deps.broadcastPermissionRequest).not.toHaveBeenCalled();
+    expect(deps.emitTakodePermissionRequest).not.toHaveBeenCalled();
+  });
+
+  it("hard-denies obvious shell writes in read-only Slack thread sessions", () => {
+    // Shell commands are conservatively screened in thread turns so redirects
+    // and common write/install commands cannot reach human approval.
+    const session = makeSession({
+      state: {
+        permissionMode: "default",
+        cwd: "/tmp/test",
+        slackThreadChild: { readOnly: true },
+      },
+    });
+    const deps = makeDeps();
+
+    const result = handlePermissionRequest(
+      session,
+      {
+        request_id: "req-thread-bash",
+        tool_name: "Bash",
+        input: { command: "echo changed > src/file.ts" },
+        tool_use_id: "tu-thread-bash",
+      },
+      "claude-ws",
+      deps,
+      { activityReason: "permission_request" },
+    );
+
+    expect(result).not.toBeInstanceOf(Promise);
+    expect((result as { kind: string }).kind).toBe("hard_denied");
+    expect(session.pendingPermissions.size).toBe(0);
+  });
+
   it("hard-denies long sleep Bash commands before any auto-approval path", () => {
     const session = makeSession({
       state: { permissionMode: "bypassPermissions", cwd: "/tmp/test" },
