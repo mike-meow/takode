@@ -385,6 +385,7 @@ describe("Codex spawn preparation", () => {
     expect(updatedConfig).toContain('base_url = "http://localhost:4000/v1"');
     expect(updatedConfig).toContain('env_key = "LITELLM_API_KEY"');
     expect(updatedConfig).toContain('wire_api = "responses"');
+    expect(updatedConfig).toMatch(/\[shell_environment_policy\][\s\S]*"LITELLM_API_KEY"/);
     expect(updatedConfig).not.toContain("developer_instructions");
     expect(updatedConfig).not.toContain("old Takode session guardrails");
   });

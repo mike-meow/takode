@@ -633,6 +633,13 @@ function readStringSettingInSection(configToml: string, sectionName: string, key
   return undefined;
 }
 
+function getSelectedProviderEnvKeys(configToml: string): string[] {
+  const provider = readTopLevelStringSetting(configToml, "model_provider")?.trim();
+  if (!provider) return [];
+  const envKey = readStringSettingInSection(configToml, `model_providers.${provider}`, "env_key")?.trim();
+  return envKey ? [envKey] : [];
+}
+
 function readTopLevelNumberSetting(configToml: string, key: string): number | undefined {
   const lines = configToml.split("\n");
   const keyPattern = new RegExp(`^\\s*${escapeRegExp(key)}\\s*=\\s*(.+?)\\s*$`);
@@ -1589,7 +1596,13 @@ async function ensureCodexSessionConfig(
   if (usesMaiLitellmProvider(next)) {
     next = upsertBooleanSettingInSection(next, codexFeaturesHeader, codexImageGenerationFeature, false);
   }
-  next = upsertShellEnvironmentIncludeOnly(next, ["PATH", ...NON_INTERACTIVE_GIT_EDITOR_ENV_KEYS, ...envVars]);
+  const providerEnvKeys = getSelectedProviderEnvKeys(next);
+  next = upsertShellEnvironmentIncludeOnly(next, [
+    "PATH",
+    ...NON_INTERACTIVE_GIT_EDITOR_ENV_KEYS,
+    ...providerEnvKeys,
+    ...envVars,
+  ]);
   const modelId = options?.model || readTopLevelStringSetting(next, "model");
   const leaderLaunch = options?.leaderLaunch ?? !options?.nonLeaderAutoCompactThresholdPercent;
   const leaderRecycleThreshold = leaderLaunch
