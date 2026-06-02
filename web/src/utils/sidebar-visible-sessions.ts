@@ -62,10 +62,21 @@ export function buildSidebarVisibleSessions(input: SidebarVisibleSessionsInput):
   } = input;
 
   const allSessionIds = new Set<string>();
+  const slackThreadChildIds = new Set<string>();
+  for (const state of sessions.values()) {
+    for (const thread of Object.values(state.slackThreads ?? {})) {
+      if (thread.childSessionId) slackThreadChildIds.add(thread.childSessionId);
+    }
+  }
   const isHiddenSession = (id: string): boolean => {
     const bridgeState = sessions.get(id);
     const sdkInfo = sdkSessions.find((session) => session.sessionId === id);
-    return bridgeState?.hidden === true || !!bridgeState?.slackThreadChild || sdkInfo?.hidden === true;
+    return (
+      bridgeState?.hidden === true ||
+      !!bridgeState?.slackThreadChild ||
+      sdkInfo?.hidden === true ||
+      slackThreadChildIds.has(id)
+    );
   };
   for (const id of sessions.keys()) {
     if (!isHiddenSession(id)) allSessionIds.add(id);

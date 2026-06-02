@@ -27,6 +27,7 @@ vi.mock("./utils/notification-sound.js", () => ({
 
 let wsModule: typeof import("./ws.js");
 let useStore: typeof import("./store.js").useStore;
+let buildSidebarVisibleSessions: typeof import("./utils/sidebar-visible-sessions.js").buildSidebarVisibleSessions;
 
 // ---------------------------------------------------------------------------
 // MockWebSocket
@@ -82,6 +83,7 @@ beforeEach(async () => {
   localStorage.clear();
 
   wsModule = await import("./ws.js");
+  ({ buildSidebarVisibleSessions } = await import("./utils/sidebar-visible-sessions.js"));
 });
 
 afterEach(() => {
@@ -169,5 +171,72 @@ describe("handleMessage: session_init", () => {
     const state = useStore.getState();
     expect(state.sessionNames.get("s1")).toBe("Leader 7");
     expect(state.questNamedSessions.has("s1")).toBe(false);
+  });
+
+  it("keeps direct Slack thread child WebSocket snapshots out of sidebar projection", () => {
+    wsModule.connectSession("root");
+    fireMessage({
+      type: "session_init",
+      session: {
+        ...makeSession("root"),
+        slackThreads: {
+          "st-1": {
+            id: "st-1",
+            rootSessionId: "root",
+            childSessionId: "hidden-child",
+            anchorMessageId: "assistant-1",
+            anchorHistoryIndex: 1,
+            anchorPreview: "Root reply",
+            createdAt: 100,
+            updatedAt: 100,
+            messageCount: 0,
+            seeded: false,
+          },
+        },
+      },
+    });
+    useStore.getState().setSdkSessions([
+      {
+        sessionId: "root",
+        state: "connected",
+        cwd: "/home/user",
+        createdAt: 2,
+        archived: false,
+        treeGroupId: "default",
+      },
+    ]);
+
+    wsModule.connectSession("hidden-child");
+    fireMessage({
+      type: "session_init",
+      session: {
+        ...makeSession("hidden-child"),
+        treeGroupId: undefined,
+      },
+    });
+
+    const state = useStore.getState();
+    const sidebar = buildSidebarVisibleSessions({
+      sessions: state.sessions,
+      sdkSessions: state.sdkSessions,
+      cliConnected: state.cliConnected,
+      cliDisconnectReason: state.cliDisconnectReason,
+      sessionStatus: state.sessionStatus,
+      pendingPermissions: state.pendingPermissions,
+      askPermission: state.askPermission,
+      diffFileStats: state.diffFileStats,
+      treeGroups: [{ id: "default", name: "Default" }],
+      treeAssignments: new Map(),
+      treeNodeOrder: new Map(),
+      collapsedTreeGroups: new Set(),
+      expandedHerdNodes: new Set(),
+      sessionAttention: state.sessionAttention,
+      sessionSortMode: "created",
+      countUserPermissions: () => 0,
+    });
+
+    expect(state.sessions.has("hidden-child")).toBe(true);
+    expect(sidebar.activeSessions.map((session) => session.id)).toEqual(["root"]);
+    expect(sidebar.treeViewGroups.flatMap((group) => group.nodes.map((node) => node.leader.id))).toEqual(["root"]);
   });
 });
