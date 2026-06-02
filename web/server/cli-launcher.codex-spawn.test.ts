@@ -276,6 +276,32 @@ describe("Codex spawn preparation", () => {
     expect(readCodexConfigArg(cmdAndArgs, "review_model")).toBe("sonnet");
   });
 
+  it("ignores synthesized leader catalog entries when resolving Codex auto-review review_model", async () => {
+    // Leader launch prep can synthesize a catalog entry for the session model.
+    // That generated entry must not make the permission profile look like a
+    // real LiteLLM reviewer model.
+    mockLitellmModels(["sonnet", "gpt-5.5"]);
+
+    await launchCodex({
+      permissionMode: "codex-auto-review",
+      model: "codex-auto-review",
+      codexInternetAccess: false,
+      env: {
+        TAKODE_ROLE: "orchestrator",
+        TAKODE_API_PORT: "3456",
+      },
+    });
+
+    const [cmdAndArgs] = mockSpawn.mock.calls[0];
+    expect(readCodexConfigArg(cmdAndArgs, "approvals_reviewer")).toBe("auto_review");
+    expect(readCodexConfigArg(cmdAndArgs, "review_model")).toBe("sonnet");
+
+    const generatedCatalog = JSON.parse(
+      await Bun.file(join(codexHome, "test-session-id", "takode-leader-model-catalog.json")).text(),
+    );
+    expect(generatedCatalog.models.some((model: { slug?: string }) => model.slug === "codex-auto-review")).toBe(true);
+  });
+
   it.each([
     ["codex-default", "on-request", "workspace-write"],
     ["codex-full-access", "never", "danger-full-access"],
