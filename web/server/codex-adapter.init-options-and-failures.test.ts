@@ -149,6 +149,58 @@ describe("CodexAdapter", () => {
     expect(allWritten).not.toContain('"approvalPolicy":"onRequest"');
   });
 
+  it("sets app-server approvalsReviewer on thread/start for Codex auto-review", async () => {
+    // Regression for q110: launch config alone was not enough; app-server
+    // thread settings must explicitly enable the Guardian auto-review profile.
+    const mock = createMockProcess();
+
+    new CodexAdapter(mock.proc as never, "test-session", {
+      model: "gpt-5.3-codex",
+      cwd: "/workspace",
+      approvalMode: "codex-auto-review",
+    });
+
+    await tick();
+    mock.stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
+    await tick();
+
+    const lines = parseWrittenJsonLines(mock.stdin.chunks);
+    const threadStart = lines.find((line) => line.method === "thread/start");
+    expect(threadStart?.params).toMatchObject({
+      model: "gpt-5.3-codex",
+      cwd: "/workspace",
+      approvalPolicy: "on-request",
+      sandbox: "workspace-write",
+      approvalsReviewer: "auto_review",
+    });
+  });
+
+  it.each([
+    ["codex-default", "on-request", "workspace-write"],
+    ["codex-full-access", "never", "danger-full-access"],
+    ["codex-custom", undefined, undefined],
+  ])("does not set app-server approvalsReviewer for %s", async (approvalMode, expectedApprovalPolicy, expectedSandbox) => {
+    // Keep non-auto-review Codex profiles on their existing app-server
+    // policy/sandbox behavior without silently enabling Guardian review.
+    const mock = createMockProcess();
+
+    new CodexAdapter(mock.proc as never, "test-session", {
+      model: "gpt-5.3-codex",
+      cwd: "/workspace",
+      approvalMode,
+    });
+
+    await tick();
+    mock.stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
+    await tick();
+
+    const lines = parseWrittenJsonLines(mock.stdin.chunks);
+    const threadStart = lines.find((line) => line.method === "thread/start");
+    expect(threadStart?.params.approvalsReviewer).toBeUndefined();
+    expect(threadStart?.params.approvalPolicy).toBe(expectedApprovalPolicy);
+    expect(threadStart?.params.sandbox).toBe(expectedSandbox);
+  });
+
   it("omits approvalPolicy and sandbox for Codex custom config mode", async () => {
     const mock = createMockProcess();
 

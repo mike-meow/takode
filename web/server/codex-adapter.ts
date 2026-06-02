@@ -52,6 +52,8 @@ import { CODEX_LOCAL_SLASH_COMMANDS } from "../shared/codex-slash-commands.js";
 const TURN_START_ACK_TIMEOUT_MS = 60_000;
 const STDERR_ROUTER_LINE_BUFFER_MAX = 64 * 1024;
 const INITIAL_SKILL_METADATA_REFRESH_TIMEOUT_MS = 5_000;
+const CODEX_AUTO_REVIEW_PERMISSION_MODE = "codex-auto-review";
+const CODEX_AUTO_REVIEW_APPROVALS_REVIEWER = "auto_review";
 
 type RouterFailureToolName = "write_stdin";
 type CodexSkillRefreshCause = "initialize" | "skills_changed" | "api" | "manual";
@@ -1880,9 +1882,15 @@ export class CodexAdapter
     };
     const approvalPolicy = this.mapApprovalPolicy(this.options.approvalMode, this.options.askPermission);
     const sandbox = this.options.sandbox ?? this.mapSandboxPolicy(this.options.approvalMode);
+    const approvalsReviewer = this.mapApprovalsReviewer(this.options.approvalMode);
     if (approvalPolicy) params.approvalPolicy = approvalPolicy;
     if (sandbox) params.sandbox = sandbox;
+    if (approvalsReviewer) params.approvalsReviewer = approvalsReviewer;
     return params;
+  }
+
+  private mapApprovalsReviewer(mode?: string): string | undefined {
+    return mode === CODEX_AUTO_REVIEW_PERMISSION_MODE ? CODEX_AUTO_REVIEW_APPROVALS_REVIEWER : undefined;
   }
 
   private mapApprovalPolicy(mode?: string, askPermission?: boolean): string | undefined {
@@ -1891,7 +1899,7 @@ export class CodexAdapter
         return undefined;
       case "codex-default":
         return "on-request";
-      case "codex-auto-review":
+      case CODEX_AUTO_REVIEW_PERMISSION_MODE:
         return "on-request";
       case "codex-full-access":
         return "never";
@@ -1913,7 +1921,7 @@ export class CodexAdapter
     switch (mode) {
       case "codex-custom":
         return undefined;
-      case "codex-auto-review":
+      case CODEX_AUTO_REVIEW_PERMISSION_MODE:
         return "workspace-write";
       case "codex-full-access":
         return "danger-full-access";

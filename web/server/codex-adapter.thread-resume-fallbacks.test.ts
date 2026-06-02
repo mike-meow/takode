@@ -122,6 +122,35 @@ describe("CodexAdapter", () => {
     expect(allWritten).not.toContain('"method":"thread/start"');
   });
 
+  it("sets app-server approvalsReviewer on thread/resume for Codex auto-review", async () => {
+    // Relaunched Codex sessions resume existing app-server threads, so the
+    // Guardian auto-review profile must be present on resume as well as start.
+    const mock = createMockProcess();
+
+    new CodexAdapter(mock.proc as never, "test-session", {
+      model: "gpt-5.3-codex",
+      cwd: "/workspace",
+      approvalMode: "codex-auto-review",
+      threadId: "thr_existing_auto_review",
+    });
+
+    await tick();
+    mock.stdout.push(JSON.stringify({ id: 1, result: { userAgent: "codex" } }) + "\n");
+    await tick();
+
+    const lines = parseWrittenJsonLines(mock.stdin.chunks);
+    const resume = lines.find((line) => line.method === "thread/resume");
+    expect(resume?.params).toMatchObject({
+      threadId: "thr_existing_auto_review",
+      model: "gpt-5.3-codex",
+      cwd: "/workspace",
+      approvalPolicy: "on-request",
+      sandbox: "workspace-write",
+      approvalsReviewer: "auto_review",
+    });
+    expect(lines.find((line) => line.method === "thread/start")).toBeUndefined();
+  });
+
   it("configures developer instructions before resuming a thread", async () => {
     // Regression: relaunched leader sessions resume an existing thread, so they
     // need the same guardrails configured before thread/resume.
