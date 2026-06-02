@@ -16,6 +16,20 @@ export function registerSessionSlackThreadRoutes(
 ): void {
   const { launcher, wsBridge, resolveId } = deps;
 
+  const getInheritedChildEnv = (rootSessionId: string): Record<string, string> | undefined => {
+    const rootEnv = launcher.getSessionLaunchEnv(rootSessionId);
+    if (!rootEnv) return undefined;
+    const {
+      COMPANION_AUTH_TOKEN: _auth,
+      COMPANION_SESSION_ID: _sessionId,
+      COMPANION_SESSION_NUMBER: _sessionNumber,
+      TAKODE_ROLE: _role,
+      TAKODE_API_PORT: _apiPort,
+      ...inherited
+    } = rootEnv;
+    return inherited;
+  };
+
   api.post("/sessions/:id/slack-threads", async (c) => {
     const id = resolveId(c.req.param("id"));
     if (!id) return c.json({ error: "Session not found" }, 404);
@@ -44,18 +58,21 @@ export function registerSessionSlackThreadRoutes(
     const threadId = createSlackThreadId();
     const backend = (rootInfo.backendType || root.state.backend_type || "claude") as BackendType;
     const binarySettings = getSettings();
+    const permissionMode = backend === "codex" ? rootInfo.permissionMode || "codex-default" : "default";
     const child = await launcher.launch({
       backendType: backend,
       cwd: root.state.cwd || rootInfo.cwd,
       model: root.state.model || rootInfo.model,
-      permissionMode: "default",
-      askPermission: true,
-      uiMode: "agent",
+      permissionMode,
+      askPermission: rootInfo.askPermission ?? true,
+      uiMode: rootInfo.uiMode ?? "agent",
       claudeBinary: binarySettings.claudeBinary || undefined,
       codexBinary: binarySettings.codexBinary || undefined,
       codexSandbox: backend === "codex" ? "read-only" : undefined,
       codexInternetAccess: backend === "codex" ? rootInfo.codexInternetAccess === true : undefined,
       codexReasoningEffort: backend === "codex" ? rootInfo.codexReasoningEffort : undefined,
+      env: getInheritedChildEnv(id),
+      envSlug: rootInfo.envSlug,
       memorySessionSpaceSlug: root.state.memorySessionSpaceSlug,
       hidden: true,
       parentSessionId: id,
@@ -83,7 +100,7 @@ export function registerSessionSlackThreadRoutes(
       anchorHistoryIndex: anchor.historyIndex,
       readOnly: true,
     };
-    childSession.state.permissionMode = "default";
+    childSession.state.permissionMode = permissionMode;
     childSession.state.cwd = root.state.cwd || rootInfo.cwd;
     childSession.state.model = root.state.model || rootInfo.model || "";
     childSession.state.treeGroupId = root.state.treeGroupId ?? "default";

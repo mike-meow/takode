@@ -3,7 +3,7 @@ import type { BrowserIncomingMessage, ContentBlock, SlackThreadRecord } from "./
 const THREAD_ID_RANDOM_BYTES = 6;
 const PREVIEW_LIMIT = 140;
 
-export function createSlackThreadId(randomUUID: () => string = crypto.randomUUID): string {
+export function createSlackThreadId(randomUUID: () => string = () => crypto.randomUUID()): string {
   const compact = randomUUID()
     .replace(/-/g, "")
     .slice(0, THREAD_ID_RANDOM_BYTES * 2);

@@ -174,6 +174,8 @@ export interface LaunchOptions {
   extraInstructions?: string;
   /** Authoritative Takode memory/session-space slug for default memory repo resolution. */
   memorySessionSpaceSlug?: string;
+  /** Env profile slug used to resolve launch env, matching normal session creation. */
+  envSlug?: string;
   /** Hidden implementation session backing a Slack-like conversation branch. */
   hidden?: boolean;
   parentSessionId?: string;
@@ -608,6 +610,7 @@ export class CliLauncher {
       lastActivityAt: Date.now(),
       backendType,
       memorySessionSpaceSlug,
+      envSlug: options.envSlug,
       hidden: options.hidden === true,
       parentSessionId: options.parentSessionId,
       slackThreadId: options.slackThreadId,
@@ -675,8 +678,13 @@ export class CliLauncher {
     const sessionAuthToken = this.ensureSessionAuthToken(info);
 
     // Always inject companion identity/auth vars so agents can identify and authenticate themselves.
+    let launchEnv = options.env;
+    if (options.envSlug && this.envResolver) {
+      const profileVars = await this.envResolver(options.envSlug);
+      if (profileVars) launchEnv = { ...profileVars, ...launchEnv };
+    }
     const envWithSessionId = {
-      ...options.env,
+      ...launchEnv,
       COMPANION_SERVER_ID: this.serverId,
       COMPANION_SERVER_SLUG: this.serverSlug,
       [COMPANION_MEMORY_SPACE_SLUG_ENV]: memorySessionSpaceSlug,
@@ -712,6 +720,11 @@ export class CliLauncher {
         assertNever(backendType);
     }
     return info;
+  }
+
+  getSessionLaunchEnv(sessionId: string): Record<string, string> | undefined {
+    const env = this.sessionEnvs.get(sessionId);
+    return env ? { ...env } : undefined;
   }
 
   /**

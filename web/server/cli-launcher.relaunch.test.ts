@@ -354,7 +354,7 @@ beforeEach(() => {
   delete process.env.COMPANION_FORCE_BYPASS_IN_CONTAINER;
   tempDir = mkdtempSync(join(tmpdir(), "launcher-test-"));
   store = new SessionStore(tempDir);
-  launcher = new CliLauncher(3456, { serverId: "test-server-id" });
+  launcher = new CliLauncher(3456, { serverId: "test-server-id", memorySessionSpaceSlug: "Takode" });
   launcher.setStore(store);
   mockSpawn.mockReturnValue(createMockProc());
   mockResolveBinary.mockReturnValue("/usr/bin/claude");
@@ -523,6 +523,26 @@ describe("relaunch", () => {
     const [, options] = mockSpawn.mock.calls[0];
     expect(options.env.PROFILE_ONLY).toBe("kept");
     expect(options.env.COMPANION_MEMORY_SPACE_SLUG).toBe("PersistedSpace");
+  });
+
+  it("resolves env profiles during direct launch before first spawn", async () => {
+    launcher.setEnvResolver(async (slug) =>
+      slug === "codex-profile" ? { LITELLM_API_KEY: "profile-key", PROFILE_ONLY: "kept" } : null,
+    );
+
+    await launcher.launch({
+      backendType: "claude",
+      cwd: "/tmp/project",
+      envSlug: "codex-profile",
+      env: { INLINE_ONLY: "also-kept" },
+    });
+
+    const [, options] = mockSpawn.mock.calls[0];
+    expect(options.env.LITELLM_API_KEY).toBe("profile-key");
+    expect(options.env.PROFILE_ONLY).toBe("kept");
+    expect(options.env.INLINE_ONLY).toBe("also-kept");
+    expect(options.env.COMPANION_SESSION_ID).toBe("test-session-id");
+    expect(launcher.getSession("test-session-id")?.envSlug).toBe("codex-profile");
   });
 
   it("returns error for unknown session", async () => {
