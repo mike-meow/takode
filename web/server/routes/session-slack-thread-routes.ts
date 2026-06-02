@@ -16,17 +16,21 @@ export function registerSessionSlackThreadRoutes(
 ): void {
   const { launcher, wsBridge, resolveId } = deps;
 
+  const blockedChildEnvKeys = [
+    "COMPANION_AUTH_TOKEN",
+    "COMPANION_SESSION_ID",
+    "COMPANION_SESSION_NUMBER",
+    "TAKODE_ROLE",
+    "TAKODE_API_PORT",
+  ];
+
   const getInheritedChildEnv = (rootSessionId: string): Record<string, string> | undefined => {
     const rootEnv = launcher.getSessionLaunchEnv(rootSessionId);
     if (!rootEnv) return undefined;
-    const {
-      COMPANION_AUTH_TOKEN: _auth,
-      COMPANION_SESSION_ID: _sessionId,
-      COMPANION_SESSION_NUMBER: _sessionNumber,
-      TAKODE_ROLE: _role,
-      TAKODE_API_PORT: _apiPort,
-      ...inherited
-    } = rootEnv;
+    const inherited = { ...rootEnv };
+    for (const key of blockedChildEnvKeys) {
+      delete inherited[key];
+    }
     return inherited;
   };
 
@@ -73,6 +77,7 @@ export function registerSessionSlackThreadRoutes(
       codexReasoningEffort: backend === "codex" ? rootInfo.codexReasoningEffort : undefined,
       env: getInheritedChildEnv(id),
       envSlug: rootInfo.envSlug,
+      blockedEnvKeys: blockedChildEnvKeys,
       memorySessionSpaceSlug: root.state.memorySessionSpaceSlug,
       hidden: true,
       parentSessionId: id,

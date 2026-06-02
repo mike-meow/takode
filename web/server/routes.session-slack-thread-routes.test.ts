@@ -139,6 +139,13 @@ describe("Slack thread session routes", () => {
         codexInternetAccess: true,
         codexReasoningEffort: "high",
         envSlug: "codex-profile",
+        blockedEnvKeys: [
+          "COMPANION_AUTH_TOKEN",
+          "COMPANION_SESSION_ID",
+          "COMPANION_SESSION_NUMBER",
+          "TAKODE_ROLE",
+          "TAKODE_API_PORT",
+        ],
         env: {
           LITELLM_API_KEY: "profile-secret",
           PROFILE_ONLY: "kept",

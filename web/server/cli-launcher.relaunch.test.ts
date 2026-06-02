@@ -545,6 +545,29 @@ describe("relaunch", () => {
     expect(launcher.getSession("test-session-id")?.envSlug).toBe("codex-profile");
   });
 
+  it("blocks selected env keys after profile resolution during direct launch", async () => {
+    launcher.setEnvResolver(async (slug) =>
+      slug === "codex-profile"
+        ? { LITELLM_API_KEY: "profile-key", TAKODE_ROLE: "orchestrator", TAKODE_API_PORT: "9999" }
+        : null,
+    );
+
+    await launcher.launch({
+      backendType: "claude",
+      cwd: "/tmp/project",
+      envSlug: "codex-profile",
+      env: { INLINE_ONLY: "kept", TAKODE_ROLE: "worker" },
+      blockedEnvKeys: ["TAKODE_ROLE", "TAKODE_API_PORT"],
+    });
+
+    const [, options] = mockSpawn.mock.calls[0];
+    expect(options.env.LITELLM_API_KEY).toBe("profile-key");
+    expect(options.env.INLINE_ONLY).toBe("kept");
+    expect(options.env.TAKODE_ROLE).toBeUndefined();
+    expect(options.env.TAKODE_API_PORT).toBeUndefined();
+    expect(options.env.COMPANION_SESSION_ID).toBe("test-session-id");
+  });
+
   it("returns error for unknown session", async () => {
     const result = await launcher.relaunch("nonexistent");
     expect(result.ok).toBe(false);

@@ -176,6 +176,8 @@ export interface LaunchOptions {
   memorySessionSpaceSlug?: string;
   /** Env profile slug used to resolve launch env, matching normal session creation. */
   envSlug?: string;
+  /** Env keys to remove after env profile and inline env merging, before Takode identity injection. */
+  blockedEnvKeys?: string[];
   /** Hidden implementation session backing a Slack-like conversation branch. */
   hidden?: boolean;
   parentSessionId?: string;
@@ -682,6 +684,12 @@ export class CliLauncher {
     if (options.envSlug && this.envResolver) {
       const profileVars = await this.envResolver(options.envSlug);
       if (profileVars) launchEnv = { ...profileVars, ...launchEnv };
+    }
+    if (launchEnv && options.blockedEnvKeys?.length) {
+      launchEnv = { ...launchEnv };
+      for (const key of options.blockedEnvKeys) {
+        delete launchEnv[key];
+      }
     }
     const envWithSessionId = {
       ...launchEnv,
