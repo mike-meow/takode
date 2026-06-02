@@ -75,6 +75,7 @@ export function SlackThreadPanel({
               message={message}
               sessionId={thread.childSessionId}
               currentThreadKey="main"
+              showSlackThreadActions={false}
             />
           ))
         )}

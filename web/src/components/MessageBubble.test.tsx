@@ -1019,6 +1019,30 @@ describe("MessageBubble - assistant messages", () => {
     expect(screen.getByText("Thread follow-up")).toBeTruthy();
   });
 
+  it("keeps Slack thread creation available for root assistant messages by default", () => {
+    const msg = makeMessage({ id: "assistant-anchor", role: "assistant", content: "Root answer" });
+
+    render(<MessageBubble message={msg} sessionId="root-session" currentThreadKey="main" />);
+
+    expect(screen.getByRole("button", { name: "Start thread" })).toBeTruthy();
+  });
+
+  it("suppresses Slack thread creation for assistant messages embedded in a Slack thread panel", () => {
+    const msg = makeMessage({ id: "thread-assistant", role: "assistant", content: "Thread answer" });
+
+    render(
+      <MessageBubble
+        message={msg}
+        sessionId="hidden-thread-child"
+        currentThreadKey="main"
+        showSlackThreadActions={false}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Start thread" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Copy message" })).toBeTruthy();
+  });
+
   it("renders deprecated @to(user) tags as raw text", () => {
     const msg = makeMessage({
       role: "assistant",
