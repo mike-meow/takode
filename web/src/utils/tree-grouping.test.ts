@@ -74,6 +74,100 @@ describe("buildTreeViewGroups", () => {
     expect(result.find((group) => group.id === PENDING_TREE_GROUP_ID)).toBeUndefined();
   });
 
+  it("coalesces backend-local group ids that share a portable Session Space name", () => {
+    const groups: TreeGroup[] = [
+      { id: "default", name: "Default" },
+      { id: "home-test", name: "test" },
+      { id: "remote-test", name: "test" },
+    ];
+    const sessions = [
+      makeSession({
+        id: "local-session",
+        sessionNum: 1,
+        treeGroupId: "home-test",
+        memorySessionSpaceSlug: "test",
+      }),
+      makeSession({
+        id: "remote-session",
+        sessionNum: 2,
+        treeGroupId: "remote-test",
+        memorySessionSpaceSlug: "test",
+      }),
+    ];
+
+    const result = buildTreeViewGroups(sessions, groups, emptyAssignments);
+
+    expect(result.map((group) => [group.id, group.name])).toEqual([
+      ["default", "Default"],
+      ["home-test", "test"],
+    ]);
+    expect(
+      result
+        .find((group) => group.id === "home-test")
+        ?.nodes.map((node) => node.leader.id)
+        .sort(),
+    ).toEqual(["local-session", "remote-session"]);
+  });
+
+  it("coalesces remote snapshots into a local Session Space when only local groups are hydrated", () => {
+    const groups: TreeGroup[] = [
+      { id: "default", name: "Default" },
+      { id: "home-test", name: "test" },
+    ];
+    const sessions = [
+      makeSession({
+        id: "local-session",
+        sessionNum: 1,
+        treeGroupId: "home-test",
+        memorySessionSpaceSlug: "test",
+      }),
+      makeSession({
+        id: "remote-session",
+        sessionNum: 2,
+        treeGroupId: "remote-test",
+        memorySessionSpaceSlug: "test",
+      }),
+    ];
+
+    const result = buildTreeViewGroups(sessions, groups, emptyAssignments);
+
+    expect(result.map((group) => [group.id, group.name, group.inferred ?? false])).toEqual([
+      ["default", "Default", false],
+      ["home-test", "test", false],
+    ]);
+    expect(
+      result
+        .find((group) => group.id === "home-test")
+        ?.nodes.map((node) => node.leader.id)
+        .sort(),
+    ).toEqual(["local-session", "remote-session"]);
+  });
+
+  it("keeps direct remote backend grouping authoritative when only remote groups exist", () => {
+    const groups: TreeGroup[] = [
+      { id: "default", name: "Default" },
+      { id: "remote-test", name: "test" },
+    ];
+    const sessions = [
+      makeSession({
+        id: "remote-session",
+        sessionNum: 2,
+        treeGroupId: "remote-test",
+        memorySessionSpaceSlug: "test",
+      }),
+    ];
+
+    const result = buildTreeViewGroups(sessions, groups, emptyAssignments);
+
+    expect(result.map((group) => [group.id, group.name])).toEqual([
+      ["default", "Default"],
+      ["remote-test", "test"],
+    ]);
+    expect(result.find((group) => group.id === "remote-test")?.nodes.map((node) => node.leader.id)).toEqual([
+      "remote-session",
+    ]);
+  });
+
   it("uses memory space and node order to recover from stale default location metadata", () => {
     const groups: TreeGroup[] = [
       { id: "default", name: "Default" },

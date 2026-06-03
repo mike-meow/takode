@@ -67,17 +67,34 @@ function normalizeNonEmptyString(value: string | null | undefined): string | und
 
 type HydratedTreeGroup = TreeGroup & { inferred?: boolean };
 
+interface OrderedGroupsResult {
+  groups: HydratedTreeGroup[];
+  groupAliases: Map<string, string>;
+  groupIdBySessionSpace: Map<string, string>;
+}
+
 function buildOrderedGroups(
   treeGroups: TreeGroup[],
   sessions: SessionItem[],
   treeAssignments: Map<string, string>,
-): HydratedTreeGroup[] {
-  const orderedGroups: HydratedTreeGroup[] = treeGroups
-    .map((group) => ({
-      id: normalizeNonEmptyString(group.id) ?? "",
-      name: normalizeNonEmptyString(group.name) ?? "",
-    }))
-    .filter((group) => group.id && group.name);
+): OrderedGroupsResult {
+  const orderedGroups: HydratedTreeGroup[] = [];
+  const groupAliases = new Map<string, string>();
+  const groupIdBySessionSpace = new Map<string, string>();
+  for (const group of treeGroups) {
+    const id = normalizeNonEmptyString(group.id) ?? "";
+    const name = normalizeNonEmptyString(group.name) ?? "";
+    if (!id || !name) continue;
+    if (id !== DEFAULT_TREE_GROUP.id) {
+      const canonicalGroupId = groupIdBySessionSpace.get(name);
+      if (canonicalGroupId) {
+        groupAliases.set(id, canonicalGroupId);
+        continue;
+      }
+      groupIdBySessionSpace.set(name, id);
+    }
+    orderedGroups.push({ id, name });
+  }
   if (!orderedGroups.some((group) => group.id === DEFAULT_TREE_GROUP.id)) {
     orderedGroups.unshift({ ...DEFAULT_TREE_GROUP });
   }
@@ -89,30 +106,20 @@ function buildOrderedGroups(
     if (!groupId || groupId === DEFAULT_TREE_GROUP.id || knownGroupIds.has(groupId)) continue;
     const groupName = normalizeNonEmptyString(session.memorySessionSpaceSlug);
     if (!groupName) continue;
+    const canonicalGroupId = groupIdBySessionSpace.get(groupName);
+    if (canonicalGroupId) {
+      groupAliases.set(groupId, canonicalGroupId);
+      continue;
+    }
 
     // Session snapshots can arrive before the tree-group list during refresh,
     // reconnect, or cross-tab updates. Preserve the user's known space instead
     // of sending the session through the transient "Locating..." bucket.
     orderedGroups.push({ id: groupId, name: groupName, inferred: true });
     knownGroupIds.add(groupId);
+    groupIdBySessionSpace.set(groupName, groupId);
   }
-  return orderedGroups;
-}
-
-function buildSessionSpaceGroupLookup(groups: TreeGroup[]): Map<string, string> {
-  const matches = new Map<string, string | null>();
-  for (const group of groups) {
-    if (group.id === DEFAULT_TREE_GROUP.id) continue;
-    const slug = normalizeNonEmptyString(group.name);
-    if (!slug) continue;
-    matches.set(slug, matches.has(slug) ? null : group.id);
-  }
-
-  const lookup = new Map<string, string>();
-  for (const [slug, groupId] of matches) {
-    if (groupId) lookup.set(slug, groupId);
-  }
-  return lookup;
+  return { groups: orderedGroups, groupAliases, groupIdBySessionSpace };
 }
 
 function buildNodeOrderGroupIdsBySession(treeNodeOrder: Map<string, string[]> | undefined): Map<string, string[]> {
@@ -146,15 +153,22 @@ export function buildTreeViewGroups(
   reviewerSessions?: SessionItem[],
 ): TreeViewGroupData[] {
   const assignments = treeAssignments ?? new Map<string, string>();
-  const orderedGroups = buildOrderedGroups(treeGroups, sessions, assignments);
+  const {
+    groups: orderedGroups,
+    groupAliases,
+    groupIdBySessionSpace,
+  } = buildOrderedGroups(treeGroups, sessions, assignments);
   const validGroupIds = new Set(orderedGroups.map((group) => group.id));
   validGroupIds.add(DEFAULT_TREE_GROUP.id);
   validGroupIds.add(PENDING_TREE_GROUP_ID);
-  const groupIdBySessionSpace = buildSessionSpaceGroupLookup(orderedGroups);
   const nodeOrderGroupIdsBySession = buildNodeOrderGroupIdsBySession(treeNodeOrder);
   const groupIdForSession = (session: SessionItem): string => {
-    const assigned = normalizeNonEmptyString(assignments.get(session.id));
-    const metadataGroupId = normalizeNonEmptyString(session.treeGroupId);
+    const assignedRaw = normalizeNonEmptyString(assignments.get(session.id));
+    const metadataGroupIdRaw = normalizeNonEmptyString(session.treeGroupId);
+    const assigned = assignedRaw ? (groupAliases.get(assignedRaw) ?? assignedRaw) : undefined;
+    const metadataGroupId = metadataGroupIdRaw
+      ? (groupAliases.get(metadataGroupIdRaw) ?? metadataGroupIdRaw)
+      : undefined;
     const sessionSpaceSlug = normalizeNonEmptyString(session.memorySessionSpaceSlug);
     const matchingSessionSpaceGroupId = sessionSpaceSlug ? groupIdBySessionSpace.get(sessionSpaceSlug) : undefined;
     const nodeOrderGroupIds = nodeOrderGroupIdsBySession.get(session.id) ?? [];
@@ -164,6 +178,13 @@ export function buildTreeViewGroups(
         metadataGroupId === DEFAULT_TREE_GROUP.id ||
         (!assigned && !metadataGroupId)) &&
       nodeOrderGroupIds.includes(matchingSessionSpaceGroupId)
+    ) {
+      return matchingSessionSpaceGroupId;
+    }
+    if (
+      matchingSessionSpaceGroupId &&
+      ((assigned && !validGroupIds.has(assigned)) ||
+        (metadataGroupId && metadataGroupId !== DEFAULT_TREE_GROUP.id && !validGroupIds.has(metadataGroupId)))
     ) {
       return matchingSessionSpaceGroupId;
     }

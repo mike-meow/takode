@@ -359,6 +359,57 @@ describe("buildSidebarVisibleSessions", () => {
     expect(result.orderedVisibleSessionIds).toEqual(["oai-leader"]);
   });
 
+  it("coalesces local and remote backend-local groups with the same portable Session Space name", () => {
+    const sessions = new Map<string, SessionState>();
+    const sdkSessions: SdkSessionInfo[] = [
+      makeSdkSession("local-test-session", {
+        createdAt: 1,
+        sessionNum: 101,
+        treeGroupId: "home-local-test-group",
+        memorySessionSpaceSlug: "test",
+      }),
+      makeSdkSession("remote-test-session", {
+        createdAt: 2,
+        sessionNum: 102,
+        treeGroupId: "remote-local-test-group",
+        memorySessionSpaceSlug: "test",
+      }),
+    ];
+
+    const result = buildSidebarVisibleSessions({
+      sessions,
+      sdkSessions,
+      cliConnected: new Map(),
+      cliDisconnectReason: new Map(),
+      sessionStatus: new Map(),
+      pendingPermissions: new Map(),
+      askPermission: new Map(),
+      diffFileStats: new Map(),
+      treeGroups: [
+        { id: "default", name: "Default" },
+        { id: "home-local-test-group", name: "test" },
+      ],
+      treeAssignments: new Map(),
+      treeNodeOrder: new Map(),
+      collapsedTreeGroups: new Set(),
+      expandedHerdNodes: new Set(),
+      sessionAttention: new Map(),
+      sessionSortMode: "created",
+      countUserPermissions: () => 0,
+    });
+
+    expect(result.treeViewGroups.map((group) => [group.id, group.name, group.inferred ?? false])).toEqual([
+      ["default", "Default", false],
+      ["home-local-test-group", "test", false],
+    ]);
+    expect(
+      result.treeViewGroups
+        .find((group) => group.id === "home-local-test-group")
+        ?.nodes.map((node) => node.leader.id)
+        .sort(),
+    ).toEqual(["local-test-session", "remote-test-session"]);
+  });
+
   it("preserves completed quest review metadata from idle session snapshots", () => {
     const sessions = new Map<string, SessionState>();
     const sdkSessions: SdkSessionInfo[] = [
