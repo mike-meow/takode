@@ -182,6 +182,7 @@ describe("NewSessionModal", () => {
         open={true}
         onClose={onClose}
         treeGroupId="team-alpha"
+        memorySessionSpaceSlug="Team Alpha"
         newSessionDefaultsKey="tree-group:team-alpha"
       />,
     );
@@ -206,7 +207,10 @@ describe("NewSessionModal", () => {
     expect(mockQueuePendingSession).toHaveBeenCalledWith(
       expect.objectContaining({
         backend: "claude",
-        createOpts: expect.objectContaining({ treeGroupId: "team-alpha" }),
+        createOpts: expect.objectContaining({
+          treeGroupId: "team-alpha",
+          memorySessionSpaceSlug: "Team Alpha",
+        }),
         cwd: "/tmp/tree-saved-folder",
         treeGroupId: "team-alpha",
         recentDirsKey: "tree-group:team-alpha",

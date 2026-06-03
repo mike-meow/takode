@@ -93,6 +93,7 @@ export function NewSessionModal({
   groupKey,
   groupCwd,
   treeGroupId,
+  memorySessionSpaceSlug,
   newSessionDefaultsKey,
 }: {
   open: boolean;
@@ -103,6 +104,8 @@ export function NewSessionModal({
   groupCwd?: string;
   /** Tree-view group to assign the new session to after creation */
   treeGroupId?: string;
+  /** Portable Session Space name for cross-backend creation. */
+  memorySessionSpaceSlug?: string;
   /** Explicit storage key for per-group new-session defaults */
   newSessionDefaultsKey?: string;
 }) {
@@ -507,6 +510,7 @@ export function NewSessionModal({
       askPermission: effectiveAskPermission,
       role: sessionRole === "leader" ? ("orchestrator" as const) : undefined,
       treeGroupId: treeGroupId || undefined,
+      memorySessionSpaceSlug: memorySessionSpaceSlug || undefined,
     };
 
     const defaultsGroupKey = (defaultsKey || gitRepoInfo?.repoRoot || cwdSnapshot || "").trim();
@@ -603,6 +607,7 @@ export function NewSessionModal({
       codexInternetAccess: backend === "codex" ? codexInternetAccess : undefined,
       codexReasoningEffort: backend === "codex" ? codexReasoningEffort || undefined : undefined,
       treeGroupId: treeGroupId || undefined,
+      memorySessionSpaceSlug: memorySessionSpaceSlug || undefined,
     };
 
     onClose();

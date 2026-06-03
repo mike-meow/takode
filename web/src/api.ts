@@ -832,6 +832,8 @@ export interface CreateSessionStreamResult {
   sessionId: string;
   state: string;
   cwd: string;
+  treeGroupId?: string | null;
+  memorySessionSpaceSlug?: string | null;
 }
 
 /**

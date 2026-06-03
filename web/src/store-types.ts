@@ -166,6 +166,7 @@ export interface AppState {
     groupKey?: string;
     cwd?: string;
     treeGroupId?: string;
+    memorySessionSpaceSlug?: string;
     newSessionDefaultsKey?: string;
   } | null;
   questOverlayId: string | null;
@@ -208,6 +209,7 @@ export interface AppState {
     groupKey?: string;
     cwd?: string;
     treeGroupId?: string;
+    memorySessionSpaceSlug?: string;
     newSessionDefaultsKey?: string;
   }) => void;
   closeNewSessionModal: () => void;

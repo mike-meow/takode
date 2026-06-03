@@ -669,6 +669,52 @@ describe("POST /api/sessions/create", () => {
     );
   });
 
+  it("creates a backend-local group when a portable Session Space arrives with an unknown source group id", async () => {
+    const res = await app.request("/api/sessions/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        cwd: "/test",
+        treeGroupId: "home-local-test-group",
+        memorySessionSpaceSlug: "test",
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const state = await treeGroupStore.getState();
+    const remoteGroup = state.groups.find((group) => group.name === "test");
+    expect(remoteGroup).toBeDefined();
+    expect(remoteGroup?.id).not.toBe("home-local-test-group");
+    expect(remoteGroup?.id).not.toBe("default");
+    expect(launcher.launch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        memorySessionSpaceSlug: "test",
+        env: expect.objectContaining({
+          COMPANION_MEMORY_SPACE_SLUG: "test",
+        }),
+      }),
+    );
+    expect(bridge.applyInitialSessionState).toHaveBeenCalledWith(
+      "session-1",
+      expect.objectContaining({
+        treeGroupId: remoteGroup?.id,
+        memorySessionSpaceSlug: "test",
+      }),
+    );
+    expect(await treeGroupStore.getGroupForSession("session-1")).toBe(remoteGroup?.id);
+  });
+
+  it("still rejects unknown tree group ids when no portable Session Space is supplied", async () => {
+    const res = await app.request("/api/sessions/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cwd: "/test", treeGroupId: "missing-group" }),
+    });
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({ error: "Tree group not found: missing-group" });
+  });
+
   it("uses the creator tree group as the default memory session-space for spawned sessions", async () => {
     const group = await treeGroupStore.createGroup("MSI");
     ensureBridgeSession(bridge, "leader-msi", { state: { treeGroupId: group.id } });

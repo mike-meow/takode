@@ -1,4 +1,4 @@
-import { vi, describe, it, expect, beforeEach } from "vitest";
+import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 
 // Mock env-manager and git-utils modules before any imports
 vi.mock("./env-manager.js", () => ({
@@ -171,7 +171,7 @@ vi.mock("./usage-limits.js", () => ({
 
 import { Hono } from "hono";
 import { execSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { access, mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
@@ -185,6 +185,7 @@ import * as gitUtils from "./git-utils.js";
 import * as questStore from "./quest-store.js";
 import * as sessionNames from "./session-names.js";
 import * as settingsManager from "./settings-manager.js";
+import * as treeGroupStore from "./tree-group-store.js";
 import * as transcriptionEnhancer from "./transcription-enhancer.js";
 import { containerManager } from "./container-manager.js";
 
@@ -472,6 +473,7 @@ let sessionStore: ReturnType<typeof createMockStore>;
 let tracker: ReturnType<typeof createMockTracker>;
 let recorder: ReturnType<typeof createMockRecorder>;
 let timerManager: ReturnType<typeof createMockTimerManager>;
+let treeGroupTempDir: string;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -491,6 +493,8 @@ beforeEach(() => {
   tracker = createMockTracker();
   recorder = createMockRecorder();
   timerManager = createMockTimerManager();
+  treeGroupTempDir = mkdtempSync(join(tmpdir(), "routes-create-stream-tree-groups-"));
+  treeGroupStore._resetForTest(join(treeGroupTempDir, "tree-groups.json"));
   app = new Hono();
   const terminalManager = { getInfo: () => null, spawn: () => "", kill: () => {} } as any;
   app.route(
@@ -511,6 +515,11 @@ beforeEach(() => {
   // Default no-op mocks for container workspace isolation (called during container session creation)
   vi.spyOn(containerManager, "copyWorkspaceToContainer").mockResolvedValue(undefined);
   vi.spyOn(containerManager, "reseedGitAuth").mockImplementation(() => {});
+});
+
+afterEach(async () => {
+  await treeGroupStore._flushForTest();
+  rmSync(treeGroupTempDir, { recursive: true, force: true });
 });
 
 // ─── Sessions ────────────────────────────────────────────────────────────────
@@ -564,6 +573,34 @@ describe("POST /api/sessions/create-stream", () => {
     const doneData = JSON.parse(doneEvent!.data);
     expect(doneData.sessionId).toBe("session-1");
     expect(doneData.cwd).toBe("/test");
+  });
+
+  it("returns the backend-local group resolved from portable Session Space metadata", async () => {
+    const res = await app.request("/api/sessions/create-stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        cwd: "/test",
+        treeGroupId: "home-local-test-group",
+        memorySessionSpaceSlug: "test",
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const events = await parseSSE(res);
+    const doneEvent = events.find((e) => e.event === "done");
+    expect(doneEvent).toBeDefined();
+    const doneData = JSON.parse(doneEvent!.data);
+    const state = await treeGroupStore.getState();
+    const remoteGroup = state.groups.find((group) => group.name === "test");
+
+    expect(remoteGroup).toBeDefined();
+    expect(doneData).toMatchObject({
+      sessionId: "session-1",
+      treeGroupId: remoteGroup?.id,
+      memorySessionSpaceSlug: "test",
+    });
+    expect(doneData.treeGroupId).not.toBe("home-local-test-group");
   });
 
   it("injects COMPANION_PORT when resuming via create-stream", async () => {

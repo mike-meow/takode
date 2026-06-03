@@ -6,6 +6,7 @@ import {
   getState,
   setState,
   createGroup,
+  ensureGroupForMemorySessionSpaceSlug,
   renameGroup,
   deleteGroup,
   assignSession,
@@ -48,6 +49,19 @@ describe("tree-group-store", () => {
     const state = await getState();
     expect(state.groups).toHaveLength(2);
     expect(state.groups[1].name).toBe("My Group");
+  });
+
+  it("resolves portable memory session-space slugs to backend-local groups", async () => {
+    const created = await ensureGroupForMemorySessionSpaceSlug("  test  ");
+    expect(created).toEqual(expect.objectContaining({ name: "test" }));
+    expect(created?.id).toBeTruthy();
+    expect(created?.id).not.toBe("default");
+
+    const reused = await ensureGroupForMemorySessionSpaceSlug("test");
+    expect(reused).toEqual(created);
+
+    const state = await getState();
+    expect(state.groups.filter((group) => group.name === "test")).toHaveLength(1);
   });
 
   it("trims whitespace on group name and falls back to 'Untitled'", async () => {

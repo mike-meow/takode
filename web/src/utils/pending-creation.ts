@@ -127,8 +127,10 @@ async function _runCreation(pendingId: string, pending: PendingSession, signal: 
     // Add cwd to recent dirs if applicable
     if (pending.cwd) addRecentDir(pending.cwd, pending.recentDirsKey ?? undefined);
 
-    // Assign to tree group if one was specified (non-default)
-    if (pending.treeGroupId && pending.treeGroupId !== "default") {
+    // Older servers did not return resolved group metadata from create-stream,
+    // so keep the legacy follow-up assignment only when the result is silent.
+    const resolvedTreeGroupId = result.treeGroupId?.trim();
+    if (!resolvedTreeGroupId && pending.treeGroupId && pending.treeGroupId !== "default") {
       api
         .assignSessionToTreeGroup(sessionId, pending.treeGroupId)
         .catch((err) => console.error("Failed to assign session to tree group:", sessionId, pending.treeGroupId, err));

@@ -449,10 +449,12 @@ export function Sidebar() {
   function handleCreateSessionInTreeGroup(treeGroupId: string) {
     const normalizedTreeGroupId = treeGroupId.trim();
     if (!normalizedTreeGroupId) return;
-    if (normalizedTreeGroupId !== "default" && !treeGroups.some((group) => group.id === normalizedTreeGroupId)) return;
+    const treeGroup = treeGroups.find((group) => group.id === normalizedTreeGroupId);
+    if (normalizedTreeGroupId !== "default" && !treeGroup) return;
 
     useStore.getState().openNewSessionModal({
       treeGroupId: normalizedTreeGroupId,
+      memorySessionSpaceSlug: normalizedTreeGroupId !== "default" ? treeGroup?.name : undefined,
       newSessionDefaultsKey: getTreeGroupNewSessionDefaultsKey(normalizedTreeGroupId),
     });
 

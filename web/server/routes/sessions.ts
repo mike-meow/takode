@@ -187,8 +187,19 @@ export function createSessionsRoutes(ctx: RouteContext) {
     return normalizeMemorySessionSpaceSlug(group.name);
   };
 
+  const explicitMemorySessionSpaceSlugForCreate = (body: any): string | undefined => {
+    if (body.memorySessionSpaceSlug !== undefined && typeof body.memorySessionSpaceSlug !== "string") {
+      throwPreparationError("memorySessionSpaceSlug must be a string", 400, "resolving_env");
+    }
+    if (typeof body.memorySessionSpaceSlug !== "string") return undefined;
+    return normalizeMemorySessionSpaceSlug(body.memorySessionSpaceSlug);
+  };
+
   const resolveInitialTreeGroupIdForCreate = async (body: any): Promise<string | undefined> => {
-    const requestedGroupId = await validateRequestedTreeGroupId(body.treeGroupId);
+    const requestedGroupId = await validateRequestedTreeGroupId(
+      body.treeGroupId,
+      explicitMemorySessionSpaceSlugForCreate(body),
+    );
     if (requestedGroupId) return requestedGroupId;
     const creatorId = body.createdBy ? resolveId(String(body.createdBy)) : undefined;
     if (!creatorId) return undefined;
@@ -199,12 +210,8 @@ export function createSessionsRoutes(ctx: RouteContext) {
     body: any,
     treeGroupId: string | undefined,
   ): Promise<string> => {
-    if (body.memorySessionSpaceSlug !== undefined && typeof body.memorySessionSpaceSlug !== "string") {
-      throwPreparationError("memorySessionSpaceSlug must be a string", 400, "resolving_env");
-    }
-    if (typeof body.memorySessionSpaceSlug === "string") {
-      return normalizeMemorySessionSpaceSlug(body.memorySessionSpaceSlug);
-    }
+    const explicitSlug = explicitMemorySessionSpaceSlugForCreate(body);
+    if (explicitSlug) return explicitSlug;
     const treeState = await treeGroupStore.getState();
     return (
       memorySessionSpaceSlugForTreeGroup(treeState, treeGroupId) ??
@@ -214,14 +221,24 @@ export function createSessionsRoutes(ctx: RouteContext) {
 
   const normalizeDurableTreeGroupId = (value: unknown): string => normalizeTreeGroupId(value) || "default";
 
-  const validateRequestedTreeGroupId = async (value: unknown): Promise<string | undefined> => {
+  const validateRequestedTreeGroupId = async (
+    value: unknown,
+    portableMemorySessionSpaceSlug?: string,
+  ): Promise<string | undefined> => {
     const requestedGroupId = normalizeTreeGroupId(value);
     if (!requestedGroupId || requestedGroupId === "default") return requestedGroupId;
     const treeState = await treeGroupStore.getState();
-    if (!treeState.groups.some((group) => group.id === requestedGroupId)) {
-      throwPreparationError(`Tree group not found: ${requestedGroupId}`, 400, "resolving_env");
+    if (treeState.groups.some((group) => group.id === requestedGroupId)) {
+      return requestedGroupId;
     }
-    return requestedGroupId;
+    if (
+      portableMemorySessionSpaceSlug &&
+      portableMemorySessionSpaceSlug !== normalizeMemorySessionSpaceSlug(launcher.getMemorySessionSpaceSlug())
+    ) {
+      const group = await treeGroupStore.ensureGroupForMemorySessionSpaceSlug(portableMemorySessionSpaceSlug);
+      if (group) return group.id;
+    }
+    throwPreparationError(`Tree group not found: ${requestedGroupId}`, 400, "resolving_env");
   };
 
   const updateSessionTreeGroupMetadata = async (
@@ -952,6 +969,8 @@ export function createSessionsRoutes(ctx: RouteContext) {
             sessionId: session.sessionId,
             state: session.state,
             cwd: session.cwd,
+            treeGroupId: normalizeDurableTreeGroupId(sessionConfig.treeGroupId),
+            memorySessionSpaceSlug: sessionConfig.memorySessionSpaceSlug,
           }),
         });
       } catch (e: unknown) {

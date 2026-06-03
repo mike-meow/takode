@@ -176,6 +176,18 @@ function findSingleNonDefaultGroupForMemorySlug(
   return matches.length === 1 ? matches[0] : undefined;
 }
 
+function findFirstNonDefaultGroupForMemorySlug(
+  groups: TreeGroup[],
+  memorySessionSpaceSlug: string | null | undefined,
+): TreeGroup | undefined {
+  const rawSlug = memorySessionSpaceSlug?.trim();
+  if (!rawSlug) return undefined;
+  const normalizedSlug = normalizeMemorySessionSpaceSlug(rawSlug);
+  return groups.find(
+    (group) => group.id !== "default" && normalizeMemorySessionSpaceSlug(group.name) === normalizedSlug,
+  );
+}
+
 // ─── Load / Persist ──────────────────────────────────────────────────────────
 
 function sanitizeServerIdForPath(serverId: string): string {
@@ -263,6 +275,22 @@ export async function setState(next: TreeGroupState): Promise<void> {
 export async function createGroup(name: string): Promise<TreeGroup> {
   await ensureLoaded();
   const group: TreeGroup = { id: randomUUID(), name: name.trim() || "Untitled" };
+  state.groups.push(group);
+  persist();
+  return { ...group };
+}
+
+/**
+ * Resolve a portable memory/session-space slug to a local authoritative tree
+ * group. Used when another Takode server sends a group id that is local to its
+ * own tree-group store but also sends the portable Session Space name.
+ */
+export async function ensureGroupForMemorySessionSpaceSlug(slug: string): Promise<TreeGroup | undefined> {
+  await ensureLoaded();
+  const normalizedSlug = normalizeMemorySessionSpaceSlug(slug);
+  const existing = findFirstNonDefaultGroupForMemorySlug(state.groups, normalizedSlug);
+  if (existing) return { ...existing };
+  const group: TreeGroup = { id: randomUUID(), name: normalizedSlug };
   state.groups.push(group);
   persist();
   return { ...group };
