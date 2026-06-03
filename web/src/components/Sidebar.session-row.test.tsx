@@ -366,6 +366,7 @@ describe("Sidebar session rows", { timeout: 10000 }, () => {
 
     expect(mockState.openNewSessionModal).toHaveBeenCalledWith({
       treeGroupId: "team-alpha",
+      memorySessionSpaceSlug: "Takode",
       newSessionDefaultsKey: "tree-group:team-alpha",
     });
   });
