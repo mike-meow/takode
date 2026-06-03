@@ -88,9 +88,10 @@ export const SETTINGS_SECTIONS: SettingsSectionMeta[] = [
   {
     id: "sessions",
     title: "Sessions",
-    aliases: ["keep alive", "worktree", "heavy repo", "sleep", "caffeinate", "import", "export"],
+    aliases: ["keep alive", "worktree", "heavy repo", "sleep", "caffeinate", "import", "export", "worker"],
     items: [
       { id: "max-keep-alive", text: "Max Keep-Alive live CLI processes idle sessions" },
+      { id: "worker-concurrency", text: "Worker Concurrency active worker board demand capacity slots" },
       { id: "heavy-repo", text: "Heavy Repo Mode cached session rows git metadata large repos slow filesystems" },
       { id: "sleep-inhibitor", text: "Prevent Sleep During Generation caffeinate awake macOS" },
       { id: "session-data", text: "Session Data Export All Sessions Import Sessions portable archive paths" },

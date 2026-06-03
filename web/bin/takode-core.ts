@@ -7,6 +7,7 @@ import {
   parseSessionAuthFileData,
   type SessionAuthFileData,
 } from "../shared/session-auth.ts";
+import { normalizeTakodeWorkerConcurrency } from "../shared/takode-worker-capacity.ts";
 
 const DEFAULT_PORT = 3456;
 export const DEFAULT_CODEX_MODEL = "gpt-5.4";
@@ -552,6 +553,15 @@ export type TakodeSessionInfo = {
 
 export async function fetchSessionInfo(base: string, sessionRef: string): Promise<TakodeSessionInfo> {
   return apiGet(base, `/sessions/${encodeURIComponent(sessionRef)}/info`) as Promise<TakodeSessionInfo>;
+}
+
+export async function fetchTakodeWorkerConcurrency(base: string): Promise<number> {
+  try {
+    const settings = (await apiGet(base, "/settings")) as { takodeWorkerConcurrency?: unknown };
+    return normalizeTakodeWorkerConcurrency(settings.takodeWorkerConcurrency);
+  } catch {
+    return normalizeTakodeWorkerConcurrency(undefined);
+  }
 }
 
 export type SessionInfoJsonOptions = {

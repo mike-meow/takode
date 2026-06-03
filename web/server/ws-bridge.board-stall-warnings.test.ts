@@ -826,6 +826,57 @@ describe("board stall warnings", () => {
     dispatcher.destroy();
   });
 
+  it("nudges the leader for an active row assigned to an archived worker instead of routing to that worker", async () => {
+    const { leaderId, dispatcher, launcherSessions } = setupBoardStallHarness();
+    const injectSpy = vi.spyOn(bridge, "injectUserMessage");
+    launcherSessions.set("archived-worker", {
+      sessionId: "archived-worker",
+      sessionNum: 367,
+      herdedBy: leaderId,
+      archived: true,
+      backendType: "codex",
+      cwd: "/repo",
+      lastActivityAt: Date.now() - 10 * 60_000,
+    });
+
+    bridge.removeBoardRows(leaderId, ["q-1"]);
+    bridge.upsertBoardRow(leaderId, {
+      questId: "q-122",
+      title: "Archived worker active row",
+      worker: "archived-worker",
+      workerNum: 367,
+      status: "IMPLEMENTING",
+      updatedAt: Date.now() - 5 * 60_000,
+    });
+
+    bridge.startStuckSessionWatchdog();
+    vi.advanceTimersByTime(181_000);
+    await Promise.resolve();
+
+    const leaderCalls = injectSpy.mock.calls.filter(
+      ([sessionId, content, source]) =>
+        sessionId === leaderId &&
+        source?.sessionId === "herd-events" &&
+        String(content).includes("Takode board stall nudge: q-122"),
+    );
+    expect(leaderCalls).toHaveLength(1);
+    expect(String(leaderCalls[0]?.[1])).toContain("takode spawn --replace-worktree-worker #367");
+    expect(injectSpy.mock.calls.some(([sessionId]) => sessionId === "archived-worker")).toBe(false);
+
+    vi.advanceTimersByTime(60_000);
+    await Promise.resolve();
+    const repeated = injectSpy.mock.calls.filter(
+      ([sessionId, content, source]) =>
+        sessionId === leaderId &&
+        source?.sessionId === "herd-events" &&
+        String(content).includes("Takode board stall nudge: q-122"),
+    );
+    expect(repeated).toHaveLength(1);
+
+    injectSpy.mockRestore();
+    dispatcher.destroy();
+  });
+
   it("suppresses stalled-row warnings when the worker has an active timer", async () => {
     const { leaderId, dispatcher } = setupBoardStallHarness({ workerHasTimer: true });
     const injectSpy = vi.spyOn(bridge, "injectUserMessage");
@@ -1323,7 +1374,8 @@ describe("board stall warnings", () => {
     const herdCalls = injectSpy.mock.calls.filter(
       ([sessionId, _content, source]) => sessionId === leaderId && source?.sessionId === "herd-events",
     );
-    expect(herdCalls).toHaveLength(0);
+    expect(herdCalls).toHaveLength(1);
+    expect(String(herdCalls[0]?.[1])).toContain("q-2 can be dispatched now");
     expect(leaderSession.board.get("q-2")?.waitFor).toEqual(["free-worker"]);
     expect(leaderSession.attentionReason).toBe("action");
     expect(leaderSession.notifications.at(-1)?.summary).toContain("active worker-owned board demand is 0/5");
@@ -1334,7 +1386,7 @@ describe("board stall warnings", () => {
     const repeated = injectSpy.mock.calls.filter(
       ([sessionId, _content, source]) => sessionId === leaderId && source?.sessionId === "herd-events",
     );
-    expect(repeated).toHaveLength(0);
+    expect(repeated).toHaveLength(1);
 
     injectSpy.mockRestore();
     dispatcher.destroy();
@@ -1420,7 +1472,8 @@ describe("board stall warnings", () => {
       ([sessionId, content, source]) =>
         sessionId === leaderId && source?.sessionId === "herd-events" && String(content).includes("q-3"),
     );
-    expect(herdCalls).toHaveLength(0);
+    expect(herdCalls).toHaveLength(1);
+    expect(String(herdCalls[0]?.[1])).toContain("Takode board dispatch nudge: q-3");
 
     injectSpy.mockRestore();
     dispatcher.destroy();
@@ -1511,7 +1564,8 @@ describe("board stall warnings", () => {
       ([sessionId, content, source]) =>
         sessionId === leaderId && source?.sessionId === "herd-events" && String(content).includes("q-5"),
     );
-    expect(herdCalls).toHaveLength(0);
+    expect(herdCalls).toHaveLength(1);
+    expect(String(herdCalls[0]?.[1])).toContain("Next: Archive or reuse");
 
     injectSpy.mockRestore();
     dispatcher.destroy();

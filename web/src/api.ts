@@ -545,6 +545,7 @@ export interface AppSettings {
   claudeBinary: string;
   codexBinary: string;
   maxKeepAlive: number;
+  takodeWorkerConcurrency: number;
   heavyRepoModeEnabled: boolean;
   autoApprovalEnabled: boolean;
   autoApprovalModel: string;
@@ -1319,6 +1320,7 @@ export const api = {
     claudeBinary?: string;
     codexBinary?: string;
     maxKeepAlive?: number;
+    takodeWorkerConcurrency?: number;
     heavyRepoModeEnabled?: boolean;
     autoApprovalEnabled?: boolean;
     autoApprovalModel?: string;

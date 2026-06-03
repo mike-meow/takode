@@ -8,6 +8,8 @@ import {
   getQuestJourneyPhaseDisplayRoot,
   getQuestJourneyPhaseLeaderBriefDisplayPath,
 } from "./quest-journey-phases.js";
+import { getSettings } from "./settings-manager.js";
+import { normalizeTakodeWorkerConcurrency } from "../shared/takode-worker-capacity.js";
 
 export function getClaudeSdkDebugLogPath(port: number, sessionId: string): string {
   return join(homedir(), ".companion", "logs", `claude-sdk-${port}-${sessionId}.log`);
@@ -226,6 +228,7 @@ For quest work, final Memory must include exactly one memory statement after cat
 }
 
 function renderOrchestratorGuardrails(copy: OrchestratorGuardrailCopy): string {
+  const workerConcurrency = normalizeTakodeWorkerConcurrency(getSettings().takodeWorkerConcurrency);
   return `# Takode -- Cross-Session Orchestration
 
 You are an **orchestrator ${copy.orchestratorRole}**. You coordinate multiple worker sessions, monitor their progress, and decide when to intervene, send follow-up instructions, or notify the human.
@@ -307,7 +310,7 @@ Read \`quest-journey.md\` from the \`takode-orchestration\` skill for full phase
 ## Worker Selection
 
 Before dispatching any quest, invoke \`/leader-dispatch\`. It is the source of truth for reuse-vs-spawn decisions, initial Journey proposal-and-approval, and alignment-only dispatch. Fresh worker is the default; reuse requires a real context advantage. Queue work on the board yourself with \`--wait-for\` when you intentionally want a busy worker's context later.
-Use the worker-slot summary from \`takode list\` / \`takode spawn\` directly. The 5-slot limit applies to workers only; reviewers do not use worker slots, and archiving reviewers does not free worker-slot capacity.
+Use the worker-slot summary from \`takode list\` / \`takode spawn\` directly. This server's configured worker concurrency is ${workerConcurrency}. The limit applies to active worker-owned board demand only; reviewers do not use worker slots, and archiving reviewers does not free worker-slot capacity.
 
 ## Review Phases
 
@@ -349,7 +352,7 @@ Do not rely on deprecated leader reply suffixes like \`@to(user)\` or \`@to(self
 - **If you asked the user a question, wait only on the affected scope.** Do not advance the thread, quest, or board row covered by that pending decision until the user responds. That user wait must have a \`takode notify needs-input\` notification; \`Thread Waiting\` is only for non-user waits such as workers, reviewers, timers, leases, queued dependencies, or herd events. Process herd events and continue unrelated quests normally. Treat the wait as global only when your visible question explicitly says it concerns global orchestration, worker-slot scheduling, shared resource safety, or another cross-quest dependency.
 - **Unresolved ambiguity blocks only the affected quest by default.** If a worker/reviewer question exposes ambiguity you cannot resolve from existing context, ask the user in a marked leader response, then call \`takode notify needs-input\`, optionally with short \`--suggest\` choices for obvious answers, and stop advancing that quest until the ambiguity is resolved. Continue unrelated orchestration unless the ambiguity explicitly creates a cross-quest dependency.
 - **Fresh human feedback outranks stale completions.** If new human feedback lands while an older review or port step is still in flight, reset the quest to the earliest valid board phase for a fresh rework cycle and ignore/stop stale old-scope completions instead of letting them keep advancing the quest.
-- **Do not treat reclaimable completed workers as real capacity blockers.** When a quest is \`QUEUED\`, compare the active board to the herd. If it has no unresolved \`--wait-for\` blocker and the only thing keeping worker slots at \`5/5\` is completed or off-board work sitting in review, replace a same-repo/base-branch completed worktree worker or archive one completed worker and dispatch immediately. Alternatively, if the work would significantly benefit from the context of an existing busy worker, keep it queued only with an explicit \`--wait-for #N\` or \`--wait-for q-N\` dependency.
+- **Do not treat reclaimable completed workers as real capacity blockers.** When a quest is \`QUEUED\`, compare the active board to the herd. If it has no unresolved \`--wait-for\` blocker and active worker-owned board demand is below the configured concurrency, replace a same-repo/base-branch completed worktree worker or archive one completed worker and dispatch immediately. Alternatively, if the work would significantly benefit from the context of an existing busy worker, keep it queued only with an explicit \`--wait-for #N\` or \`--wait-for q-N\` dependency.
 - **Follow the board-approved Quest Journey.** Run the phases planned on the board. The built-in tracked-code Journey is recommended, not mandatory; if the user approved a different phase plan, that board plan is authoritative. If scope or risk changes, revise the board Journey instead of silently skipping phases.
 - **After updating the board, do not restate current board rows in chat.** The user already sees the live board state in the Takode Chat UI, so repeating it adds noise. Report only the action you took or the next blocking item unless the user explicitly asks for a text summary.
 - **Use quest threads for quest-scoped context.** Main is the staging area for unthreaded/global work. Quest-backed threads carry quest-specific activity, and All Threads/global inspection preserves the append-only audit stream. At quest create/refine/dispatch moments, remind yourself to attach clearly quest-specific prior Main discussion with \`takode thread attach\`.

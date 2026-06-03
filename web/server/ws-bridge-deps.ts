@@ -1046,6 +1046,34 @@ export function getBoardWatchdogDeps(host: any) {
       notifyUserBySessionIdController(host.sessions, sessionId, category, summary, notificationDeps),
     emitTakodeEvent: (sessionId: string, type: string, data: Record<string, unknown>) =>
       host.emitTakodeEvent(sessionId, type as TakodeEventType, data as any),
+    injectLeaderDispatchNudge: (
+      sessionId: string,
+      kick: { questId: string; title?: string; summary: string; action?: string },
+    ) => {
+      const title = kick.title ? ` ${kick.title}` : "";
+      const action = kick.action ? `\nNext: ${kick.action}` : "";
+      return host.injectUserMessage(
+        sessionId,
+        `Takode board dispatch nudge: ${kick.questId}${title}\n${kick.summary}${action}`,
+        { sessionId: "herd-events", sessionLabel: "Herd Events" },
+        undefined,
+        { threadKey: kick.questId, questId: kick.questId },
+      );
+    },
+    injectLeaderStallNudge: (
+      sessionId: string,
+      kick: { questId: string; title?: string; stage?: string; reason: string; action: string },
+    ) => {
+      const title = kick.title ? ` ${kick.title}` : "";
+      const stage = kick.stage ? `\nStage: ${kick.stage}` : "";
+      return host.injectUserMessage(
+        sessionId,
+        `Takode board stall nudge: ${kick.questId}${title}${stage}\n${kick.questId} is stalled: ${kick.reason}\nNext: ${kick.action}`,
+        { sessionId: "herd-events", sessionLabel: "Herd Events" },
+        undefined,
+        { threadKey: kick.questId, questId: kick.questId },
+      );
+    },
     markNotificationDone: (sessionId: string, notifId: string, done: boolean) =>
       markNotificationDoneBySessionIdController(host.sessions, sessionId, notifId, done, notificationDeps),
     isSessionIdle: (sessionId: string) => isSessionIdleRuntime(host.sessions.get(sessionId)),

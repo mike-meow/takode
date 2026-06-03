@@ -39,6 +39,7 @@ import {
   LEADER_PROFILE_PORTRAITS,
   normalizeLeaderProfilePoolSettings,
 } from "../../shared/leader-profile-portraits.js";
+import { normalizeTakodeWorkerConcurrency } from "../../shared/takode-worker-capacity.js";
 
 export function createSettingsRoutes(ctx: RouteContext) {
   const api = new Hono();
@@ -738,6 +739,7 @@ export function createSettingsRoutes(ctx: RouteContext) {
       claudeBinary: settings.claudeBinary,
       codexBinary: settings.codexBinary,
       maxKeepAlive: settings.maxKeepAlive,
+      takodeWorkerConcurrency: normalizeTakodeWorkerConcurrency(settings.takodeWorkerConcurrency),
       heavyRepoModeEnabled: settings.heavyRepoModeEnabled,
       autoApprovalEnabled: settings.autoApprovalEnabled,
       autoApprovalModel: settings.autoApprovalModel,
@@ -871,6 +873,15 @@ export function createSettingsRoutes(ctx: RouteContext) {
       (typeof body.maxKeepAlive !== "number" || body.maxKeepAlive < 0 || !Number.isInteger(body.maxKeepAlive))
     ) {
       return c.json({ error: "maxKeepAlive must be a non-negative integer" }, 400);
+    }
+    if (
+      body.takodeWorkerConcurrency !== undefined &&
+      (typeof body.takodeWorkerConcurrency !== "number" ||
+        body.takodeWorkerConcurrency < 1 ||
+        body.takodeWorkerConcurrency > 50 ||
+        !Number.isInteger(body.takodeWorkerConcurrency))
+    ) {
+      return c.json({ error: "takodeWorkerConcurrency must be an integer between 1 and 50" }, 400);
     }
     if (body.heavyRepoModeEnabled !== undefined && typeof body.heavyRepoModeEnabled !== "boolean") {
       return c.json({ error: "heavyRepoModeEnabled must be a boolean" }, 400);
@@ -1021,6 +1032,7 @@ export function createSettingsRoutes(ctx: RouteContext) {
       "claudeBinary",
       "codexBinary",
       "maxKeepAlive",
+      "takodeWorkerConcurrency",
       "heavyRepoModeEnabled",
       "autoApprovalEnabled",
       "autoApprovalModel",
@@ -1060,6 +1072,8 @@ export function createSettingsRoutes(ctx: RouteContext) {
       claudeBinary: typeof body.claudeBinary === "string" ? body.claudeBinary.trim() : undefined,
       codexBinary: typeof body.codexBinary === "string" ? body.codexBinary.trim() : undefined,
       maxKeepAlive: typeof body.maxKeepAlive === "number" ? body.maxKeepAlive : undefined,
+      takodeWorkerConcurrency:
+        typeof body.takodeWorkerConcurrency === "number" ? body.takodeWorkerConcurrency : undefined,
       heavyRepoModeEnabled: typeof body.heavyRepoModeEnabled === "boolean" ? body.heavyRepoModeEnabled : undefined,
       autoApprovalEnabled: typeof body.autoApprovalEnabled === "boolean" ? body.autoApprovalEnabled : undefined,
       autoApprovalModel: typeof body.autoApprovalModel === "string" ? body.autoApprovalModel.trim() : undefined,

@@ -1,6 +1,11 @@
 import type { HerdSessionsResponse } from "../shared/herd-types.ts";
-import { HERD_WORKER_SLOT_LIMIT, TAKODE_PEEK_CONTENT_LIMIT, formatQuotedContent } from "../shared/takode-constants.ts";
+import { TAKODE_PEEK_CONTENT_LIMIT, formatQuotedContent } from "../shared/takode-constants.ts";
 import { isValidQuestId } from "../shared/quest-journey.ts";
+import {
+  getLeaderWorkerCapacity,
+  type WorkerCapacityBoardRowLike,
+  type WorkerCapacitySessionLike,
+} from "../shared/takode-worker-capacity.ts";
 import {
   apiDelete,
   apiGet,
@@ -10,6 +15,7 @@ import {
   buildSessionInfoJson,
   err,
   fetchSessionInfo,
+  fetchTakodeWorkerConcurrency,
   formatInlineText,
   formatRelativeTime,
   formatTime,
@@ -891,23 +897,33 @@ export async function handleSpawn(base: string, args: string[]): Promise<void> {
     spawned.push(await fetchSessionInfo(base, created.sessionId));
   }
 
-  // Check worker-slot usage and warn if over the limit.
-  let herdWarning: { workerSlotsUsed: number; excessWorkers: number; limit: number } | null = null;
+  // Check worker demand and warn if over the configured concurrency limit.
+  let herdWarning: {
+    workerSlotsUsed: number;
+    rawSlotsUsed: number;
+    excessWorkers: number;
+    limit: number;
+  } | null = null;
   try {
-    const allSessions = (await apiGet(base, "/takode/sessions")) as Array<{
-      sessionId: string;
-      archived?: boolean;
-      herdedBy?: string;
-      reviewerOf?: number;
-    }>;
-    const activeHerdWorkers = allSessions.filter(
-      (s) => !s.archived && s.herdedBy === leaderSessionId && s.reviewerOf === undefined,
-    );
-    if (activeHerdWorkers.length > HERD_WORKER_SLOT_LIMIT) {
+    const allSessions = (await apiGet(base, "/takode/sessions")) as Array<
+      WorkerCapacitySessionLike & {
+        sessionId: string;
+        leaderActiveBoardRows?: WorkerCapacityBoardRowLike[];
+      }
+    >;
+    const leaderSnapshot = allSessions.find((s) => s.sessionId === leaderSessionId);
+    const capacity = getLeaderWorkerCapacity({
+      leaderSessionId,
+      boardRows: leaderSnapshot?.leaderActiveBoardRows ?? [],
+      sessions: allSessions,
+      limit: await fetchTakodeWorkerConcurrency(base),
+    });
+    if (capacity.activeWorkerDemand > capacity.limit) {
       herdWarning = {
-        workerSlotsUsed: activeHerdWorkers.length,
-        excessWorkers: activeHerdWorkers.length - HERD_WORKER_SLOT_LIMIT,
-        limit: HERD_WORKER_SLOT_LIMIT,
+        workerSlotsUsed: capacity.activeWorkerDemand,
+        rawSlotsUsed: capacity.rawSlotsUsed,
+        excessWorkers: capacity.activeWorkerDemand - capacity.limit,
+        limit: capacity.limit,
       };
     }
   } catch {
@@ -943,8 +959,12 @@ export async function handleSpawn(base: string, args: string[]): Promise<void> {
     printSpawnedSession(session);
   }
   if (herdWarning) {
+    const rawSuffix =
+      herdWarning.rawSlotsUsed === herdWarning.workerSlotsUsed
+        ? ""
+        : ` Raw herded workers: ${herdWarning.rawSlotsUsed}/${herdWarning.limit}.`;
     console.log(
-      `\n\u26a0 Worker slots used: ${herdWarning.workerSlotsUsed}/${herdWarning.limit}. Please archive ${herdWarning.excessWorkers} worker session${herdWarning.excessWorkers === 1 ? "" : "s"} least likely to be reused. Reviewers do not use worker slots, and archiving reviewers will not free worker-slot capacity. Archived sessions' history remains readable via takode peek/read.`,
+      `\n\u26a0 Worker slots used: ${herdWarning.workerSlotsUsed}/${herdWarning.limit}.${rawSuffix} Reduce active worker-owned board demand by ${herdWarning.excessWorkers} before dispatching more work. Reviewers do not use worker slots, and archiving reviewers will not free worker-slot capacity. Archived sessions' history remains readable via takode peek/read.`,
     );
   }
 }

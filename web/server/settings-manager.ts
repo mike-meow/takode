@@ -10,6 +10,7 @@ import {
   normalizeLeaderProfilePoolSettings,
   type LeaderProfilePoolSettings,
 } from "../shared/leader-profile-portraits.js";
+import { normalizeTakodeWorkerConcurrency } from "../shared/takode-worker-capacity.js";
 import { CODEX_LEADER_RECYCLE_FALLBACK_THRESHOLD_TOKENS } from "./codex-leader-recycle-threshold.js";
 
 export interface CompanionSettings {
@@ -39,6 +40,8 @@ export interface CompanionSettings {
   defaultClaudeBackend: "claude" | "claude-sdk";
   /** Max number of live CLI processes to keep alive (0 = unlimited) */
   maxKeepAlive: number;
+  /** Max active worker-owned board demand per leader. Optional for backward-compatible tests/mocks. */
+  takodeWorkerConcurrency?: number;
   /** Whether session list git refreshes should run in the background for large/slow repos */
   heavyRepoModeEnabled: boolean;
   /** Whether LLM auto-approval is enabled globally (default: false) */
@@ -198,6 +201,7 @@ let settings: CompanionSettings = {
   codexBinary: "",
   defaultClaudeBackend: "claude",
   maxKeepAlive: 0,
+  takodeWorkerConcurrency: normalizeTakodeWorkerConcurrency(undefined),
   heavyRepoModeEnabled: false,
   autoApprovalEnabled: false,
   autoApprovalModel: "",
@@ -462,6 +466,7 @@ function normalize(raw: Partial<CompanionSettings> | null | undefined): Companio
         ? raw.defaultClaudeBackend
         : "claude",
     maxKeepAlive: typeof raw?.maxKeepAlive === "number" && raw.maxKeepAlive >= 0 ? Math.floor(raw.maxKeepAlive) : 0,
+    takodeWorkerConcurrency: normalizeTakodeWorkerConcurrency(raw?.takodeWorkerConcurrency),
     heavyRepoModeEnabled: typeof raw?.heavyRepoModeEnabled === "boolean" ? raw.heavyRepoModeEnabled : false,
     autoApprovalEnabled: typeof raw?.autoApprovalEnabled === "boolean" ? raw.autoApprovalEnabled : false,
     autoApprovalModel: typeof raw?.autoApprovalModel === "string" ? raw.autoApprovalModel : "",
@@ -591,6 +596,7 @@ export function updateSettings(
       | "codexBinary"
       | "defaultClaudeBackend"
       | "maxKeepAlive"
+      | "takodeWorkerConcurrency"
       | "heavyRepoModeEnabled"
       | "autoApprovalEnabled"
       | "autoApprovalModel"
@@ -622,6 +628,9 @@ export function updateSettings(
   }
   if (defined.leaderProfilePools) {
     defined.leaderProfilePools = normalizeLeaderProfilePoolSettings(defined.leaderProfilePools);
+  }
+  if (defined.takodeWorkerConcurrency !== undefined) {
+    defined.takodeWorkerConcurrency = normalizeTakodeWorkerConcurrency(defined.takodeWorkerConcurrency);
   }
   if (typeof defined.serverSlug === "string") {
     const normalizedSlug = normalizeServerSlug(defined.serverSlug);

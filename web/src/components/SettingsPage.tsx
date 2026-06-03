@@ -111,6 +111,7 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
 
   // Session lifecycle state
   const [maxKeepAlive, setMaxKeepAlive] = useState(0);
+  const [workerConcurrency, setWorkerConcurrency] = useState(5);
   const [lifecycleSaving, setLifecycleSaving] = useState(false);
   const [lifecycleError, setLifecycleError] = useState("");
   const [heavyRepoModeEnabled, setHeavyRepoModeEnabled] = useState(false);
@@ -129,6 +130,7 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
   }>({ active: false, engagedAt: null, expiresAt: null });
   const [caffeinateTick, setCaffeinateTick] = useState(0);
   const lifecycleDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const workerConcurrencyDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [sessionsCollapsed, setSessionsCollapsed] = useState(() => isCollapsibleSectionCollapsed("sessions"));
   const [documentVisible, setDocumentVisible] = useState(
     () => typeof document === "undefined" || document.visibilityState === "visible",
@@ -242,6 +244,7 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
         setDefaultClaudeBackend(s.defaultClaudeBackend || "claude");
         setLogFile(s.logFile || "");
         setMaxKeepAlive(s.maxKeepAlive || 0);
+        setWorkerConcurrency(s.takodeWorkerConcurrency || 5);
         setHeavyRepoModeEnabled(s.heavyRepoModeEnabled ?? false);
         setSleepInhibitorEnabled(s.sleepInhibitorEnabled ?? false);
         setSleepInhibitorDuration(s.sleepInhibitorDurationMinutes ?? 5);
@@ -472,6 +475,22 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
       try {
         const res = await api.updateSettings({ maxKeepAlive: newValue });
         setMaxKeepAlive(res.maxKeepAlive || 0);
+      } catch (err: unknown) {
+        setLifecycleError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setLifecycleSaving(false);
+      }
+    }, 800);
+  }
+
+  function debouncedSaveWorkerConcurrency(newValue: number) {
+    if (workerConcurrencyDebounceRef.current) clearTimeout(workerConcurrencyDebounceRef.current);
+    workerConcurrencyDebounceRef.current = setTimeout(async () => {
+      setLifecycleSaving(true);
+      setLifecycleError("");
+      try {
+        const res = await api.updateSettings({ takodeWorkerConcurrency: newValue });
+        setWorkerConcurrency(res.takodeWorkerConcurrency || 5);
       } catch (err: unknown) {
         setLifecycleError(err instanceof Error ? err.message : String(err));
       } finally {
@@ -993,6 +1012,30 @@ export function SettingsPage({ embedded = false, isActive = true }: SettingsPage
                   <p className="mt-1.5 text-xs text-cc-muted">
                     Maximum number of live CLI processes. Set to 0 for unlimited. Oldest idle sessions are killed first.
                     Busy sessions are never killed.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-1.5" htmlFor="worker-concurrency">
+                    Worker Concurrency
+                  </label>
+                  <input
+                    id="worker-concurrency"
+                    type="number"
+                    min={1}
+                    max={50}
+                    step={1}
+                    value={workerConcurrency}
+                    onChange={(e) => {
+                      const v = Math.max(1, Math.min(50, Math.floor(Number(e.target.value) || 1)));
+                      setWorkerConcurrency(v);
+                      debouncedSaveWorkerConcurrency(v);
+                    }}
+                    className="w-24 px-3 py-2.5 text-sm bg-cc-input-bg border border-cc-border rounded-lg text-cc-fg focus:outline-none focus:border-cc-primary/60"
+                  />
+                  <p className="mt-1.5 text-xs text-cc-muted">
+                    Active worker-owned board rows allowed per leader. Reviewers and stale retained sessions do not use
+                    this capacity.
                   </p>
                 </div>
 

@@ -5,8 +5,14 @@
 /** Content truncation limit for message text in peek, scan, and list views. */
 export const TAKODE_PEEK_CONTENT_LIMIT = 500;
 
-/** Max worker sessions a leader should keep active in their herd at once. */
-export const HERD_WORKER_SLOT_LIMIT = 5;
+/** Default max worker demand a leader should keep active at once. */
+export const DEFAULT_TAKODE_WORKER_CONCURRENCY = 5;
+
+/** Max accepted worker concurrency setting value. */
+export const MAX_TAKODE_WORKER_CONCURRENCY = 50;
+
+/** Compatibility alias for older call sites and tests. */
+export const HERD_WORKER_SLOT_LIMIT = DEFAULT_TAKODE_WORKER_CONCURRENCY;
 
 /** Escape a string for TypeScript-style string literal display.
  *  Used by herd event formatter, takode scan, and takode peek for consistent quoting. */

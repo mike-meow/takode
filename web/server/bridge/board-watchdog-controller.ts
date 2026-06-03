@@ -14,9 +14,15 @@ import {
   type QuestJourneyPhaseId,
   type QuestJourneyPhaseTiming,
 } from "../../shared/quest-journey.js";
-import { HERD_WORKER_SLOT_LIMIT } from "../../shared/takode-constants.js";
+import {
+  getLeaderWorkerCapacity as buildLeaderWorkerCapacity,
+  isActiveWorkerOwnedBoardRow,
+  normalizeTakodeWorkerConcurrency,
+  type LeaderWorkerCapacity,
+} from "../../shared/takode-worker-capacity.js";
 import type { BoardRow, SessionAttentionRecord, TakodeEvent, TakodeHerdBatchSnapshot } from "../session-types.js";
 import { formatRenderedHerdEventBatch } from "../herd-event-dispatcher.js";
+import { getSettings } from "../settings-manager.js";
 
 type SessionLike = any;
 
@@ -27,22 +33,12 @@ const REVIEW_BOARD_STALL_STAGES = new Set([
   "OUTCOME_REVIEWING",
   "GROOM_REVIEWING",
 ]);
-const WORKER_OWNED_BOARD_STAGES = new Set([
-  "PLANNING",
-  "EXPLORING",
-  "IMPLEMENTING",
-  "EXECUTING",
-  "USER_CHECKPOINTING",
-  "PORTING",
-  "MEMORY",
-  "BOOKKEEPING",
-]);
-
 type BoardStallStatus = "running" | "idle" | "disconnected" | "missing";
 
 interface BoardStallCandidate {
   signature: string;
   sourceSessionId: string;
+  leaderNudge?: boolean;
   questId: string;
   title?: string;
   stage?: string;
@@ -53,6 +49,17 @@ interface BoardStallCandidate {
   action: string;
 }
 
+interface BoardStallKick {
+  questId: string;
+  title?: string;
+  stage?: string;
+  signature: string;
+  reason: string;
+  action: string;
+  workerStatus: BoardStallStatus;
+  reviewerStatus: BoardStallStatus;
+}
+
 interface BoardDispatchableCandidate {
   signature: string;
   questId: string;
@@ -61,10 +68,12 @@ interface BoardDispatchableCandidate {
   action?: string;
 }
 
-interface LeaderWorkerCapacity {
-  rawSlotsUsed: number;
-  activeWorkerDemand: number;
-  limit: number;
+interface BoardDispatchableKick {
+  questId: string;
+  title?: string;
+  signature: string;
+  summary: string;
+  action?: string;
 }
 
 export interface BoardWatchdogDeps {
@@ -81,6 +90,8 @@ export interface BoardWatchdogDeps {
     summary: string,
   ) => { ok: true; anchoredMessageId: string | null; notificationId: string } | { ok: false; error: string };
   emitTakodeEvent: (sessionId: string, type: string, data: Record<string, unknown>) => void;
+  injectLeaderDispatchNudge?: (sessionId: string, kick: BoardDispatchableKick) => unknown;
+  injectLeaderStallNudge?: (sessionId: string, kick: BoardStallKick) => unknown;
   markNotificationDone: (sessionId: string, notifId: string, done: boolean) => boolean;
   isSessionIdle: (sessionId: string) => boolean;
 }
@@ -257,16 +268,13 @@ export function getBoardQueueWarningsForSession(
 
 export function getBoardWorkerSlotUsage(
   sessionId: string,
-  deps: Pick<BoardWatchdogDeps, "listSessions">,
+  deps: Pick<BoardWatchdogDeps, "getSession" | "listSessions">,
 ): { used: number; limit: number } {
+  const session = deps.getSession(sessionId);
+  const capacity = getLeaderWorkerCapacityForRows(sessionId, session?.board?.values?.() ?? [], deps);
   return {
-    used: deps
-      .listSessions()
-      .filter(
-        (candidate: any) =>
-          !candidate.archived && candidate.herdedBy === sessionId && candidate.reviewerOf === undefined,
-      ).length,
-    limit: HERD_WORKER_SLOT_LIMIT,
+    used: capacity.activeWorkerDemand,
+    limit: capacity.limit,
   };
 }
 
@@ -1067,7 +1075,7 @@ export function sweepBoardStallWarnings(sessions: Iterable<SessionLike>, now: nu
       if (existing.warnedAt) continue;
       if (now - existing.stalledSince < BOARD_STALL_THRESHOLD_MS) continue;
 
-      deps.emitTakodeEvent(candidate.sourceSessionId, "board_stalled", {
+      const payload = {
         questId: candidate.questId,
         ...(candidate.title ? { title: candidate.title } : {}),
         ...(candidate.stage ? { stage: candidate.stage } : {}),
@@ -1077,7 +1085,12 @@ export function sweepBoardStallWarnings(sessions: Iterable<SessionLike>, now: nu
         stalledForMs: now - existing.stalledSince,
         reason: candidate.reason,
         action: candidate.action,
-      });
+      };
+      if (candidate.leaderNudge) {
+        deps.injectLeaderStallNudge?.(session.id, payload);
+      } else {
+        deps.emitTakodeEvent(candidate.sourceSessionId, "board_stalled", payload);
+      }
       existing.warnedAt = now;
     }
   }
@@ -1130,6 +1143,8 @@ export function sweepBoardDispatchableWarnings(
           summary: candidate.summary,
           ...(candidate.action ? { action: candidate.action } : {}),
         });
+      } else {
+        deps.injectLeaderDispatchNudge?.(session.id, candidate);
       }
       current.warnedAt = now;
     }
@@ -1277,6 +1292,16 @@ function formatFreeWorkerDispatchableAction(capacity: LeaderWorkerCapacity): str
   return "Dispatch it now or replace QUEUED with the next active Quest Journey phase.";
 }
 
+function formatQueuedUnusableWorkerAction(row: BoardRow): string {
+  const workerRef = row.workerNum !== undefined ? `#${row.workerNum}` : row.worker ? row.worker : "<worker>";
+  return `Assigned worker ${workerRef} is unavailable; use takode spawn --replace-worktree-worker ${workerRef} or takode board set ${row.questId} --worker <session>, then dispatch the next active Quest Journey phase.`;
+}
+
+function formatActiveUnusableWorkerAction(row: BoardRow, stage: string): string {
+  const workerRef = row.workerNum !== undefined ? `#${row.workerNum}` : row.worker ? row.worker : "<worker>";
+  return `Assigned worker ${workerRef} is unavailable; use takode spawn --replace-worktree-worker ${workerRef} or takode board set ${row.questId} --worker <session>, then dispatch the current ${stage} phase.`;
+}
+
 function getBlockedBoardDeps(session: SessionLike, row: BoardRow, deps: BoardWatchdogDeps): string[] {
   if (!isQueuedBoardRowStatus(row.status)) return [];
   const blocked: string[] = [];
@@ -1329,17 +1354,28 @@ function buildQueuedBoardWarning(
   const labels = waitFor.map((dep) => formatWaitForRefLabel(dep));
   const workerCapacity = getLeaderWorkerCapacity(session, deps);
   const hasFreeWorkerWait = waitFor.some((dep) => getWaitForRefKind(dep) === "free-worker");
+  const assignedWorkerSessionId = resolveBoardSessionId(row.worker, row.workerNum, deps);
+  const assignedWorkerRuntime = assignedWorkerSessionId
+    ? getBoardParticipantRuntime(assignedWorkerSessionId, deps, session)
+    : null;
+  const assignedWorkerUnavailable =
+    assignedWorkerRuntime !== null &&
+    (assignedWorkerRuntime.status === "missing" || assignedWorkerRuntime.status === "disconnected");
   const summary = hasFreeWorkerWait
-    ? formatFreeWorkerDispatchableSummary(row.questId, workerCapacity)
+    ? assignedWorkerUnavailable
+      ? `${row.questId} can be dispatched now, but its assigned worker is ${assignedWorkerRuntime.status}; worker slots are available (${workerCapacity.activeWorkerDemand}/${workerCapacity.limit} active demand).`
+      : formatFreeWorkerDispatchableSummary(row.questId, workerCapacity)
     : `${row.questId} can be dispatched now: wait-for resolved (${labels.join(", ")}).`;
   return {
     questId: row.questId,
     title,
     kind: "dispatchable",
     summary,
-    action: hasFreeWorkerWait
-      ? formatFreeWorkerDispatchableAction(workerCapacity)
-      : "Dispatch it now or replace QUEUED with the next active Quest Journey phase.",
+    action: assignedWorkerUnavailable
+      ? formatQueuedUnusableWorkerAction(row)
+      : hasFreeWorkerWait
+        ? formatFreeWorkerDispatchableAction(workerCapacity)
+        : "Dispatch it now or replace QUEUED with the next active Quest Journey phase.",
   };
 }
 
@@ -1413,10 +1449,14 @@ function buildBoardStallCandidate(
   const title = row.title?.trim() || undefined;
 
   if (isActiveWorkerOwnedBoardRow(row)) {
-    if (!workerSessionId || workerRuntime.hasActiveTimer || workerRuntime.status === "running") return null;
+    if (workerRuntime.hasActiveTimer || workerRuntime.status === "running") return null;
+    const leaderNudge = shouldKickLeaderForActiveWorkerStall(session.id, workerSessionId, deps);
     return {
-      signature: `${row.questId}|${stage}|${workerRuntime.status}`,
-      sourceSessionId: workerSessionId,
+      signature: leaderNudge
+        ? `${row.questId}|${stage}|worker|${workerRuntime.status}|${row.worker ?? ""}|${row.workerNum ?? ""}`
+        : `${row.questId}|${stage}|${workerRuntime.status}`,
+      sourceSessionId: leaderNudge ? session.id : workerSessionId!,
+      ...(leaderNudge ? { leaderNudge: true } : {}),
       questId: row.questId,
       title,
       stage,
@@ -1424,8 +1464,9 @@ function buildBoardStallCandidate(
       reviewerStatus: reviewerRuntime.status,
       stalledSince: stalledSinceFrom(workerRuntime.lastActivityAt),
       reason: `worker ${workerRuntime.status}`,
-      action:
-        stage === "PLANNING"
+      action: leaderNudge
+        ? formatActiveUnusableWorkerAction(row, stage)
+        : stage === "PLANNING"
           ? "inspect worker; review plan or re-dispatch"
           : stage === "EXPLORING"
             ? "inspect worker; review findings or revise the Journey"
@@ -1487,6 +1528,17 @@ function buildBoardStallCandidate(
   return null;
 }
 
+function shouldKickLeaderForActiveWorkerStall(
+  leaderSessionId: string,
+  workerSessionId: string | undefined,
+  deps: BoardWatchdogDeps,
+): boolean {
+  if (!workerSessionId) return true;
+  const launcherInfo = deps.getLauncherSessionInfo(workerSessionId);
+  if (!launcherInfo || launcherInfo.archived) return true;
+  return launcherInfo.herdedBy !== leaderSessionId;
+}
+
 function resolveBoardSessionId(
   sessionId: string | undefined,
   sessionNum: number | undefined,
@@ -1507,32 +1559,20 @@ function resolveBoardReviewerSessionId(workerNum: number | undefined, deps: Boar
 }
 
 function getLeaderWorkerCapacity(session: SessionLike, deps: BoardWatchdogDeps): LeaderWorkerCapacity {
-  return {
-    rawSlotsUsed: getLeaderWorkerSlotUsage(session.id, deps),
-    activeWorkerDemand: getActiveWorkerOwnedBoardDemand(session),
-    limit: HERD_WORKER_SLOT_LIMIT,
-  };
+  return getLeaderWorkerCapacityForRows(session.id, session.board.values() as Iterable<BoardRow>, deps);
 }
 
-function getActiveWorkerOwnedBoardDemand(session: SessionLike): number {
-  let activeRows = 0;
-  for (const row of session.board.values() as Iterable<BoardRow>) {
-    if (isActiveWorkerOwnedBoardRow(row)) activeRows += 1;
-  }
-  return activeRows;
-}
-
-function isActiveWorkerOwnedBoardRow(row: BoardRow): boolean {
-  const stage = (row.status || "").trim().toUpperCase();
-  return WORKER_OWNED_BOARD_STAGES.has(stage);
-}
-
-function getLeaderWorkerSlotUsage(sessionId: string, deps: BoardWatchdogDeps): number {
-  return deps
-    .listSessions()
-    .filter(
-      (candidate: any) => !candidate.archived && candidate.herdedBy === sessionId && candidate.reviewerOf === undefined,
-    ).length;
+function getLeaderWorkerCapacityForRows(
+  sessionId: string,
+  rows: Iterable<BoardRow>,
+  deps: Pick<BoardWatchdogDeps, "listSessions">,
+): LeaderWorkerCapacity {
+  return buildLeaderWorkerCapacity({
+    leaderSessionId: sessionId,
+    boardRows: rows,
+    sessions: deps.listSessions(),
+    limit: normalizeTakodeWorkerConcurrency(getSettings().takodeWorkerConcurrency),
+  });
 }
 
 function getBoardParticipantRuntime(

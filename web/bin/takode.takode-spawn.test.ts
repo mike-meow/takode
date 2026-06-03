@@ -1243,6 +1243,19 @@ describe("takode spawn", () => {
         res.writeHead(200, { "content-type": "application/json" });
         res.end(
           JSON.stringify([
+            {
+              sessionId: "leader-slot-warning",
+              archived: false,
+              isOrchestrator: true,
+              leaderActiveBoardRows: [
+                { questId: "q-1", status: "IMPLEMENTING" },
+                { questId: "q-2", status: "PLANNING" },
+                { questId: "q-3", status: "PORTING" },
+                { questId: "q-4", status: "MEMORY" },
+                { questId: "q-5", status: "BOOKKEEPING" },
+                { questId: "q-6", status: "EXECUTING" },
+              ],
+            },
             { sessionId: "worker-slot-1", herdedBy: "leader-slot-warning", archived: false },
             { sessionId: "worker-slot-2", herdedBy: "leader-slot-warning", archived: false },
             { sessionId: "worker-slot-3", herdedBy: "leader-slot-warning", archived: false },
@@ -1252,6 +1265,11 @@ describe("takode spawn", () => {
             { sessionId: "reviewer-slot-1", herdedBy: "leader-slot-warning", reviewerOf: 31, archived: false },
           ]),
         );
+        return;
+      }
+      if (method === "GET" && url === "/api/settings") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ takodeWorkerConcurrency: 5 }));
         return;
       }
 
@@ -1274,7 +1292,7 @@ describe("takode spawn", () => {
     expect(result.status).toBe(0);
     expect(createBodies).toHaveLength(1);
     expect(result.stdout).toContain("Worker slots used: 6/5.");
-    expect(result.stdout).toContain("Please archive 1 worker session least likely to be reused.");
+    expect(result.stdout).toContain("Reduce active worker-owned board demand by 1 before dispatching more work.");
     expect(result.stdout).toContain(
       "Reviewers do not use worker slots, and archiving reviewers will not free worker-slot capacity.",
     );

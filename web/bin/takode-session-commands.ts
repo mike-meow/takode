@@ -1,5 +1,5 @@
 import type { HerdSessionsResponse } from "../shared/herd-types.ts";
-import { HERD_WORKER_SLOT_LIMIT } from "../shared/takode-constants.ts";
+import { getLeaderWorkerCapacity, type WorkerCapacityBoardRowLike } from "../shared/takode-worker-capacity.ts";
 import {
   renderLeaderContextResumeText,
   type LeaderContextResumeModel,
@@ -10,6 +10,7 @@ import {
   buildSessionInfoJson,
   dateKey,
   err,
+  fetchTakodeWorkerConcurrency,
   fetchSessionInfo,
   formatDate,
   formatDurationSeconds,
@@ -81,6 +82,7 @@ export async function handleList(base: string, args: string[]): Promise<void> {
     pause?: { pausedAt: number; queuedMessages?: unknown[] } | null;
     pausedInputQueueCount?: number;
     taskHistory?: Array<{ title: string; timestamp: number }>;
+    leaderActiveBoardRows?: WorkerCapacityBoardRowLike[];
   }>;
 
   // 3-mode filter:
@@ -131,9 +133,14 @@ export async function handleList(base: string, args: string[]): Promise<void> {
 
   const shownWorkerCount = filtered.filter((s) => s.reviewerOf === undefined).length;
   const shownReviewerCount = filtered.length - shownWorkerCount;
-  const activeHerdWorkerCount =
+  const workerCapacity =
     isOrchestrator && mySessionId
-      ? sessions.filter((s) => !s.archived && s.herdedBy === mySessionId && s.reviewerOf === undefined).length
+      ? getLeaderWorkerCapacity({
+          leaderSessionId: mySessionId,
+          boardRows: mySelf?.leaderActiveBoardRows ?? [],
+          sessions,
+          limit: await fetchTakodeWorkerConcurrency(base),
+        })
       : null;
 
   // Group sessions by project (repo root or cwd).
@@ -207,9 +214,13 @@ export async function handleList(base: string, args: string[]): Promise<void> {
   console.log(
     `${total} session(s) shown (${shownWorkerCount} worker${shownWorkerCount === 1 ? "" : "s"}, ${shownReviewerCount} reviewer${shownReviewerCount === 1 ? "" : "s"})${filterHint}`,
   );
-  if (activeHerdWorkerCount !== null) {
+  if (workerCapacity !== null) {
+    const rawSuffix =
+      workerCapacity.rawSlotsUsed === workerCapacity.activeWorkerDemand
+        ? ""
+        : ` Raw herded workers: ${workerCapacity.rawSlotsUsed}/${workerCapacity.limit}.`;
     console.log(
-      `Worker slots used: ${activeHerdWorkerCount}/${HERD_WORKER_SLOT_LIMIT}. Reviewers do not use worker slots, and archiving reviewers will not free worker-slot capacity.`,
+      `Worker slots used: ${workerCapacity.activeWorkerDemand}/${workerCapacity.limit}.${rawSuffix} Reviewers do not use worker slots, and archiving reviewers will not free worker-slot capacity.`,
     );
   }
   console.log(
