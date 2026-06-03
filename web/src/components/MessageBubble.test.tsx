@@ -1022,9 +1022,15 @@ describe("MessageBubble - assistant messages", () => {
   it("keeps Slack thread creation available for root assistant messages by default", () => {
     const msg = makeMessage({ id: "assistant-anchor", role: "assistant", content: "Root answer" });
 
-    render(<MessageBubble message={msg} sessionId="root-session" currentThreadKey="main" />);
+    const { container } = render(<MessageBubble message={msg} sessionId="root-session" currentThreadKey="main" />);
 
-    expect(screen.getByRole("button", { name: "Start thread" })).toBeTruthy();
+    const toolbar = container.querySelector("[data-message-action-toolbar]");
+    const startThread = screen.getByRole("button", { name: "Start thread" });
+    expect(startThread).toBeTruthy();
+    expect(toolbar).toBeTruthy();
+    expect(toolbar?.className).not.toContain("absolute");
+    expect(toolbar?.className).toContain("shrink-0");
+    expect(startThread.className).toContain("h-7");
   });
 
   it("suppresses Slack thread creation for assistant messages embedded in a Slack thread panel", () => {

@@ -50,7 +50,7 @@ export function PlaygroundStateSections() {
     <PlaygroundSectionGroup groupId="states">
       <Section title="Slack Threads" description="Root reply affordance and hidden read-only child thread panel">
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <Card label="Root assistant reply with thread count">
+          <Card label="Root assistant reply with action cluster and thread count">
             <div className="space-y-4 border-t border-cc-border bg-cc-card px-4 py-4">
               <MessageBubble message={MSG_ASSISTANT} sessionId={MOCK_SESSION_ID} currentThreadKey="main" />
             </div>

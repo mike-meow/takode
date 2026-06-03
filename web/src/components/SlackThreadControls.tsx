@@ -50,7 +50,7 @@ export function SlackThreadButton({
       type="button"
       onClick={handleClick}
       disabled={creating}
-      className="p-1 rounded hover:bg-cc-hover transition-all cursor-pointer disabled:cursor-wait disabled:opacity-60"
+      className="inline-flex h-7 w-7 items-center justify-center rounded hover:bg-cc-hover transition-all cursor-pointer disabled:cursor-wait disabled:opacity-60"
       title={thread ? `Open thread (${thread.messageCount})` : "Start thread"}
       aria-label={thread ? `Open thread with ${thread.messageCount} messages` : "Start thread"}
     >

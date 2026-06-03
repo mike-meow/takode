@@ -1373,7 +1373,7 @@ function AssistantMessage({
     return (
       <div className={`group/msg relative flex items-start ${hidePaw ? "" : "gap-2 sm:gap-3"}`}>
         {!hidePaw && <PawTrailAvatar />}
-        <div ref={contentRef} className="flex-1 min-w-0 pr-6">
+        <div ref={contentRef} className="flex-1 min-w-0">
           {threadKey && <ThreadSourceBadge threadKey={threadKey} />}
           <MarkdownContent
             text={message.content}
@@ -1410,7 +1410,7 @@ function AssistantMessage({
   return (
     <div className={`group/msg relative flex items-start ${hidePaw ? "" : "gap-2 sm:gap-3"}`}>
       {!hidePaw && <PawTrailAvatar />}
-      <div ref={contentRef} className="flex-1 min-w-0 space-y-3 pr-6">
+      <div ref={contentRef} className="flex-1 min-w-0 space-y-3">
         {threadKey && <ThreadSourceBadge threadKey={threadKey} />}
         {shouldRenderContentFallback && (
           <MarkdownContent
@@ -1493,7 +1493,7 @@ function AssistantMessage({
   );
 }
 
-/** Action bar for assistant messages -- groups reply + copy buttons with shared hover visibility. */
+/** Action bar for assistant messages -- groups reply + copy buttons beside content without covering text. */
 function MessageActionBar({
   message,
   contentRef,
@@ -1508,7 +1508,10 @@ function MessageActionBar({
   showSlackThreadActions: boolean;
 }) {
   return (
-    <div className="absolute top-0 right-0 shrink-0 flex flex-col items-center opacity-100 transition-opacity sm:flex-row sm:opacity-0 sm:group-hover/msg:opacity-100">
+    <div
+      className="ml-1 inline-flex shrink-0 items-center rounded-md border border-cc-border bg-cc-card/95 p-0.5 opacity-100 shadow-sm transition-opacity sm:opacity-0 sm:group-hover/msg:opacity-100 sm:group-focus-within/msg:opacity-100"
+      data-message-action-toolbar
+    >
       {showSlackThreadActions && sessionId && (
         <SlackThreadButton message={message} sessionId={sessionId} currentThreadKey={currentThreadKey} />
       )}
@@ -1533,7 +1536,7 @@ function ReplyButton({ message, sessionId }: { message: ChatMessage; sessionId: 
   return (
     <button
       onClick={handleClick}
-      className="p-1 rounded hover:bg-cc-hover transition-all cursor-pointer"
+      className="inline-flex h-7 w-7 items-center justify-center rounded hover:bg-cc-hover transition-all cursor-pointer"
       title="Reply to this message"
     >
       <svg
@@ -1626,7 +1629,7 @@ function CopyMessageButton({
       <button
         ref={btnRef}
         onClick={toggle}
-        className="p-1 rounded hover:bg-cc-hover transition-all cursor-pointer"
+        className="inline-flex h-7 w-7 items-center justify-center rounded hover:bg-cc-hover transition-all cursor-pointer"
         title="Copy message"
       >
         {copied ? (
