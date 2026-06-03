@@ -436,8 +436,19 @@ describe("Sidebar herd tree behavior", { timeout: 10000 }, () => {
 
     expect(screen.getByText("OAI")).toBeInTheDocument();
     expect(screen.getByText("OAI Session")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Create session in OAI Session Space")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Drag to reorder Session Space OAI")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Bulk organize sessions by source Session Space" })).toBeNull();
     expect(dndKitMockState.invalidSortableIds).toEqual([]);
+
+    const inferredHeader = screen.getByText("OAI").closest("button")!;
+    fireEvent.click(inferredHeader);
+    expect(mockState.toggleTreeGroupCollapse).not.toHaveBeenCalled();
+
+    fireEvent.contextMenu(inferredHeader);
+    expect(screen.queryByText("Visible sessions")).not.toBeInTheDocument();
+    expect(screen.queryByText("Rename")).not.toBeInTheDocument();
+    expect(screen.queryByText("Delete")).not.toBeInTheDocument();
 
     await act(async () => {
       dndKitMockState.dndContexts[0]!.onDragEnd?.({ active: { id: "oai" }, over: { id: "default" } });
@@ -492,6 +503,19 @@ describe("Sidebar herd tree behavior", { timeout: 10000 }, () => {
     expect(screen.getByText("OAI")).toBeInTheDocument();
     expect(screen.queryByLabelText("Drag to reorder Session Space OAI")).not.toBeInTheDocument();
     expect(dndKitMockState.invalidSortableIds).toEqual([]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Bulk organize sessions by source Session Space" }));
+    expect(screen.getByRole("button", { name: "Bulk organize Alpha Space Session Space" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Bulk organize Beta Space Session Space" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Bulk organize OAI Session Space" })).not.toBeInTheDocument();
+
+    await act(async () => {
+      dndKitMockState.dndContexts[0]!.onDragEnd?.({ active: { id: "alpha-session" }, over: { id: "oai-session" } });
+      dndKitMockState.dndContexts[0]!.onDragEnd?.({ active: { id: "oai-session" }, over: { id: "alpha-session" } });
+    });
+
+    expect(mockApi.assignSessionToTreeGroup).not.toHaveBeenCalled();
+    expect(mockApi.updateTreeNodeOrder).not.toHaveBeenCalled();
 
     await act(async () => {
       dndKitMockState.dndContexts[0]!.onDragEnd?.({ active: { id: "beta" }, over: { id: "alpha" } });

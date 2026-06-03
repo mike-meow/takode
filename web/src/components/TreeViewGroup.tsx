@@ -192,7 +192,8 @@ export function TreeViewGroup({
   const expandedHerdNodes = useStore((s) => s.expandedHerdNodes);
   const toggleHerdNodeExpand = useStore((s) => s.toggleHerdNodeExpand);
   const touchDevice = isTouchDevice();
-  const isDraggable = sessionSortMode !== "activity" && !bulkSelectionActive;
+  const isInferredGroup = group.inferred === true;
+  const isDraggable = sessionSortMode !== "activity" && !bulkSelectionActive && !isInferredGroup;
 
   const [editingGroupName, setEditingGroupName] = useState(false);
   const [groupNameDraft, setGroupNameDraft] = useState("");
@@ -201,18 +202,19 @@ export function TreeViewGroup({
   const contextMenuRef = useRef<HTMLDivElement>(null);
 
   const startGroupRename = useCallback(() => {
-    if (group.id === "default") return;
+    if (group.id === "default" || isInferredGroup) return;
     setGroupNameDraft(group.name);
     setEditingGroupName(true);
-  }, [group.id, group.name]);
+  }, [group.id, group.name, isInferredGroup]);
 
   const confirmGroupRename = useCallback(() => {
     setEditingGroupName(false);
+    if (isInferredGroup) return;
     const trimmed = groupNameDraft.trim();
     if (trimmed && trimmed !== group.name) {
       api.renameTreeGroup(group.id, trimmed).catch(console.error);
     }
-  }, [group.id, group.name, groupNameDraft]);
+  }, [group.id, group.name, groupNameDraft, isInferredGroup]);
 
   useEffect(() => {
     if (editingGroupName && groupNameInputRef.current) {
@@ -242,11 +244,11 @@ export function TreeViewGroup({
 
   const handleDeleteGroup = useCallback(() => {
     setContextMenu(null);
-    if (group.id === "default") return;
+    if (group.id === "default" || isInferredGroup) return;
     api.deleteTreeGroup(group.id).catch((err) => {
       console.warn("[tree-view-group] failed to delete group:", err);
     });
-  }, [group.id]);
+  }, [group.id, isInferredGroup]);
 
   const hasStatus = group.runningCount > 0 || group.permCount > 0 || group.unreadCount > 0;
 
@@ -470,14 +472,17 @@ export function TreeViewGroup({
         className={`w-full px-2 py-1.5 flex items-center gap-1 rounded-md transition-colors ${groupDragging ? "bg-cc-hover/70" : "hover:bg-cc-hover"}`}
       >
         <button
-          onClick={() => onToggleGroupCollapse(group.id)}
+          onClick={() => {
+            if (!isInferredGroup) onToggleGroupCollapse(group.id);
+          }}
           onContextMenu={(e) => {
+            if (isInferredGroup) return;
             e.preventDefault();
             setContextMenu({ x: e.clientX, y: e.clientY });
           }}
-          className="min-w-0 flex-1 flex items-center gap-1.5 cursor-pointer"
+          className={`min-w-0 flex-1 flex items-center gap-1.5 ${isInferredGroup ? "cursor-default" : "cursor-pointer"}`}
           onDoubleClick={(e) => {
-            if (group.id === "default") return;
+            if (group.id === "default" || isInferredGroup) return;
             e.preventDefault();
             e.stopPropagation();
             startGroupRename();
@@ -516,22 +521,24 @@ export function TreeViewGroup({
           )}
           <span className="text-[10px] text-cc-muted/60 shrink-0 ml-1">{totalSessions}</span>
         </button>
-        <button
-          type="button"
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            onCreateSession(group.id);
-          }}
-          className="shrink-0 h-6 px-2 inline-flex items-center justify-center gap-1 rounded-md bg-cc-primary hover:bg-cc-primary-hover text-white text-[10px] font-semibold leading-none whitespace-nowrap transition-colors cursor-pointer"
-          title={`Create session in ${group.name} Session Space`}
-          aria-label={`Create session in ${group.name} Session Space`}
-        >
-          <span aria-hidden="true" className="text-xs leading-none">
-            +
-          </span>
-          <span>New</span>
-        </button>
+        {!isInferredGroup && (
+          <button
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onCreateSession(group.id);
+            }}
+            className="shrink-0 h-6 px-2 inline-flex items-center justify-center gap-1 rounded-md bg-cc-primary hover:bg-cc-primary-hover text-white text-[10px] font-semibold leading-none whitespace-nowrap transition-colors cursor-pointer"
+            title={`Create session in ${group.name} Session Space`}
+            aria-label={`Create session in ${group.name} Session Space`}
+          >
+            <span aria-hidden="true" className="text-xs leading-none">
+              +
+            </span>
+            <span>New</span>
+          </button>
+        )}
         {groupDragHandleProps && (
           <button
             type="button"
@@ -664,7 +671,7 @@ export function TreeViewGroup({
               Show {limit}
             </button>
           ))}
-          {group.id !== "default" && (
+          {group.id !== "default" && !isInferredGroup && (
             <>
               <div className="my-1 border-t border-cc-border/70" />
               <button

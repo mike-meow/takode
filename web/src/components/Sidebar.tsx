@@ -209,6 +209,12 @@ export function Sidebar() {
   const isMemoryPage = route.page === "memory";
   const isDesktopLayout = isDesktopShellLayout(zoomLevel);
   const shortcutPlatform = typeof navigator === "undefined" ? undefined : navigator.platform;
+  const authoritativeTreeGroups = useMemo(() => buildAuthoritativeTreeGroupsForWriteback(treeGroups), [treeGroups]);
+  const authoritativeTreeGroupIds = useMemo(
+    () => authoritativeTreeGroups.map((group) => group.id),
+    [authoritativeTreeGroups],
+  );
+  const authoritativeTreeGroupIdSet = useMemo(() => new Set(authoritativeTreeGroupIds), [authoritativeTreeGroupIds]);
 
   const refreshTreeGroups = useCallback(async () => {
     await hydrateTreeGroups();
@@ -443,6 +449,7 @@ export function Sidebar() {
   function handleCreateSessionInTreeGroup(treeGroupId: string) {
     const normalizedTreeGroupId = treeGroupId.trim();
     if (!normalizedTreeGroupId) return;
+    if (normalizedTreeGroupId !== "default" && !treeGroups.some((group) => group.id === normalizedTreeGroupId)) return;
 
     useStore.getState().openNewSessionModal({
       treeGroupId: normalizedTreeGroupId,
@@ -463,6 +470,7 @@ export function Sidebar() {
 
   const startBulkSelection = useCallback(
     (groupId: string, _sessionIds?: string[]) => {
+      if (!authoritativeTreeGroupIdSet.has(groupId)) return;
       if (collapsedTreeGroups.has(groupId)) {
         toggleTreeGroupCollapse(groupId);
       }
@@ -472,7 +480,7 @@ export function Sidebar() {
       const firstTarget = treeGroups.find((group) => group.id !== groupId)?.id || "";
       setBulkTargetGroupId(firstTarget);
     },
-    [collapsedTreeGroups, toggleTreeGroupCollapse, treeGroups],
+    [authoritativeTreeGroupIdSet, collapsedTreeGroups, toggleTreeGroupCollapse, treeGroups],
   );
 
   const cancelBulkSelection = useCallback(() => {
@@ -799,12 +807,6 @@ export function Sidebar() {
   const reviewerByParent = useMemo(() => buildReviewerByParent(allSessionList), [allSessionList]);
   const logoSrc = "/app-logo.png";
   const [showCronSessions, setShowCronSessions] = useState(true);
-  const authoritativeTreeGroups = useMemo(() => buildAuthoritativeTreeGroupsForWriteback(treeGroups), [treeGroups]);
-  const authoritativeTreeGroupIds = useMemo(
-    () => authoritativeTreeGroups.map((group) => group.id),
-    [authoritativeTreeGroups],
-  );
-  const authoritativeTreeGroupIdSet = useMemo(() => new Set(authoritativeTreeGroupIds), [authoritativeTreeGroupIds]);
   const treePointerSensor = useSensor(PointerSensor, { activationConstraint: { distance: 8 } });
   const treeSensors = useSensors(treePointerSensor);
   const handleTreeGroupDragEnd = useCallback(
@@ -872,6 +874,7 @@ export function Sidebar() {
       const sourceGroup = sessionToGroupMap.get(activeId);
       const targetGroup = sessionToGroupMap.get(overId);
       if (!sourceGroup || !targetGroup) return;
+      if (!authoritativeTreeGroupIdSet.has(sourceGroup) || !authoritativeTreeGroupIdSet.has(targetGroup)) return;
       if (sourceGroup !== targetGroup) {
         // Cross-group move: assign session to the target's group
         api.assignSessionToTreeGroup(activeId, targetGroup).catch(console.error);
@@ -887,7 +890,7 @@ export function Sidebar() {
         api.updateTreeNodeOrder(sourceGroup, newOrder).catch(console.error);
       }
     },
-    [sessionToGroupMap, treeViewGroups],
+    [authoritativeTreeGroupIdSet, sessionToGroupMap, treeViewGroups],
   );
   const handleTreeDragEnd = useCallback(
     (event: DragEndEvent) => {
@@ -1017,7 +1020,9 @@ export function Sidebar() {
 
   // Show sort/reorder controls when the session list is visible and has multiple sessions.
   const showSortControls = !searchFocused && !searchQuery && !filteredSessions && activeSessions.length > 1;
-  const bulkSourceGroups = treeViewGroups.filter((group) => group.nodes.length > 0);
+  const bulkSourceGroups = treeViewGroups.filter(
+    (group) => group.nodes.length > 0 && authoritativeTreeGroupIdSet.has(group.id),
+  );
   const activeBulkSourceGroup = bulkSelectionGroupId
     ? treeViewGroups.find((group) => group.id === bulkSelectionGroupId)
     : undefined;
