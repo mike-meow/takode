@@ -16,7 +16,6 @@ import { writeClipboardText } from "../utils/copy-utils.js";
 import { connectSession, disconnectSession } from "../ws.js";
 import { navigateToSession, navigateToMostRecentSession, parseHash } from "../utils/routing.js";
 import { cancelPendingCreation } from "../utils/pending-creation.js";
-import { getTreeGroupNewSessionDefaultsKey } from "../utils/new-session-defaults.js";
 import { bootstrapServerId, scopedGetItem } from "../utils/scoped-storage.js";
 import { TreeViewGroup } from "./TreeViewGroup.js";
 import { SessionItem, type ArchiveConfirmationState } from "./SessionItem.js";
@@ -53,6 +52,7 @@ import { getShortcutTitle } from "../shortcuts.js";
 import { getDocumentTitleAttentionCount } from "../utils/document-title-attention.js";
 import { buildAuthoritativeTreeGroupsForWriteback } from "../utils/sidebar-tree-groups.js";
 import { restrictToVerticalAxis } from "../utils/sidebar-dnd.js";
+import { buildTreeGroupCreateSessionModalContext } from "../utils/tree-group-create-session.js";
 
 /** Build "Move to..." submenu items for the session context menu (tree view only). */
 function buildMoveToSubmenu(
@@ -447,16 +447,9 @@ export function Sidebar() {
 
   /** Tree view variant: assigns new session to the tree group after creation. */
   function handleCreateSessionInTreeGroup(treeGroupId: string) {
-    const normalizedTreeGroupId = treeGroupId.trim();
-    if (!normalizedTreeGroupId) return;
-    const treeGroup = treeGroups.find((group) => group.id === normalizedTreeGroupId);
-    if (normalizedTreeGroupId !== "default" && !treeGroup) return;
-
-    useStore.getState().openNewSessionModal({
-      treeGroupId: normalizedTreeGroupId,
-      memorySessionSpaceSlug: normalizedTreeGroupId !== "default" ? treeGroup?.name : undefined,
-      newSessionDefaultsKey: getTreeGroupNewSessionDefaultsKey(normalizedTreeGroupId),
-    });
+    const modalContext = buildTreeGroupCreateSessionModalContext(treeGroupId, treeGroups);
+    if (!modalContext) return;
+    useStore.getState().openNewSessionModal(modalContext);
 
     if (!isDesktopLayout) {
       useStore.getState().setSidebarOpen(false);
