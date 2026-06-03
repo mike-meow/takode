@@ -4,6 +4,7 @@ import { deriveSessionStatus } from "../components/SessionStatusDot.js";
 
 export const PENDING_TREE_GROUP_ID = "__pending_session_location__";
 const PENDING_TREE_GROUP: TreeGroup = { id: PENDING_TREE_GROUP_ID, name: "Locating..." };
+const DEFAULT_TREE_GROUP: TreeGroup = { id: "default", name: "Default" };
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -57,6 +58,71 @@ function sortReviewersForParent(reviewers: SessionItem[]): void {
   });
 }
 
+function normalizeNonEmptyString(value: string | null | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function buildOrderedGroups(
+  treeGroups: TreeGroup[],
+  sessions: SessionItem[],
+  treeAssignments: Map<string, string>,
+): TreeGroup[] {
+  const orderedGroups = treeGroups
+    .map((group) => ({
+      id: normalizeNonEmptyString(group.id) ?? "",
+      name: normalizeNonEmptyString(group.name) ?? "",
+    }))
+    .filter((group) => group.id && group.name);
+  if (!orderedGroups.some((group) => group.id === DEFAULT_TREE_GROUP.id)) {
+    orderedGroups.unshift({ ...DEFAULT_TREE_GROUP });
+  }
+
+  const knownGroupIds = new Set(orderedGroups.map((group) => group.id));
+  for (const session of sessions) {
+    const groupId =
+      normalizeNonEmptyString(treeAssignments.get(session.id)) ?? normalizeNonEmptyString(session.treeGroupId);
+    if (!groupId || groupId === DEFAULT_TREE_GROUP.id || knownGroupIds.has(groupId)) continue;
+    const groupName = normalizeNonEmptyString(session.memorySessionSpaceSlug);
+    if (!groupName) continue;
+
+    // Session snapshots can arrive before the tree-group list during refresh,
+    // reconnect, or cross-tab updates. Preserve the user's known space instead
+    // of sending the session through the transient "Locating..." bucket.
+    orderedGroups.push({ id: groupId, name: groupName });
+    knownGroupIds.add(groupId);
+  }
+  return orderedGroups;
+}
+
+function buildSessionSpaceGroupLookup(groups: TreeGroup[]): Map<string, string> {
+  const matches = new Map<string, string | null>();
+  for (const group of groups) {
+    if (group.id === DEFAULT_TREE_GROUP.id) continue;
+    const slug = normalizeNonEmptyString(group.name);
+    if (!slug) continue;
+    matches.set(slug, matches.has(slug) ? null : group.id);
+  }
+
+  const lookup = new Map<string, string>();
+  for (const [slug, groupId] of matches) {
+    if (groupId) lookup.set(slug, groupId);
+  }
+  return lookup;
+}
+
+function buildNodeOrderGroupIdsBySession(treeNodeOrder: Map<string, string[]> | undefined): Map<string, string[]> {
+  const bySession = new Map<string, string[]>();
+  for (const [groupId, orderedIds] of treeNodeOrder ?? []) {
+    for (const sessionId of orderedIds) {
+      const groups = bySession.get(sessionId) ?? [];
+      groups.push(groupId);
+      bySession.set(sessionId, groups);
+    }
+  }
+  return bySession;
+}
+
 // ─── Builder ─────────────────────────────────────────────────────────────────
 
 /**
@@ -76,13 +142,29 @@ export function buildTreeViewGroups(
   reviewerSessions?: SessionItem[],
 ): TreeViewGroupData[] {
   const assignments = treeAssignments ?? new Map<string, string>();
-  const validGroupIds = new Set(treeGroups.map((group) => group.id));
-  validGroupIds.add("default");
+  const orderedGroups = buildOrderedGroups(treeGroups, sessions, assignments);
+  const validGroupIds = new Set(orderedGroups.map((group) => group.id));
+  validGroupIds.add(DEFAULT_TREE_GROUP.id);
   validGroupIds.add(PENDING_TREE_GROUP_ID);
+  const groupIdBySessionSpace = buildSessionSpaceGroupLookup(orderedGroups);
+  const nodeOrderGroupIdsBySession = buildNodeOrderGroupIdsBySession(treeNodeOrder);
   const groupIdForSession = (session: SessionItem): string => {
-    const assigned = assignments.get(session.id);
+    const assigned = normalizeNonEmptyString(assignments.get(session.id));
+    const metadataGroupId = normalizeNonEmptyString(session.treeGroupId);
+    const sessionSpaceSlug = normalizeNonEmptyString(session.memorySessionSpaceSlug);
+    const matchingSessionSpaceGroupId = sessionSpaceSlug ? groupIdBySessionSpace.get(sessionSpaceSlug) : undefined;
+    const nodeOrderGroupIds = nodeOrderGroupIdsBySession.get(session.id) ?? [];
+    if (
+      matchingSessionSpaceGroupId &&
+      (assigned === DEFAULT_TREE_GROUP.id ||
+        metadataGroupId === DEFAULT_TREE_GROUP.id ||
+        (!assigned && !metadataGroupId)) &&
+      nodeOrderGroupIds.includes(matchingSessionSpaceGroupId)
+    ) {
+      return matchingSessionSpaceGroupId;
+    }
     if (assigned) return assigned;
-    if (session.treeGroupId) return session.treeGroupId;
+    if (metadataGroupId) return metadataGroupId;
     return PENDING_TREE_GROUP_ID;
   };
   // 1. Build lookup maps (include reviewer sessions for sessionByNum resolution)
@@ -129,11 +211,11 @@ export function buildTreeViewGroups(
 
   const groupBuckets = new Map<string, SessionItem[]>();
   // Initialize buckets for all defined groups
-  for (const g of treeGroups) {
+  for (const g of orderedGroups) {
     groupBuckets.set(g.id, []);
   }
-  if (!groupBuckets.has("default")) {
-    groupBuckets.set("default", []);
+  if (!groupBuckets.has(DEFAULT_TREE_GROUP.id)) {
+    groupBuckets.set(DEFAULT_TREE_GROUP.id, []);
   }
   groupBuckets.set(PENDING_TREE_GROUP_ID, []);
 
@@ -153,16 +235,13 @@ export function buildTreeViewGroups(
   // 4. Build TreeNodes within each group
   const result: TreeViewGroupData[] = [];
 
-  // Use treeGroups order; ensure default group is included
-  const orderedGroups = [...treeGroups];
-  if (!orderedGroups.some((g) => g.id === "default")) {
-    orderedGroups.unshift({ id: "default", name: "Default" });
-  }
+  // Use treeGroups order; ensure default and inferred hydrated groups are included.
+  const groupsToRender = [...orderedGroups];
   if ((groupBuckets.get(PENDING_TREE_GROUP_ID)?.length ?? 0) > 0) {
-    orderedGroups.push(PENDING_TREE_GROUP);
+    groupsToRender.push(PENDING_TREE_GROUP);
   }
 
-  for (const group of orderedGroups) {
+  for (const group of groupsToRender) {
     const bucket = groupBuckets.get(group.id);
     if (!bucket || bucket.length === 0) {
       // Empty Session Spaces still need a visible creation path, including

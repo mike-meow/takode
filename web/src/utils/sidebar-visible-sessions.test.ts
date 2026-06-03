@@ -323,6 +323,42 @@ describe("buildSidebarVisibleSessions", () => {
     ]);
   });
 
+  it("keeps snapshot Session Space visible when tree groups are still hydrating", () => {
+    const sessions = new Map<string, SessionState>();
+    const sdkSessions: SdkSessionInfo[] = [
+      makeSdkSession("oai-leader", {
+        createdAt: 1,
+        sessionNum: 710,
+        isOrchestrator: true,
+        treeGroupId: "oai",
+        memorySessionSpaceSlug: "OAI",
+      }),
+    ];
+
+    const result = buildSidebarVisibleSessions({
+      sessions,
+      sdkSessions,
+      cliConnected: new Map(),
+      cliDisconnectReason: new Map(),
+      sessionStatus: new Map(),
+      pendingPermissions: new Map(),
+      askPermission: new Map(),
+      diffFileStats: new Map(),
+      treeGroups: [],
+      treeAssignments: new Map(),
+      treeNodeOrder: new Map(),
+      collapsedTreeGroups: new Set(),
+      expandedHerdNodes: new Set(),
+      sessionAttention: new Map(),
+      sessionSortMode: "created",
+      countUserPermissions: () => 0,
+    });
+
+    expect(result.treeViewGroups.map((group) => group.id)).toEqual(["default", "oai"]);
+    expect(result.treeViewGroups.find((group) => group.id === "oai")?.name).toBe("OAI");
+    expect(result.orderedVisibleSessionIds).toEqual(["oai-leader"]);
+  });
+
   it("preserves completed quest review metadata from idle session snapshots", () => {
     const sessions = new Map<string, SessionState>();
     const sdkSessions: SdkSessionInfo[] = [

@@ -53,6 +53,74 @@ describe("buildTreeViewGroups", () => {
     expect(result.find((group) => group.id === "oai")?.nodes.map((node) => node.leader.id)).toEqual(["leader-oai"]);
   });
 
+  it("keeps session-space structure when group definitions hydrate after session snapshots", () => {
+    const sessions = [
+      makeSession({
+        id: "leader-oai",
+        sessionNum: 1,
+        isOrchestrator: true,
+        treeGroupId: "oai",
+        memorySessionSpaceSlug: "OAI",
+      }),
+    ];
+
+    const result = buildTreeViewGroups(sessions, [], emptyAssignments);
+
+    expect(result.map((group) => group.id)).toEqual(["default", "oai"]);
+    expect(result.find((group) => group.id === "oai")?.name).toBe("OAI");
+    expect(result.find((group) => group.id === "oai")?.nodes.map((node) => node.leader.id)).toEqual(["leader-oai"]);
+    expect(result.find((group) => group.id === PENDING_TREE_GROUP_ID)).toBeUndefined();
+  });
+
+  it("uses memory space and node order to recover from stale default location metadata", () => {
+    const groups: TreeGroup[] = [
+      { id: "default", name: "Default" },
+      { id: "oai", name: "OAI" },
+    ];
+    const sessions = [
+      makeSession({
+        id: "leader-oai",
+        sessionNum: 1,
+        isOrchestrator: true,
+        treeGroupId: "default",
+        memorySessionSpaceSlug: "OAI",
+      }),
+    ];
+    const assignments = new Map([["leader-oai", "default"]]);
+    const nodeOrder = new Map([
+      ["default", ["other-session"]],
+      ["oai", ["leader-oai"]],
+    ]);
+
+    const result = buildTreeViewGroups(sessions, groups, assignments, undefined, "created", nodeOrder);
+
+    expect(result.find((group) => group.id === "default")?.nodes).toHaveLength(0);
+    expect(result.find((group) => group.id === "oai")?.nodes.map((node) => node.leader.id)).toEqual(["leader-oai"]);
+  });
+
+  it("preserves intentional default placement without node-order evidence", () => {
+    const groups: TreeGroup[] = [
+      { id: "default", name: "Default" },
+      { id: "oai", name: "OAI" },
+    ];
+    const sessions = [
+      makeSession({
+        id: "leader-default",
+        sessionNum: 1,
+        isOrchestrator: true,
+        treeGroupId: "default",
+        memorySessionSpaceSlug: "OAI",
+      }),
+    ];
+
+    const result = buildTreeViewGroups(sessions, groups, emptyAssignments);
+
+    expect(result.find((group) => group.id === "default")?.nodes.map((node) => node.leader.id)).toEqual([
+      "leader-default",
+    ]);
+    expect(result.find((group) => group.id === "oai")?.nodes).toHaveLength(0);
+  });
+
   it("renders unknown session location in a pending group instead of silently defaulting", () => {
     const sessions = [makeSession({ id: "unknown-location", sessionNum: 1, treeGroupId: null })];
 
