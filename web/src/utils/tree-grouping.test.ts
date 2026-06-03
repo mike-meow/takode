@@ -68,6 +68,8 @@ describe("buildTreeViewGroups", () => {
 
     expect(result.map((group) => group.id)).toEqual(["default", "oai"]);
     expect(result.find((group) => group.id === "oai")?.name).toBe("OAI");
+    expect(result.find((group) => group.id === "oai")?.inferred).toBe(true);
+    expect(result.find((group) => group.id === "default")?.inferred).toBeUndefined();
     expect(result.find((group) => group.id === "oai")?.nodes.map((node) => node.leader.id)).toEqual(["leader-oai"]);
     expect(result.find((group) => group.id === PENDING_TREE_GROUP_ID)).toBeUndefined();
   });

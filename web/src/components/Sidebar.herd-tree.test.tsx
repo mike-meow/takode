@@ -407,6 +407,116 @@ describe("Sidebar herd tree behavior", { timeout: 10000 }, () => {
     expect(mockApi.updateTreeNodeOrder).not.toHaveBeenCalled();
   });
 
+  it("keeps inferred Session Spaces render-only during partial hydration", async () => {
+    mockState = createMockState({
+      sessions: new Map([
+        [
+          "oai-session",
+          makeSession("oai-session", {
+            model: "oai-model",
+            treeGroupId: "oai",
+            memorySessionSpaceSlug: "OAI",
+          }),
+        ],
+      ]),
+      sdkSessions: [
+        makeSdkSession("oai-session", {
+          sessionNum: 73,
+          createdAt: 100,
+          treeGroupId: "oai",
+          memorySessionSpaceSlug: "OAI",
+        }),
+      ],
+      sessionNames: new Map([["oai-session", "OAI Session"]]),
+      treeGroups: [],
+      treeAssignments: new Map(),
+    });
+
+    render(<Sidebar />);
+
+    expect(screen.getByText("OAI")).toBeInTheDocument();
+    expect(screen.getByText("OAI Session")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Drag to reorder Session Space OAI")).not.toBeInTheDocument();
+    expect(dndKitMockState.invalidSortableIds).toEqual([]);
+
+    await act(async () => {
+      dndKitMockState.dndContexts[0]!.onDragEnd?.({ active: { id: "oai" }, over: { id: "default" } });
+    });
+
+    expect(mockApi.updateTreeGroups).not.toHaveBeenCalled();
+    expect(mockApi.assignSessionToTreeGroup).not.toHaveBeenCalled();
+    expect(mockApi.updateTreeNodeOrder).not.toHaveBeenCalled();
+  });
+
+  it("excludes inferred Session Spaces from authoritative group reorder writeback", async () => {
+    mockState = createMockState({
+      sessions: new Map([
+        ["alpha-session", makeSession("alpha-session", { model: "alpha-model" })],
+        ["beta-session", makeSession("beta-session", { model: "beta-model" })],
+        [
+          "oai-session",
+          makeSession("oai-session", {
+            model: "oai-model",
+            treeGroupId: "oai",
+            memorySessionSpaceSlug: "OAI",
+          }),
+        ],
+      ]),
+      sdkSessions: [
+        makeSdkSession("alpha-session", { sessionNum: 71, createdAt: 100 }),
+        makeSdkSession("beta-session", { sessionNum: 72, createdAt: 200 }),
+        makeSdkSession("oai-session", {
+          sessionNum: 73,
+          createdAt: 300,
+          treeGroupId: "oai",
+          memorySessionSpaceSlug: "OAI",
+        }),
+      ],
+      sessionNames: new Map([
+        ["alpha-session", "Alpha Session"],
+        ["beta-session", "Beta Session"],
+        ["oai-session", "OAI Session"],
+      ]),
+      treeGroups: [
+        { id: "alpha", name: "Alpha Space" },
+        { id: "beta", name: "Beta Space" },
+      ],
+      treeAssignments: new Map([
+        ["alpha-session", "alpha"],
+        ["beta-session", "beta"],
+      ]),
+    });
+
+    render(<Sidebar />);
+
+    expect(screen.getByText("OAI")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Drag to reorder Session Space OAI")).not.toBeInTheDocument();
+    expect(dndKitMockState.invalidSortableIds).toEqual([]);
+
+    await act(async () => {
+      dndKitMockState.dndContexts[0]!.onDragEnd?.({ active: { id: "beta" }, over: { id: "alpha" } });
+    });
+
+    await waitFor(() => {
+      expect(mockApi.updateTreeGroups).toHaveBeenCalledWith({
+        groups: [
+          { id: "default", name: "Default" },
+          { id: "beta", name: "Beta Space" },
+          { id: "alpha", name: "Alpha Space" },
+        ],
+        assignments: {
+          "alpha-session": "alpha",
+          "beta-session": "beta",
+        },
+      });
+    });
+    expect(mockApi.updateTreeGroups).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        groups: expect.arrayContaining([{ id: "oai", name: "OAI" }]),
+      }),
+    );
+  });
+
   it("hovering a herded worker highlights its leader and shows leader info in hover card", async () => {
     const leaderSessionId = "leader-1";
     const workerSessionId = "worker-1";

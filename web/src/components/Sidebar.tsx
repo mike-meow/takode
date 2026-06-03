@@ -6,7 +6,6 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
-  type Modifier,
   type DraggableAttributes,
 } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
@@ -52,12 +51,8 @@ import {
 } from "../utils/sidebar-group-overflow.js";
 import { getShortcutTitle } from "../shortcuts.js";
 import { getDocumentTitleAttentionCount } from "../utils/document-title-attention.js";
-
-/** Restrict drag movement to vertical axis only. */
-const restrictToVerticalAxis: Modifier = ({ transform }) => ({
-  ...transform,
-  x: 0,
-});
+import { buildAuthoritativeTreeGroupsForWriteback } from "../utils/sidebar-tree-groups.js";
+import { restrictToVerticalAxis } from "../utils/sidebar-dnd.js";
 
 /** Build "Move to..." submenu items for the session context menu (tree view only). */
 function buildMoveToSubmenu(
@@ -85,9 +80,11 @@ function buildMoveToSubmenu(
 
 function SortableTreeGroup({
   id,
+  disabled,
   children,
 }: {
   id: string;
+  disabled?: boolean;
   children: (props: {
     setNodeRef: (node: HTMLElement | null) => void;
     style: CSSProperties;
@@ -96,7 +93,7 @@ function SortableTreeGroup({
     isDragging: boolean;
   }) => ReactNode;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id, disabled });
 
   const style: CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -802,7 +799,12 @@ export function Sidebar() {
   const reviewerByParent = useMemo(() => buildReviewerByParent(allSessionList), [allSessionList]);
   const logoSrc = "/app-logo.png";
   const [showCronSessions, setShowCronSessions] = useState(true);
-  const treeGroupIds = useMemo(() => treeViewGroups.map((g) => g.id), [treeViewGroups]);
+  const authoritativeTreeGroups = useMemo(() => buildAuthoritativeTreeGroupsForWriteback(treeGroups), [treeGroups]);
+  const authoritativeTreeGroupIds = useMemo(
+    () => authoritativeTreeGroups.map((group) => group.id),
+    [authoritativeTreeGroups],
+  );
+  const authoritativeTreeGroupIdSet = useMemo(() => new Set(authoritativeTreeGroupIds), [authoritativeTreeGroupIds]);
   const treePointerSensor = useSensor(PointerSensor, { activationConstraint: { distance: 8 } });
   const treeSensors = useSensors(treePointerSensor);
   const handleTreeGroupDragEnd = useCallback(
@@ -810,11 +812,11 @@ export function Sidebar() {
       const { active, over } = event;
       if (!over || active.id === over.id) return;
 
-      const oldIndex = treeGroupIds.indexOf(active.id as string);
-      const newIndex = treeGroupIds.indexOf(over.id as string);
+      const oldIndex = authoritativeTreeGroupIds.indexOf(active.id as string);
+      const newIndex = authoritativeTreeGroupIds.indexOf(over.id as string);
       if (oldIndex === -1 || newIndex === -1) return;
 
-      const reordered = arrayMove(treeViewGroups, oldIndex, newIndex);
+      const reordered = arrayMove(authoritativeTreeGroups, oldIndex, newIndex);
       // Full state replace for group reorder
       const state = {
         groups: reordered.map((g) => ({ id: g.id, name: g.name })),
@@ -824,7 +826,7 @@ export function Sidebar() {
         console.warn("[sidebar] failed to update tree group order:", err);
       });
     },
-    [treeGroupIds, treeViewGroups, treeAssignments],
+    [authoritativeTreeGroupIds, authoritativeTreeGroups, treeAssignments],
   );
 
   const toggleGroupOverflow = useCallback((groupId: string) => {
@@ -894,8 +896,8 @@ export function Sidebar() {
 
       const activeId = active.id as string;
       const overId = over.id as string;
-      const activeIsGroup = treeGroupIds.includes(activeId);
-      const overIsGroup = treeGroupIds.includes(overId);
+      const activeIsGroup = authoritativeTreeGroupIdSet.has(activeId);
+      const overIsGroup = authoritativeTreeGroupIdSet.has(overId);
 
       if (activeIsGroup || overIsGroup) {
         if (activeIsGroup && overIsGroup) handleTreeGroupDragEnd(event);
@@ -904,7 +906,7 @@ export function Sidebar() {
 
       handleTreeSessionDragEnd(event);
     },
-    [handleTreeGroupDragEnd, handleTreeSessionDragEnd, treeGroupIds],
+    [authoritativeTreeGroupIdSet, handleTreeGroupDragEnd, handleTreeSessionDragEnd],
   );
 
   // Server-side session search (debounced, abort on query change).
@@ -1394,9 +1396,9 @@ export function Sidebar() {
               onDragEnd={sessionSortMode === "activity" || bulkSelectionGroupId ? undefined : handleTreeDragEnd}
               modifiers={[restrictToVerticalAxis]}
             >
-              <SortableContext items={treeGroupIds} strategy={verticalListSortingStrategy}>
+              <SortableContext items={authoritativeTreeGroupIds} strategy={verticalListSortingStrategy}>
                 {treeViewGroups.map((group, i) => (
-                  <SortableTreeGroup key={group.id} id={group.id}>
+                  <SortableTreeGroup key={group.id} id={group.id} disabled={!authoritativeTreeGroupIdSet.has(group.id)}>
                     {({ setNodeRef, style, listeners, attributes, isDragging }) => (
                       <div ref={setNodeRef} style={style}>
                         <TreeViewGroup
@@ -1415,7 +1417,10 @@ export function Sidebar() {
                           groupDragging={isDragging}
                           onMobileReorderHandleActiveChange={setMobileReorderHandleActive}
                           groupDragHandleProps={
-                            treeViewGroups.length > 1 && sessionSortMode !== "activity" && !bulkSelectionGroupId
+                            authoritativeTreeGroups.length > 1 &&
+                            authoritativeTreeGroupIdSet.has(group.id) &&
+                            sessionSortMode !== "activity" &&
+                            !bulkSelectionGroupId
                               ? {
                                   listeners: listeners as Record<string, unknown> | undefined,
                                   attributes: attributes as unknown as Record<string, unknown>,

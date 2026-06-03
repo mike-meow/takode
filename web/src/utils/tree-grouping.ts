@@ -20,6 +20,8 @@ export interface TreeNode {
 export interface TreeViewGroupData {
   id: string;
   name: string;
+  /** Render-only fallback synthesized from session metadata while authoritative tree groups hydrate. */
+  inferred?: boolean;
   nodes: TreeNode[];
   runningCount: number;
   permCount: number;
@@ -63,12 +65,14 @@ function normalizeNonEmptyString(value: string | null | undefined): string | und
   return trimmed ? trimmed : undefined;
 }
 
+type HydratedTreeGroup = TreeGroup & { inferred?: boolean };
+
 function buildOrderedGroups(
   treeGroups: TreeGroup[],
   sessions: SessionItem[],
   treeAssignments: Map<string, string>,
-): TreeGroup[] {
-  const orderedGroups = treeGroups
+): HydratedTreeGroup[] {
+  const orderedGroups: HydratedTreeGroup[] = treeGroups
     .map((group) => ({
       id: normalizeNonEmptyString(group.id) ?? "",
       name: normalizeNonEmptyString(group.name) ?? "",
@@ -89,7 +93,7 @@ function buildOrderedGroups(
     // Session snapshots can arrive before the tree-group list during refresh,
     // reconnect, or cross-tab updates. Preserve the user's known space instead
     // of sending the session through the transient "Locating..." bucket.
-    orderedGroups.push({ id: groupId, name: groupName });
+    orderedGroups.push({ id: groupId, name: groupName, inferred: true });
     knownGroupIds.add(groupId);
   }
   return orderedGroups;
@@ -246,7 +250,15 @@ export function buildTreeViewGroups(
     if (!bucket || bucket.length === 0) {
       // Empty Session Spaces still need a visible creation path, including
       // the default space in a brand-new install with zero sessions.
-      result.push({ id: group.id, name: group.name, nodes: [], runningCount: 0, permCount: 0, unreadCount: 0 });
+      result.push({
+        id: group.id,
+        name: group.name,
+        ...(group.inferred ? { inferred: true } : {}),
+        nodes: [],
+        runningCount: 0,
+        permCount: 0,
+        unreadCount: 0,
+      });
       continue;
     }
 
@@ -359,6 +371,7 @@ export function buildTreeViewGroups(
     result.push({
       id: group.id,
       name: group.name,
+      ...(group.inferred ? { inferred: true } : {}),
       nodes,
       runningCount,
       permCount,
